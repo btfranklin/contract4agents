@@ -1,0 +1,20 @@
+datasource CustomerProfileSource:
+    python = "tests.fixtures.parser_golden:customer_profile"
+    requires = [WorkRequest]
+    produces = CustomerProfile
+    render = "markdown"
+    cache = "run"
+
+datasource ComplianceContextSource:
+    python = "tests.fixtures.parser_golden:compliance_context"
+    requires = [WorkRequest, CustomerProfile]
+    produces = ComplianceContext
+    render = "markdown"
+    cache = "thread"
+
+datasource KnowledgePackSource:
+    python = "tests.fixtures.parser_golden:knowledge_pack"
+    requires = [WorkRequest]
+    produces = KnowledgePack
+    render = "markdown"
+    cache = "run"

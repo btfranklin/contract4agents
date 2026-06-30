@@ -1,0 +1,9 @@
+monitor publish_requires_approval for ExpressionCoordinator:
+    severity = "critical"
+    when trace.tool_called(tools.publish)
+    expect trace.approval_granted(tools.publish)
+
+monitor guardrail_visible for ExpressionCoordinator:
+    severity = "medium"
+    when trace.guardrail_rejected(prompt_injection)
+    expect trace.contains("prompt_injection")

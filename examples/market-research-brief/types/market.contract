@@ -1,0 +1,41 @@
+type MarketResearchQuestion:
+    product_area: str
+    target_segment: str
+    decision: str
+    as_of_date: str
+
+type DocumentEvidence:
+    document_id: str
+    title: str
+    claim: str
+    citation: str
+
+type CurrentFactEvidence:
+    fact_id: str
+    source: str
+    as_of_date: str
+    claim: str
+    citation: str
+
+type CompetitorSnapshot:
+    competitor: str
+    positioning: str
+    recent_signal: str
+    citation: str
+
+type CustomerSignalSummary:
+    pain_points: str[]
+    segments: str[]
+    citations: str[]
+
+type MarketOpportunityReport:
+    thesis: str
+    opportunity: str
+    current_facts: str[]
+    internal_evidence: str[]
+    competitor_signals: str[]
+    customer_signals: str[]
+    risks: str[]
+    recommendation: str
+    citations: str[]
+    freshness_notes: str[]

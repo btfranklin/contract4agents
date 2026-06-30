@@ -1,0 +1,17 @@
+agent CustomerImpactWriter(
+    brief: IncidentBrief
+) -> IncidentBrief:
+
+    goal = "Rewrite the incident brief so customer impact is clear and non-technical."
+
+    description = "Preserves evidence while improving customer-facing clarity."
+
+    policy = [
+        "do not remove technical evidence",
+        "keep customer-facing impact concise",
+    ]
+
+    guards = [
+        require(output conforms IncidentBrief),
+    ]
+

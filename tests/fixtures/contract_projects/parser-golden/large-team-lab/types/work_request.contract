@@ -1,0 +1,29 @@
+type WorkRequest:
+    ticket_id: str
+    customer_id: str?
+    priority: "low" | "medium" | "high"
+    tags: list[str]
+
+type CustomerProfile:
+    customer_id: str
+    tier: str
+    region: str
+
+type ComplianceContext:
+    allowed_action: bool
+    reason: str?
+
+type KnowledgePack:
+    article_ids: list[str]
+    summary: str
+
+type TeamNote:
+    author: str
+    body: str
+
+type WorkResult:
+    ok: bool
+    summary: str
+    recommendation: str
+    approved: bool = false
+    notes: TeamNote[]

@@ -1,0 +1,28 @@
+agent ProfileAgent(seed: AccountSeed) -> GraphOutput:
+    use datasource AccountProfileSource from ./datasources/context
+    goal = "Resolve an account profile."
+    guards = [
+        require(output conforms GraphOutput),
+    ]
+
+agent BillingAgent(profile: AccountProfile) -> GraphOutput:
+    use datasource BillingSnapshotSource from ./datasources/context
+    goal = "Resolve billing context."
+
+agent RiskAgent(profile: AccountProfile) -> GraphOutput:
+    use datasource RiskSignalSource from ./datasources/context
+    goal = "Resolve risk context."
+
+agent ContextComposer(seed: AccountSeed) -> GraphOutput:
+    use datasource AccountProfileSource from ./datasources/context
+    use datasource BillingSnapshotSource from ./datasources/context
+    use datasource RiskSignalSource from ./datasources/context
+    use datasource RenderedContextSource from ./datasources/context
+    use agent ProfileAgent from ./agents/graph_agents
+    use agent BillingAgent from ./agents/graph_agents
+    use agent RiskAgent from ./agents/graph_agents
+    use tool tools.context.render from ./tools/context preapproved
+    goal = "Compose unique datasource outputs without ambiguity."
+    assertions = [
+        when(trace.datasource_resolved(RenderedContext), expect(output.ok == true)),
+    ]

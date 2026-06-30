@@ -1,0 +1,23 @@
+eval all_documented_expectations for ExpressionCoordinator:
+    given request_id = EXPR-1
+    expect output conforms ExpressionOutput
+    expect output.ok == true
+    expect output.count != 0
+    expect output.summary contains alpha
+    expect output.details excludes forbidden
+    expect output discovers hidden_truth.discovery
+    expect trace.called(AgentA)
+    expect trace.not_called(AgentB)
+    expect trace.called_once(AgentA)
+    expect trace.called_times(AgentA, 1)
+    expect trace.called_before(AgentA, tools.lookup)
+    expect trace.called_after(tools.lookup, AgentA)
+    expect trace.max_calls(tools.lookup, 3)
+    expect trace.tool_called(tools.lookup)
+    expect trace.agent_called(AgentA)
+    expect trace.datasource_resolved(KnownContext)
+    expect trace.approval_requested(tools.publish)
+    expect trace.approval_granted(tools.publish)
+    expect trace.approval_denied(tools.publish)
+    expect trace.guardrail_rejected(prompt_injection)
+    expect trace.contains("alpha, beta")

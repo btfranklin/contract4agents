@@ -1,0 +1,446 @@
+{
+  "root": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab",
+  "modules": [
+    {
+      "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/agents/review_agent.contract",
+      "types": [],
+      "datasources": [],
+      "agents": [
+        {
+          "name": "ReviewAgent",
+          "parameters": [],
+          "return_type": "SurfaceOutput",
+          "uses": [],
+          "attributes": {
+            "goal": "\"Review the surface output for parser fixture coverage.\"",
+            "guards": [
+              "require(output conforms SurfaceOutput)"
+            ],
+            "policy": [
+              "stay inside V1 syntax",
+              "return the declared output type"
+            ]
+          },
+          "span": {
+            "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/agents/review_agent.contract",
+            "line": 1,
+            "column": 7
+          }
+        }
+      ],
+      "evals": [],
+      "monitors": []
+    },
+    {
+      "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/agents/surface_coordinator.contract",
+      "types": [],
+      "datasources": [],
+      "agents": [
+        {
+          "name": "SurfaceCoordinator",
+          "parameters": [
+            {
+              "name": "request",
+              "type_name": "SurfaceInput",
+              "nullable": false,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/agents/surface_coordinator.contract",
+                "line": 4,
+                "column": 5
+              }
+            },
+            {
+              "name": "context",
+              "type_name": "SurfaceContext",
+              "nullable": true,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/agents/surface_coordinator.contract",
+                "line": 5,
+                "column": 5
+              }
+            }
+          ],
+          "return_type": "SurfaceOutput",
+          "uses": [
+            {
+              "kind": "datasource",
+              "name": "SurfaceContextSource",
+              "source": "./datasources/context",
+              "permission": "available",
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/agents/surface_coordinator.contract",
+                "line": 7,
+                "column": 20
+              }
+            },
+            {
+              "kind": "agent",
+              "name": "ReviewAgent",
+              "source": "./agents/review_agent",
+              "permission": "preapproved",
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/agents/surface_coordinator.contract",
+                "line": 8,
+                "column": 15
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "tools.open_case",
+              "source": "./tools/open",
+              "permission": "available",
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/agents/surface_coordinator.contract",
+                "line": 9,
+                "column": 14
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "tools.close_case",
+              "source": "./tools/close",
+              "permission": "denied",
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/agents/surface_coordinator.contract",
+                "line": 10,
+                "column": 14
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "tools.search",
+              "source": "./tools/search",
+              "permission": "sandboxed",
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/agents/surface_coordinator.contract",
+                "line": 11,
+                "column": 14
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "tools.escalate",
+              "source": "./tools/escalate",
+              "permission": "requires_approval",
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/agents/surface_coordinator.contract",
+                "line": 12,
+                "column": 14
+              }
+            }
+          ],
+          "attributes": {
+            "assertions": [
+              "expect(output.ok == true)",
+              "when(trace.tool_called(tools.search), expect(output.summary contains reviewed))"
+            ],
+            "description": "\"Covers supported declaration, assignment, permission, and list syntax.\"",
+            "goal": "\"Produce a parser-stable surface output.\"",
+            "guards": [
+              "require(output conforms SurfaceOutput)",
+              "forbid(tool.tools.escalate unless approved_by_human)"
+            ],
+            "policy": [
+              "preserve source spans",
+              "avoid unsupported syntax"
+            ],
+            "routes": [
+              "when input needs review, call ReviewAgent",
+              "otherwise prepare SurfaceOutput"
+            ],
+            "success": [
+              "output conforms SurfaceOutput",
+              "output.summary contains reviewed"
+            ]
+          },
+          "span": {
+            "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/agents/surface_coordinator.contract",
+            "line": 3,
+            "column": 7
+          }
+        }
+      ],
+      "evals": [],
+      "monitors": []
+    },
+    {
+      "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/datasources/context.contract",
+      "types": [],
+      "datasources": [
+        {
+          "name": "SurfaceContextSource",
+          "python": "tests.fixtures.parser_golden:surface_context",
+          "requires": [
+            "SurfaceInput"
+          ],
+          "produces": "SurfaceContext",
+          "render": "markdown",
+          "cache": "none",
+          "span": {
+            "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/datasources/context.contract",
+            "line": 1,
+            "column": 12
+          }
+        }
+      ],
+      "agents": [],
+      "evals": [],
+      "monitors": []
+    },
+    {
+      "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/monitors/surface.monitors.contract",
+      "types": [],
+      "datasources": [],
+      "agents": [],
+      "evals": [],
+      "monitors": [
+        {
+          "name": "escalation_requires_approval",
+          "agent": "SurfaceCoordinator",
+          "severity": "high",
+          "condition": "trace.tool_called(tools.escalate)",
+          "expectation": "trace.approval_requested(tools.escalate)",
+          "span": {
+            "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/monitors/surface.monitors.contract",
+            "line": 1,
+            "column": 9
+          }
+        }
+      ]
+    },
+    {
+      "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/types/surface.contract",
+      "types": [
+        {
+          "name": "SurfaceRef",
+          "fields": [
+            {
+              "name": "key",
+              "type_name": "str",
+              "nullable": false,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/types/surface.contract",
+                "line": 4,
+                "column": 5
+              }
+            },
+            {
+              "name": "label",
+              "type_name": "str",
+              "nullable": false,
+              "default": "\"primary\"",
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/types/surface.contract",
+                "line": 5,
+                "column": 5
+              }
+            }
+          ],
+          "span": {
+            "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/types/surface.contract",
+            "line": 3,
+            "column": 6
+          }
+        },
+        {
+          "name": "SurfaceInput",
+          "fields": [
+            {
+              "name": "id",
+              "type_name": "str",
+              "nullable": false,
+              "default": "\"demo\"",
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/types/surface.contract",
+                "line": 8,
+                "column": 5
+              }
+            },
+            {
+              "name": "notes",
+              "type_name": "str",
+              "nullable": true,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/types/surface.contract",
+                "line": 9,
+                "column": 5
+              }
+            },
+            {
+              "name": "score",
+              "type_name": "int between 1 and 5",
+              "nullable": false,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/types/surface.contract",
+                "line": 10,
+                "column": 5
+              }
+            },
+            {
+              "name": "status",
+              "type_name": "\"new\" | \"open\" | \"closed\"",
+              "nullable": false,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/types/surface.contract",
+                "line": 11,
+                "column": 5
+              }
+            },
+            {
+              "name": "tags",
+              "type_name": "list[str]",
+              "nullable": false,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/types/surface.contract",
+                "line": 12,
+                "column": 5
+              }
+            },
+            {
+              "name": "refs",
+              "type_name": "SurfaceRef[]",
+              "nullable": false,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/types/surface.contract",
+                "line": 13,
+                "column": 5
+              }
+            }
+          ],
+          "span": {
+            "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/types/surface.contract",
+            "line": 7,
+            "column": 6
+          }
+        },
+        {
+          "name": "SurfaceContext",
+          "fields": [
+            {
+              "name": "summary",
+              "type_name": "str",
+              "nullable": false,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/types/surface.contract",
+                "line": 16,
+                "column": 5
+              }
+            },
+            {
+              "name": "source",
+              "type_name": "str",
+              "nullable": false,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/types/surface.contract",
+                "line": 17,
+                "column": 5
+              }
+            }
+          ],
+          "span": {
+            "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/types/surface.contract",
+            "line": 15,
+            "column": 6
+          }
+        },
+        {
+          "name": "SurfaceOutput",
+          "fields": [
+            {
+              "name": "ok",
+              "type_name": "bool",
+              "nullable": false,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/types/surface.contract",
+                "line": 20,
+                "column": 5
+              }
+            },
+            {
+              "name": "summary",
+              "type_name": "str",
+              "nullable": false,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/types/surface.contract",
+                "line": 21,
+                "column": 5
+              }
+            },
+            {
+              "name": "reviewed",
+              "type_name": "bool",
+              "nullable": false,
+              "default": "false",
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/types/surface.contract",
+                "line": 22,
+                "column": 5
+              }
+            },
+            {
+              "name": "score",
+              "type_name": "float between 0 and 1",
+              "nullable": false,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/types/surface.contract",
+                "line": 23,
+                "column": 5
+              }
+            }
+          ],
+          "span": {
+            "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/types/surface.contract",
+            "line": 19,
+            "column": 6
+          }
+        }
+      ],
+      "datasources": [],
+      "agents": [],
+      "evals": [],
+      "monitors": []
+    },
+    {
+      "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/evals/surface.eval",
+      "types": [],
+      "datasources": [],
+      "agents": [],
+      "evals": [
+        {
+          "name": "surface_contract",
+          "agent": "SurfaceCoordinator",
+          "givens": {
+            "incident_id": "SURFACE-1",
+            "fixture_mode": "parser"
+          },
+          "expects": [
+            "output conforms SurfaceOutput",
+            "output.ok == true",
+            "output.summary contains reviewed",
+            "trace.tool_called(tools.search)"
+          ],
+          "semantic_expects": [],
+          "span": {
+            "path": "tests/fixtures/contract_projects/parser-golden/parser-surface-lab/evals/surface.eval",
+            "line": 1,
+            "column": 6
+          }
+        }
+      ],
+      "monitors": []
+    }
+  ]
+}

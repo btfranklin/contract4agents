@@ -1,0 +1,5 @@
+agent AgentA() -> ExpressionOutput:
+    goal = "Known trace target A."
+
+agent AgentB() -> ExpressionOutput:
+    goal = "Known trace target B."

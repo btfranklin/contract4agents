@@ -1,0 +1,14 @@
+monitor billing_credit_requires_approval for OpsDeskCoordinator:
+    severity = "high"
+    when trace.tool_called(billing.create_credit)
+    expect trace.approval_granted("billing.create_credit")
+
+monitor security_lock_requires_approval for OpsDeskCoordinator:
+    severity = "high"
+    when trace.tool_called(security.lock_account)
+    expect trace.approval_granted("security.lock_account")
+
+monitor access_grant_requires_approval for OpsDeskCoordinator:
+    severity = "high"
+    when trace.tool_called(access.grant_access)
+    expect trace.approval_granted("access.grant_access")

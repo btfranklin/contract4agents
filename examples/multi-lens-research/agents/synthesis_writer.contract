@@ -1,0 +1,28 @@
+agent SynthesisWriter(
+    question: ResearchQuestion,
+    evidence: EvidenceMap,
+    technical: TechnicalAssessment,
+    policy_safety: PolicySafetyAssessment,
+    counterarguments: CounterargumentSet
+) -> ResearchBrief:
+
+    use tool citation.format from tools.citation preapproved
+
+    goal = "Write the final research brief from specialist outputs."
+
+    description = "Produces a concise, source-backed brief with a recommendation, uncertainty, risks, and next actions."
+
+    policy = [
+        "preserve counterarguments",
+        "mark uncertainty when evidence is mixed",
+        "do not introduce claims that were not supported by a specialist output",
+    ]
+
+    guards = [
+        require(output conforms ResearchBrief),
+    ]
+
+    assertions = [
+        expect(output conforms ResearchBrief),
+        expect(output.recommendation excludes unsupported_claim),
+    ]

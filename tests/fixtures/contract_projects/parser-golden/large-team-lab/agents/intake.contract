@@ -1,0 +1,9 @@
+agent IntakeRouter(request: WorkRequest) -> WorkResult:
+    use tool tools.ticket.read from ./tools/ticket preapproved
+    goal = "Classify the incoming ticket and route work."
+    policy = ["preserve ticket identity", "do not modify state"]
+
+agent ProfileResearcher(request: WorkRequest) -> WorkResult:
+    use datasource CustomerProfileSource from ./datasources/context
+    use tool tools.crm.lookup from ./tools/crm sandboxed
+    goal = "Gather customer profile context."

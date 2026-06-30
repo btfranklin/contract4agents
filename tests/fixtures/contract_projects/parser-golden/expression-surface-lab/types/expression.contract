@@ -1,0 +1,14 @@
+type ExpressionInput:
+    request_id: str
+    topic: str
+
+type KnownContext:
+    summary: str
+
+type ExpressionOutput:
+    ok: bool
+    count: int
+    status: str
+    summary: str
+    details: str
+    discovery: str?

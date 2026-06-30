@@ -1,0 +1,4 @@
+monitor escalation_requires_approval for SurfaceCoordinator:
+    severity = "high"
+    when trace.tool_called(tools.escalate)
+    expect trace.approval_requested(tools.escalate)

@@ -1,0 +1,56 @@
+agent ResolutionWriter(request: WorkRequest) -> WorkResult:
+    goal = "Write the final response from team notes."
+    assertions = [
+        expect(output conforms WorkResult),
+        expect(output.summary contains ticket),
+    ]
+
+agent ApprovalCoordinator(request: WorkRequest) -> WorkResult:
+    use tool tools.ticket.update from ./tools/ticket requires approval
+    goal = "Coordinate approved state-changing ticket updates."
+    guards = [
+        forbid(tool.tools.ticket.update unless approved_by_human),
+    ]
+
+agent QualityReviewer(request: WorkRequest) -> WorkResult:
+    goal = "Review final answer quality."
+    assertions = [
+        expect(output.ok == true),
+        expect(output.recommendation excludes forbidden),
+    ]
+
+agent AuditLogger(request: WorkRequest) -> WorkResult:
+    use tool tools.audit.write from ./tools/audit preapproved
+    goal = "Record a normalized audit summary."
+
+agent TeamCoordinator(
+    request: WorkRequest,
+    profile: CustomerProfile?
+) -> WorkResult:
+    use datasource CustomerProfileSource from ./datasources/context
+    use datasource ComplianceContextSource from ./datasources/context
+    use datasource KnowledgePackSource from ./datasources/context
+    use agent IntakeRouter from ./agents/intake
+    use agent ProfileResearcher from ./agents/intake
+    use agent KnowledgeResearcher from ./agents/research
+    use agent SentimentAnalyst from ./agents/research
+    use agent PolicyChecker from ./agents/risk
+    use agent SecurityReviewer from ./agents/risk
+    use agent BillingReviewer from ./agents/revenue
+    use agent ResolutionWriter from ./agents/output
+    use agent ApprovalCoordinator from ./agents/output
+    use agent QualityReviewer from ./agents/output
+    use agent AuditLogger from ./agents/output
+    use tool tools.ticket.update from ./tools/ticket requires approval
+    use tool tools.audit.write from ./tools/audit preapproved
+    goal = "Coordinate the large parser-golden team."
+    composition = [
+        route intake through IntakeRouter,
+        collect research from ProfileResearcher and KnowledgeResearcher,
+        check risk through PolicyChecker and SecurityReviewer,
+        prepare output with ResolutionWriter and QualityReviewer,
+    ]
+    assertions = [
+        expect(output conforms WorkResult),
+        when(trace.agent_called(ResolutionWriter), expect(output.ok == true)),
+    ]

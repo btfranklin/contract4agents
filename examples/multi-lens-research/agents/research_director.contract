@@ -1,0 +1,45 @@
+agent ResearchDirector(
+    question: ResearchQuestion
+) -> ResearchBrief:
+
+    use agent EvidenceMapper from ./evidence_mapper
+    use agent TechnicalLensAnalyst from ./technical_lens_analyst
+    use agent PolicySafetyLensAnalyst from ./policy_safety_lens_analyst
+    use agent CounterargumentAnalyst from ./counterargument_analyst
+    use agent SynthesisWriter from ./synthesis_writer
+    use tool expert_review.request from tools.expert_review requires approval
+
+    goal = "Coordinate a multi-lens research brief for a high-stakes decision."
+
+    description = "Keeps the research process split into focused specialist lenses before writing a final recommendation."
+
+    policy = [
+        "delegate source mapping before synthesis",
+        "keep technical and policy-safety judgments separate",
+        "include counterarguments before making a recommendation",
+        "do not request external expert review without human approval",
+    ]
+
+    success = [
+        "final recommendation is supported by evidence from multiple lenses",
+        "counterarguments and weak assumptions are visible",
+        "next actions are concrete and scoped",
+    ]
+
+    composition = [
+        isolated_subagent(EvidenceMapper),
+        isolated_subagent(TechnicalLensAnalyst),
+        isolated_subagent(PolicySafetyLensAnalyst),
+        isolated_subagent(CounterargumentAnalyst),
+        isolated_subagent(SynthesisWriter),
+    ]
+
+    guards = [
+        require(output conforms ResearchBrief),
+        forbid(tool.expert_review.request unless approved_by_human),
+    ]
+
+    assertions = [
+        expect(output conforms ResearchBrief),
+        expect(output.recommendation excludes unsupported_claim),
+    ]

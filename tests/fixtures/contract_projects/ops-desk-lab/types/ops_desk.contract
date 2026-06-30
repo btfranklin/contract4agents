@@ -1,0 +1,39 @@
+type StartRequest:
+    start_id: str
+    message: str
+    account_id: str
+
+type CustomerAccount:
+    account_id: str
+    name: str
+    status: str
+    plan: str
+    risk: str
+
+type RequestIntent:
+    route: "billing" | "security" | "access" | "knowledge" | "rejected" | "unknown"
+    action: str
+    requires_approval: bool
+
+type BillingRecord:
+    invoice_id: str
+    amount: float
+    status: str
+    summary: str
+
+type SecurityRecord:
+    risk: str
+    summary: str
+
+type AccessRecord:
+    entitlement: str
+    status: str
+    summary: str
+
+type OpsDeskResult:
+    start_id: str
+    route: "billing" | "security" | "access" | "knowledge" | "rejected" | "unknown"
+    status: "resolved" | "needs_approval" | "rejected" | "not_found"
+    reply: str
+    evidence: str[]
+    actions: str[]

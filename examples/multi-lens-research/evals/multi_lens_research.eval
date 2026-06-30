@@ -1,0 +1,16 @@
+eval staged_rollout_research for ResearchDirector:
+    given question = ResearchQuestion.fixture("staged_eval_rollout")
+
+    expect output conforms ResearchBrief
+    expect output discovers hidden_truth.likely_conclusion
+    expect trace.tool_called(sources.search)
+    expect trace.tool_called(sources.fetch)
+    expect trace.tool_called(evidence.score)
+    expect trace.tool_called(citation.format)
+    expect trace.agent_called(EvidenceMapper)
+    expect trace.agent_called(TechnicalLensAnalyst)
+    expect trace.agent_called(PolicySafetyLensAnalyst)
+    expect trace.agent_called(CounterargumentAnalyst)
+    expect trace.agent_called(SynthesisWriter)
+    expect trace.not_called(expert_review.request)
+    expect semantic(output, "The brief is balanced, source-backed, and preserves counterarguments.")

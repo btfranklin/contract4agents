@@ -1,0 +1,17 @@
+eval validates_segment_opportunity for MarketResearchLead:
+    given question = MarketResearchQuestion.fixture("field_ops_ai")
+
+    expect output conforms MarketOpportunityReport
+    expect output discovers hidden_truth.market_thesis
+    expect trace.tool_called(documents.search)
+    expect trace.tool_called(documents.fetch)
+    expect trace.tool_called(current_facts.search)
+    expect trace.tool_called(current_facts.fetch)
+    expect trace.tool_called(competitors.lookup)
+    expect trace.tool_called(citation.format)
+    expect trace.agent_called(DocumentAnalyst)
+    expect trace.agent_called(CurrentTruthScout)
+    expect trace.agent_called(CompetitorAnalyst)
+    expect trace.agent_called(CustomerSignalAnalyst)
+    expect trace.agent_called(ReportWriter)
+    expect semantic(output, "The report distinguishes internal documents from current market facts and includes freshness notes.")

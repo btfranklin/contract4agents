@@ -1,0 +1,8 @@
+agent KnowledgeResearcher(request: WorkRequest) -> WorkResult:
+    use datasource KnowledgePackSource from ./datasources/context
+    use tool tools.search.kb from ./tools/search sandboxed
+    goal = "Find relevant knowledge base support."
+
+agent SentimentAnalyst(request: WorkRequest) -> WorkResult:
+    use tool tools.text.sentiment from ./tools/text preapproved
+    goal = "Assess customer tone and urgency."

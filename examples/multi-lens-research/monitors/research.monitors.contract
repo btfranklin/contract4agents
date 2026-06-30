@@ -1,0 +1,4 @@
+monitor expert_review_requires_approval for ResearchDirector:
+    severity = "high"
+    when trace.approval_requested("expert_review.request")
+    expect trace.approval_granted("expert_review.request")

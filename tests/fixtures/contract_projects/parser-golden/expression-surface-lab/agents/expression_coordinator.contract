@@ -1,0 +1,22 @@
+agent ExpressionCoordinator(
+    input: ExpressionInput
+) -> ExpressionOutput:
+    use datasource KnownContextSource from ./datasources/context
+    use agent AgentA from ./agents/supporting_agents
+    use agent AgentB from ./agents/supporting_agents
+    use tool tools.lookup from ./tools/lookup preapproved
+    use tool tools.publish from ./tools/publish requires approval
+    use tool tools.audit from ./tools/audit sandboxed
+    goal = "Exercise the full documented expression parser surface."
+    guards = [
+        require(output conforms ExpressionOutput),
+        forbid(tool.tools.publish unless approved_by_human),
+    ]
+    assertions = [
+        expect(output.ok == true),
+        expect(output.count != 0),
+        expect(output.summary contains alpha),
+        expect(output.details excludes forbidden),
+        expect(output discovers hidden_truth.discovery),
+        when(trace.tool_called(tools.lookup), expect(output.ok == true)),
+    ]

@@ -1,0 +1,23 @@
+# Parser surface fixture: fields, defaults, nullable types, lists, and literal unions.
+
+type SurfaceRef:
+    key: str
+    label: str = "primary"
+
+type SurfaceInput:
+    id: str = "demo"
+    notes: str?
+    score: int between 1 and 5
+    status: "new" | "open" | "closed"
+    tags: list[str]
+    refs: SurfaceRef[]
+
+type SurfaceContext:
+    summary: str
+    source: str
+
+type SurfaceOutput:
+    ok: bool
+    summary: str
+    reviewed: bool = false
+    score: float between 0 and 1

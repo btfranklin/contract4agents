@@ -1,0 +1,51 @@
+# Agent Instructions
+
+This repository is the design and implementation home for Contract4Agents, a typed declarative language for agent contracts.
+
+## Repo Map
+
+- Start with `VISION.md` for the product and architecture intent.
+- Use `docs/index.md` as the documentation entry point.
+- Language syntax and semantics live in `docs/language/contract-language.md`.
+- Practical adoption guidance lives in `docs/tutorials/using-contract4agents-with-an-agent-app.md`.
+- Runtime context and datasource design live in `docs/runtime/context-and-datasources.md`.
+- Compiler outputs and static checks live in `docs/compiler/compiler-outputs.md`.
+- Eval, assertion, and monitor design lives in `docs/evaluation/evals-assertions-monitors.md`.
+- Validation, release checks, and live-test boundaries live in `docs/quality/validation.md`.
+- Current SDK research lives in `docs/research/agent-sdk-pattern-survey.md`.
+- Accepted decisions live in `docs/decisions/accepted-decisions.md`.
+- Demo team planning lives in `docs/examples/demo-agent-teams.md`.
+- Fake local tool and data fixture rules live in `docs/examples/fake-tools-and-data.md`.
+- Public example structure lives in `examples/README.md`.
+- The beginner-facing Incident Command guide lives in `examples/incident-command/README.md`.
+- Additional public example guides live in `examples/multi-lens-research/README.md`
+  and `examples/market-research-brief/README.md`.
+- Release process and tag-first release notes flow live in `docs/releasing.md`.
+- Implementation sequencing lives in `docs/implementation/roadmap.md`.
+- Open product and architecture questions live in `docs/decisions/open-questions.md`.
+
+## Package Management
+
+- Use PDM for all Python package and environment management.
+- Do not use `pip` directly for project dependency management.
+- When adding dependencies, check the latest available version and express the dependency with a lower bound such as `package>=x.y.z`.
+- Do not pin exact versions unless a specific compatibility issue requires it.
+- For AI prompt assets, use `promptdown` from PyPI and keep prompts outside Python source.
+
+## Documentation Rules
+
+- Keep this file short. It is a map, not the system of record.
+- Put durable design decisions under `docs/`.
+- When a design question is unresolved, update `docs/decisions/open-questions.md` instead of burying the uncertainty in prose.
+- Prefer examples that can later become parser fixtures, runtime fixtures, or eval cases.
+
+## Validation
+
+- Run `pdm run validate` before handing off code changes unless the task is docs-only and the scope clearly does not affect behavior.
+- Run `pdm build` when changing packaging metadata, README/license files, or build configuration.
+- Live OpenAI checks are opt-in; see `docs/quality/validation.md` before treating skipped live tests as coverage.
+
+## Current State
+
+- This repository has a usable local V1 implementation: package, parser, semantic analyzer, compiler, runtime, eval and monitor runners, CLI, local fixtures, and a first OpenAI adapter.
+- Treat `docs/implementation/roadmap.md` as the current hardening roadmap, not as a pre-implementation gate.

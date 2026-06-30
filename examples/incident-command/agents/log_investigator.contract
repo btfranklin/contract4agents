@@ -1,0 +1,21 @@
+agent LogInvestigator(
+    request: IncidentReportRequest,
+    service: ServiceCatalogEntry,
+    window: TimeWindow
+) -> LogEvidenceBundle:
+
+    use tool logs.search from tools.logs preapproved
+
+    goal = "Find log evidence that explains the reported incident symptom."
+
+    description = "Searches seeded log events for symptom-relevant errors."
+
+    policy = [
+        "search only within the incident time window",
+        "return concise log evidence",
+    ]
+
+    guards = [
+        require(output conforms LogEvidenceBundle),
+    ]
+

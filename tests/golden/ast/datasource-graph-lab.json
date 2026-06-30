@@ -1,0 +1,572 @@
+{
+  "root": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab",
+  "modules": [
+    {
+      "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/agents/graph_agents.contract",
+      "types": [],
+      "datasources": [],
+      "agents": [
+        {
+          "name": "ProfileAgent",
+          "parameters": [
+            {
+              "name": "seed",
+              "type_name": "AccountSeed",
+              "nullable": false,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/agents/graph_agents.contract",
+                "line": 1,
+                "column": 20
+              }
+            }
+          ],
+          "return_type": "GraphOutput",
+          "uses": [
+            {
+              "kind": "datasource",
+              "name": "AccountProfileSource",
+              "source": "./datasources/context",
+              "permission": "available",
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/agents/graph_agents.contract",
+                "line": 2,
+                "column": 20
+              }
+            }
+          ],
+          "attributes": {
+            "goal": "\"Resolve an account profile.\"",
+            "guards": [
+              "require(output conforms GraphOutput)"
+            ]
+          },
+          "span": {
+            "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/agents/graph_agents.contract",
+            "line": 1,
+            "column": 7
+          }
+        },
+        {
+          "name": "BillingAgent",
+          "parameters": [
+            {
+              "name": "profile",
+              "type_name": "AccountProfile",
+              "nullable": false,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/agents/graph_agents.contract",
+                "line": 8,
+                "column": 20
+              }
+            }
+          ],
+          "return_type": "GraphOutput",
+          "uses": [
+            {
+              "kind": "datasource",
+              "name": "BillingSnapshotSource",
+              "source": "./datasources/context",
+              "permission": "available",
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/agents/graph_agents.contract",
+                "line": 9,
+                "column": 20
+              }
+            }
+          ],
+          "attributes": {
+            "goal": "\"Resolve billing context.\""
+          },
+          "span": {
+            "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/agents/graph_agents.contract",
+            "line": 8,
+            "column": 7
+          }
+        },
+        {
+          "name": "RiskAgent",
+          "parameters": [
+            {
+              "name": "profile",
+              "type_name": "AccountProfile",
+              "nullable": false,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/agents/graph_agents.contract",
+                "line": 12,
+                "column": 17
+              }
+            }
+          ],
+          "return_type": "GraphOutput",
+          "uses": [
+            {
+              "kind": "datasource",
+              "name": "RiskSignalSource",
+              "source": "./datasources/context",
+              "permission": "available",
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/agents/graph_agents.contract",
+                "line": 13,
+                "column": 20
+              }
+            }
+          ],
+          "attributes": {
+            "goal": "\"Resolve risk context.\""
+          },
+          "span": {
+            "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/agents/graph_agents.contract",
+            "line": 12,
+            "column": 7
+          }
+        },
+        {
+          "name": "ContextComposer",
+          "parameters": [
+            {
+              "name": "seed",
+              "type_name": "AccountSeed",
+              "nullable": false,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/agents/graph_agents.contract",
+                "line": 16,
+                "column": 23
+              }
+            }
+          ],
+          "return_type": "GraphOutput",
+          "uses": [
+            {
+              "kind": "datasource",
+              "name": "AccountProfileSource",
+              "source": "./datasources/context",
+              "permission": "available",
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/agents/graph_agents.contract",
+                "line": 17,
+                "column": 20
+              }
+            },
+            {
+              "kind": "datasource",
+              "name": "BillingSnapshotSource",
+              "source": "./datasources/context",
+              "permission": "available",
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/agents/graph_agents.contract",
+                "line": 18,
+                "column": 20
+              }
+            },
+            {
+              "kind": "datasource",
+              "name": "RiskSignalSource",
+              "source": "./datasources/context",
+              "permission": "available",
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/agents/graph_agents.contract",
+                "line": 19,
+                "column": 20
+              }
+            },
+            {
+              "kind": "datasource",
+              "name": "RenderedContextSource",
+              "source": "./datasources/context",
+              "permission": "available",
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/agents/graph_agents.contract",
+                "line": 20,
+                "column": 20
+              }
+            },
+            {
+              "kind": "agent",
+              "name": "ProfileAgent",
+              "source": "./agents/graph_agents",
+              "permission": "available",
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/agents/graph_agents.contract",
+                "line": 21,
+                "column": 15
+              }
+            },
+            {
+              "kind": "agent",
+              "name": "BillingAgent",
+              "source": "./agents/graph_agents",
+              "permission": "available",
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/agents/graph_agents.contract",
+                "line": 22,
+                "column": 15
+              }
+            },
+            {
+              "kind": "agent",
+              "name": "RiskAgent",
+              "source": "./agents/graph_agents",
+              "permission": "available",
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/agents/graph_agents.contract",
+                "line": 23,
+                "column": 15
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "tools.context.render",
+              "source": "./tools/context",
+              "permission": "preapproved",
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/agents/graph_agents.contract",
+                "line": 24,
+                "column": 14
+              }
+            }
+          ],
+          "attributes": {
+            "assertions": [
+              "when(trace.datasource_resolved(RenderedContext), expect(output.ok == true))"
+            ],
+            "goal": "\"Compose unique datasource outputs without ambiguity.\""
+          },
+          "span": {
+            "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/agents/graph_agents.contract",
+            "line": 16,
+            "column": 7
+          }
+        }
+      ],
+      "evals": [],
+      "monitors": []
+    },
+    {
+      "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/datasources/context.contract",
+      "types": [],
+      "datasources": [
+        {
+          "name": "AccountProfileSource",
+          "python": "tests.fixtures.parser_golden:account_profile",
+          "requires": [
+            "AccountSeed"
+          ],
+          "produces": "AccountProfile",
+          "render": "markdown",
+          "cache": "none",
+          "span": {
+            "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/datasources/context.contract",
+            "line": 1,
+            "column": 12
+          }
+        },
+        {
+          "name": "BillingSnapshotSource",
+          "python": "tests.fixtures.parser_golden:billing_snapshot",
+          "requires": [
+            "AccountProfile"
+          ],
+          "produces": "BillingSnapshot",
+          "render": "markdown",
+          "cache": "run",
+          "span": {
+            "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/datasources/context.contract",
+            "line": 8,
+            "column": 12
+          }
+        },
+        {
+          "name": "RiskSignalSource",
+          "python": "tests.fixtures.parser_golden:risk_signal",
+          "requires": [
+            "AccountProfile",
+            "BillingSnapshot"
+          ],
+          "produces": "RiskSignal",
+          "render": "markdown",
+          "cache": "thread",
+          "span": {
+            "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/datasources/context.contract",
+            "line": 15,
+            "column": 12
+          }
+        },
+        {
+          "name": "RenderedContextSource",
+          "python": "tests.fixtures.parser_golden:rendered_context",
+          "requires": [
+            "AccountProfile",
+            "RiskSignal"
+          ],
+          "produces": "RenderedContext",
+          "render": "markdown",
+          "cache": "run",
+          "span": {
+            "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/datasources/context.contract",
+            "line": 22,
+            "column": 12
+          }
+        }
+      ],
+      "agents": [],
+      "evals": [],
+      "monitors": []
+    },
+    {
+      "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/monitors/graph.monitors.contract",
+      "types": [],
+      "datasources": [],
+      "agents": [],
+      "evals": [],
+      "monitors": [
+        {
+          "name": "context_rendered_after_resolution",
+          "agent": "ContextComposer",
+          "severity": "low",
+          "condition": "trace.datasource_resolved(RenderedContext)",
+          "expectation": "trace.tool_called(tools.context.render)",
+          "span": {
+            "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/monitors/graph.monitors.contract",
+            "line": 1,
+            "column": 9
+          }
+        }
+      ]
+    },
+    {
+      "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/types/graph.contract",
+      "types": [
+        {
+          "name": "AccountSeed",
+          "fields": [
+            {
+              "name": "account_id",
+              "type_name": "str",
+              "nullable": false,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/types/graph.contract",
+                "line": 2,
+                "column": 5
+              }
+            },
+            {
+              "name": "region",
+              "type_name": "str",
+              "nullable": false,
+              "default": "\"us\"",
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/types/graph.contract",
+                "line": 3,
+                "column": 5
+              }
+            }
+          ],
+          "span": {
+            "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/types/graph.contract",
+            "line": 1,
+            "column": 6
+          }
+        },
+        {
+          "name": "AccountProfile",
+          "fields": [
+            {
+              "name": "account_id",
+              "type_name": "str",
+              "nullable": false,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/types/graph.contract",
+                "line": 6,
+                "column": 5
+              }
+            },
+            {
+              "name": "plan",
+              "type_name": "str",
+              "nullable": false,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/types/graph.contract",
+                "line": 7,
+                "column": 5
+              }
+            }
+          ],
+          "span": {
+            "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/types/graph.contract",
+            "line": 5,
+            "column": 6
+          }
+        },
+        {
+          "name": "BillingSnapshot",
+          "fields": [
+            {
+              "name": "balance",
+              "type_name": "float",
+              "nullable": false,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/types/graph.contract",
+                "line": 10,
+                "column": 5
+              }
+            },
+            {
+              "name": "invoice_count",
+              "type_name": "int",
+              "nullable": false,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/types/graph.contract",
+                "line": 11,
+                "column": 5
+              }
+            }
+          ],
+          "span": {
+            "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/types/graph.contract",
+            "line": 9,
+            "column": 6
+          }
+        },
+        {
+          "name": "RiskSignal",
+          "fields": [
+            {
+              "name": "risk_level",
+              "type_name": "\"low\" | \"medium\" | \"high\"",
+              "nullable": false,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/types/graph.contract",
+                "line": 14,
+                "column": 5
+              }
+            },
+            {
+              "name": "reason",
+              "type_name": "str",
+              "nullable": true,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/types/graph.contract",
+                "line": 15,
+                "column": 5
+              }
+            }
+          ],
+          "span": {
+            "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/types/graph.contract",
+            "line": 13,
+            "column": 6
+          }
+        },
+        {
+          "name": "RenderedContext",
+          "fields": [
+            {
+              "name": "markdown",
+              "type_name": "str",
+              "nullable": false,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/types/graph.contract",
+                "line": 18,
+                "column": 5
+              }
+            }
+          ],
+          "span": {
+            "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/types/graph.contract",
+            "line": 17,
+            "column": 6
+          }
+        },
+        {
+          "name": "GraphOutput",
+          "fields": [
+            {
+              "name": "ok",
+              "type_name": "bool",
+              "nullable": false,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/types/graph.contract",
+                "line": 21,
+                "column": 5
+              }
+            },
+            {
+              "name": "summary",
+              "type_name": "str",
+              "nullable": false,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/types/graph.contract",
+                "line": 22,
+                "column": 5
+              }
+            },
+            {
+              "name": "action",
+              "type_name": "str",
+              "nullable": false,
+              "default": null,
+              "span": {
+                "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/types/graph.contract",
+                "line": 23,
+                "column": 5
+              }
+            }
+          ],
+          "span": {
+            "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/types/graph.contract",
+            "line": 20,
+            "column": 6
+          }
+        }
+      ],
+      "datasources": [],
+      "agents": [],
+      "evals": [],
+      "monitors": []
+    },
+    {
+      "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/evals/graph.eval",
+      "types": [],
+      "datasources": [],
+      "agents": [],
+      "evals": [
+        {
+          "name": "resolves_datasource_graph",
+          "agent": "ContextComposer",
+          "givens": {
+            "account_id": "acct_123"
+          },
+          "expects": [
+            "output conforms GraphOutput",
+            "trace.datasource_resolved(AccountProfile)",
+            "trace.datasource_resolved(BillingSnapshot)",
+            "trace.datasource_resolved(RiskSignal)",
+            "trace.datasource_resolved(RenderedContext)",
+            "trace.tool_called(tools.context.render)"
+          ],
+          "semantic_expects": [],
+          "span": {
+            "path": "tests/fixtures/contract_projects/parser-golden/datasource-graph-lab/evals/graph.eval",
+            "line": 1,
+            "column": 6
+          }
+        }
+      ],
+      "monitors": []
+    }
+  ]
+}

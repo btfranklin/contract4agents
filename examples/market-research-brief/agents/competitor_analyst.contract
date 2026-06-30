@@ -1,0 +1,21 @@
+agent CompetitorAnalyst(
+    question: MarketResearchQuestion,
+    current_fact: CurrentFactEvidence
+) -> CompetitorSnapshot:
+
+    use tool competitors.lookup from tools.competitors preapproved
+    use tool citation.format from tools.citation preapproved
+
+    goal = "Compare the market question against seeded competitor positioning."
+
+    description = "Keeps competitor analysis narrow, dated, and tied to the current-fact snapshot."
+
+    policy = [
+        "do not invent competitor roadmap details",
+        "distinguish competitor positioning from customer demand",
+        "cite competitor signals",
+    ]
+
+    guards = [
+        require(output conforms CompetitorSnapshot),
+    ]

@@ -1,0 +1,12 @@
+type DuplicateType:
+    value: str
+
+datasource DuplicateSource:
+    python = "tests.fixtures.parser_golden:first_duplicate_source"
+    requires = [DuplicateType]
+    produces = DuplicateType
+    render = "markdown"
+    cache = "run"
+
+agent DuplicateAgent() -> DuplicateType:
+    goal = "First duplicate agent declaration."

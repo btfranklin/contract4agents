@@ -1,0 +1,9 @@
+agent PolicyChecker(request: WorkRequest) -> WorkResult:
+    use datasource ComplianceContextSource from ./datasources/context
+    use tool tools.policy.check from ./tools/policy preapproved
+    goal = "Check whether the proposed action is allowed."
+
+agent SecurityReviewer(request: WorkRequest) -> WorkResult:
+    use tool tools.security.review from ./tools/security sandboxed
+    use tool tools.security.lock from ./tools/security denied
+    goal = "Review account security posture without taking lock action."

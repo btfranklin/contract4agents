@@ -1,0 +1,13 @@
+eval large_team_happy_path for TeamCoordinator:
+    given ticket_id = TEAM-1
+    given customer_id = cust_123
+    expect output conforms WorkResult
+    expect output.ok == true
+    expect output.summary contains ticket
+    expect trace.called(IntakeRouter)
+    expect trace.agent_called(ResolutionWriter)
+    expect trace.tool_called(tools.ticket.update)
+    expect trace.approval_requested(tools.ticket.update)
+    expect trace.datasource_resolved(CustomerProfile)
+    expect trace.datasource_resolved(ComplianceContext)
+    expect trace.datasource_resolved(KnowledgePack)

@@ -1,0 +1,31 @@
+# Comments and blank lines are part of the parser surface.
+
+agent SurfaceCoordinator(
+    request: SurfaceInput,
+    context: SurfaceContext?
+) -> SurfaceOutput:
+    use datasource SurfaceContextSource from ./datasources/context
+    use agent ReviewAgent from ./agents/review_agent preapproved
+    use tool tools.open_case from ./tools/open available
+    use tool tools.close_case from ./tools/close denied
+    use tool tools.search from ./tools/search sandboxed
+    use tool tools.escalate from ./tools/escalate requires approval
+    description = "Covers supported declaration, assignment, permission, and list syntax."
+    goal = "Produce a parser-stable surface output."
+    policy = ["preserve source spans", "avoid unsupported syntax"]
+    routes = [
+        when input needs review, call ReviewAgent,
+        otherwise prepare SurfaceOutput,
+    ]
+    success = [
+        output conforms SurfaceOutput,
+        output.summary contains reviewed,
+    ]
+    guards = [
+        require(output conforms SurfaceOutput),
+        forbid(tool.tools.escalate unless approved_by_human),
+    ]
+    assertions = [
+        expect(output.ok == true),
+        when(trace.tool_called(tools.search), expect(output.summary contains reviewed)),
+    ]

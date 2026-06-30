@@ -1,0 +1,22 @@
+agent CustomerSignalAnalyst(
+    question: MarketResearchQuestion,
+    document_evidence: DocumentEvidence
+) -> CustomerSignalSummary:
+
+    use tool documents.search from tools.documents preapproved
+    use tool documents.fetch from tools.documents preapproved
+    use tool citation.format from tools.citation preapproved
+
+    goal = "Summarize customer pain points from seeded internal customer documents."
+
+    description = "Finds customer language and keeps it separate from external market facts."
+
+    policy = [
+        "quote or cite customer evidence before naming a pain point",
+        "separate customer pain from competitor positioning",
+        "do not generalize beyond the available segment evidence",
+    ]
+
+    guards = [
+        require(output conforms CustomerSignalSummary),
+    ]

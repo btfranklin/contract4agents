@@ -1,0 +1,21 @@
+agent MetricsAnalyst(
+    request: IncidentReportRequest,
+    service: ServiceCatalogEntry,
+    window: TimeWindow
+) -> MetricSnapshot:
+
+    use tool metrics.query from tools.metrics preapproved
+
+    goal = "Measure the incident impact using seeded metric data."
+
+    description = "Queries latency and error-rate metrics for the incident service."
+
+    policy = [
+        "use metric data only from the incident window",
+        "summarize impact in operational terms",
+    ]
+
+    guards = [
+        require(output conforms MetricSnapshot),
+    ]
+

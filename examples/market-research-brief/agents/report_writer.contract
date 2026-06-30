@@ -1,0 +1,28 @@
+agent ReportWriter(
+    question: MarketResearchQuestion,
+    document_evidence: DocumentEvidence,
+    current_fact: CurrentFactEvidence,
+    competitor: CompetitorSnapshot,
+    customer_signals: CustomerSignalSummary
+) -> MarketOpportunityReport:
+
+    use tool citation.format from tools.citation preapproved
+
+    goal = "Write a market opportunity report that separates internal documents from current external facts."
+
+    description = "Produces the final report with citations, freshness notes, opportunity framing, and risks."
+
+    policy = [
+        "do not state a market claim without a current-fact citation",
+        "label internal evidence as internal evidence",
+        "include freshness notes for dated facts",
+    ]
+
+    guards = [
+        require(output conforms MarketOpportunityReport),
+    ]
+
+    assertions = [
+        expect(output conforms MarketOpportunityReport),
+        expect(output.thesis excludes uncited_market_claim),
+    ]

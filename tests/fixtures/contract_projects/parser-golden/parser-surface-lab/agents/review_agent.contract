@@ -1,0 +1,6 @@
+agent ReviewAgent() -> SurfaceOutput:
+    goal = "Review the surface output for parser fixture coverage."
+    policy = ["stay inside V1 syntax", "return the declared output type"]
+    guards = [
+        require(output conforms SurfaceOutput),
+    ]

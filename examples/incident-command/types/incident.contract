@@ -1,0 +1,32 @@
+type IncidentReportRequest:
+    service: str
+    start: str
+    end: str
+    symptom: str
+
+type ServiceCatalogEntry:
+    id: str
+    name: str
+    owner: str
+
+type TimeWindow:
+    start: str
+    end: str
+
+type LogEvidenceBundle:
+    events: str[]
+
+type RecentDeploys:
+    deploys: str[]
+
+type MetricSnapshot:
+    metric: str
+    max_value: float
+    summary: str
+
+type IncidentBrief:
+    summary: str
+    likely_cause: str
+    evidence: str[]
+    next_actions: str[]
+

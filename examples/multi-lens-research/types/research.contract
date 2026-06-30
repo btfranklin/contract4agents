@@ -1,0 +1,47 @@
+type ResearchQuestion:
+    topic: str
+    decision: str
+    audience: str
+    risk_tolerance: str
+
+type SourceEvidence:
+    source_id: str
+    title: str
+    lens: str
+    claim: str
+    citation: str
+
+type EvidenceMap:
+    topic: str
+    source_ids: str[]
+    claims: str[]
+    citations: str[]
+    quality_notes: str[]
+
+type TechnicalAssessment:
+    feasibility: str
+    implementation_risks: str[]
+    required_controls: str[]
+    citations: str[]
+
+type PolicySafetyAssessment:
+    policy_risks: str[]
+    safety_risks: str[]
+    mitigation_requirements: str[]
+    citations: str[]
+
+type CounterargumentSet:
+    strongest_counterarguments: str[]
+    weak_assumptions: str[]
+    disconfirming_sources: str[]
+    citations: str[]
+
+type ResearchBrief:
+    summary: str
+    recommendation: str
+    confidence: float
+    key_findings: str[]
+    risks: str[]
+    counterarguments: str[]
+    citations: str[]
+    next_actions: str[]

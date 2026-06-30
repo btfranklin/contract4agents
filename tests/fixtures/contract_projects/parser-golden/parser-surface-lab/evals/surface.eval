@@ -1,0 +1,7 @@
+eval surface_contract for SurfaceCoordinator:
+    given incident_id = SURFACE-1
+    given fixture_mode = parser
+    expect output conforms SurfaceOutput
+    expect output.ok == true
+    expect output.summary contains reviewed
+    expect trace.tool_called(tools.search)
