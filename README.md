@@ -1,6 +1,6 @@
 # Contract4Agents
 
-![Contract4Agents banner](https://raw.githubusercontent.com/btfranklin/contract4agents/main/.github/social%20preview/contract4agents_social_preview.png "Contract4Agents")
+![Contract4Agents banner](https://raw.githubusercontent.com/btfranklin/contract4agents/main/.github/social%20preview/contract4agents_social_preview.jpg "Contract4Agents")
 
 Contract4Agents is a typed declarative language and local toolchain for defining AI agents as inspectable contracts.
 
