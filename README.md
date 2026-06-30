@@ -1,5 +1,7 @@
 # Contract4Agents
 
+![Contract4Agents banner](https://raw.githubusercontent.com/btfranklin/contract4agents/main/.github/social%20preview/contract4agents_social_preview.png "Contract4Agents")
+
 Contract4Agents is a typed declarative language and local toolchain for defining AI agents as inspectable contracts.
 
 The source artifact is a `.contract` file. It describes an agent's callable interface, allowed capabilities, policies, guards, assertions, and output contract. The compiler turns that source into prompts, provider-neutral manifests, JSON Schemas, eval packs, monitor rules, and visualization artifacts.
