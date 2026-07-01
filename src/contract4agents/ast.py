@@ -35,6 +35,8 @@ class TypeDef:
     name: str
     fields: list[FieldDef]
     span: SourceSpan
+    source: Literal["native", "python"] = "native"
+    python_ref: str | None = None
 
 
 Permission = Literal["available", "preapproved", "requires_approval", "denied", "sandboxed"]

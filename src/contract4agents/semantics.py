@@ -16,6 +16,7 @@ from contract4agents.expressions._model import ExpressionError, ParsedExpression
 from contract4agents.expressions._refs import referenced_output_fields, referenced_trace_targets, referenced_type
 from contract4agents.expressions._trace_ops import TRACE_OPS
 from contract4agents.hosted_tools import SUPPORTED_HOSTED_TOOLS, split_hosted_tool_name
+from contract4agents.pydantic_interop import python_type_ref_diagnostics
 
 BUILTIN_TYPES = {"str", "int", "float", "bool", "AgentRef"}
 
@@ -110,6 +111,9 @@ def _duplicates(items: list[tuple[str, SourceSpan]], label: str) -> list[Diagnos
 
 def _check_type(type_def: TypeDef, index: _ProjectIndex) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
+    diagnostics.extend(python_type_ref_diagnostics(type_def))
+    if type_def.source == "python":
+        return diagnostics
     seen: set[str] = set()
     for field in type_def.fields:
         if field.name in seen:
@@ -332,7 +336,7 @@ def _check_parsed_expression(
     if type_name and type_name not in index.type_defs:
         diagnostics.append(Diagnostic("SEM002", f"Unknown type `{type_name}` in expression", span=span))
     return_type = index.type_defs.get(agent.return_type)
-    if return_type:
+    if return_type and return_type.source == "native":
         output_fields = {field.name for field in return_type.fields}
         for field in referenced_output_fields(parsed):
             if field not in output_fields:

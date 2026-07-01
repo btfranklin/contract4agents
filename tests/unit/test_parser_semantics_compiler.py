@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,7 @@ from contract4agents.semantics import analyze_project
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = ROOT / "examples" / "incident-command"
+PYDANTIC_FIXTURE = ROOT / "tests" / "fixtures" / "contract_projects" / "pydantic-model-interop"
 
 
 def test_parse_incident_project() -> None:
@@ -34,6 +36,15 @@ def test_parse_agent_fields_and_uses() -> None:
     assert agent.uses[-1].permission == "requires_approval"
     assert agent.text_attr("description")
     assert agent.list_attr("guards")
+
+
+def test_parse_python_type_binding() -> None:
+    module = parse_file(PYDANTIC_FIXTURE / "models.contract")
+
+    assert module.types[0].name == "ResearchPlan"
+    assert module.types[0].source == "python"
+    assert module.types[0].python_ref == "tests.fixtures.pydantic_models:ResearchPlanModel"
+    assert module.types[0].fields == []
 
 
 def test_lark_module_parser_characterizes_supported_surface(tmp_path: Path) -> None:
@@ -128,6 +139,15 @@ agent BadAgent(
 
     assert not result.ok
     assert any(diagnostic.code == "SEM002" for diagnostic in result.diagnostics)
+
+
+def test_semantic_analyzer_rejects_malformed_python_type_ref(tmp_path: Path) -> None:
+    (tmp_path / "bad.contract").write_text('type Bad from python "not-a-ref"\n')
+
+    result = analyze_project(parse_project(tmp_path))
+
+    assert not result.ok
+    assert [diagnostic.code for diagnostic in result.diagnostics] == ["PYD002"]
 
 
 def test_semantic_analyzer_rejects_invalid_output_field(tmp_path: Path) -> None:
@@ -238,6 +258,66 @@ def test_json_schema_generation() -> None:
     assert "summary" in schema["required"]
 
 
+def test_pydantic_schema_generation_requires_explicit_imports(tmp_path: Path) -> None:
+    with pytest.raises(ContractError) as exc:
+        compile_project(PYDANTIC_FIXTURE, tmp_path / "build")
+
+    assert exc.value.diagnostics[0].code == "PYD000"
+    assert "--allow-python-imports" in str(exc.value.diagnostics[0].hint)
+
+
+def test_pydantic_schema_generation_with_imports(tmp_path: Path) -> None:
+    artifacts = compile_project(PYDANTIC_FIXTURE, tmp_path / "build", allow_python_imports=True)
+
+    plan_schema = artifacts["schemas"]["ResearchPlan"]
+    summary_manifest = artifacts["manifests"]["ResearchPlanner"]
+    bindings = {item["type"]: item for item in artifacts["type_bindings"]}
+    binding_json = json.loads((tmp_path / "build" / "types" / "type-bindings.json").read_text())
+
+    assert plan_schema["title"] == "ResearchPlan"
+    assert plan_schema["properties"]["mode"]["default"] == "quick"
+    assert plan_schema["$defs"]["ResearchSourceModel"]["properties"]["confidence"]["maximum"] == 1.0
+    assert summary_manifest["inputs"][0]["python_ref"] == "tests.fixtures.pydantic_models:ResearchPlanModel"
+    assert summary_manifest["output"]["python_ref"] == "tests.fixtures.pydantic_models:ResearchSummaryModel"
+    assert bindings["ResearchPlan"]["source"] == "python"
+    assert len(bindings["ResearchPlan"]["schema_hash"]) == 64
+    assert binding_json[0]["schema_ref"].startswith("schemas/")
+
+
+def test_pydantic_compile_check_detects_stale_type_bindings(tmp_path: Path) -> None:
+    compile_project(PYDANTIC_FIXTURE, tmp_path / "build", allow_python_imports=True)
+    (tmp_path / "build" / "types" / "type-bindings.json").write_text("[]\n")
+
+    with pytest.raises(ContractError) as exc:
+        compile_project(PYDANTIC_FIXTURE, tmp_path / "build", check=True, allow_python_imports=True)
+
+    assert "type-bindings.json" in str(exc.value.diagnostics[0].hint)
+
+
+@pytest.mark.parametrize(
+    ("python_ref", "code"),
+    [
+        ("tests.fixtures.pydantic_models:MissingModel", "PYD010"),
+        ("tests.fixtures.pydantic_models:NotPydantic", "PYD011"),
+        ("tests.fixtures.pydantic_models:RootListModel", "PYD015"),
+    ],
+)
+def test_pydantic_schema_generation_reports_bad_imports(tmp_path: Path, python_ref: str, code: str) -> None:
+    (tmp_path / "bad.contract").write_text(
+        f"""
+type Bad from python "{python_ref}"
+
+agent BadAgent() -> Bad:
+    goal = "bad"
+""".strip()
+    )
+
+    with pytest.raises(ContractError) as exc:
+        compile_project(tmp_path, tmp_path / "build", allow_python_imports=True)
+
+    assert exc.value.diagnostics[0].code == code
+
+
 def test_compile_project_artifacts(tmp_path: Path) -> None:
     artifacts = compile_project(FIXTURE, tmp_path / "build")
 
@@ -249,6 +329,7 @@ def test_compile_project_artifacts(tmp_path: Path) -> None:
     assert any(item["kind"] == "approval_required_tool" for item in artifacts["guard_plan"])
     assert artifacts["adapter_capability_matrix"]["openai"]["tools"]["status"] == "partial"
     assert artifacts["adapter_capability_matrix"]["openai"]["hosted_tools"]["status"] == "partial"
+    assert artifacts["type_bindings"][0]["source"] == "native"
 
 
 def test_compile_project_artifacts_include_hosted_tools(tmp_path: Path) -> None:

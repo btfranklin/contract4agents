@@ -37,6 +37,18 @@ type GreetingResult:
 
 JSON Schema is the canonical interchange format for Contract4Agents types. Python/Pydantic and TypeScript/Zod bindings are adapter conveniences, not the source of truth.
 
+When a host application already owns stable Pydantic v2 models, a contract type
+can bind to an explicit import path:
+
+```contract
+type ResearchPlan from python "my_app.models:ResearchPlan"
+```
+
+Python-backed types are imported only when a check or compile explicitly allows
+host-code imports. The compiler derives the same canonical JSON Schema artifacts
+from the model and preserves the import path as metadata for adapters and later
+drift checks. Imported type declarations cannot include native fields.
+
 ## Agent Declarations
 
 An agent declaration has a callable signature and a declarative body.

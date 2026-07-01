@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any, Literal, TypedDict
@@ -11,6 +12,7 @@ from contract4agents.diagnostics import ContractError, Diagnostic, raise_if_erro
 from contract4agents.guards import GuardPlanItem, build_guard_plan
 from contract4agents.hosted_tools import split_hosted_tool_name
 from contract4agents.parser import parse_project
+from contract4agents.pydantic_interop import PydanticSchemaError, schema_from_pydantic_type
 from contract4agents.schema import type_to_schema
 from contract4agents.semantics import analyze_project
 
@@ -45,11 +47,13 @@ class ManifestInput(TypedDict):
     name: str
     type: str
     required: bool
+    python_ref: str | None
 
 
 class ManifestOutput(TypedDict):
     type: str
     schema_ref: str
+    python_ref: str | None
 
 
 class AgentManifest(TypedDict):
@@ -95,8 +99,17 @@ class CapabilityEntry(TypedDict):
 CapabilityMatrix = dict[str, dict[str, CapabilityEntry]]
 
 
+class TypeBinding(TypedDict):
+    type: str
+    source: Literal["native", "python"]
+    python_ref: str | None
+    schema_ref: str
+    schema_hash: str
+
+
 class CompilerArtifacts(TypedDict):
     schemas: dict[str, JsonSchema]
+    type_bindings: list[TypeBinding]
     manifests: dict[str, AgentManifest]
     instructions: dict[str, str]
     evals: list[EvalPack]
@@ -106,18 +119,23 @@ class CompilerArtifacts(TypedDict):
     docs: dict[str, str]
 
 
-def compile_project(root: Path | str, output_dir: Path | str | None = None, check: bool = False) -> CompilerArtifacts:
+def compile_project(
+    root: Path | str,
+    output_dir: Path | str | None = None,
+    check: bool = False,
+    allow_python_imports: bool = False,
+) -> CompilerArtifacts:
     project = parse_project(root)
     diagnostics = analyze_project(project).diagnostics
     raise_if_errors(diagnostics)
-    artifacts = build_artifacts(project)
+    artifacts = build_artifacts(project, allow_python_imports=allow_python_imports)
     if output_dir is not None:
         write_artifacts(artifacts, Path(output_dir), check=check)
     return artifacts
 
 
-def build_artifacts(project: ContractProject) -> CompilerArtifacts:
-    schemas = {name: type_to_schema(type_def) for name, type_def in project.types.items()}
+def build_artifacts(project: ContractProject, allow_python_imports: bool = False) -> CompilerArtifacts:
+    schemas, type_bindings = build_type_artifacts(project, allow_python_imports=allow_python_imports)
     manifests = {name: agent_manifest(agent, project) for name, agent in project.agents.items()}
     instructions = {name: agent_instructions(agent) for name, agent in project.agents.items()}
     eval_packs = [eval_pack(eval_case) for eval_case in project.evals]
@@ -127,6 +145,7 @@ def build_artifacts(project: ContractProject) -> CompilerArtifacts:
     docs = generated_docs(project, manifests)
     return {
         "schemas": schemas,
+        "type_bindings": type_bindings,
         "manifests": manifests,
         "instructions": instructions,
         "evals": eval_packs,
@@ -137,7 +156,47 @@ def build_artifacts(project: ContractProject) -> CompilerArtifacts:
     }
 
 
+def build_type_artifacts(
+    project: ContractProject,
+    allow_python_imports: bool = False,
+) -> tuple[dict[str, JsonSchema], list[TypeBinding]]:
+    schemas: dict[str, JsonSchema] = {}
+    bindings: list[TypeBinding] = []
+    for name, type_def in project.types.items():
+        if type_def.source == "python":
+            if not allow_python_imports:
+                raise ContractError(
+                    [
+                        Diagnostic(
+                            "PYD000",
+                            f"Python imports are disabled for imported type `{name}`",
+                            span=type_def.span,
+                            hint="Run check or compile with --allow-python-imports to derive schemas from host models.",
+                        )
+                    ]
+                )
+            try:
+                schema, schema_hash = schema_from_pydantic_type(type_def)
+            except PydanticSchemaError as exc:
+                raise ContractError([exc.diagnostic]) from exc
+        else:
+            schema = type_to_schema(type_def)
+            schema_hash = _schema_hash(schema)
+        schemas[name] = schema
+        bindings.append(
+            {
+                "type": name,
+                "source": type_def.source,
+                "python_ref": type_def.python_ref,
+                "schema_ref": f"schemas/{name}.json",
+                "schema_hash": schema_hash,
+            }
+        )
+    return schemas, bindings
+
+
 def agent_manifest(agent: AgentDef, project: ContractProject) -> AgentManifest:
+    types = project.types
     tools: list[ManifestUse] = [
         {"name": use.name, "module": use.source, "permission": use.permission}
         for use in agent.uses
@@ -175,10 +234,15 @@ def agent_manifest(agent: AgentDef, project: ContractProject) -> AgentManifest:
                 "name": parameter.name,
                 "type": parameter.type_name,
                 "required": not parameter.nullable and parameter.default is None,
+                "python_ref": _python_ref_for_type(parameter.type_name, types),
             }
             for parameter in agent.parameters
         ],
-        "output": {"type": agent.return_type, "schema_ref": f"schemas/{agent.return_type}.json"},
+        "output": {
+            "type": agent.return_type,
+            "schema_ref": f"schemas/{agent.return_type}.json",
+            "python_ref": _python_ref_for_type(agent.return_type, types),
+        },
         "tools": tools,
         "hosted_tools": hosted_tools,
         "agents": agents,
@@ -190,6 +254,16 @@ def agent_manifest(agent: AgentDef, project: ContractProject) -> AgentManifest:
         "guards": agent.list_attr("guards"),
         "assertions": agent.list_attr("assertions"),
     }
+
+
+def _python_ref_for_type(type_name: str, types: dict[str, Any]) -> str | None:
+    normalized = type_name.rstrip("?")
+    if normalized.endswith("[]"):
+        normalized = normalized[:-2]
+    if normalized.startswith("list[") and normalized.endswith("]"):
+        normalized = normalized[5:-1]
+    type_def = types.get(normalized)
+    return type_def.python_ref if type_def and type_def.source == "python" else None
 
 
 def _source_path(agent: AgentDef, project: ContractProject) -> str:
@@ -314,6 +388,7 @@ def write_artifacts(artifacts: CompilerArtifacts, output_dir: Path, check: bool 
     files: dict[Path, str] = {}
     for name, schema in artifacts["schemas"].items():
         files[output_dir / "schemas" / f"{name}.json"] = _json(schema)
+    files[output_dir / "types" / "type-bindings.json"] = _json(artifacts["type_bindings"])
     for name, manifest in artifacts["manifests"].items():
         files[output_dir / "manifests" / f"{name}.json"] = _json(manifest)
     for name, instructions in artifacts["instructions"].items():
@@ -348,6 +423,11 @@ def _json(value: Any) -> str:
     return json.dumps(value, indent=2, sort_keys=True) + "\n"
 
 
+def _schema_hash(schema: JsonSchema) -> str:
+    encoded = json.dumps(schema, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode()).hexdigest()
+
+
 __all__ = [
     "AgentManifest",
     "CapabilityEntry",
@@ -362,10 +442,12 @@ __all__ = [
     "ManifestOutput",
     "ManifestUse",
     "MonitorPack",
+    "TypeBinding",
     "adapter_capability_matrix",
     "agent_instructions",
     "agent_manifest",
     "build_artifacts",
+    "build_type_artifacts",
     "compile_project",
     "eval_pack",
     "generated_docs",

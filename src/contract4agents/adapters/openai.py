@@ -22,7 +22,7 @@ from contract4agents.compiler import (
 )
 from contract4agents.guards import GuardPlanItem
 from contract4agents.hosted_tools import hosted_tool_kwargs
-from contract4agents.runtime import RuntimeContext, TraceRecorder
+from contract4agents.runtime import RuntimeContext, TraceRecorder, load_python_ref
 
 _RunHooksBase: type[Any]
 try:
@@ -425,16 +425,30 @@ async def run_openai_agent_with_contract(
 def build_openai_output_type_registry(artifacts: CompilerArtifacts) -> dict[str, type[Any]]:
     """Generate Pydantic v2 output types from compiled Contract4Agents JSON Schemas."""
     try:
-        from pydantic import ConfigDict, Field, create_model
+        from pydantic import BaseModel, ConfigDict, Field, create_model
     except Exception as exc:  # noqa: BLE001 - optional OpenAI adapter dependency boundary.
         raise OpenAIAgentFactoryError("Pydantic v2 is required to generate OpenAI output types") from exc
 
     schemas = artifacts["schemas"]
+    imported_types = {
+        binding["type"]: binding["python_ref"]
+        for binding in artifacts["type_bindings"]
+        if binding["source"] == "python" and binding["python_ref"] is not None
+    }
     built: dict[str, type[Any]] = {}
     resolving: set[str] = set()
 
     def build_model(name: str) -> type[Any]:
         if name in built:
+            return built[name]
+        if name in imported_types:
+            try:
+                model = load_python_ref(imported_types[name])
+            except Exception as exc:
+                raise OpenAIAgentFactoryError(f"Could not import Pydantic output type `{name}`") from exc
+            if not isinstance(model, type) or not issubclass(model, BaseModel):
+                raise OpenAIAgentFactoryError(f"Imported output type `{name}` is not a Pydantic BaseModel")
+            built[name] = cast(type[Any], model)
             return built[name]
         if name in resolving:
             raise OpenAIAgentFactoryError(f"Cannot generate recursive OpenAI output type `{name}`")

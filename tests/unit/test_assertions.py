@@ -181,7 +181,7 @@ def _manifest(assertions: list[str]) -> AgentManifest:
         "description": "",
         "goal": "",
         "inputs": [],
-        "output": {"type": "Result", "schema_ref": "schemas/Result.json"},
+        "output": {"type": "Result", "schema_ref": "schemas/Result.json", "python_ref": None},
         "tools": [{"name": "tools.lookup", "module": "tools", "permission": "available"}],
         "hosted_tools": [
             {
@@ -216,6 +216,15 @@ def _schemas() -> dict[str, dict[str, Any]]:
 def _artifacts(manifest: AgentManifest) -> CompilerArtifacts:
     return {
         "schemas": _schemas(),
+        "type_bindings": [
+            {
+                "type": "Result",
+                "source": "native",
+                "python_ref": None,
+                "schema_ref": "schemas/Result.json",
+                "schema_hash": "test",
+            }
+        ],
         "manifests": {"ExampleAgent": manifest},
         "instructions": {"ExampleAgent": "instructions"},
         "evals": [],

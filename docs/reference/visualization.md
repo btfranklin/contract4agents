@@ -6,6 +6,10 @@ The visualization command generates static review artifacts for a Contract4Agent
 pdm run contract4agents visualize [ROOT] --out .contract/build/visualization
 ```
 
+For projects that import Pydantic-backed contract types, add
+`--allow-python-imports` from a trusted host-code environment so visualization
+can compile the same schema artifacts as `compile`.
+
 Outputs:
 
 - `graph.json`: deterministic project graph data.

@@ -50,6 +50,10 @@ class _ModuleTransformer(Transformer[Any, Any]):
         fields = _type_fields(items[1:])
         return TypeDef(str(name), fields, _span(self.path, name))
 
+    def python_type_def(self, items: list[Any]) -> TypeDef:
+        name = _token(items[0])
+        return TypeDef(str(name), [], _span(self.path, name), source="python", python_ref=unquote(str(items[1])))
+
     def field_block(self, items: list[Any]) -> list[FieldDef]:
         return [item for item in items if isinstance(item, FieldDef)]
 

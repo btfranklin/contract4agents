@@ -5,7 +5,7 @@
 groups = ["default", "dev", "openai"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:85c174c7735a157fc573fc58c7018795bbe311314cdfeb53fc94701526740d44"
+content_hash = "sha256:df0fd72f6bcdc0266b99013701b47eb8d1eb4e46c502d1b78714183e71fbb185"
 
 [[metadata.targets]]
 requires_python = ">=3.11"
@@ -15,7 +15,7 @@ name = "annotated-types"
 version = "0.7.0"
 requires_python = ">=3.8"
 summary = "Reusable constraint types to use with typing.Annotated"
-groups = ["openai"]
+groups = ["default", "openai"]
 dependencies = [
     "typing-extensions>=4.0.0; python_version < \"3.9\"",
 ]
@@ -1031,7 +1031,7 @@ name = "pydantic"
 version = "2.13.4"
 requires_python = ">=3.9"
 summary = "Data validation using Python type hints"
-groups = ["openai"]
+groups = ["default", "openai"]
 dependencies = [
     "annotated-types>=0.6.0",
     "pydantic-core==2.46.4",
@@ -1048,7 +1048,7 @@ name = "pydantic-core"
 version = "2.46.4"
 requires_python = ">=3.9"
 summary = "Core functionality for Pydantic validation and serialization"
-groups = ["openai"]
+groups = ["default", "openai"]
 dependencies = [
     "typing-extensions>=4.14.1",
 ]
@@ -1586,7 +1586,7 @@ name = "typing-inspection"
 version = "0.4.2"
 requires_python = ">=3.9"
 summary = "Runtime typing introspection tools"
-groups = ["openai"]
+groups = ["default", "openai"]
 dependencies = [
     "typing-extensions>=4.12.0",
 ]

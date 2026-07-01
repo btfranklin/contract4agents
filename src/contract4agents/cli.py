@@ -25,7 +25,8 @@ def main() -> None:
 
 @main.command()
 @click.argument("root", type=click.Path(path_type=Path), default=".", required=False)
-def check(root: Path) -> None:
+@click.option("--allow-python-imports", is_flag=True, help="Import configured Python model types during checks.")
+def check(root: Path, allow_python_imports: bool) -> None:
     """Parse and semantically validate a Contract4Agents project."""
     try:
         project = parse_project(root)
@@ -34,6 +35,8 @@ def check(root: Path) -> None:
             click.echo(diagnostic.format(), err=diagnostic.severity == "error")
         if not result.ok:
             raise click.ClickException("Contract4Agents check failed")
+        if allow_python_imports:
+            build_artifacts(project, allow_python_imports=True)
         click.echo("Contract4Agents check passed")
     except ContractError as exc:
         _print_contract_error(exc)
@@ -43,10 +46,11 @@ def check(root: Path) -> None:
 @click.argument("root", type=click.Path(path_type=Path), default=".", required=False)
 @click.option("--out", "output_dir", type=click.Path(path_type=Path), default=".contract/build")
 @click.option("--check", "check_mode", is_flag=True, help="Fail if generated artifacts are stale.")
-def compile_cmd(root: Path, output_dir: Path, check_mode: bool) -> None:
+@click.option("--allow-python-imports", is_flag=True, help="Import configured Python model types during compile.")
+def compile_cmd(root: Path, output_dir: Path, check_mode: bool, allow_python_imports: bool) -> None:
     """Compile a Contract4Agents project into provider-neutral artifacts."""
     try:
-        compile_project(root, output_dir, check=check_mode)
+        compile_project(root, output_dir, check=check_mode, allow_python_imports=allow_python_imports)
         click.echo("Contract4Agents compile passed")
     except ContractError as exc:
         _print_contract_error(exc)
@@ -55,7 +59,8 @@ def compile_cmd(root: Path, output_dir: Path, check_mode: bool) -> None:
 @main.command("visualize")
 @click.argument("root", type=click.Path(path_type=Path), default=".", required=False)
 @click.option("--out", "output_dir", type=click.Path(path_type=Path), default=".contract/build/visualization")
-def visualize_cmd(root: Path, output_dir: Path) -> None:
+@click.option("--allow-python-imports", is_flag=True, help="Import configured Python model types during visualization.")
+def visualize_cmd(root: Path, output_dir: Path, allow_python_imports: bool) -> None:
     """Generate static HTML visualization artifacts.
 
     ROOT defaults to the current directory. The default output directory is
@@ -64,7 +69,7 @@ def visualize_cmd(root: Path, output_dir: Path) -> None:
     try:
         project = parse_project(root)
         raise_if_errors(analyze_project(project).diagnostics)
-        artifacts = build_artifacts(project)
+        artifacts = build_artifacts(project, allow_python_imports=allow_python_imports)
         graph = build_visualization_graph(project, artifacts)
         write_visualization_artifacts(graph, output_dir)
         click.echo(f"Contract4Agents visualization written to {output_dir}")
@@ -74,12 +79,17 @@ def visualize_cmd(root: Path, output_dir: Path) -> None:
 
 @main.command("eval")
 @click.argument("root", type=click.Path(path_type=Path), default=".", required=False)
-def eval_cmd(root: Path) -> None:
+@click.option("--allow-python-imports", is_flag=True, help="Import configured Python model types during fixture eval.")
+def eval_cmd(root: Path, allow_python_imports: bool) -> None:
     """Run local evals for a fixture.json project."""
     if not (root / "fixture.json").exists():
         raise click.ClickException("Contract4Agents eval requires ROOT/fixture.json")
     try:
-        report = run_fixture_project_sync(project_root=root, run_root=root / ".contract" / "runs" / "last")
+        report = run_fixture_project_sync(
+            project_root=root,
+            run_root=root / ".contract" / "runs" / "last",
+            allow_python_imports=allow_python_imports,
+        )
     except Exception as exc:
         raise click.ClickException(f"Contract4Agents fixture eval failed: {exc}") from exc
     _print_fixture_report(report)
@@ -105,9 +115,10 @@ def _print_fixture_report(report: FixtureReport) -> None:
 @main.command()
 @click.argument("root", type=click.Path(path_type=Path), default=".", required=False)
 @click.option("--trace", "trace_path", type=click.Path(path_type=Path), required=True, help="Trace JSONL file.")
-def monitor(root: Path, trace_path: Path) -> None:
+@click.option("--allow-python-imports", is_flag=True, help="Import configured Python model types during monitor setup.")
+def monitor(root: Path, trace_path: Path, allow_python_imports: bool) -> None:
     """Run project monitors against a trace JSONL file."""
-    artifacts = compile_project(root)
+    artifacts = compile_project(root, allow_python_imports=allow_python_imports)
     try:
         trace = load_trace_jsonl(trace_path)
     except TraceFileError as exc:

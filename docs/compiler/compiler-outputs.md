@@ -44,10 +44,10 @@ Example shape:
   "agent": "CustomerGreeter",
   "source_path": "agents/customer_greeter.contract",
   "inputs": [
-    {"name": "user_message", "type": "UserMessage", "required": true},
-    {"name": "customer_profile", "type": "CustomerProfile", "required": true}
+    {"name": "user_message", "type": "UserMessage", "required": true, "python_ref": null},
+    {"name": "customer_profile", "type": "CustomerProfile", "required": true, "python_ref": null}
   ],
-  "output": {"type": "GreetingResult", "schema_ref": "schemas/GreetingResult.json"},
+  "output": {"type": "GreetingResult", "schema_ref": "schemas/GreetingResult.json", "python_ref": null},
   "tools": [
     {"name": "calculate", "module": "mathlib", "permission": "preapproved"}
   ],
@@ -81,6 +81,20 @@ The manifest is provider-neutral, but it can carry provider-native capability
 metadata explicitly. Host Python tools stay in `tools`; provider-hosted tools
 stay in `hosted_tools` so adapters and capability reports can distinguish what
 the host must wire from what a provider SDK may supply.
+
+When a type is imported from a Pydantic model, the manifest preserves the import
+path on matching input and output references as `python_ref`.
+
+### Type Bindings
+
+The compiler emits `types/type-bindings.json` beside `schemas/*.json`. Each entry
+records the contract type name, whether the type came from native contract
+fields or a Python model import, the Python import path when applicable, the
+schema artifact path, and a deterministic schema hash.
+
+Python-backed types require `--allow-python-imports` during compile so host code
+is not imported accidentally. `compile --check --allow-python-imports` catches
+stale schemas and stale type bindings when a Pydantic model changes.
 
 ### Guard Plan
 

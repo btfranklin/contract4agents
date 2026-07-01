@@ -51,6 +51,12 @@ Callers can pass explicit output types:
 output_type_registry={"SupportReply": SupportReplyModel}
 ```
 
+If the contract declares `type SupportReply from python
+"my_app.models:SupportReplyModel"`, compile with `--allow-python-imports` to
+derive the canonical schema and preserve the import path in the manifest. The
+adapter still uses an explicit output type registry or generated SDK output
+models when constructing OpenAI agents.
+
 Or they can ask the adapter to generate Pydantic v2 models from the compiled
 Contract4Agents JSON Schema subset:
 

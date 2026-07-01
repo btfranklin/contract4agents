@@ -63,6 +63,36 @@ def test_cli_compile_docs_eval_monitor(tmp_path: Path) -> None:
     assert "status_update_requires_approval" in violation.output
 
 
+def test_cli_pydantic_import_gate(tmp_path: Path) -> None:
+    runner = CliRunner()
+    fixture = ROOT / "tests" / "fixtures" / "contract_projects" / "pydantic-model-interop"
+
+    default_check = runner.invoke(main, ["check", str(fixture)])
+    import_check = runner.invoke(main, ["check", str(fixture), "--allow-python-imports"])
+    default_compile = runner.invoke(main, ["compile", str(fixture), "--out", str(tmp_path / "blocked")])
+    import_compile = runner.invoke(
+        main,
+        ["compile", str(fixture), "--out", str(tmp_path / "build"), "--allow-python-imports"],
+    )
+
+    assert default_check.exit_code == 0
+    assert import_check.exit_code == 0
+    assert default_compile.exit_code != 0
+    assert "--allow-python-imports" in default_compile.output
+    assert import_compile.exit_code == 0
+    assert (tmp_path / "build" / "types" / "type-bindings.json").exists()
+
+    default_visualize = runner.invoke(main, ["visualize", str(fixture), "--out", str(tmp_path / "viz-blocked")])
+    import_visualize = runner.invoke(
+        main,
+        ["visualize", str(fixture), "--out", str(tmp_path / "viz"), "--allow-python-imports"],
+    )
+    assert default_visualize.exit_code != 0
+    assert "--allow-python-imports" in default_visualize.output
+    assert import_visualize.exit_code == 0
+    assert (tmp_path / "viz" / "graph.json").exists()
+
+
 def test_cli_monitor_reports_invalid_trace_json(tmp_path: Path) -> None:
     runner = CliRunner()
     fixture = ROOT / "examples" / "incident-command"

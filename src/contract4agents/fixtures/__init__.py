@@ -29,6 +29,7 @@ async def run_fixture_project(
     run_root: Path,
     mode: str = "local",
     keep_artifacts: bool | None = None,
+    allow_python_imports: bool = False,
 ) -> FixtureReport:
     keep = keep_artifacts if keep_artifacts is not None else os.getenv("CONTRACT4AGENTS_KEEP_FIXTURE_ARTIFACTS") == "1"
     artifact_checks: list[str] = []
@@ -43,8 +44,8 @@ async def run_fixture_project(
         run_root.mkdir(parents=True, exist_ok=True)
         build_dir = run_root / "build"
         db_path = load_python_ref(metadata["seed"])(run_root / "data" / "fixture.sqlite")
-        artifacts = compile_project(project_root, build_dir)
-        compile_project(project_root, build_dir, check=True)
+        artifacts = compile_project(project_root, build_dir, allow_python_imports=allow_python_imports)
+        compile_project(project_root, build_dir, check=True, allow_python_imports=allow_python_imports)
         artifact_checks = verify_fixture_artifacts(metadata, artifacts, build_dir)
         starts = load_python_ref(metadata["starts"])()
         runner = _execution.runner_for_mode(metadata, mode)

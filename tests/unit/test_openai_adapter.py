@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import Any
 
@@ -19,7 +20,12 @@ from contract4agents.adapters.openai import (
     run_openai_agent,
     run_openai_agent_with_contract,
 )
+from contract4agents.compiler import compile_project
 from contract4agents.runtime import ContextValue, RuntimeContext
+from tests.fixtures.pydantic_models import ResearchSummaryModel
+
+ROOT = Path(__file__).resolve().parents[2]
+PYDANTIC_FIXTURE = ROOT / "tests" / "fixtures" / "contract_projects" / "pydantic-model-interop"
 
 
 @pytest.mark.asyncio
@@ -426,6 +432,29 @@ def test_openai_output_type_registry_generates_pydantic_models(monkeypatch: pyte
     assert parent_model.model_json_schema()["additionalProperties"] is False
 
 
+def test_openai_output_type_registry_uses_imported_pydantic_models(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_fake_agents_module(monkeypatch)
+    artifacts = compile_project(PYDANTIC_FIXTURE, allow_python_imports=True)
+
+    registry = build_openai_output_type_registry(artifacts)
+    parsed = registry["ResearchSummary"].model_validate(
+        {
+            "title": "Migration plan",
+            "source_count": 1,
+            "plan": {
+                "topic": "Pydantic interop",
+                "priority": "high",
+                "source": {"url": "https://example.test", "confidence": 0.8},
+            },
+        }
+    )
+
+    assert registry["ResearchSummary"] is ResearchSummaryModel
+    assert parsed.plan.priority == "high"
+    assert parsed.plan.source is not None
+    assert parsed.plan.source.confidence == 0.8
+
+
 def test_openai_factory_can_generate_output_types(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_fake_agents_module(monkeypatch)
 
@@ -643,6 +672,22 @@ def _factory_artifacts(
                 "additionalProperties": False,
             },
         },
+        "type_bindings": [
+            {
+                "type": "ParentResult",
+                "source": "native",
+                "python_ref": None,
+                "schema_ref": "schemas/ParentResult.json",
+                "schema_hash": "parent",
+            },
+            {
+                "type": "ChildResult",
+                "source": "native",
+                "python_ref": None,
+                "schema_ref": "schemas/ChildResult.json",
+                "schema_hash": "child",
+            },
+        ],
         "manifests": {
             "ParentAgent": {
                 "agent": "ParentAgent",
@@ -650,7 +695,11 @@ def _factory_artifacts(
                 "description": "",
                 "goal": "",
                 "inputs": parent_inputs or [],
-                "output": {"type": "ParentResult", "schema_ref": "schemas/ParentResult.json"},
+                "output": {
+                    "type": "ParentResult",
+                    "schema_ref": "schemas/ParentResult.json",
+                    "python_ref": None,
+                },
                 "tools": parent_tools,
                 "hosted_tools": parent_hosted_tools,
                 "agents": parent_agents,
@@ -668,7 +717,11 @@ def _factory_artifacts(
                 "description": "",
                 "goal": "",
                 "inputs": [],
-                "output": {"type": "ChildResult", "schema_ref": "schemas/ChildResult.json"},
+                "output": {
+                    "type": "ChildResult",
+                    "schema_ref": "schemas/ChildResult.json",
+                    "python_ref": None,
+                },
                 "tools": [],
                 "hosted_tools": [],
                 "agents": [],

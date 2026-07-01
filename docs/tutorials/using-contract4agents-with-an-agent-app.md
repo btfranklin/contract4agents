@@ -100,6 +100,10 @@ contract4agents compile agent_contracts --out .contract/build
 contract4agents visualize agent_contracts --out .contract/build/visualization
 ```
 
+If your contract imports Pydantic models with `type Name from python
+"module:Model"`, add `--allow-python-imports` to CLI commands that compile
+artifacts, including `check`, `compile`, `visualize`, `eval`, and `monitor`.
+
 Keep `.contract/` ignored. It is generated output.
 
 ## What To Write
@@ -255,6 +259,11 @@ support_manifest = artifacts["manifests"]["SupportCoordinator"]
 support_instructions = artifacts["instructions"]["SupportCoordinator"]
 support_schema = artifacts["schemas"]["SupportReply"]
 ```
+
+For Pydantic-backed contract types, call
+`compile_project(Path("agent_contracts"), allow_python_imports=True)` from a
+trusted build or startup path so the compiler can import your declared model
+classes and derive canonical JSON Schema.
 
 That API gives your application the same data the CLI writes to disk.
 
@@ -438,8 +447,10 @@ Usually do not commit:
 - local SQLite files unless they are deliberate fixtures.
 
 If your team wants generated artifacts reviewed in pull requests, commit them
-and use `contract4agents compile --check` in CI. Otherwise, treat generated
-artifacts as build output.
+and use `contract4agents compile --check` in CI. For Pydantic-backed types, use
+`contract4agents compile --check --allow-python-imports` so schema artifacts and
+`types/type-bindings.json` stay aligned with the current model classes.
+Otherwise, treat generated artifacts as build output.
 
 ## A Practical First Adoption Path
 

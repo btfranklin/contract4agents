@@ -8,45 +8,6 @@ Keep this file limited to unimplemented or materially incomplete work. When an i
 
 If an item no longer belongs in the product, remove it from `VISION.md` first and then delete it from this roadmap.
 
-## Pydantic Model Interop For Contract Types
-
-Vision gap: JSON Schema is the canonical interchange format for Contract4Agents types, but real Python agent applications often already define their output and artifact shapes as Pydantic models. Users should not need to manually duplicate every schema in `.contract` files when the host app already has stable Pydantic model classes.
-
-Design boundary: imported Python models are a type source convenience and drift-check input. They do not replace JSON Schema as the canonical interchange artifact, and Contract4Agents source should not require Python imports for every project.
-
-Implementation work:
-
-- Add source syntax for binding a contract type to an explicit Python model import path, for example:
-
-  ```contract
-  type ResearchPlan from python "compendiumscribe.research.agents_workflow.artifacts:ResearchPlan"
-  type ResearchAgenda from python "compendiumscribe.research.agents_workflow.artifacts:ResearchAgenda"
-  type SectionResearchBrief from python "compendiumscribe.research.agents_workflow.artifacts:SectionResearchBrief"
-  type VerificationReport from python "compendiumscribe.research.agents_workflow.artifacts:VerificationReport"
-  type CompendiumPayload from python "compendiumscribe.research.agents_workflow.artifacts:CompendiumPayload"
-  ```
-
-- Load configured Python model imports only during checks that explicitly allow host-code imports.
-- Derive JSON Schema from supported Pydantic models and emit it through the same schema artifact path as native `.contract` type declarations.
-- Support Pydantic v2 first; produce clear diagnostics for missing imports, non-Pydantic objects, unsupported Pydantic versions, schemas that cannot be represented safely, and import-time side effects if they can be detected.
-- Ensure generated manifests can reference imported types by contract type name while preserving model import metadata for adapters and drift checks.
-- Add a schema snapshot or structural comparison mechanism so drift checks can compare the generated schema against the current Python model shape.
-- Document how host apps should expose importable model classes without executing workflow code at import time.
-- Add tests with local fixture Pydantic models, including nested models, optional fields, enums or literals, lists, dictionaries, validation constraints, unsupported fields, and missing import paths.
-
-Validation:
-
-```bash
-pdm run test:unit
-pdm run contract4agents check tests/fixtures/contract_projects/pydantic-model-interop
-```
-
-Definition of done:
-
-- `contract4agents check` can derive JSON Schema from explicitly configured Pydantic models.
-- Generated manifests and schema artifacts treat imported models consistently with native contract types.
-- Diagnostics are clear when a Python import path is missing, unsupported, or not Pydantic-compatible.
-
 ## Stronger Context-Dependency Analysis
 
 Vision gap: the compiler should reject unsatisfied context dependencies. Today datasource definitions and type references are checked, but the analyzer does not fully prove that agent-to-agent calls have all required typed context slots satisfiable from caller inputs, declared datasources, or host-supplied context.

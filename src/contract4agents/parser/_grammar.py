@@ -8,9 +8,10 @@ from lark.indenter import Indenter
 MODULE_GRAMMAR = r"""
     start: _NEWLINE* (declaration _NEWLINE*)*
 
-    ?declaration: type_def | datasource_def | agent_def | eval_def | monitor_def
+    ?declaration: python_type_def | type_def | datasource_def | agent_def | eval_def | monitor_def
 
     type_def: "type" NAME ":" field_block?
+    python_type_def: "type" NAME "from" "python" ESCAPED_STRING
     field_block: _NEWLINE _INDENT field* _DEDENT
     field: NAME ":" SCALAR_VALUE _NEWLINE
 
