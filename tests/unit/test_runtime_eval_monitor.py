@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from contract4agents.compiler import compile_project
 from contract4agents.evaluation import EvalRunner
 from contract4agents.expressions import (
     ExpressionError,
@@ -135,6 +136,45 @@ async def test_eval_runner_checks_output_trace_and_hidden_truth() -> None:
 
     assert result.passed
     assert result.skipped_semantic
+
+
+@pytest.mark.asyncio
+async def test_eval_runner_validates_nested_native_output_schema(tmp_path: Path) -> None:
+    (tmp_path / "nested.contract").write_text(
+        """
+type Child:
+    name: str
+    score: int
+
+type Parent:
+    child: Child
+
+agent NestedAgent() -> Parent:
+    goal = "return nested output"
+""".strip()
+    )
+    artifacts = compile_project(tmp_path)
+    runner = EvalRunner(artifacts["schemas"])
+
+    valid = await runner.evaluate(
+        name="valid",
+        output={"child": {"name": "ok", "score": 1}},
+        output_type="Parent",
+        trace=TraceRecorder(),
+        expectations=["output conforms Parent"],
+    )
+    invalid = await runner.evaluate(
+        name="invalid",
+        output={"child": {"name": "bad", "score": "not an integer"}},
+        output_type="Parent",
+        trace=TraceRecorder(),
+        expectations=["output conforms Parent"],
+    )
+
+    assert valid.passed
+    assert not invalid.passed
+    assert "$defs" in artifacts["schemas"]["Parent"]
+    assert artifacts["schemas"]["Parent"]["$defs"]["Child"]["properties"]["score"]["type"] == "integer"
 
 
 def test_lark_expression_parser_characterizes_supported_surface() -> None:

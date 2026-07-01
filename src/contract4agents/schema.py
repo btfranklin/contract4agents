@@ -3,12 +3,22 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from typing import Any
 
 from contract4agents.ast import FieldDef, TypeDef
 
 
-def type_to_schema(type_def: TypeDef) -> dict[str, Any]:
+def type_to_schema(type_def: TypeDef, type_defs: Mapping[str, TypeDef] | None = None) -> dict[str, Any]:
+    schema = _type_to_schema(type_def, include_schema=True)
+    if type_defs is not None:
+        defs = _referenced_defs(type_def, type_defs)
+        if defs:
+            schema["$defs"] = defs
+    return schema
+
+
+def _type_to_schema(type_def: TypeDef, *, include_schema: bool) -> dict[str, Any]:
     required: list[str] = []
     properties: dict[str, Any] = {}
     for field in type_def.fields:
@@ -16,12 +26,13 @@ def type_to_schema(type_def: TypeDef) -> dict[str, Any]:
         if not field.nullable and field.default is None:
             required.append(field.name)
     schema: dict[str, Any] = {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": type_def.name,
         "type": "object",
         "properties": properties,
         "additionalProperties": False,
     }
+    if include_schema:
+        schema = {"$schema": "https://json-schema.org/draft/2020-12/schema", **schema}
     if required:
         schema["required"] = required
     return schema
@@ -62,6 +73,41 @@ def _raw_type_to_schema(raw_type: str) -> dict[str, Any]:
     if primitive:
         return dict(primitive)
     return {"$ref": f"#/$defs/{value}"}
+
+
+def _referenced_defs(type_def: TypeDef, type_defs: Mapping[str, TypeDef]) -> dict[str, Any]:
+    defs: dict[str, dict[str, Any]] = {}
+    visiting: set[str] = set()
+
+    def add_ref(name: str) -> None:
+        target = type_defs.get(name)
+        if target is None or target.source != "native" or name in defs or name in visiting:
+            return
+        visiting.add(name)
+        defs[name] = _type_to_schema(target, include_schema=False)
+        for field in target.fields:
+            for nested_name in _referenced_type_names(field.type_name):
+                add_ref(nested_name)
+        visiting.remove(name)
+
+    for field in type_def.fields:
+        for ref_name in _referenced_type_names(field.type_name):
+            add_ref(ref_name)
+
+    return {name: defs[name] for name in sorted(defs)}
+
+
+def _referenced_type_names(raw_type: str) -> set[str]:
+    value = raw_type.strip().rstrip("?")
+    if value.endswith("[]"):
+        return _referenced_type_names(value[:-2])
+    if value.startswith("list[") and value.endswith("]"):
+        return _referenced_type_names(value[5:-1])
+    if _literal_values(value) or re.fullmatch(r"(float|int)\s+between\s+([0-9.]+)\s+and\s+([0-9.]+)", value):
+        return set()
+    if value in {"str", "int", "float", "bool", "AgentRef"}:
+        return set()
+    return {value} if value else set()
 
 
 def _literal_values(raw_type: str) -> list[str]:

@@ -92,6 +92,11 @@ records the contract type name, whether the type came from native contract
 fields or a Python model import, the Python import path when applicable, the
 schema artifact path, and a deterministic schema hash.
 
+Native schemas remain one file per declared type. When a native type references
+another native type, the schema keeps `#/$defs/TypeName` field references and
+embeds the reachable native type definitions in that artifact's `$defs` block so
+the schema validates as a standalone JSON Schema document.
+
 Python-backed types require `--allow-python-imports` during compile so host code
 is not imported accidentally. `compile --check --allow-python-imports` catches
 stale schemas and stale type bindings when a Pydantic model changes.

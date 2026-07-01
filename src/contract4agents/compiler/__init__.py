@@ -180,7 +180,7 @@ def build_type_artifacts(
             except PydanticSchemaError as exc:
                 raise ContractError([exc.diagnostic]) from exc
         else:
-            schema = type_to_schema(type_def)
+            schema = type_to_schema(type_def, project.types)
             schema_hash = _schema_hash(schema)
         schemas[name] = schema
         bindings.append(
