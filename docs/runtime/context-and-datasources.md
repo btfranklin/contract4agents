@@ -136,6 +136,12 @@ Rendered context should not include:
 - Internal IDs that the agent contract forbids exposing.
 - Large unbounded blobs without summarization.
 
+`RuntimeContext.rendered_context()` returns a stable markdown block containing
+only non-sensitive `ContextValue` entries. OpenAI adapter run helpers append
+that rendered text to the model input when a `RuntimeContext` is supplied, while
+leaving `RuntimeContext.hidden` and sensitive values outside the prompt for host
+tools, callbacks, or other runtime code.
+
 ## Trace Events
 
 Datasource resolution should emit trace events such as:

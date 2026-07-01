@@ -54,6 +54,7 @@ class ManifestOutput(TypedDict):
 
 class AgentManifest(TypedDict):
     agent: str
+    source_path: str
     description: str
     goal: str
     inputs: list[ManifestInput]
@@ -166,6 +167,7 @@ def agent_manifest(agent: AgentDef, project: ContractProject) -> AgentManifest:
             )
     return {
         "agent": agent.name,
+        "source_path": _source_path(agent, project),
         "description": agent.text_attr("description"),
         "goal": agent.text_attr("goal"),
         "inputs": [
@@ -188,6 +190,13 @@ def agent_manifest(agent: AgentDef, project: ContractProject) -> AgentManifest:
         "guards": agent.list_attr("guards"),
         "assertions": agent.list_attr("assertions"),
     }
+
+
+def _source_path(agent: AgentDef, project: ContractProject) -> str:
+    try:
+        return str(agent.span.path.relative_to(project.root))
+    except ValueError:
+        return str(agent.span.path)
 
 
 def _hosted_tool_manifest(use: UseDecl) -> ManifestHostedTool:
@@ -250,16 +259,21 @@ def adapter_capability_matrix() -> CapabilityMatrix:
             "hosted_tools": _capability(
                 "partial", "Host code enables provider-native hosted tools through explicit adapter registries."
             ),
-            "output_schema": _capability("partial", "Host code supplies the SDK output type."),
+            "output_schema": _capability(
+                "partial", "Host code supplies SDK output types or uses adapter-generated Pydantic models."
+            ),
             "context": _capability(
-                "partial", "Contract4Agents resolves context; host code renders it into the SDK prompt/context."
+                "partial",
+                "Contract4Agents resolves context; the OpenAI run helper renders non-sensitive runtime context.",
             ),
             "handoff": _capability("partial", "Host code supplies SDK handoff objects when used."),
             "agent_as_tool": _capability("emulated", "Host code wraps child agents as SDK tools."),
             "trace_capture": _capability(
                 "partial", "SDK hooks emit normalized lifecycle events; host tools own custom data."
             ),
-            "approval_gates": _capability("partial", "Host code resolves SDK approval interruptions."),
+            "approval_gates": _capability(
+                "partial", "The OpenAI run helper resolves SDK approval interruptions through host callbacks."
+            ),
             "guards": _capability(
                 "partial",
                 "Guard plan classifies output conformance, denied tools, and approval-required tools; "

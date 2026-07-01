@@ -1,7 +1,16 @@
 from __future__ import annotations
 
 import contract4agents
-from contract4agents import expressions, guards, runtime
+from contract4agents import adapters, expressions, guards, runtime
+from contract4agents.adapters.openai import (
+    OpenAIAdapterPlan,
+    OpenAIAgentPlan,
+    OpenAIToolRegistration,
+    build_openai_agents_from_plan,
+    build_openai_output_type_registry,
+    plan_openai_agents_from_contracts,
+    run_openai_agent_with_contract,
+)
 from contract4agents.assertions import AssertionFailure, evaluate_agent_assertions, evaluate_run_contract
 from contract4agents.expressions import ExpressionError, ParsedExpression
 from contract4agents.guards import build_guard_plan
@@ -48,3 +57,13 @@ def test_guard_facade_exports_canonical_public_surface() -> None:
     assert callable(build_guard_plan)
     assert guards.build_guard_plan is build_guard_plan
     assert contract4agents.build_guard_plan is build_guard_plan
+
+
+def test_openai_adapter_facade_exports_planning_surface() -> None:
+    assert adapters.OpenAIAdapterPlan is OpenAIAdapterPlan
+    assert adapters.OpenAIAgentPlan is OpenAIAgentPlan
+    assert adapters.OpenAIToolRegistration is OpenAIToolRegistration
+    assert adapters.plan_openai_agents_from_contracts is plan_openai_agents_from_contracts
+    assert adapters.build_openai_agents_from_plan is build_openai_agents_from_plan
+    assert adapters.build_openai_output_type_registry is build_openai_output_type_registry
+    assert adapters.run_openai_agent_with_contract is run_openai_agent_with_contract

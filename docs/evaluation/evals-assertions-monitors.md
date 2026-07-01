@@ -125,6 +125,10 @@ The result separates assertion failures from eval failures and monitor
 violations. Conditional assertions whose `when(...)` trace condition is false
 are reported as skipped. Unsupported assertion syntax fails closed.
 
+OpenAI adapter runs that use `run_openai_agent_with_contract(...)` call the same
+assertion API after the SDK run completes and record one `assertion.evaluated`
+trace event for each assertion check.
+
 ## Guards
 
 Guards describe safety constraints that adapters and host runtimes can enforce at the appropriate boundary.

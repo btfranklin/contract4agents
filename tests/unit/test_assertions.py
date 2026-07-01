@@ -177,6 +177,7 @@ def test_evaluate_run_contract_accepts_hosted_tool_trace(tmp_path: Path) -> None
 def _manifest(assertions: list[str]) -> AgentManifest:
     return {
         "agent": "ExampleAgent",
+        "source_path": "agents/example.contract",
         "description": "",
         "goal": "",
         "inputs": [],

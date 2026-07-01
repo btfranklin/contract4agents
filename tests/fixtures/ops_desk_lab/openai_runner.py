@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from contract4agents.adapters.openai import (
     OpenAITraceHooks,
     build_openai_agent,
+    build_openai_agents_from_contracts,
     contract_tool_name,
     openai_tool_name,
 )
@@ -197,23 +198,23 @@ def _sdk_tools(function_tool: Any, trace: TraceRecorder) -> dict[str, Any]:
 
 def _build_agents(artifacts: dict[str, Any], tools: dict[str, Any], hooks: OpenAITraceHooks) -> dict[str, Any]:
     model = os.getenv("CONTRACT4AGENTS_OPENAI_AGENT_MODEL", "gpt-5.5")
-    tool_map = {
-        "BillingSpecialist": ["billing.lookup_invoice", "billing.create_credit"],
-        "SecuritySpecialist": ["security.audit_log", "security.lock_account"],
-        "AccessSpecialist": ["access.list_permissions", "access.grant_access"],
-        "KnowledgeSpecialist": ["knowledge.search"],
-    }
-    result = {}
-    for name, tool_names in tool_map.items():
-        manifest = dict(artifacts["manifests"][name])
-        manifest["model"] = model
-        result[name] = build_openai_agent(
-            manifest,
-            _specialist_instructions(name, artifacts["instructions"][name]),
-            tools=[tools[item] for item in tool_names],
-            output_type=OpsDeskResultModel,
-        )
-    return result
+    result = build_openai_agents_from_contracts(
+        artifacts,
+        output_type_registry={"OpsDeskResult": OpsDeskResultModel},
+        model_registry={},
+        tool_registry=tools,
+        instruction_overrides={
+            name: _specialist_instructions(name, artifacts["instructions"][name])
+            for name in [
+                "BillingSpecialist",
+                "SecuritySpecialist",
+                "AccessSpecialist",
+                "KnowledgeSpecialist",
+            ]
+        },
+        default_model=model,
+    )
+    return result.agents
 
 
 async def _resolve_approvals(

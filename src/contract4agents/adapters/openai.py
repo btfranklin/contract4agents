@@ -6,15 +6,23 @@ manifests first, and this module projects those manifests onto OpenAI's SDK.
 
 from __future__ import annotations
 
+import inspect
 import os
-from collections.abc import Mapping
-from dataclasses import dataclass
-from typing import Any, cast
+import re
+from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass, field
+from typing import Any, Literal, cast
 
-from contract4agents.compiler import AgentManifest, CompilerArtifacts
+from contract4agents.assertions import RunEvaluationResult, evaluate_run_contract
+from contract4agents.compiler import (
+    AgentManifest,
+    CompilerArtifacts,
+    ManifestDatasource,
+    ManifestInput,
+)
 from contract4agents.guards import GuardPlanItem
 from contract4agents.hosted_tools import hosted_tool_kwargs
-from contract4agents.runtime import TraceRecorder
+from contract4agents.runtime import RuntimeContext, TraceRecorder
 
 _RunHooksBase: type[Any]
 try:
@@ -23,7 +31,6 @@ try:
     _RunHooksBase = _ImportedRunHooks
 except Exception:  # noqa: BLE001 - optional adapter import boundary.
     _RunHooksBase = object
-
 
 @dataclass(frozen=True)
 class OpenAIAdapterResult:
@@ -40,9 +47,99 @@ class OpenAIAgentFactoryCaveat:
 
 
 @dataclass(frozen=True)
+class OpenAIToolRegistration:
+    value: Any
+    raw_callable: bool = False
+    description: str | None = None
+
+
+@dataclass(frozen=True)
+class OpenAIToolPlan:
+    agent: str
+    name: str
+    permission: str
+    sdk_name: str
+    tool: Any
+    source: str
+    wrapped: bool = False
+    requires_approval: bool = False
+
+
+@dataclass(frozen=True)
+class OpenAIHostedToolPlan:
+    agent: str
+    name: str
+    provider: str
+    tool_name: str
+    config: dict[str, str]
+    permission: str
+    tool: Any
+
+
+@dataclass(frozen=True)
+class OpenAICompositionPlan:
+    agent: str
+    target_agent: str
+    mode: Literal["agent_as_tool", "handoff", "unsupported", "unwired"]
+    sdk_object: Any | None = None
+    source: str = "implicit"
+
+
+@dataclass(frozen=True)
+class OpenAIAgentPlan:
+    agent: str
+    manifest: AgentManifest
+    source_path: str
+    instruction_ref: str
+    instructions: str
+    model: Any
+    output_type_name: str
+    output_schema_ref: str
+    output_type: Any
+    tools: list[OpenAIToolPlan] = field(default_factory=list)
+    hosted_tools: list[OpenAIHostedToolPlan] = field(default_factory=list)
+    composition: list[OpenAICompositionPlan] = field(default_factory=list)
+    inputs: list[ManifestInput] = field(default_factory=list)
+    datasources: list[ManifestDatasource] = field(default_factory=list)
+    guards: list[GuardPlanItem] = field(default_factory=list)
+    assertions: list[str] = field(default_factory=list)
+    caveats: list[OpenAIAgentFactoryCaveat] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class OpenAIAdapterPlan:
+    artifacts: CompilerArtifacts
+    agents: dict[str, OpenAIAgentPlan]
+    caveats: list[OpenAIAgentFactoryCaveat]
+
+
+@dataclass(frozen=True)
 class OpenAIAgentFactoryResult:
     agents: dict[str, Any]
     caveats: list[OpenAIAgentFactoryCaveat]
+    plan: OpenAIAdapterPlan
+
+
+@dataclass(frozen=True)
+class OpenAIApprovalRequest:
+    tool: str
+    approved: bool | None = None
+    arguments: dict[str, Any] = field(default_factory=dict)
+
+
+ApprovalCallback = Callable[[OpenAIApprovalRequest], bool | Awaitable[bool]]
+
+
+@dataclass(frozen=True)
+class OpenAIContractRunResult:
+    adapter_result: OpenAIAdapterResult
+    assertion_result: RunEvaluationResult
+    trace: TraceRecorder
+    approvals: list[OpenAIApprovalRequest] = field(default_factory=list)
+
+    @property
+    def passed(self) -> bool:
+        return self.assertion_result.passed
 
 
 class OpenAIAdapterUnavailable(RuntimeError):
@@ -138,10 +235,10 @@ def build_openai_agent(
     return Agent(**kwargs)
 
 
-def build_openai_agents_from_contracts(
+def plan_openai_agents_from_contracts(
     artifacts: CompilerArtifacts,
     *,
-    output_type_registry: Mapping[str, Any],
+    output_type_registry: Mapping[str, Any] | None = None,
     model_registry: Mapping[str, Any],
     tool_registry: Mapping[str, Any] | None = None,
     hosted_tool_registry: Mapping[str, Any] | None = None,
@@ -149,53 +246,104 @@ def build_openai_agents_from_contracts(
     handoff_registry: Mapping[str, Any] | None = None,
     instruction_overrides: Mapping[str, str] | None = None,
     default_model: Any | None = None,
-) -> OpenAIAgentFactoryResult:
-    """Build OpenAI Agents SDK objects from compiled artifacts plus explicit registries."""
-    agents: dict[str, Any] = {}
+    generate_output_types: bool = False,
+) -> OpenAIAdapterPlan:
+    """Create an inspectable OpenAI adapter plan from compiled Contract4Agents artifacts."""
     caveats: list[OpenAIAgentFactoryCaveat] = []
+    output_types: dict[str, Any] = {}
+    if generate_output_types:
+        output_types.update(build_openai_output_type_registry(artifacts))
+    if output_type_registry:
+        output_types.update(output_type_registry)
+
     guard_plan_by_agent = _guard_plan_by_agent(artifacts["guard_plan"])
+    plans: dict[str, OpenAIAgentPlan] = {}
     for agent_name, manifest in artifacts["manifests"].items():
+        agent_caveats: list[OpenAIAgentFactoryCaveat] = []
         agent_guard_plan = guard_plan_by_agent.get(agent_name, [])
         model = model_registry.get(agent_name, default_model)
         if model is None:
             raise OpenAIAgentFactoryError(f"No model configured for agent `{agent_name}`")
         output_type_name = manifest["output"]["type"]
-        if output_type_name not in output_type_registry:
+        if output_type_name not in output_types:
             raise OpenAIAgentFactoryError(
                 f"No output type registered for `{output_type_name}` used by agent `{agent_name}`"
             )
-        _validate_output_guards(agent_name, output_type_name, output_type_registry, agent_guard_plan, caveats)
-        _collect_guard_caveats(agent_name, manifest, agent_guard_plan, caveats)
-        tools = _registered_tools(agent_name, manifest, tool_registry, agent_guard_plan, caveats)
-        tools.extend(_registered_hosted_tools(agent_name, manifest, hosted_tool_registry, caveats))
-        handoffs: list[Any] = []
-        for dependency in manifest["agents"]:
-            child = dependency["name"]
-            wired = False
-            if agent_tool_registry and child in agent_tool_registry:
-                tools.append(agent_tool_registry[child])
-                wired = True
-            if handoff_registry and child in handoff_registry:
-                handoffs.append(handoff_registry[child])
-                wired = True
-            if not wired:
-                caveats.append(
-                    OpenAIAgentFactoryCaveat(
-                        agent_name,
-                        "agent_dependency_unwired",
-                        f"Declared agent dependency `{child}` was not supplied as an agent tool or handoff.",
-                    )
-                )
-        manifest_with_model = dict(manifest)
-        manifest_with_model["model"] = model
+        _validate_output_guards(agent_name, output_type_name, output_types, agent_guard_plan, agent_caveats)
+        _collect_guard_caveats(agent_name, manifest, agent_guard_plan, agent_caveats)
+        host_tools = _planned_tools(agent_name, manifest, tool_registry, agent_guard_plan, agent_caveats)
+        hosted_tools = _planned_hosted_tools(agent_name, manifest, hosted_tool_registry, agent_caveats)
+        composition = _planned_composition(agent_name, manifest, agent_tool_registry, handoff_registry, agent_caveats)
+        caveats.extend(agent_caveats)
+        plans[agent_name] = OpenAIAgentPlan(
+            agent=agent_name,
+            manifest=manifest,
+            source_path=manifest["source_path"],
+            instruction_ref=f"instructions/{agent_name}.md",
+            instructions=_instructions_for(agent_name, artifacts, instruction_overrides),
+            model=model,
+            output_type_name=output_type_name,
+            output_schema_ref=manifest["output"]["schema_ref"],
+            output_type=output_types[output_type_name],
+            tools=host_tools,
+            hosted_tools=hosted_tools,
+            composition=composition,
+            inputs=list(manifest["inputs"]),
+            datasources=list(manifest["datasources"]),
+            guards=agent_guard_plan,
+            assertions=list(manifest["assertions"]),
+            caveats=agent_caveats,
+        )
+    return OpenAIAdapterPlan(artifacts, plans, caveats)
+
+
+def build_openai_agents_from_plan(plan: OpenAIAdapterPlan) -> OpenAIAgentFactoryResult:
+    """Build OpenAI Agents SDK objects from a previously inspected adapter plan."""
+    agents: dict[str, Any] = {}
+    for agent_name, agent_plan in plan.agents.items():
+        manifest_with_model = dict(agent_plan.manifest)
+        manifest_with_model["model"] = agent_plan.model
+        tools = [item.tool for item in agent_plan.tools]
+        tools.extend(item.tool for item in agent_plan.hosted_tools)
+        tools.extend(item.sdk_object for item in agent_plan.composition if item.mode == "agent_as_tool")
+        handoffs = [item.sdk_object for item in agent_plan.composition if item.mode == "handoff"]
         agents[agent_name] = build_openai_agent(
             cast(AgentManifest, manifest_with_model),
-            _instructions_for(agent_name, artifacts, instruction_overrides),
-            tools=tools,
-            handoffs=handoffs,
-            output_type=output_type_registry[output_type_name],
+            agent_plan.instructions,
+            tools=[item for item in tools if item is not None],
+            handoffs=[item for item in handoffs if item is not None],
+            output_type=agent_plan.output_type,
         )
-    return OpenAIAgentFactoryResult(agents, caveats)
+    return OpenAIAgentFactoryResult(agents, plan.caveats, plan)
+
+
+def build_openai_agents_from_contracts(
+    artifacts: CompilerArtifacts,
+    *,
+    output_type_registry: Mapping[str, Any] | None = None,
+    model_registry: Mapping[str, Any],
+    tool_registry: Mapping[str, Any] | None = None,
+    hosted_tool_registry: Mapping[str, Any] | None = None,
+    agent_tool_registry: Mapping[str, Any] | None = None,
+    handoff_registry: Mapping[str, Any] | None = None,
+    instruction_overrides: Mapping[str, str] | None = None,
+    default_model: Any | None = None,
+    generate_output_types: bool = False,
+) -> OpenAIAgentFactoryResult:
+    """Build OpenAI Agents SDK objects from compiled artifacts plus explicit registries."""
+    plan = plan_openai_agents_from_contracts(
+        artifacts,
+        output_type_registry=output_type_registry,
+        model_registry=model_registry,
+        tool_registry=tool_registry,
+        hosted_tool_registry=hosted_tool_registry,
+        agent_tool_registry=agent_tool_registry,
+        handoff_registry=handoff_registry,
+        instruction_overrides=instruction_overrides,
+        default_model=default_model,
+        generate_output_types=generate_output_types,
+    )
+    return build_openai_agents_from_plan(plan)
 
 
 async def run_openai_agent(
@@ -213,6 +361,148 @@ async def run_openai_agent(
     result = await Runner.run(agent, user_input, context=context, max_turns=max_turns, hooks=hooks)
     last_agent = getattr(getattr(result, "last_agent", None), "name", None)
     return OpenAIAdapterResult(getattr(result, "final_output", None), last_agent, result)
+
+
+async def run_openai_agent_with_contract(
+    agent: Any,
+    user_input: str,
+    *,
+    contract: CompilerArtifacts,
+    agent_name: str,
+    trace: TraceRecorder | None = None,
+    runtime_context: RuntimeContext | None = None,
+    context: Any | None = None,
+    hidden_truth: Mapping[str, Any] | None = None,
+    approval_callback: ApprovalCallback | None = None,
+    max_turns: int | None = 10,
+    hooks: Any | None = None,
+) -> OpenAIContractRunResult:
+    """Run one OpenAI SDK agent and evaluate its Contract4Agents assertions.
+
+    This helper does not choose a route, replay a workflow, or orchestrate a
+    team. It runs the supplied SDK agent once, resolves SDK approval
+    interruptions if a callback is supplied, then evaluates the compiled
+    assertions for the named agent.
+    """
+    try:
+        from agents import Runner
+    except Exception as exc:  # noqa: BLE001 - optional adapter import boundary.
+        raise OpenAIAdapterUnavailable("openai-agents is not installed") from exc
+    run_trace = trace or TraceRecorder()
+    run_hooks = hooks or OpenAITraceHooks(run_trace)
+    prompt = _input_with_rendered_context(user_input, runtime_context)
+    runner_context = context if context is not None else runtime_context
+    result = await Runner.run(agent, prompt, context=runner_context, max_turns=max_turns, hooks=run_hooks)
+    result, approvals = await _resolve_approval_interruptions(
+        Runner,
+        agent,
+        result,
+        runner_context,
+        max_turns,
+        run_hooks,
+        run_trace,
+        approval_callback,
+    )
+    final_output = _serializable(getattr(result, "final_output", None))
+    assertion_result = evaluate_run_contract(
+        contract=contract,
+        trace=run_trace,
+        outputs={agent_name: final_output},
+        target_agents=[agent_name],
+        context=runtime_context.values if runtime_context is not None else None,
+        hidden_truth=hidden_truth,
+    )
+    _record_assertion_events(run_trace, assertion_result)
+    last_agent = getattr(getattr(result, "last_agent", None), "name", None)
+    return OpenAIContractRunResult(
+        OpenAIAdapterResult(final_output, last_agent, result),
+        assertion_result,
+        run_trace,
+        approvals,
+    )
+
+
+def build_openai_output_type_registry(artifacts: CompilerArtifacts) -> dict[str, type[Any]]:
+    """Generate Pydantic v2 output types from compiled Contract4Agents JSON Schemas."""
+    try:
+        from pydantic import ConfigDict, Field, create_model
+    except Exception as exc:  # noqa: BLE001 - optional OpenAI adapter dependency boundary.
+        raise OpenAIAgentFactoryError("Pydantic v2 is required to generate OpenAI output types") from exc
+
+    schemas = artifacts["schemas"]
+    built: dict[str, type[Any]] = {}
+    resolving: set[str] = set()
+
+    def build_model(name: str) -> type[Any]:
+        if name in built:
+            return built[name]
+        if name in resolving:
+            raise OpenAIAgentFactoryError(f"Cannot generate recursive OpenAI output type `{name}`")
+        schema = schemas.get(name)
+        if schema is None:
+            raise OpenAIAgentFactoryError(f"No schema compiled for `{name}`")
+        if schema.get("type") != "object" or not isinstance(schema.get("properties"), dict):
+            raise OpenAIAgentFactoryError(f"Cannot generate OpenAI output type `{name}` from non-object schema")
+        resolving.add(name)
+        required = set(_string_list(schema.get("required", [])))
+        fields: dict[str, tuple[Any, Any]] = {}
+        for field_name, field_schema in schema["properties"].items():
+            if not isinstance(field_schema, dict):
+                raise OpenAIAgentFactoryError(f"Cannot generate field `{name}.{field_name}` from non-object schema")
+            annotation, field_kwargs = annotation_for(field_schema)
+            if "default" in field_schema:
+                default: Any = field_schema["default"]
+            elif field_name in required:
+                default = ...
+            else:
+                default = None
+            fields[str(field_name)] = (annotation, Field(default, **field_kwargs))
+        create_model_any = cast(Any, create_model)
+        model = create_model_any(
+            name,
+            __config__=ConfigDict(extra="forbid"),
+            __module__="contract4agents.adapters.openai.generated",
+            **fields,
+        )
+        built[name] = cast(type[Any], model)
+        resolving.remove(name)
+        return built[name]
+
+    def annotation_for(schema: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
+        nullable = _nullable_schema(schema)
+        if nullable is not None:
+            annotation, kwargs = annotation_for(nullable)
+            return annotation | None, kwargs
+        if "$ref" in schema:
+            ref_name = _schema_ref_name(str(schema["$ref"]))
+            return build_model(ref_name), {}
+        if "enum" in schema:
+            values = _string_list(schema["enum"])
+            if not values:
+                raise OpenAIAgentFactoryError("Cannot generate OpenAI output type from empty enum")
+            from typing import Literal as TypingLiteral
+
+            return TypingLiteral.__getitem__(tuple(values)), {}
+        schema_type = schema.get("type")
+        if schema_type == "array":
+            items = schema.get("items")
+            if not isinstance(items, dict):
+                raise OpenAIAgentFactoryError("Cannot generate OpenAI output type from array without item schema")
+            item_annotation, _ = annotation_for(items)
+            return list.__class_getitem__(item_annotation), {}
+        if schema_type == "string":
+            return str, {}
+        if schema_type == "integer":
+            return int, _numeric_constraints(schema)
+        if schema_type == "number":
+            return float, _numeric_constraints(schema)
+        if schema_type == "boolean":
+            return bool, {}
+        raise OpenAIAgentFactoryError(f"Cannot generate OpenAI output type from unsupported schema `{schema}`")
+
+    for type_name in schemas:
+        build_model(type_name)
+    return built
 
 
 class OpenAISemanticJudge:
@@ -263,41 +553,107 @@ def _is_hosted_sdk_tool(tool: Any) -> bool:
     return str(tool.__class__.__name__) == "WebSearchTool"
 
 
-def _registered_tools(
+def _planned_tools(
     agent_name: str,
     manifest: AgentManifest,
     tool_registry: Mapping[str, Any] | None,
     guard_plan: list[GuardPlanItem],
     caveats: list[OpenAIAgentFactoryCaveat],
-) -> list[Any]:
-    tools: list[Any] = []
+) -> list[OpenAIToolPlan]:
+    tools: list[OpenAIToolPlan] = []
     denied_tools = {item["target"] for item in guard_plan if item["kind"] == "denied_tool" and item["target"]}
+    approval_tools = {
+        item["target"] for item in guard_plan if item["kind"] == "approval_required_tool" and item["target"]
+    }
     for tool in manifest["tools"]:
         name = tool["name"]
-        if name in denied_tools:
-            continue
-        if tool["permission"] == "denied":
+        if name in denied_tools or tool["permission"] == "denied":
             caveats.append(
                 OpenAIAgentFactoryCaveat(
                     agent_name,
                     "denied_tool_omitted",
-                    f"Tool `{name}` is declared denied and was omitted from the OpenAI Agent.",
+                    f"Tool `{name}` is denied and was omitted from the OpenAI Agent.",
                 )
             )
             continue
         if not tool_registry or name not in tool_registry:
             raise OpenAIAgentFactoryError(f"No host tool registered for `{name}` used by agent `{agent_name}`")
-        tools.append(tool_registry[name])
+        requires_approval = tool["permission"] == "requires_approval" or name in approval_tools
+        sdk_tool, wrapped = _tool_from_registry(agent_name, name, tool_registry[name], requires_approval, caveats)
+        tools.append(
+            OpenAIToolPlan(
+                agent=agent_name,
+                name=name,
+                permission=tool["permission"],
+                sdk_name=openai_tool_name(name),
+                tool=sdk_tool,
+                source=tool["module"],
+                wrapped=wrapped,
+                requires_approval=requires_approval,
+            )
+        )
     return tools
 
 
-def _registered_hosted_tools(
+def _tool_from_registry(
+    agent_name: str,
+    name: str,
+    registry_entry: Any,
+    requires_approval: bool,
+    caveats: list[OpenAIAgentFactoryCaveat],
+) -> tuple[Any, bool]:
+    if isinstance(registry_entry, OpenAIToolRegistration):
+        if registry_entry.raw_callable:
+            return _wrap_callable_tool(name, registry_entry.value, requires_approval, registry_entry.description), True
+        if requires_approval:
+            caveats.append(_approval_unverified_caveat(agent_name, name))
+        return registry_entry.value, False
+    if callable(registry_entry) and not _looks_like_sdk_tool(registry_entry):
+        return _wrap_callable_tool(name, registry_entry, requires_approval, None), True
+    if requires_approval:
+        caveats.append(_approval_unverified_caveat(agent_name, name))
+    return registry_entry, False
+
+
+def _wrap_callable_tool(
+    name: str,
+    func: Any,
+    requires_approval: bool,
+    description: str | None,
+) -> Any:
+    try:
+        from agents import function_tool
+    except Exception as exc:  # noqa: BLE001 - optional adapter import boundary.
+        raise OpenAIAdapterUnavailable("openai-agents is not installed") from exc
+    kwargs: dict[str, Any] = {
+        "name_override": openai_tool_name(name),
+        "needs_approval": requires_approval,
+    }
+    if description:
+        kwargs["description_override"] = description
+    return function_tool(**kwargs)(func)
+
+
+def _approval_unverified_caveat(agent_name: str, name: str) -> OpenAIAgentFactoryCaveat:
+    return OpenAIAgentFactoryCaveat(
+        agent_name,
+        "approval_enforcement_unverified",
+        f"Tool `{name}` requires approval, but the registered SDK tool was not wrapped by Contract4Agents.",
+    )
+
+
+def _looks_like_sdk_tool(entry: Any) -> bool:
+    class_name = entry.__class__.__name__
+    return hasattr(entry, "name") or class_name in {"FunctionTool", "WebSearchTool"}
+
+
+def _planned_hosted_tools(
     agent_name: str,
     manifest: AgentManifest,
     hosted_tool_registry: Mapping[str, Any] | None,
     caveats: list[OpenAIAgentFactoryCaveat],
-) -> list[Any]:
-    tools: list[Any] = []
+) -> list[OpenAIHostedToolPlan]:
+    tools: list[OpenAIHostedToolPlan] = []
     for hosted_tool in manifest["hosted_tools"]:
         name = hosted_tool["name"]
         if hosted_tool["permission"] == "denied":
@@ -313,7 +669,17 @@ def _registered_hosted_tools(
             raise OpenAIAgentFactoryError(
                 f"No hosted tool registered for `{name}` used by agent `{agent_name}`"
             )
-        tools.append(_hosted_tool_from_registry(name, hosted_tool["config"], hosted_tool_registry[name]))
+        tools.append(
+            OpenAIHostedToolPlan(
+                agent=agent_name,
+                name=name,
+                provider=hosted_tool["provider"],
+                tool_name=hosted_tool["tool"],
+                config=dict(hosted_tool["config"]),
+                permission=hosted_tool["permission"],
+                tool=_hosted_tool_from_registry(name, hosted_tool["config"], hosted_tool_registry[name]),
+            )
+        )
     return tools
 
 
@@ -330,6 +696,109 @@ def _hosted_tool_from_registry(name: str, config: dict[str, str], registry_entry
     if callable(registry_entry):
         return registry_entry(**kwargs)
     return registry_entry
+
+
+def _planned_composition(
+    agent_name: str,
+    manifest: AgentManifest,
+    agent_tool_registry: Mapping[str, Any] | None,
+    handoff_registry: Mapping[str, Any] | None,
+    caveats: list[OpenAIAgentFactoryCaveat],
+) -> list[OpenAICompositionPlan]:
+    plans: list[OpenAICompositionPlan] = []
+    declarations = _composition_declarations(manifest["composition"])
+    for dependency in manifest["agents"]:
+        child = dependency["name"]
+        declared_mode = declarations.get(child)
+        if declared_mode == "isolated_subagent":
+            caveats.append(
+                OpenAIAgentFactoryCaveat(
+                    agent_name,
+                    "unsupported_composition",
+                    f"Composition mode `isolated_subagent({child})` has no OpenAI adapter mapping.",
+                )
+            )
+            plans.append(OpenAICompositionPlan(agent_name, child, "unsupported", source="isolated_subagent"))
+            continue
+        if declared_mode in {"agent_as_tool", "as_tool"}:
+            plans.append(_agent_tool_composition(agent_name, child, agent_tool_registry, caveats, declared_mode))
+            continue
+        if declared_mode == "handoff":
+            plans.append(_handoff_composition(agent_name, child, handoff_registry, caveats, "handoff"))
+            continue
+        has_agent_tool = bool(agent_tool_registry and child in agent_tool_registry)
+        has_handoff = bool(handoff_registry and child in handoff_registry)
+        if has_agent_tool:
+            if has_handoff:
+                caveats.append(
+                    OpenAIAgentFactoryCaveat(
+                        agent_name,
+                        "composition_mode_ambiguous",
+                        f"Agent dependency `{child}` has both agent-tool and handoff registrations; "
+                        "agent-tool was used.",
+                    )
+                )
+            plans.append(_agent_tool_composition(agent_name, child, agent_tool_registry, caveats, "implicit"))
+        elif has_handoff:
+            plans.append(_handoff_composition(agent_name, child, handoff_registry, caveats, "implicit"))
+        else:
+            caveats.append(
+                OpenAIAgentFactoryCaveat(
+                    agent_name,
+                    "agent_dependency_unwired",
+                    f"Declared agent dependency `{child}` was not supplied as an agent tool or handoff.",
+                )
+            )
+            plans.append(OpenAICompositionPlan(agent_name, child, "unwired"))
+    return plans
+
+
+def _agent_tool_composition(
+    agent_name: str,
+    child: str,
+    registry: Mapping[str, Any] | None,
+    caveats: list[OpenAIAgentFactoryCaveat],
+    source: str,
+) -> OpenAICompositionPlan:
+    if registry and child in registry:
+        return OpenAICompositionPlan(agent_name, child, "agent_as_tool", registry[child], source=source)
+    caveats.append(
+        OpenAIAgentFactoryCaveat(
+            agent_name,
+            "agent_tool_missing",
+            f"Composition requires `{child}` as an agent tool, but no agent-tool registration was supplied.",
+        )
+    )
+    return OpenAICompositionPlan(agent_name, child, "unwired", source=source)
+
+
+def _handoff_composition(
+    agent_name: str,
+    child: str,
+    registry: Mapping[str, Any] | None,
+    caveats: list[OpenAIAgentFactoryCaveat],
+    source: str,
+) -> OpenAICompositionPlan:
+    if registry and child in registry:
+        return OpenAICompositionPlan(agent_name, child, "handoff", registry[child], source=source)
+    caveats.append(
+        OpenAIAgentFactoryCaveat(
+            agent_name,
+            "handoff_missing",
+            f"Composition requires `{child}` as a handoff, but no handoff registration was supplied.",
+        )
+    )
+    return OpenAICompositionPlan(agent_name, child, "unwired", source=source)
+
+
+def _composition_declarations(items: list[str]) -> dict[str, str]:
+    declarations: dict[str, str] = {}
+    for item in items:
+        match = re.fullmatch(r"\s*(agent_as_tool|as_tool|handoff|isolated_subagent)\(([^)]+)\)\s*", item)
+        if match:
+            mode, agent = match.groups()
+            declarations[agent.strip()] = mode
+    return declarations
 
 
 def _guard_plan_by_agent(guard_plan: list[GuardPlanItem]) -> dict[str, list[GuardPlanItem]]:
@@ -386,13 +855,6 @@ def _collect_guard_caveats(
             continue
         if item["kind"] == "approval_required_tool":
             target = item["target"]
-            caveats.append(
-                OpenAIAgentFactoryCaveat(
-                    agent_name,
-                    "approval_required_tool",
-                    f"Guard `{item['expression']}` requires host-owned approval enforcement for `{target}`.",
-                )
-            )
             if target and tool_permissions.get(target) != "requires_approval":
                 caveats.append(
                     OpenAIAgentFactoryCaveat(
@@ -427,3 +889,131 @@ def _instructions_for(
         return artifacts["instructions"][agent_name]
     except KeyError as exc:
         raise OpenAIAgentFactoryError(f"No instructions compiled for agent `{agent_name}`") from exc
+
+
+def _input_with_rendered_context(user_input: str, runtime_context: RuntimeContext | None) -> str:
+    if runtime_context is None:
+        return user_input
+    rendered = runtime_context.rendered_context()
+    if not rendered:
+        return user_input
+    return f"{user_input}\n\nResolved context:\n{rendered}"
+
+
+async def _resolve_approval_interruptions(
+    runner: Any,
+    agent: Any,
+    result: Any,
+    context: Any,
+    max_turns: int | None,
+    hooks: Any,
+    trace: TraceRecorder,
+    approval_callback: ApprovalCallback | None,
+) -> tuple[Any, list[OpenAIApprovalRequest]]:
+    approvals: list[OpenAIApprovalRequest] = []
+    loops = 0
+    while getattr(result, "interruptions", None):
+        loops += 1
+        if loops > 10:
+            raise OpenAIAgentFactoryError("Too many OpenAI approval interruption loops")
+        if approval_callback is None:
+            raise OpenAIAgentFactoryError("OpenAI approval interruption requires an approval_callback")
+        state = result.to_state()
+        for interruption in result.interruptions:
+            tool_name = contract_tool_name(str(getattr(interruption, "tool_name", "")))
+            arguments = _approval_arguments(interruption)
+            trace.record("approval.requested", tool=tool_name, arguments=arguments)
+            approved = bool(await _maybe_await(approval_callback(OpenAIApprovalRequest(tool_name, None, arguments))))
+            trace.record("approval.completed", tool=tool_name, approved=approved)
+            approvals.append(OpenAIApprovalRequest(tool_name, approved, arguments))
+            if approved:
+                state.approve(interruption)
+            else:
+                state.reject(interruption, rejection_message=f"Approval denied for {tool_name}")
+        result = await runner.run(agent, state, context=context, max_turns=max_turns, hooks=hooks)
+    return result, approvals
+
+
+def _approval_arguments(interruption: Any) -> dict[str, Any]:
+    for attr in ("arguments", "tool_arguments", "input"):
+        value = getattr(interruption, attr, None)
+        if isinstance(value, dict):
+            return dict(value)
+    return {}
+
+
+async def _maybe_await(value: bool | Awaitable[bool]) -> bool:
+    if inspect.isawaitable(value):
+        return bool(await value)
+    return bool(value)
+
+
+def _record_assertion_events(trace: TraceRecorder, result: RunEvaluationResult) -> None:
+    for agent_result in result.agents:
+        for check in agent_result.checks:
+            data: dict[str, Any] = {"status": check.status}
+            if check.failure is not None:
+                data["failure_kind"] = check.failure.kind
+                data["message"] = check.failure.message
+            trace.record("assertion.evaluated", agent=agent_result.agent, assertion=check.assertion, data=data)
+
+
+def _schema_ref_name(ref: str) -> str:
+    prefix = "#/$defs/"
+    if not ref.startswith(prefix):
+        raise OpenAIAgentFactoryError(f"Unsupported schema reference `{ref}`")
+    return ref.removeprefix(prefix)
+
+
+def _nullable_schema(schema: dict[str, Any]) -> dict[str, Any] | None:
+    any_of = schema.get("anyOf")
+    if not isinstance(any_of, list) or len(any_of) != 2:
+        return None
+    non_null = [item for item in any_of if isinstance(item, dict) and item.get("type") != "null"]
+    nulls = [item for item in any_of if isinstance(item, dict) and item.get("type") == "null"]
+    if len(non_null) == 1 and len(nulls) == 1:
+        return cast(dict[str, Any], non_null[0])
+    return None
+
+
+def _numeric_constraints(schema: dict[str, Any]) -> dict[str, Any]:
+    constraints: dict[str, Any] = {}
+    if "minimum" in schema:
+        constraints["ge"] = schema["minimum"]
+    if "maximum" in schema:
+        constraints["le"] = schema["maximum"]
+    return constraints
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise OpenAIAgentFactoryError("Expected a list of strings in generated schema")
+    return list(value)
+
+
+__all__ = [
+    "OpenAIAdapterPlan",
+    "OpenAIAdapterResult",
+    "OpenAIAdapterUnavailable",
+    "OpenAIAgentFactoryCaveat",
+    "OpenAIAgentFactoryError",
+    "OpenAIAgentFactoryResult",
+    "OpenAIAgentPlan",
+    "OpenAIApprovalRequest",
+    "OpenAICompositionPlan",
+    "OpenAIContractRunResult",
+    "OpenAIHostedToolPlan",
+    "OpenAISemanticJudge",
+    "OpenAIToolPlan",
+    "OpenAIToolRegistration",
+    "OpenAITraceHooks",
+    "build_openai_agent",
+    "build_openai_agents_from_contracts",
+    "build_openai_agents_from_plan",
+    "build_openai_output_type_registry",
+    "contract_tool_name",
+    "openai_tool_name",
+    "plan_openai_agents_from_contracts",
+    "run_openai_agent",
+    "run_openai_agent_with_contract",
+]

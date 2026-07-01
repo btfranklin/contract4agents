@@ -1,47 +1,77 @@
 # OpenAI Adapter Reference
 
-The OpenAI adapter is the first SDK execution target. It is intentionally thin:
-Contract4Agents compiles provider-neutral manifests first, and host or fixture code
-supplies provider SDK objects that cannot be represented safely from the
-manifest alone.
+The OpenAI adapter projects compiled Contract4Agents artifacts onto the OpenAI
+Agents SDK. It is plan-first: host code can inspect exactly what will be mapped
+before SDK `Agent` objects are constructed.
 
 V1 maps Contract4Agents manifests to:
 
-- OpenAI `Agent` name and instructions.
-- Caller-supplied function tools from local callables.
-- Caller-enabled hosted provider tools such as OpenAI web search.
-- Caller-supplied handoffs or agents-as-tools where used.
-- Caller-supplied output model types.
+- OpenAI `Agent` name, model, instructions, and output type.
+- Host tools from SDK tool objects or raw Python callables wrapped with
+  `agents.function_tool(...)`.
+- Hosted provider tools such as `openai.web_search`.
+- Agent-as-tool and handoff registrations supplied by the host.
 - Guard-plan metadata for output conformance, denied tools, and approval-required tools.
-- SDK lifecycle hooks normalized to Contract4Agents trace events.
+- Runtime context rendering, SDK approval interruption resolution, normalized
+  trace hooks, and post-run assertion checks for one supplied SDK agent.
 
-Use `build_openai_agent(...)` when constructing one SDK object directly from a
-manifest and instructions.
+## Planning And Construction
 
-Use `build_openai_agents_from_contracts(...)` when constructing a team from
-compiled artifacts plus explicit registries:
+Use `plan_openai_agents_from_contracts(...)` to inspect the mapping:
 
 ```python
-from contract4agents.adapters.openai import build_openai_agents_from_contracts
+from contract4agents.adapters.openai import plan_openai_agents_from_contracts
 
-factory_result = build_openai_agents_from_contracts(
+plan = plan_openai_agents_from_contracts(
     artifacts,
     output_type_registry={"SupportReply": SupportReplyModel},
     model_registry={"SupportCoordinator": config.support_model},
-    tool_registry={"crm.create_note": crm_create_note_tool},
+    tool_registry={"crm.create_note": crm_create_note},
     hosted_tool_registry={"openai.web_search": True},
     agent_tool_registry={"BillingSpecialist": billing_specialist_tool},
     default_model=config.default_agent_model,
 )
-
-agents = factory_result.agents
 ```
 
-The helper is registry-driven. It does not import application models, discover
-tools, resolve approvals, or run the workflow. Missing declared host tools,
-enabled hosted tools, or output types are configuration errors. Declared agent
-dependencies without handoff or agent-tool wiring are returned as explicit
-caveats.
+Each `OpenAIAgentPlan` includes manifest `source_path`, generated
+`instruction_ref`, `output_schema_ref`, instructions, model, output type,
+host-tool plans, hosted-tool plans, composition plans, context inputs,
+datasources, guards, assertions, and caveats.
+
+Use `build_openai_agents_from_plan(plan)` after inspection, or use
+`build_openai_agents_from_contracts(...)` as the convenience function that plans
+and builds in one call. `build_openai_agent(...)` remains the low-level helper
+for constructing one SDK object from one manifest and instruction string.
+
+## Output Types
+
+Callers can pass explicit output types:
+
+```python
+output_type_registry={"SupportReply": SupportReplyModel}
+```
+
+Or they can ask the adapter to generate Pydantic v2 models from the compiled
+Contract4Agents JSON Schema subset:
+
+```python
+from contract4agents.adapters.openai import build_openai_output_type_registry
+
+output_types = build_openai_output_type_registry(artifacts)
+```
+
+`generate_output_types=True` enables that helper inside the planner/factory.
+Explicit registry entries override generated models. Unsupported schemas fail
+closed with `OpenAIAgentFactoryError`.
+
+## Tools, Hosted Tools, And Approvals
+
+Host tools may be supplied as existing SDK tool objects or raw Python callables.
+Raw callables are wrapped with `agents.function_tool(name_override=...)`.
+Approval-required raw callables are wrapped with `needs_approval=True`.
+Prebuilt SDK tools are accepted, but approval enforcement cannot be verified by
+Contract4Agents, so the plan returns an `approval_enforcement_unverified`
+caveat.
 
 Hosted provider tools are declared separately from host tools:
 
@@ -49,37 +79,41 @@ Hosted provider tools are declared separately from host tools:
 use hosted_tool openai.web_search context_size "medium"
 ```
 
-Pass `hosted_tool_registry={"openai.web_search": True}` to let the helper build
-`agents.WebSearchTool(search_context_size="medium")`. Alternatively, pass a
-provider object or a factory callable for `openai.web_search`. Declared hosted
-tools with `denied` permission are omitted and reported as caveats.
+Pass `hosted_tool_registry={"openai.web_search": True}` to let the adapter build
+`agents.WebSearchTool(search_context_size="medium")`. A registry entry can also
+be a provider object or a factory callable. Denied host and hosted tools are
+omitted and reported as caveats; missing non-denied host or hosted tools are
+configuration errors.
 
-The helper consumes compiled `guard_plan` items conservatively:
+Composition declarations are mapped when the host supplies the corresponding
+objects:
 
-- output-conformance guards rely on the same caller-supplied output type registry;
-- denied-tool guards omit the tool from the SDK `Agent`;
-- approval-required tool guards attach the registered tool but return a caveat
-  because approval enforcement remains host-owned;
-- unsupported guard mappings return caveats instead of being treated as enforced.
+- `agent_as_tool(...)` and `as_tool(...)` use `agent_tool_registry`.
+- `handoff(...)` uses `handoff_registry`.
+- `isolated_subagent(...)` is reported as unsupported.
 
-The adapter capability matrix uses structured `status` and `caveats` entries.
-Features that depend on host code are marked `partial` or `emulated` rather than
-fully supported.
+Without an explicit composition declaration, the planner prefers an agent-tool
+registration, then a handoff registration. If both are supplied, it uses the
+agent tool and emits a `composition_mode_ambiguous` caveat.
 
-Live OpenAI tests are opt-in and require `OPENAI_API_KEY` plus an explicit integration-test flag.
+## Running With Contract Checks
 
-Use the semantic judge live test when changing OpenAI client setup:
+`run_openai_agent_with_contract(...)` runs one supplied SDK agent, appends
+`RuntimeContext.rendered_context()` to the user input, keeps hidden and
+sensitive context out of the prompt, resolves SDK approval interruptions through
+a host callback, records `approval.requested` and `approval.completed`, evaluates
+compiled assertions with `evaluate_run_contract(...)`, records
+`assertion.evaluated`, and returns `OpenAIContractRunResult`.
+
+This helper does not run routes, replay workflows, choose specialists, or own
+approval UX. Host code still controls orchestration, persistence, credentials,
+real tools, hosted-tool enablement, and deployment behavior.
+
+## Live Checks
+
+Live OpenAI tests are opt-in and require `OPENAI_API_KEY` plus an explicit flag:
 
 ```bash
 CONTRACT4AGENTS_RUN_OPENAI_LIVE=1 pdm run test:openai-live
-```
-
-This is intentionally scoped to the semantic judge first. It is a low-flake credential and Responses API smoke check.
-
-Use the live agent fixture when changing OpenAI Agents SDK execution behavior:
-
-```bash
 CONTRACT4AGENTS_RUN_OPENAI_AGENT_LIVE=1 pdm run test:openai-agent-live
 ```
-
-That path builds SDK `Agent` objects from compiled Contract4Agents manifests, wraps fake local Python tools as function tools, uses agents-as-tools for specialists, runs input guardrails, resolves approval interruptions in fixture code, and normalizes SDK lifecycle hooks back into Contract4Agents trace events. Hosted SDK tools are normalized with `hosted_tool.*` event names when the hook can identify the SDK hosted-tool object.

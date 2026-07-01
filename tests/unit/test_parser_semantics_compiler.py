@@ -242,6 +242,7 @@ def test_compile_project_artifacts(tmp_path: Path) -> None:
     artifacts = compile_project(FIXTURE, tmp_path / "build")
 
     assert "IncidentCommander" in artifacts["manifests"]
+    assert artifacts["manifests"]["IncidentCommander"]["source_path"].endswith("agents/incident_commander.contract")
     assert (tmp_path / "build" / "schemas" / "IncidentBrief.json").exists()
     assert (tmp_path / "build" / "instructions" / "IncidentCommander.md").exists()
     assert (tmp_path / "build" / "guards" / "guard-plan.json").exists()

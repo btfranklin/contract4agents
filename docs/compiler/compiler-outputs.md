@@ -42,6 +42,7 @@ Example shape:
 ```json
 {
   "agent": "CustomerGreeter",
+  "source_path": "agents/customer_greeter.contract",
   "inputs": [
     {"name": "user_message", "type": "UserMessage", "required": true},
     {"name": "customer_profile", "type": "CustomerProfile", "required": true}
@@ -133,6 +134,14 @@ Adapter responsibilities:
 - Capture provider trace events into the Contract4Agents trace schema.
 - Carry approval-gate metadata to host code before provider tool calls.
 - Emit adapter caveats when target SDK semantics differ from Contract4Agents semantics.
+- Provide a typed adapter plan before constructing provider SDK objects, including
+  source paths, instruction refs, schema refs, hosted tools, assertions,
+  composition metadata, and caveats.
+
+The OpenAI adapter also exposes a generated-output-model helper for the native
+Contract4Agents JSON Schema subset and a single-agent run helper that renders
+non-sensitive `RuntimeContext` values, resolves SDK approval interruptions
+through host callbacks, and records post-run assertion checks.
 
 ### Eval Pack
 

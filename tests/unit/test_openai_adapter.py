@@ -2,40 +2,36 @@ from __future__ import annotations
 
 import sys
 from types import ModuleType, SimpleNamespace
+from typing import Any
 
 import pytest
 
 from contract4agents.adapters.openai import (
     OpenAIAgentFactoryError,
+    OpenAIApprovalRequest,
     OpenAISemanticJudge,
+    OpenAIToolRegistration,
     build_openai_agent,
     build_openai_agents_from_contracts,
+    build_openai_agents_from_plan,
+    build_openai_output_type_registry,
+    plan_openai_agents_from_contracts,
     run_openai_agent,
+    run_openai_agent_with_contract,
 )
+from contract4agents.runtime import ContextValue, RuntimeContext
 
 
 @pytest.mark.asyncio
 async def test_openai_adapter_with_mocked_agents_module(monkeypatch: pytest.MonkeyPatch) -> None:
-    module = ModuleType("agents")
-
-    class FakeAgent:
-        def __init__(self, **kwargs: object) -> None:
-            self.kwargs = kwargs
-
-    class FakeRunner:
-        @staticmethod
-        async def run(agent: object, user_input: str, **_kwargs: object) -> object:
-            return SimpleNamespace(final_output=f"ran {user_input}", last_agent=SimpleNamespace(name="Fake"))
-
-    module.Agent = FakeAgent  # type: ignore[attr-defined]
-    module.Runner = FakeRunner  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "agents", module)
+    module = _install_fake_agents_module(monkeypatch)
 
     agent = build_openai_agent({"agent": "A", "model": "test"}, "instructions")
     result = await run_openai_agent(agent, "hello")
 
     assert agent.kwargs["name"] == "A"
-    assert result.final_output == "ran hello"
+    assert module.runner_inputs[-1] == "hello"
+    assert result.final_output == {"ok": True}
     assert result.last_agent == "Fake"
 
 
@@ -61,35 +57,89 @@ async def test_openai_semantic_judge_with_mocked_client(monkeypatch: pytest.Monk
     assert not await judge.judge(output={"answer": "bad"}, criterion="is ok")
 
 
-def test_openai_agent_factory_builds_agents_from_registries(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_openai_adapter_plan_includes_contract_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_fake_agents_module(monkeypatch)
+    child_tool = object()
+
+    plan = plan_openai_agents_from_contracts(
+        _factory_artifacts(
+            include_hosted_tool=True,
+            composition=["agent_as_tool(ChildAgent)"],
+            parent_assertions=["expect(output.ok == true)"],
+            parent_inputs=[{"name": "request", "type": "Request", "required": True}],
+            parent_datasources=[
+                {
+                    "name": "RequestContext",
+                    "python": "app.context:load",
+                    "produces": "Request",
+                    "requires": [],
+                    "render": "markdown",
+                    "cache": "run",
+                }
+            ],
+        ),
+        output_type_registry={"ParentResult": dict, "ChildResult": list},
+        model_registry={"ParentAgent": "parent-model", "ChildAgent": "child-model"},
+        tool_registry={"tools.lookup": object()},
+        hosted_tool_registry={"openai.web_search": object()},
+        agent_tool_registry={"ChildAgent": child_tool},
+    )
+
+    parent = plan.agents["ParentAgent"]
+    assert parent.source_path == "agents/parent.contract"
+    assert parent.instruction_ref == "instructions/ParentAgent.md"
+    assert parent.output_schema_ref == "schemas/ParentResult.json"
+    assert parent.assertions == ["expect(output.ok == true)"]
+    assert parent.inputs[0]["name"] == "request"
+    assert parent.datasources[0]["name"] == "RequestContext"
+    assert parent.hosted_tools[0].name == "openai.web_search"
+    assert parent.tools[0].name == "tools.lookup"
+    assert parent.composition[0].mode == "agent_as_tool"
+    assert parent.composition[0].sdk_object is child_tool
+
+
+def test_openai_agent_factory_builds_agents_from_typed_plan(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_fake_agents_module(monkeypatch)
     tool = object()
     hosted_tool = object()
     child_tool = object()
-    handoff = object()
 
     result = build_openai_agents_from_contracts(
-        _factory_artifacts(include_hosted_tool=True),
+        _factory_artifacts(include_hosted_tool=True, composition=["agent_as_tool(ChildAgent)"]),
         output_type_registry={"ParentResult": dict, "ChildResult": list},
         model_registry={"ParentAgent": "parent-model"},
         tool_registry={"tools.lookup": tool},
         hosted_tool_registry={"openai.web_search": hosted_tool},
         agent_tool_registry={"ChildAgent": child_tool},
-        handoff_registry={"ChildAgent": handoff},
         instruction_overrides={"ParentAgent": "override"},
         default_model="default-model",
     )
 
     parent = result.agents["ParentAgent"]
     child = result.agents["ChildAgent"]
+    assert result.plan.agents["ParentAgent"].instructions == "override"
     assert result.caveats == []
     assert parent.kwargs["model"] == "parent-model"
     assert parent.kwargs["instructions"] == "override"
     assert parent.kwargs["tools"] == [tool, hosted_tool, child_tool]
-    assert parent.kwargs["handoffs"] == [handoff]
+    assert parent.kwargs["handoffs"] == []
     assert parent.kwargs["output_type"] is dict
     assert child.kwargs["model"] == "default-model"
     assert child.kwargs["output_type"] is list
+
+
+def test_openai_agent_factory_builds_from_existing_plan(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_fake_agents_module(monkeypatch)
+
+    plan = plan_openai_agents_from_contracts(
+        _factory_artifacts(include_tool=False, include_agent_dependency=False),
+        output_type_registry={"ParentResult": dict, "ChildResult": list},
+        model_registry={"ParentAgent": "parent-model", "ChildAgent": "child-model"},
+    )
+    result = build_openai_agents_from_plan(plan)
+
+    assert result.plan is plan
+    assert result.agents["ParentAgent"].kwargs["model"] == "parent-model"
 
 
 def test_openai_agent_factory_reports_unwired_agent_dependency(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -102,7 +152,7 @@ def test_openai_agent_factory_reports_unwired_agent_dependency(monkeypatch: pyte
     )
 
     assert [caveat.kind for caveat in result.caveats] == ["agent_dependency_unwired"]
-    assert "ChildAgent" in result.caveats[0].message
+    assert result.plan.agents["ParentAgent"].composition[0].mode == "unwired"
 
 
 def test_openai_agent_factory_rejects_missing_output_type(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -157,6 +207,7 @@ def test_openai_agent_factory_omits_denied_guard_tool(monkeypatch: pytest.Monkey
     result = build_openai_agents_from_contracts(
         _factory_artifacts(
             tool_permission="denied",
+            composition=["agent_as_tool(ChildAgent)"],
             guard_plan=[
                 _guard_item(
                     "denied_tool",
@@ -173,7 +224,7 @@ def test_openai_agent_factory_omits_denied_guard_tool(monkeypatch: pytest.Monkey
     )
 
     assert result.agents["ParentAgent"].kwargs["tools"] == [child_tool]
-    assert result.caveats == []
+    assert [caveat.kind for caveat in result.caveats] == ["denied_tool_omitted"]
 
 
 def test_openai_agent_factory_builds_enabled_openai_web_search(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -188,7 +239,7 @@ def test_openai_agent_factory_builds_enabled_openai_web_search(monkeypatch: pyte
 
     hosted_tool = result.agents["ParentAgent"].kwargs["tools"][0]
     assert hosted_tool.kwargs == {"search_context_size": "medium"}
-    assert result.caveats == []
+    assert result.plan.agents["ParentAgent"].hosted_tools[0].config == {"context_size": "medium"}
 
 
 def test_openai_agent_factory_omits_denied_hosted_tool(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -210,14 +261,36 @@ def test_openai_agent_factory_omits_denied_hosted_tool(monkeypatch: pytest.Monke
     assert [caveat.kind for caveat in result.caveats] == ["denied_hosted_tool_omitted"]
 
 
-def test_openai_agent_factory_reports_approval_required_tool_caveat(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_openai_agent_factory_wraps_raw_callable_with_approval(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_fake_agents_module(monkeypatch)
-    tool = object()
-    child_tool = object()
+
+    def lookup() -> dict[str, bool]:
+        return {"ok": True}
+
+    result = build_openai_agents_from_contracts(
+        _factory_artifacts(tool_permission="requires_approval", include_agent_dependency=False),
+        output_type_registry={"ParentResult": dict, "ChildResult": list},
+        model_registry={"ParentAgent": "parent-model", "ChildAgent": "child-model"},
+        tool_registry={"tools.lookup": OpenAIToolRegistration(lookup, raw_callable=True, description="Lookup")},
+    )
+
+    tool = result.agents["ParentAgent"].kwargs["tools"][0]
+    assert tool.name == "tools__lookup"
+    assert tool.needs_approval is True
+    assert tool.description == "Lookup"
+    assert result.plan.agents["ParentAgent"].tools[0].wrapped
+
+
+def test_openai_agent_factory_reports_unverified_approval_for_prebuilt_tool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_fake_agents_module(monkeypatch)
+    tool = SimpleNamespace(name="tools__lookup")
 
     result = build_openai_agents_from_contracts(
         _factory_artifacts(
             tool_permission="requires_approval",
+            include_agent_dependency=False,
             guard_plan=[
                 _guard_item(
                     "approval_required_tool",
@@ -231,11 +304,10 @@ def test_openai_agent_factory_reports_approval_required_tool_caveat(monkeypatch:
         output_type_registry={"ParentResult": dict, "ChildResult": list},
         model_registry={"ParentAgent": "parent-model", "ChildAgent": "child-model"},
         tool_registry={"tools.lookup": tool},
-        agent_tool_registry={"ChildAgent": child_tool},
     )
 
-    assert result.agents["ParentAgent"].kwargs["tools"] == [tool, child_tool]
-    assert [caveat.kind for caveat in result.caveats] == ["approval_required_tool"]
+    assert result.agents["ParentAgent"].kwargs["tools"] == [tool]
+    assert [caveat.kind for caveat in result.caveats] == ["approval_enforcement_unverified"]
 
 
 def test_openai_agent_factory_reports_unsupported_guard_caveat(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -269,6 +341,7 @@ def test_openai_agent_factory_maps_output_guard_when_registered(monkeypatch: pyt
     result = build_openai_agents_from_contracts(
         _factory_artifacts(
             include_tool=False,
+            composition=["agent_as_tool(ChildAgent)"],
             guard_plan=[
                 _guard_item(
                     "output_conformance",
@@ -287,21 +360,230 @@ def test_openai_agent_factory_maps_output_guard_when_registered(monkeypatch: pyt
     assert result.caveats == []
 
 
-def _install_fake_agents_module(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_openai_agent_factory_maps_handoff_composition(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_fake_agents_module(monkeypatch)
+    handoff = object()
+
+    result = build_openai_agents_from_contracts(
+        _factory_artifacts(include_tool=False, composition=["handoff(ChildAgent)"]),
+        output_type_registry={"ParentResult": dict, "ChildResult": list},
+        model_registry={"ParentAgent": "parent-model", "ChildAgent": "child-model"},
+        handoff_registry={"ChildAgent": handoff},
+    )
+
+    assert result.agents["ParentAgent"].kwargs["tools"] == []
+    assert result.agents["ParentAgent"].kwargs["handoffs"] == [handoff]
+    assert result.plan.agents["ParentAgent"].composition[0].mode == "handoff"
+
+
+def test_openai_agent_factory_reports_ambiguous_implicit_composition(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_fake_agents_module(monkeypatch)
+
+    result = build_openai_agents_from_contracts(
+        _factory_artifacts(include_tool=False),
+        output_type_registry={"ParentResult": dict, "ChildResult": list},
+        model_registry={"ParentAgent": "parent-model", "ChildAgent": "child-model"},
+        agent_tool_registry={"ChildAgent": "agent-tool"},
+        handoff_registry={"ChildAgent": "handoff"},
+    )
+
+    assert result.agents["ParentAgent"].kwargs["tools"] == ["agent-tool"]
+    assert result.agents["ParentAgent"].kwargs["handoffs"] == []
+    assert [caveat.kind for caveat in result.caveats] == ["composition_mode_ambiguous"]
+
+
+def test_openai_agent_factory_reports_unsupported_isolated_subagent(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_fake_agents_module(monkeypatch)
+
+    result = build_openai_agents_from_contracts(
+        _factory_artifacts(include_tool=False, composition=["isolated_subagent(ChildAgent)"]),
+        output_type_registry={"ParentResult": dict, "ChildResult": list},
+        model_registry={"ParentAgent": "parent-model", "ChildAgent": "child-model"},
+    )
+
+    assert result.plan.agents["ParentAgent"].composition[0].mode == "unsupported"
+    assert [caveat.kind for caveat in result.caveats] == ["unsupported_composition"]
+
+
+def test_openai_output_type_registry_generates_pydantic_models(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_fake_agents_module(monkeypatch)
+
+    registry = build_openai_output_type_registry(_factory_artifacts())
+    parent_model = registry["ParentResult"]
+    parsed = parent_model.model_validate(
+        {
+            "ok": True,
+            "status": "ready",
+            "score": 0.5,
+            "tags": ["a"],
+            "child": {"message": "hello"},
+            "note": None,
+        }
+    )
+
+    assert parsed.ok is True
+    assert parsed.status == "ready"
+    assert parent_model.model_json_schema()["additionalProperties"] is False
+
+
+def test_openai_factory_can_generate_output_types(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_fake_agents_module(monkeypatch)
+
+    result = build_openai_agents_from_contracts(
+        _factory_artifacts(include_tool=False, include_agent_dependency=False),
+        model_registry={"ParentAgent": "parent-model", "ChildAgent": "child-model"},
+        generate_output_types=True,
+    )
+
+    assert result.agents["ParentAgent"].kwargs["output_type"].__name__ == "ParentResult"
+
+
+def test_openai_output_type_registry_rejects_unsupported_schema(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_fake_agents_module(monkeypatch)
+    artifacts = _factory_artifacts()
+    artifacts["schemas"]["BadResult"] = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "BadResult",
+        "type": "object",
+        "properties": {"bad": {"type": "object", "properties": {}}},
+        "additionalProperties": False,
+    }
+
+    with pytest.raises(OpenAIAgentFactoryError, match="unsupported schema"):
+        build_openai_output_type_registry(artifacts)
+
+
+@pytest.mark.asyncio
+async def test_openai_run_with_contract_renders_context_resolves_approvals_and_assertions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _install_fake_agents_module(monkeypatch, interrupt_once=True)
+    agent = build_openai_agent({"agent": "ParentAgent", "model": "test"}, "instructions")
+    runtime_context = RuntimeContext(
+        values={
+            "VisibleContext": ContextValue(
+                "VisibleContext",
+                {"value": "public"},
+                "public context",
+                "test",
+            ),
+            "SensitiveContext": ContextValue(
+                "SensitiveContext",
+                {"value": "secret"},
+                "secret context",
+                "test",
+                sensitive=True,
+            ),
+        },
+        hidden={"HiddenState": {"value": "hidden"}},
+    )
+
+    result = await run_openai_agent_with_contract(
+        agent,
+        "hello",
+        contract=_factory_artifacts(parent_assertions=["expect(output.ok == true)"]),
+        agent_name="ParentAgent",
+        runtime_context=runtime_context,
+        approval_callback=lambda request: request.tool == "tools.lookup",
+    )
+
+    assert result.passed
+    assert result.approvals == [OpenAIApprovalRequest("tools.lookup", True, {"id": "123"})]
+    first_input = module.runner_inputs[0]
+    assert "public context" in first_input
+    assert "secret context" not in first_input
+    assert "hidden" not in first_input
+    assert result.trace.count("approval.requested", "tools.lookup") == 1
+    assert result.trace.count("approval.completed", "tools.lookup") == 1
+    assert result.trace.count("assertion.evaluated", "expect(output.ok == true)") == 1
+
+
+@pytest.mark.asyncio
+async def test_openai_run_with_contract_requires_approval_callback(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_fake_agents_module(monkeypatch, interrupt_once=True)
+    agent = build_openai_agent({"agent": "ParentAgent", "model": "test"}, "instructions")
+
+    with pytest.raises(OpenAIAgentFactoryError, match="approval_callback"):
+        await run_openai_agent_with_contract(
+            agent,
+            "hello",
+            contract=_factory_artifacts(parent_assertions=["expect(output.ok == true)"]),
+            agent_name="ParentAgent",
+        )
+
+
+def _install_fake_agents_module(monkeypatch: pytest.MonkeyPatch, interrupt_once: bool = False) -> ModuleType:
     module = ModuleType("agents")
+    module.runner_inputs = []  # type: ignore[attr-defined]
 
     class FakeAgent:
         def __init__(self, **kwargs: object) -> None:
             self.kwargs = kwargs
+            self.name = kwargs.get("name")
 
-    module.Agent = FakeAgent  # type: ignore[attr-defined]
+    class FakeFunctionTool:
+        def __init__(self, func: object, name: str, needs_approval: bool, description: str | None) -> None:
+            self.func = func
+            self.name = name
+            self.needs_approval = needs_approval
+            self.description = description
 
     class FakeWebSearchTool:
         def __init__(self, **kwargs: object) -> None:
             self.kwargs = kwargs
 
+    class FakeInterruption:
+        tool_name = "tools__lookup"
+        arguments = {"id": "123"}
+
+    class FakeState:
+        def __init__(self) -> None:
+            self.approved: list[object] = []
+            self.rejected: list[object] = []
+
+        def approve(self, interruption: object) -> None:
+            self.approved.append(interruption)
+
+        def reject(self, interruption: object, rejection_message: str) -> None:
+            self.rejected.append((interruption, rejection_message))
+
+    class FakeResult:
+        def __init__(self, interruptions: list[object] | None = None) -> None:
+            self.interruptions = interruptions or []
+            self.final_output = {"ok": True}
+            self.last_agent = SimpleNamespace(name="Fake")
+
+        def to_state(self) -> FakeState:
+            return FakeState()
+
+    class FakeRunner:
+        calls = 0
+
+        @staticmethod
+        async def run(agent: object, user_input: object, **_kwargs: object) -> object:
+            FakeRunner.calls += 1
+            module.runner_inputs.append(user_input)  # type: ignore[attr-defined]
+            if interrupt_once and FakeRunner.calls == 1:
+                return FakeResult([FakeInterruption()])
+            return FakeResult()
+
+    def function_tool(**kwargs: object) -> object:
+        def decorate(func: object) -> FakeFunctionTool:
+            return FakeFunctionTool(
+                func,
+                str(kwargs["name_override"]),
+                bool(kwargs.get("needs_approval", False)),
+                kwargs.get("description_override") if isinstance(kwargs.get("description_override"), str) else None,
+            )
+
+        return decorate
+
+    module.Agent = FakeAgent  # type: ignore[attr-defined]
+    module.Runner = FakeRunner  # type: ignore[attr-defined]
     module.WebSearchTool = FakeWebSearchTool  # type: ignore[attr-defined]
+    module.function_tool = function_tool  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "agents", module)
+    return module
 
 
 def _factory_artifacts(
@@ -310,8 +592,12 @@ def _factory_artifacts(
     include_agent_dependency: bool = True,
     tool_permission: str = "available",
     hosted_tool_permission: str = "available",
+    composition: list[str] | None = None,
+    parent_assertions: list[str] | None = None,
+    parent_inputs: list[dict[str, object]] | None = None,
+    parent_datasources: list[dict[str, object]] | None = None,
     guard_plan: list[dict[str, object]] | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     parent_tools = (
         [{"name": "tools.lookup", "module": "tools", "permission": tool_permission}] if include_tool else []
     )
@@ -332,27 +618,53 @@ def _factory_artifacts(
         [{"name": "ChildAgent", "module": "./child", "permission": "available"}] if include_agent_dependency else []
     )
     return {
-        "schemas": {},
+        "schemas": {
+            "ChildResult": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "ChildResult",
+                "type": "object",
+                "properties": {"message": {"type": "string"}},
+                "required": ["message"],
+                "additionalProperties": False,
+            },
+            "ParentResult": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "ParentResult",
+                "type": "object",
+                "properties": {
+                    "ok": {"type": "boolean"},
+                    "status": {"type": "string", "enum": ["ready", "blocked"]},
+                    "score": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+                    "tags": {"type": "array", "items": {"type": "string"}},
+                    "child": {"$ref": "#/$defs/ChildResult"},
+                    "note": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                },
+                "required": ["ok", "status", "score", "tags", "child"],
+                "additionalProperties": False,
+            },
+        },
         "manifests": {
             "ParentAgent": {
                 "agent": "ParentAgent",
+                "source_path": "agents/parent.contract",
                 "description": "",
                 "goal": "",
-                "inputs": [],
+                "inputs": parent_inputs or [],
                 "output": {"type": "ParentResult", "schema_ref": "schemas/ParentResult.json"},
                 "tools": parent_tools,
                 "hosted_tools": parent_hosted_tools,
                 "agents": parent_agents,
-                "datasources": [],
+                "datasources": parent_datasources or [],
                 "policy": [],
                 "success": [],
                 "routes": [],
-                "composition": [],
+                "composition": composition or [],
                 "guards": [],
-                "assertions": [],
+                "assertions": parent_assertions or [],
             },
             "ChildAgent": {
                 "agent": "ChildAgent",
+                "source_path": "agents/child.contract",
                 "description": "",
                 "goal": "",
                 "inputs": [],

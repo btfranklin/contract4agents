@@ -273,15 +273,16 @@ Typical flow:
 3. Read the generated instructions for each agent.
 4. Create SDK function tools from your real Python callables.
 5. Enable SDK hosted tools from declared `hosted_tools` when you intend to use them.
-6. Create SDK output models that match the generated JSON Schemas.
-7. Build OpenAI `Agent` objects from artifacts and explicit registries.
-8. Run the SDK agent through your normal runner.
-9. Capture traces and run assertions, evals, or monitor checks against those traces.
+6. Create or generate SDK output models that match the generated JSON Schemas.
+7. Inspect the typed OpenAI adapter plan.
+8. Build OpenAI `Agent` objects from that plan.
+9. Run the SDK agent through your normal runner or the contract-aware run helper.
+10. Capture traces and run assertions, evals, or monitor checks against those traces.
 
-The current OpenAI adapter is intentionally thin. It can build OpenAI `Agent`
-objects from Contract4Agents artifacts, but caller code still supplies SDK
-function tools, output types, handoffs or agents-as-tools, approvals, models,
-hosted-tool enablement, and runtime context.
+The OpenAI adapter is plan-first. It can build OpenAI `Agent` objects from
+Contract4Agents artifacts, but caller code still supplies real tools, handoffs
+or agents-as-tools, approvals, models, hosted-tool enablement, and application
+workflow control.
 
 The detailed adapter notes are in
 [OpenAI Adapter Reference](../reference/openai-adapter.md).
@@ -291,31 +292,35 @@ Sketch:
 ```python
 from pathlib import Path
 
-from agents import WebSearchTool, function_tool
+from agents import WebSearchTool
 
-from contract4agents.adapters.openai import build_openai_agents_from_contracts, openai_tool_name
+from contract4agents.adapters.openai import (
+    OpenAIToolRegistration,
+    build_openai_agents_from_plan,
+    plan_openai_agents_from_contracts,
+)
 from contract4agents.compiler import compile_project
 
 artifacts = compile_project(Path("agent_contracts"))
 
-@function_tool(name_override=openai_tool_name("crm.create_note"))
 def crm_create_note(account_id: str, note: str) -> str:
     return create_note_in_your_app(account_id, note)
 
-factory_result = build_openai_agents_from_contracts(
+plan = plan_openai_agents_from_contracts(
     artifacts,
     output_type_registry={"SupportReply": SupportReplyModel},
     model_registry={"SupportCoordinator": config.support_model},
-    tool_registry={"crm.create_note": crm_create_note},
+    tool_registry={"crm.create_note": OpenAIToolRegistration(crm_create_note, raw_callable=True)},
     hosted_tool_registry={"openai.web_search": WebSearchTool},
 )
 
+factory_result = build_openai_agents_from_plan(plan)
 agent = factory_result.agents["SupportCoordinator"]
 ```
 
 The manifest tells you which host tools and hosted provider tools are declared
 and what permission state they have. It does not magically create your real CRM
-function, approval UI, hosted-tool policy, or Pydantic model. Those remain
+function, approval UI, hosted-tool policy, or deployment workflow. Those remain
 application code.
 
 ## How To Think About Guards And Approvals
@@ -337,10 +342,17 @@ boundary:
 - record `approval.requested` and `approval.completed` trace events;
 - run monitors against recorded traces.
 
-`build_openai_agents_from_contracts(...)` consumes the guard plan when
-constructing OpenAI `Agent` objects. It omits denied tools, relies on your
-registered output type for output-conformance guards, and returns caveats for
-approval-required or unsupported guards that still need host code.
+`plan_openai_agents_from_contracts(...)` consumes the guard plan before
+construction. It omits denied tools, relies on registered or generated output
+types for output-conformance guards, wraps approval-required raw callables with
+SDK approval metadata, and returns caveats for unsupported or unverifiable
+semantics.
+
+For one already-chosen SDK agent, `run_openai_agent_with_contract(...)` can
+render non-sensitive `RuntimeContext` values into the prompt, resolve SDK
+approval interruptions through your callback, record approval trace events, and
+evaluate compiled assertions after the run. It still does not choose routes or
+own the larger workflow.
 
 Contract4Agents makes the intended behavior explicit and testable. The host app
 still performs the runtime action.

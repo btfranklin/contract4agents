@@ -8,42 +8,6 @@ Keep this file limited to unimplemented or materially incomplete work. When an i
 
 If an item no longer belongs in the product, remove it from `VISION.md` first and then delete it from this roadmap.
 
-## OpenAI Adapter Planning And Agent Factory Helpers
-
-Vision gap: the OpenAI adapter can build Agent SDK objects from compiler artifacts and explicit registries, including basic guard-plan metadata and hosted web-search declarations. It still lacks a richer typed adapter plan for context rendering, executable approval flows, handoff semantics, composition metadata, assertion metadata, and deeper provider caveats.
-
-Design boundary: factory helpers reduce wiring friction; they do not replace the host app runtime. Host code still supplies model choices, Python output classes, real tool callables, hosted-tool enablement, approval behavior, and orchestration.
-
-Implementation work:
-
-- Add an adapter planning layer that consumes compiler artifacts and returns a typed OpenAI adapter plan before constructing SDK objects.
-- Include manifest source paths, generated instruction paths, output schema refs, hosted-tool metadata, assertion metadata, composition metadata, and adapter caveats in the plan.
-- Extend the existing factory helper to consume the typed adapter plan rather than assembling SDK objects directly from manifests.
-- Add a supported generated output type strategy for callers that do not want to hand-supply every `output_type`.
-- Build OpenAI tool wrappers from a richer registered tool surface and manifest permission metadata.
-- Carry hosted-tool registry decisions and caveats through the typed adapter plan instead of assembling them only inside the factory helper.
-- Carry approval-required tools from guard-plan metadata into concrete SDK or host approval handling and record approval trace events.
-- Map composition metadata to OpenAI handoffs or agents-as-tools when the caller provides the corresponding child agent objects.
-- Render typed context into model input using `RuntimeContext.rendered_context()` or an adapter-specific equivalent, while preserving hidden state outside the model prompt.
-- Feed assertion metadata into the adapter run path so OpenAI runs can produce the same normalized trace and post-run assertion checks as fixture runs.
-- Return explicit caveats for unsupported semantics. The helper must not silently degrade a contract into instructions-only behavior.
-- Add offline unit and integration tests around planning, guard mapping, approval metadata, context rendering, hosted-tool plan metadata, and object construction with fake registries; keep live OpenAI tests behind existing opt-in environment flags.
-
-Validation:
-
-```bash
-pdm run test:unit
-pdm run test:integration
-CONTRACT4AGENTS_RUN_OPENAI_AGENT_LIVE=1 pdm run test:openai-agent-live
-```
-
-Definition of done:
-
-- A host can construct OpenAI Agents SDK objects from a typed adapter plan plus explicit registries.
-- Host code remains responsible for workflow control flow, approval UX, and real runtime dependencies.
-- Permissions, hosted tools, executable approvals, context rendering, traces, and post-run assertions follow the same semantics as local fixture runs where the SDK surface allows it.
-- Unsupported adapter semantics are explicit caveats, not hidden behavior.
-
 ## Pydantic Model Interop For Contract Types
 
 Vision gap: JSON Schema is the canonical interchange format for Contract4Agents types, but real Python agent applications often already define their output and artifact shapes as Pydantic models. Users should not need to manually duplicate every schema in `.contract` files when the host app already has stable Pydantic model classes.
