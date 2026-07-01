@@ -89,7 +89,7 @@ When an agent requires a context slot:
 1. Use the value passed directly to the invocation if present.
 2. Use the value already present in the parent frame if present.
 3. Find datasources allowed by the agent contract that produce the required type.
-4. For each candidate datasource, check whether its required context slots are already present or can be resolved.
+4. For each candidate datasource, recursively prove that its required context slots are already present or can be resolved by a deterministic datasource chain.
 5. If exactly one candidate is valid, execute it.
 6. If zero candidates are valid, fail with a missing context error.
 7. If multiple candidates are valid, fail with an ambiguous datasource error unless the contract chooses one.

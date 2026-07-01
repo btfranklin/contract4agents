@@ -80,6 +80,12 @@ class DatasourceSpec:
     cache: Literal["none", "run", "thread"] = "run"
 
 
+@dataclass(frozen=True)
+class _DatasourceProof:
+    satisfiable: bool
+    cycle: tuple[str, ...] | None = None
+
+
 def datasource(
     *,
     produces: str,
@@ -190,12 +196,23 @@ class RuntimeContext:
         candidates = _allowed_datasources(all_candidates, allowed_datasources)
         if all_candidates and not candidates:
             raise DatasourcePermissionDenied(type_name)
-        candidates = [
-            candidate
+        proofs = [
+            (
+                candidate,
+                self._requirements_are_resolvable(
+                    candidate,
+                    registry,
+                    allowed_datasources,
+                    resolving=(type_name,),
+                ),
+            )
             for candidate in candidates
-            if self._requirements_are_resolvable(candidate, registry, allowed_datasources)
         ]
+        candidates = [candidate for candidate, proof in proofs if proof.satisfiable]
         if not candidates:
+            for candidate, proof in proofs:
+                if proof.cycle:
+                    return candidate
             raise MissingContextSlot(type_name)
         if len(candidates) > 1:
             raise AmbiguousDatasource(type_name, [candidate.name for candidate in candidates])
@@ -206,11 +223,48 @@ class RuntimeContext:
         candidate: DatasourceSpec,
         registry: DatasourceRegistry,
         allowed_datasources: Collection[str] | None,
-    ) -> bool:
-        return all(
-            required in self.values or _allowed_datasources(registry.by_output(required), allowed_datasources)
-            for required in candidate.requires
-        )
+        resolving: tuple[str, ...],
+    ) -> _DatasourceProof:
+        cycle: tuple[str, ...] | None = None
+        for required in candidate.requires:
+            proof = self._type_is_resolvable(required, registry, allowed_datasources, resolving)
+            if proof.satisfiable:
+                continue
+            if proof.cycle and cycle is None:
+                cycle = proof.cycle
+            return _DatasourceProof(False, cycle)
+        return _DatasourceProof(True)
+
+    def _type_is_resolvable(
+        self,
+        type_name: str,
+        registry: DatasourceRegistry,
+        allowed_datasources: Collection[str] | None,
+        resolving: tuple[str, ...],
+    ) -> _DatasourceProof:
+        if type_name in self.values:
+            return _DatasourceProof(True)
+        if type_name in resolving:
+            return _DatasourceProof(False, (*resolving, type_name))
+
+        all_candidates = registry.by_output(type_name)
+        candidates = _allowed_datasources(all_candidates, allowed_datasources)
+        if not candidates:
+            return _DatasourceProof(False)
+
+        cycle: tuple[str, ...] | None = None
+        for candidate in candidates:
+            proof = self._requirements_are_resolvable(
+                candidate,
+                registry,
+                allowed_datasources,
+                resolving=(*resolving, type_name),
+            )
+            if proof.satisfiable:
+                return proof
+            if proof.cycle and cycle is None:
+                cycle = proof.cycle
+        return _DatasourceProof(False, cycle)
 
     async def _resolve_datasource(
         self,

@@ -68,6 +68,59 @@ async def test_runtime_detects_missing_and_ambiguous_datasources() -> None:
         await runtime.resolve_one("Thing", registry)
 
 
+@pytest.mark.asyncio
+async def test_runtime_ignores_nested_unsatisfiable_datasource_candidate() -> None:
+    registry = DatasourceRegistry()
+    runtime = RuntimeContext(
+        {
+            "Seed": ContextValue("Seed", "seed", "seed", "test"),
+        }
+    )
+
+    def resolve_dependency(ctx: DatasourceContext) -> ContextValue:
+        seed = ctx.get("Seed")
+        return ContextValue("Dependency", f"dependency:{seed.value}", "dependency", "DependencySource")
+
+    def resolve_target(ctx: DatasourceContext) -> ContextValue:
+        dependency = ctx.get("Dependency")
+        return ContextValue("Target", f"target:{dependency.value}", "target", "ValidTarget")
+
+    def resolve_invalid_dependency(_ctx: DatasourceContext) -> ContextValue:
+        return ContextValue("InvalidDependency", "invalid", "invalid", "InvalidDependencySource")
+
+    def resolve_invalid_target(_ctx: DatasourceContext) -> ContextValue:
+        return ContextValue("Target", "invalid", "invalid", "InvalidTarget")
+
+    registry.register(
+        "ValidTarget",
+        DatasourceSpec("ValidTarget", "Target", ["Dependency"], resolve_target),
+    )
+    registry.register(
+        "InvalidTarget",
+        DatasourceSpec("InvalidTarget", "Target", ["InvalidDependency"], resolve_invalid_target),
+    )
+    registry.register(
+        "DependencySource",
+        DatasourceSpec("DependencySource", "Dependency", ["Seed"], resolve_dependency),
+    )
+    registry.register(
+        "InvalidDependencySource",
+        DatasourceSpec(
+            "InvalidDependencySource",
+            "InvalidDependency",
+            ["MissingNestedSeed"],
+            resolve_invalid_dependency,
+        ),
+    )
+
+    value = await runtime.resolve_one("Target", registry)
+
+    assert value.value == "target:dependency:seed"
+    assert runtime.trace.count("datasource.resolved", "DependencySource") == 1
+    assert runtime.trace.count("datasource.resolved", "ValidTarget") == 1
+    assert runtime.trace.count("datasource.started", "InvalidTarget") == 0
+
+
 def test_datasource_decorator_registration() -> None:
     @datasource(produces="Decorated", requires=[], render=lambda value: str(value))
     def resolve(_ctx: DatasourceContext) -> int:
