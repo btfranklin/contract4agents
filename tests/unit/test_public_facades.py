@@ -4,7 +4,14 @@ import contract4agents
 from contract4agents import expressions, runtime
 from contract4agents.assertions import AssertionFailure, evaluate_agent_assertions, evaluate_run_contract
 from contract4agents.expressions import ExpressionError, ParsedExpression
-from contract4agents.runtime import ContextValue, RuntimeContext, TraceEvent, TraceRecorder
+from contract4agents.runtime import (
+    ContextValue,
+    RuntimeContext,
+    TraceDiagnostic,
+    TraceEvent,
+    TraceLoadResult,
+    TraceRecorder,
+)
 
 
 def test_expression_facade_exports_canonical_public_surface() -> None:
@@ -18,9 +25,13 @@ def test_expression_facade_exports_canonical_public_surface() -> None:
 def test_runtime_facade_exports_canonical_public_surface() -> None:
     assert runtime.ContextValue is ContextValue
     assert runtime.RuntimeContext is RuntimeContext
+    assert runtime.TraceDiagnostic is TraceDiagnostic
     assert runtime.TraceEvent is TraceEvent
+    assert runtime.TraceLoadResult is TraceLoadResult
     assert runtime.TraceRecorder is TraceRecorder
     assert callable(runtime.datasource)
+    assert callable(runtime.load_trace_jsonl)
+    assert callable(runtime.load_trace_jsonl_with_diagnostics)
     assert callable(runtime.load_python_ref)
 
 

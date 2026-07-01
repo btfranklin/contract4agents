@@ -92,11 +92,16 @@ async def test_fake_tool_registry_approval_paths() -> None:
 
 def test_trace_recorder_writes_jsonl(tmp_path: Path) -> None:
     path = tmp_path / "trace.jsonl"
-    trace = TraceRecorder(path)
-    trace.record("run.started", run_id="r1")
+    trace = TraceRecorder(path, run_id="run-r1")
+    trace.record("agent.started", event_id="evt-r1", timestamp=1.0, agent="IncidentCommander")
 
-    line = path.read_text().strip()
-    assert json.loads(line)["data"]["run_id"] == "r1"
+    payload = json.loads(path.read_text())
+    assert payload["schema_version"] == "1"
+    assert payload["run_id"] == "run-r1"
+    assert payload["event_id"] == "evt-r1"
+    assert payload["event_type"] == "agent.started"
+    assert payload["agent"] == "IncidentCommander"
+    assert payload["data"] == {}
 
 
 @pytest.mark.asyncio

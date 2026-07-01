@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 from contract4agents.assertions import evaluate_agent_assertions, evaluate_run_contract
 from contract4agents.compiler import AgentManifest, CompilerArtifacts
-from contract4agents.runtime import TraceRecorder
+from contract4agents.runtime import TraceRecorder, load_trace_jsonl
 
 
 def test_evaluate_agent_assertions_passes_output_trace_and_hidden_truth() -> None:
@@ -109,6 +111,34 @@ def test_evaluate_run_contract_defaults_to_outputs_present() -> None:
     result = evaluate_run_contract(
         contract=contract,
         trace=TraceRecorder(),
+        outputs={"ExampleAgent": {"ok": True, "summary": "ok"}},
+    )
+
+    assert result.passed
+
+
+def test_evaluate_run_contract_accepts_loaded_canonical_trace(tmp_path: Path) -> None:
+    path = tmp_path / "trace.jsonl"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": "1",
+                "run_id": "run-assertions",
+                "event_id": "evt-1",
+                "event_type": "tool.completed",
+                "timestamp": 1.0,
+                "tool": "tools.lookup",
+                "data": {},
+                "provider": {},
+            }
+        )
+        + "\n"
+    )
+    contract = _artifacts(_manifest(["expect(trace.tool_called(tools.lookup))"]))
+
+    result = evaluate_run_contract(
+        contract=contract,
+        trace=load_trace_jsonl(path),
         outputs={"ExampleAgent": {"ok": True, "summary": "ok"}},
     )
 

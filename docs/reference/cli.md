@@ -58,14 +58,19 @@ Failed eval runs keep generated artifacts and traces in `ROOT/.contract/runs/las
 
 ## `monitor [ROOT] --trace TRACE_JSONL`
 
-Runs project monitors against a recorded trace JSONL file.
+Runs project monitors against a recorded trace JSONL file using the canonical
+versioned trace envelope from [Trace Schema Reference](trace-schema.md).
 
 - Default root: `.`
 - Required options: `--trace TRACE_JSONL`
 - Writes: nothing
 - Success message: `Contract4Agents monitor passed`
-- Failure shape: monitor violations printed as `SEVERITY rule: message`, followed by `Contract4Agents monitor failed`; invalid trace files fail with a Click error
+- Failure shape: monitor violations printed as `SEVERITY rule: message`, followed by `Contract4Agents monitor failed`; invalid trace files fail with a Click error that includes line-numbered trace diagnostics
 - Side effects: none
+
+`monitor --trace` accepts only canonical JSONL with `schema_version`,
+`event_id`, `event_type`, and `timestamp`. Legacy recorder JSONL with top-level
+`type` is rejected.
 
 ## `docs-check [ROOT]`
 

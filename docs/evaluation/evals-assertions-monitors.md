@@ -142,27 +142,28 @@ monitor refund_without_evidence for BillingAgent:
 
 ## Trace Event Schema
 
-V1 emits normalized events such as:
+V1 trace files use the canonical JSONL envelope documented in
+[Trace Schema Reference](../reference/trace-schema.md). Each event line has
+`schema_version`, `event_id`, `event_type`, `timestamp`, optional index fields
+such as `agent` and `tool`, event-specific `data`, and provider metadata.
 
-- `datasource.started`
-- `datasource.resolved`
-- `datasource.failed`
-- `tool.started`
-- `tool.requested`
-- `tool.allowed`
-- `tool.denied`
-- `tool.completed`
-- `tool.failed`
-- `llm.started`
-- `llm.completed`
-- `agent.started`
-- `agent.handoff`
-- `agent.completed`
-- `approval.requested`
-- `approval.completed`
+Known V1 event names are:
+
+- `agent.started`, `agent.completed`, `agent.handoff`
+- `tool.requested`, `tool.started`, `tool.allowed`, `tool.denied`, `tool.completed`, `tool.failed`
+- `host_tool.requested`, `host_tool.started`, `host_tool.completed`, `host_tool.failed`
+- `hosted_tool.requested`, `hosted_tool.started`, `hosted_tool.completed`, `hosted_tool.failed`
+- `datasource.started`, `datasource.resolved`, `datasource.failed`
+- `approval.requested`, `approval.completed`
+- `stage.completed`
+- `output.accepted`, `output.rejected`, `output.schema_failed`
+- `assertion.evaluated`
 - `guardrail.rejected`
+- `llm.started`, `llm.completed`
 
-Provider-specific trace data can be attached as metadata, but the normalized event names should be stable.
+Unknown event names are diagnostic warnings, not fatal load errors. Malformed
+envelopes, unsupported schema versions, bad timestamps, non-object `data` or
+`provider`, and legacy top-level `type` fields are fatal.
 
 ## Eval Runner Behavior
 

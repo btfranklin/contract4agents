@@ -333,6 +333,30 @@ integration should then enforce it at the right boundary:
 Contract4Agents makes the intended behavior explicit and testable. The host app
 still performs the runtime action.
 
+## How To Capture Trace JSONL
+
+Use `TraceRecorder` when you want Contract4Agents to write canonical trace JSONL
+for a real or staged run:
+
+```python
+from pathlib import Path
+
+from contract4agents.runtime import TraceRecorder
+
+trace = TraceRecorder(Path("runs/support-001.trace.jsonl"), run_id="run-support-001")
+trace.record("agent.started", event_id="evt-001", agent="SupportCoordinator")
+trace.record("approval.requested", event_id="evt-002", tool="crm.create_note")
+trace.record("approval.completed", event_id="evt-003", tool="crm.create_note", approved=True)
+trace.record("tool.completed", event_id="evt-004", tool="crm.create_note", data={"note_id": "note-123"})
+trace.record("agent.completed", event_id="evt-005", agent="SupportCoordinator")
+```
+
+Each JSONL line uses `schema_version`, `event_id`, `event_type`, `timestamp`,
+optional index fields such as `agent` and `tool`, event-specific `data`, and
+provider metadata. If your host app writes trace files directly, follow
+[Trace Schema Reference](../reference/trace-schema.md). The `contract4agents monitor --trace`
+command rejects legacy top-level `type` JSONL.
+
 ## How To Use Evals And Monitors
 
 Use `.eval` files for scenario tests. They say what output and trace behavior a

@@ -142,12 +142,19 @@ Datasource resolution should emit trace events such as:
 
 ```json
 {
-  "type": "datasource.resolved",
+  "schema_version": "1",
+  "run_id": "run-123",
+  "event_id": "evt-004",
+  "event_type": "datasource.resolved",
+  "timestamp": 42.0,
   "datasource": "AccountRejectionStatus",
-  "produces": "AccountRejectionStatus",
-  "requires": ["CustomerProfile"],
-  "duration_ms": 42,
-  "cache": "miss"
+  "data": {
+    "produces": "AccountRejectionStatus",
+    "requires": ["CustomerProfile"],
+    "duration_ms": 42,
+    "cache": "miss"
+  },
+  "provider": {}
 }
 ```
 

@@ -8,45 +8,6 @@ Keep this file limited to unimplemented or materially incomplete work. When an i
 
 If an item no longer belongs in the product, remove it from `VISION.md` first and then delete it from this roadmap.
 
-## Normalized Trace JSONL Loading And Diagnostics
-
-Vision gap: local JSONL traces are an accepted storage starting point, and normalized trace events are documented, but host applications do not yet have a stable enough trace file contract to emit real workflow traces for eval, monitor, and assertion evaluation.
-
-Design boundary: the trace format records observable behavior. It should be rich enough to verify host workflows, but it should not become a workflow definition or replay language.
-
-Implementation work:
-
-- Define a versioned JSONL event envelope for host-emitted traces, including `schema_version`, `run_id`, `event_id`, `event_type`, timestamp, agent name when applicable, stage name when applicable, tool name when applicable, datasource type when applicable, and provider metadata.
-- Document event categories for:
-  - agent started and completed;
-  - hosted provider tool requested, started, completed, and failed;
-  - host Python tool requested, allowed, denied, started, completed, and failed;
-  - datasource started, resolved, and failed;
-  - approval requested, granted, denied, and completed;
-  - stage checkpoint completed;
-  - output accepted, rejected, and schema-validation failed;
-  - guardrail rejected;
-  - assertion evaluated.
-- Keep existing V1 event names stable where possible, and add missing event names only when existing names cannot represent the host-workflow use case.
-- Add a trace JSONL loader that validates each line, preserves original line numbers, and returns typed normalized events plus structured diagnostics.
-- Allow eval, monitor, and assertion execution to consume loaded trace files as well as in-memory trace event objects.
-- Ensure trace diagnostics identify the exact event, missing event, or ordering relationship that caused a failure.
-- Add fixture traces that cover ordered agent calls, repeated section-agent calls, hosted web-search calls, host-tool calls, approval decisions, output rejection, and assertion evaluation.
-- Update `docs/reference/trace-schema.md` with envelope fields, event type definitions, required fields by event category, and extension rules for provider metadata.
-
-Validation:
-
-```bash
-pdm run test:unit
-pdm run contract4agents monitor tests/fixtures/contract_projects/ops-desk-lab --trace tests/fixtures/traces/ops-desk-lab.jsonl
-```
-
-Definition of done:
-
-- Host applications can emit a documented `<base>.trace.jsonl` file and load it with Contract4Agents tooling.
-- Eval, monitor, and assertion paths can run against loaded trace JSONL.
-- Trace-related failures point to the relevant event or missing event instead of producing generic assertion failures.
-
 ## Guard Mapping For Adapters And Hosts
 
 Vision gap: guards describe safety intent and enforcement metadata for adapters and host runtimes. Today guards are preserved as contract text and statically checked, but the OpenAI adapter does not translate them into concrete guardrail objects, approval hooks, output validation, or host enforcement metadata.

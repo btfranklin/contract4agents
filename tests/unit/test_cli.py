@@ -31,15 +31,26 @@ def test_cli_compile_docs_eval_monitor(tmp_path: Path) -> None:
     runner = CliRunner()
     fixture = ROOT / "examples" / "incident-command"
     trace_path = tmp_path / "trace.jsonl"
-    trace_path.write_text(json.dumps({"type": "run.started", "timestamp": 1.0, "data": {"run_id": "ok"}}) + "\n")
+    trace_path.write_text(
+        json.dumps(
+            _trace_event(
+                event_id="evt-1",
+                event_type="agent.completed",
+                timestamp=1.0,
+                agent="IncidentCommander",
+            )
+        )
+        + "\n"
+    )
     violation_trace_path = tmp_path / "violation.jsonl"
     violation_trace_path.write_text(
         json.dumps(
-            {
-                "type": "tool.completed",
-                "timestamp": 1.0,
-                "data": {"tool": "status_page.draft_update"},
-            }
+            _trace_event(
+                event_id="evt-2",
+                event_type="tool.completed",
+                timestamp=1.0,
+                tool="status_page.draft_update",
+            )
         )
         + "\n"
     )
@@ -62,6 +73,7 @@ def test_cli_monitor_reports_invalid_trace_json(tmp_path: Path) -> None:
 
     assert result.exit_code != 0
     assert "Invalid trace JSON" in result.output
+    assert "bad.jsonl:1" in result.output
 
 
 def test_cli_eval_runs_fixture_json_project(contract_project_path: Path) -> None:
@@ -71,3 +83,27 @@ def test_cli_eval_runs_fixture_json_project(contract_project_path: Path) -> None
 
     assert result.exit_code == 0
     assert "Fixture eval passed: 12 starts" in result.output
+
+
+def _trace_event(
+    *,
+    event_id: str,
+    event_type: str,
+    timestamp: float,
+    agent: str | None = None,
+    tool: str | None = None,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "schema_version": "1",
+        "run_id": "run-cli",
+        "event_id": event_id,
+        "event_type": event_type,
+        "timestamp": timestamp,
+        "data": {},
+        "provider": {},
+    }
+    if agent is not None:
+        payload["agent"] = agent
+    if tool is not None:
+        payload["tool"] = tool
+    return payload
