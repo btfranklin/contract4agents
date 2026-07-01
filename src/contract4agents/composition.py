@@ -6,9 +6,9 @@ import re
 from dataclasses import dataclass
 from typing import Literal, cast
 
-CompositionMode = Literal["agent_as_tool", "as_tool", "handoff", "isolated_subagent"]
+CompositionMode = Literal["agent_as_tool", "handoff", "isolated_subagent"]
 
-_COMPOSITION_RE = re.compile(r"\s*(agent_as_tool|as_tool|handoff|isolated_subagent)\(([A-Za-z_][A-Za-z0-9_]*)\)\s*")
+_COMPOSITION_RE = re.compile(r"\s*(agent_as_tool|handoff|isolated_subagent)\(([A-Za-z_][A-Za-z0-9_]*)\)\s*")
 
 
 @dataclass(frozen=True)

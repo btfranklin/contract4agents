@@ -406,17 +406,20 @@ Use compiled assertions for invariants that should hold after every run of an
 agent, including runs from your real SDK integration:
 
 ```python
-from contract4agents.assertions import evaluate_run_contract
+from contract4agents.assertions import evaluate_run_assertions
 
-assertion_result = evaluate_run_contract(
+assertion_result = evaluate_run_assertions(
     contract=artifacts,
     trace=trace,
     outputs={"SupportCoordinator": output},
+    run_id="run-support-001",
 )
 ```
 
 Assertion failures are reported separately from `.eval` failures and monitor
 violations. A conditional assertion whose trace condition is false is skipped.
+When a trace file contains more than one run, pass the intended `run_id` to
+assertion, eval, and monitor evaluation.
 
 For public examples in this repo, deterministic harnesses run fake tools and use
 the eval runner directly. In a production app, you can use the same idea against

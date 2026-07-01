@@ -47,6 +47,9 @@ Payload fields:
 `TraceRecorder` writes `data` and `provider` as objects on every event. The
 loader rejects non-object `data` or `provider` values. Legacy JSONL with a
 top-level `type` field is invalid; use `event_type`.
+When `TraceRecorder(path=...)` writes to a file, the first write truncates the
+file by default. Use `TraceRecorder(path, append=True)` only when the host
+intentionally appends to an existing trace file.
 
 ## Known V1 Events
 

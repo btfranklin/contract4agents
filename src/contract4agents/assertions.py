@@ -10,7 +10,7 @@ from contract4agents.compiler import AgentManifest, CompilerArtifacts
 from contract4agents.expressions._eval import evaluate_hidden_truth, evaluate_output, evaluate_trace
 from contract4agents.expressions._grammar import parse_contract_expression
 from contract4agents.expressions._model import ExpressionError, ParsedExpression
-from contract4agents.runtime import TraceRecorder
+from contract4agents.runtime import TraceRecorder, scope_trace
 
 AssertionStatus = Literal["passed", "failed", "skipped"]
 
@@ -51,6 +51,7 @@ def evaluate_agent_assertions(
     trace: TraceRecorder,
     schemas: Mapping[str, dict[str, Any]],
     hidden_truth: Mapping[str, Any] | None = None,
+    run_id: str | None = None,
 ) -> AgentAssertionResult:
     """Evaluate one agent manifest's compiled assertions against output and trace data."""
     agent = str(manifest["agent"])
@@ -63,14 +64,15 @@ def evaluate_agent_assertions(
         )
         return AgentAssertionResult(agent, False, [AssertionCheck("__output__", "failed", failure)])
 
+    scoped_trace = scope_trace(trace, run_id=run_id, agent=agent)
     checks = [
-        _evaluate_assertion(agent, assertion, output, trace, schemas, hidden_truth or {})
+        _evaluate_assertion(agent, assertion, output, scoped_trace, schemas, hidden_truth or {})
         for assertion in manifest.get("assertions", [])
     ]
     return AgentAssertionResult(agent, all(check.status != "failed" for check in checks), checks)
 
 
-def evaluate_run_contract(
+def evaluate_run_assertions(
     *,
     contract: CompilerArtifacts,
     trace: TraceRecorder,
@@ -78,6 +80,7 @@ def evaluate_run_contract(
     target_agents: Sequence[str] | None = None,
     context: Mapping[str, Any] | None = None,
     hidden_truth: Mapping[str, Any] | None = None,
+    run_id: str | None = None,
 ) -> RunEvaluationResult:
     """Evaluate compiled agent assertions for host-provided outputs and trace events.
 
@@ -88,6 +91,7 @@ def evaluate_run_contract(
     _ = context
     manifests = contract["manifests"]
     selected_agents = list(target_agents) if target_agents is not None else list(outputs)
+    scoped_trace = scope_trace(trace, run_id=run_id)
     agent_results: list[AgentAssertionResult] = []
     failures: list[AssertionFailure] = []
 
@@ -118,7 +122,7 @@ def evaluate_run_contract(
         result = evaluate_agent_assertions(
             manifest=manifest,
             output=outputs[agent],
-            trace=trace,
+            trace=scoped_trace,
             schemas=contract["schemas"],
             hidden_truth=hidden_truth,
         )
@@ -195,5 +199,5 @@ __all__ = [
     "AssertionStatus",
     "RunEvaluationResult",
     "evaluate_agent_assertions",
-    "evaluate_run_contract",
+    "evaluate_run_assertions",
 ]

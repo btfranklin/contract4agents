@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -218,6 +219,57 @@ def test_fixture_runner_reports_active_start_failure(tmp_path: Path, monkeypatch
     assert report["starts"][0]["start_id"] == "billing_invoice_explain"
     assert "boom billing_invoice_explain" in report["starts"][0]["failures"][0]
     assert (run_root / "traces").exists()
+
+
+@pytest.mark.asyncio
+async def test_fixture_retry_uses_attempt_local_db_and_trace(tmp_path: Path) -> None:
+    base_db = tmp_path / "base.sqlite"
+    with sqlite3.connect(base_db) as db:
+        db.execute("create table markers (value text)")
+    seen: list[tuple[Path, Path]] = []
+
+    async def flaky_runner(
+        _start: Any,
+        db_path: Path,
+        _artifacts: dict[str, Any],
+        trace_path: Path,
+    ) -> tuple[dict[str, Any], TraceRecorder]:
+        seen.append((db_path, trace_path))
+        trace = TraceRecorder(trace_path, run_id=f"run-attempt-{len(seen)}")
+        trace.record("tool.completed", event_id=f"evt-{len(seen)}", timestamp=float(len(seen)), tool="fixture.tool")
+        with sqlite3.connect(db_path) as db:
+            marker_count = db.execute("select count(*) from markers").fetchone()[0]
+            if len(seen) == 1:
+                db.execute("insert into markers values ('failed-attempt')")
+                db.commit()
+                raise RuntimeError("transient fixture failure")
+        return {"marker_count": marker_count}, trace
+
+    output, trace, attempts, retry_errors, attempt_db_path = await _execution.run_start_with_retry(
+        flaky_runner,
+        SimpleNamespace(start_id="case"),
+        base_db,
+        {},
+        tmp_path / "traces" / "case.jsonl",
+        "openai",
+    )
+
+    assert output == {"marker_count": 0}
+    assert attempts == 2
+    assert retry_errors == ["RuntimeError: transient fixture failure"]
+    assert attempt_db_path == seen[1][0]
+    assert seen[0][0] != seen[1][0]
+    assert seen[0][1] != seen[1][1]
+    assert trace.run_id == "run-attempt-2"
+    assert "failed-attempt" in _db_markers(seen[0][0])
+    assert _db_markers(seen[1][0]) == []
+    assert "evt-1" in seen[0][1].read_text()
+    assert "evt-2" in seen[1][1].read_text()
+
+
+def _db_markers(path: Path) -> list[str]:
+    with sqlite3.connect(path) as db:
+        return [row[0] for row in db.execute("select value from markers").fetchall()]
 
 
 def test_fixture_runner_reports_assertion_failures_separately(tmp_path: Path) -> None:

@@ -62,6 +62,40 @@ def test_cli_compile_docs_eval_monitor(tmp_path: Path) -> None:
     assert violation.exit_code != 0
     assert "status_update_requires_approval" in violation.output
 
+    multi_run_trace_path = tmp_path / "multi-run.jsonl"
+    multi_run_trace_path.write_text(
+        json.dumps(
+            _trace_event(
+                run_id="run-tool",
+                event_id="evt-3",
+                event_type="tool.completed",
+                timestamp=1.0,
+                tool="status_page.draft_update",
+            )
+        )
+        + "\n"
+        + json.dumps(
+            _trace_event(
+                run_id="run-approval",
+                event_id="evt-4",
+                event_type="approval.completed",
+                timestamp=2.0,
+                tool="status_page.draft_update",
+                approved=True,
+            )
+        )
+        + "\n"
+    )
+    multi_run_missing_scope = runner.invoke(main, ["monitor", str(fixture), "--trace", str(multi_run_trace_path)])
+    assert multi_run_missing_scope.exit_code != 0
+    assert "multiple run_id" in multi_run_missing_scope.output
+
+    scoped_pass = runner.invoke(
+        main,
+        ["monitor", str(fixture), "--trace", str(multi_run_trace_path), "--run-id", "run-approval"],
+    )
+    assert scoped_pass.exit_code == 0
+
 
 def test_cli_pydantic_import_gate(tmp_path: Path) -> None:
     runner = CliRunner()
@@ -106,6 +140,27 @@ def test_cli_monitor_reports_invalid_trace_json(tmp_path: Path) -> None:
     assert "bad.jsonl:1" in result.output
 
 
+def test_cli_monitor_reports_invalid_contract_setup(tmp_path: Path) -> None:
+    runner = CliRunner()
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "bad.contract").write_text(
+        """
+agent BadAgent() -> MissingResult:
+    goal = "bad"
+""".strip()
+    )
+    trace_path = tmp_path / "trace.jsonl"
+    trace_path.write_text(
+        json.dumps(_trace_event(event_id="evt-1", event_type="agent.completed", timestamp=1.0)) + "\n"
+    )
+
+    result = runner.invoke(main, ["monitor", str(project), "--trace", str(trace_path)])
+
+    assert result.exit_code != 0
+    assert "MissingResult" in result.output
+
+
 def test_cli_eval_runs_fixture_json_project(contract_project_path: Path) -> None:
     runner = CliRunner()
 
@@ -117,19 +172,24 @@ def test_cli_eval_runs_fixture_json_project(contract_project_path: Path) -> None
 
 def _trace_event(
     *,
+    run_id: str = "run-cli",
     event_id: str,
     event_type: str,
     timestamp: float,
     agent: str | None = None,
     tool: str | None = None,
+    approved: bool | None = None,
 ) -> dict[str, object]:
+    data: dict[str, object] = {}
+    if approved is not None:
+        data["approved"] = approved
     payload: dict[str, object] = {
         "schema_version": "1",
-        "run_id": "run-cli",
+        "run_id": run_id,
         "event_id": event_id,
         "event_type": event_type,
         "timestamp": timestamp,
-        "data": {},
+        "data": data,
         "provider": {},
     }
     if agent is not None:

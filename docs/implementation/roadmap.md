@@ -108,7 +108,7 @@ Implementation work:
 
 - Reuse the existing expression parser and evaluator for run-level assertions.
 - Compile run contracts into a machine-readable artifact that references agent manifests, output schemas, trace assertions, and stage-output expectations.
-- Allow `evaluate_run_contract(...)` to evaluate this artifact against normalized trace events and stage outputs emitted by a host application.
+- Reserve `evaluate_run_contract(...)` for evaluating this first-class artifact against normalized trace events and stage outputs emitted by a host application. The current host-callable assertion API remains `evaluate_run_assertions(...)`.
 - Add static checks for unknown agents, unknown output types, duplicate stage names, trace assertions that reference undeclared agents or tools, and unsupported workflow semantics.
 - Make ordering and cardinality checks operate on normalized trace events rather than on source declaration order alone.
 - Add parser, compiler, artifact, and runtime evaluation tests for simple linear workflows, repeated per-section agents, optional follow-up passes, forbidden tool use, and missing stage outputs.

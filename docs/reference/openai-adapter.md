@@ -100,16 +100,15 @@ configuration errors.
 Composition declarations are mapped when the host supplies the corresponding
 objects:
 
-- `agent_as_tool(...)` and `as_tool(...)` use `agent_tool_registry`.
+- `agent_as_tool(...)` uses `agent_tool_registry`.
 - `handoff(...)` uses `handoff_registry`.
 - `isolated_subagent(...)` is reported as unsupported.
 
+Agent dependencies without an explicit composition declaration remain unwired
+even if matching registry objects are present.
+
 Semantic analysis rejects malformed composition declarations and declarations
 that target unknown agents before adapter planning runs.
-
-Without an explicit composition declaration, the planner prefers an agent-tool
-registration, then a handoff registration. If both are supplied, it uses the
-agent tool and emits a `composition_mode_ambiguous` caveat.
 
 ## Running With Contract Checks
 
@@ -117,7 +116,7 @@ agent tool and emits a `composition_mode_ambiguous` caveat.
 `RuntimeContext.rendered_context()` to the user input, keeps hidden and
 sensitive context out of the prompt, resolves SDK approval interruptions through
 a host callback, records `approval.requested` and `approval.completed`, evaluates
-compiled assertions with `evaluate_run_contract(...)`, records
+compiled assertions with `evaluate_run_assertions(...)`, records
 `assertion.evaluated`, and returns `OpenAIContractRunResult`.
 
 This helper does not run routes, replay workflows, choose specialists, or own

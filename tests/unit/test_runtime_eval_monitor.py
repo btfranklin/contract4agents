@@ -25,8 +25,10 @@ from contract4agents.runtime import (
     FakeToolRegistry,
     MissingContextSlot,
     RuntimeContext,
+    ToolExecutionFailed,
     ToolPermissionDenied,
     TraceRecorder,
+    TraceScopeError,
     datasource,
 )
 from examples.incident_command_imports.harness import (
@@ -121,6 +123,57 @@ async def test_runtime_ignores_nested_unsatisfiable_datasource_candidate() -> No
     assert runtime.trace.count("datasource.started", "InvalidTarget") == 0
 
 
+@pytest.mark.asyncio
+async def test_runtime_reuses_run_datasource_cache_within_context() -> None:
+    calls = 0
+    seen_cache: list[dict[str, ContextValue]] = []
+    runtime = RuntimeContext()
+
+    def resolve(ctx: DatasourceContext) -> ContextValue:
+        nonlocal calls
+        calls += 1
+        seen_cache.append(ctx.cache)
+        return ctx.value(type_name="Thing", value=f"value-{calls}", rendered="thing", source="ThingSource")
+
+    registry = DatasourceRegistry()
+    registry.register("ThingSource", DatasourceSpec("ThingSource", "Thing", [], resolve, cache="run"))
+
+    first = await runtime.resolve_one("Thing", registry)
+    runtime.values.pop("Thing")
+    second = await runtime.resolve_one("Thing", registry)
+
+    assert calls == 1
+    assert first is second
+    assert seen_cache[0] is runtime.datasource_cache
+    assert runtime.trace.count("datasource.resolved", "ThingSource") == 2
+
+
+@pytest.mark.asyncio
+async def test_runtime_thread_cache_requires_shared_host_mapping() -> None:
+    calls = 0
+    thread_cache: dict[str, ContextValue] = {}
+    seen_cache: list[dict[str, ContextValue]] = []
+
+    def resolve(ctx: DatasourceContext) -> ContextValue:
+        nonlocal calls
+        calls += 1
+        seen_cache.append(ctx.cache)
+        return ctx.value(type_name="Thing", value=f"value-{calls}", rendered="thing", source="ThingSource")
+
+    registry = DatasourceRegistry()
+    registry.register("ThingSource", DatasourceSpec("ThingSource", "Thing", [], resolve, cache="thread"))
+
+    first_runtime = RuntimeContext(thread_cache=thread_cache)
+    second_runtime = RuntimeContext(thread_cache=thread_cache)
+    first = await first_runtime.resolve_one("Thing", registry)
+    second = await second_runtime.resolve_one("Thing", registry)
+
+    assert calls == 1
+    assert first is second
+    assert seen_cache[0] is thread_cache
+    assert second_runtime.trace.events[-1].data["cache"] == "hit"
+
+
 def test_datasource_decorator_registration() -> None:
     @datasource(produces="Decorated", requires=[], render=lambda value: str(value))
     def resolve(_ctx: DatasourceContext) -> int:
@@ -145,6 +198,20 @@ async def test_fake_tool_registry_approval_paths() -> None:
     assert trace.count("tool.denied") == 1
 
 
+@pytest.mark.asyncio
+async def test_fake_tool_registry_records_serialization_failure_for_success_result() -> None:
+    trace = TraceRecorder()
+    registry = FakeToolRegistry()
+    registry.register("bad_result", lambda: {"not_json": object()})
+
+    with pytest.raises(ToolExecutionFailed, match="not JSON serializable"):
+        await registry.call("bad_result", trace)
+
+    assert trace.count("tool.completed") == 0
+    assert trace.count("tool.failed") == 1
+    assert "not JSON serializable" in trace.events[-1].data["reason"]
+
+
 def test_trace_recorder_writes_jsonl(tmp_path: Path) -> None:
     path = tmp_path / "trace.jsonl"
     trace = TraceRecorder(path, run_id="run-r1")
@@ -157,6 +224,24 @@ def test_trace_recorder_writes_jsonl(tmp_path: Path) -> None:
     assert payload["event_type"] == "agent.started"
     assert payload["agent"] == "IncidentCommander"
     assert payload["data"] == {}
+
+
+def test_trace_recorder_truncates_by_default_and_can_append(tmp_path: Path) -> None:
+    path = tmp_path / "trace.jsonl"
+    path.write_text("stale\n")
+
+    TraceRecorder(path, run_id="run-new").record("agent.started", event_id="evt-new", timestamp=1.0, agent="A")
+    lines = path.read_text().splitlines()
+
+    assert len(lines) == 1
+    assert "stale" not in lines[0]
+    TraceRecorder(path, run_id="run-append", append=True).record(
+        "agent.started",
+        event_id="evt-append",
+        timestamp=2.0,
+        agent="B",
+    )
+    assert len(path.read_text().splitlines()) == 2
 
 
 @pytest.mark.asyncio
@@ -284,6 +369,35 @@ async def test_eval_runner_reports_failures() -> None:
 
 
 @pytest.mark.asyncio
+async def test_eval_runner_requires_run_id_for_multi_run_trace() -> None:
+    trace = TraceRecorder()
+    trace.record("tool.completed", run_id="run-a", tool="logs.search")
+    trace.record("tool.completed", run_id="run-b", tool="logs.other")
+    runner = EvalRunner({"Result": {"type": "object", "properties": {}}})
+
+    with pytest.raises(TraceScopeError):
+        await runner.evaluate(
+            name="case",
+            output={},
+            output_type="Result",
+            trace=trace,
+            expectations=["trace.tool_called(logs.search)"],
+        )
+
+    scoped = await runner.evaluate(
+        name="case",
+        output={},
+        output_type="Result",
+        trace=trace,
+        expectations=["trace.tool_called(logs.search)"],
+        run_id="run-b",
+    )
+
+    assert not scoped.passed
+    assert scoped.failures[0].kind == "trace"
+
+
+@pytest.mark.asyncio
 async def test_eval_runner_supports_documented_trace_spies() -> None:
     trace = TraceRecorder()
     trace.record("agent.completed", agent="A")
@@ -382,6 +496,52 @@ def test_monitor_violation() -> None:
     )
 
     assert violations[0].severity == "high"
+    assert violations[0].agent == "IncidentCommander"
+    assert violations[0].condition == "trace.tool_called(status_page.draft_update)"
+    assert violations[0].expectation == 'trace.approval_granted("status_page.draft_update")'
+
+
+def test_monitor_requires_run_id_for_multi_run_trace() -> None:
+    trace = TraceRecorder()
+    trace.record("tool.completed", run_id="run-a", tool="status_page.draft_update")
+    trace.record("approval.completed", run_id="run-b", tool="status_page.draft_update", approved=True)
+
+    with pytest.raises(TraceScopeError):
+        run_monitors(
+            [
+                MonitorRule(
+                    "approval_required",
+                    "IncidentCommander",
+                    "high",
+                    "trace.tool_called(status_page.draft_update)",
+                    "trace.approval_granted(status_page.draft_update)",
+                )
+            ],
+            trace,
+        )
+
+
+def test_monitor_run_id_prevents_cross_run_false_pass() -> None:
+    trace = TraceRecorder()
+    trace.record("tool.completed", run_id="run-a", tool="status_page.draft_update")
+    trace.record("approval.completed", run_id="run-b", tool="status_page.draft_update", approved=True)
+
+    violations = run_monitors(
+        [
+            MonitorRule(
+                "approval_required",
+                "IncidentCommander",
+                "high",
+                "trace.tool_called(status_page.draft_update)",
+                "trace.approval_granted(status_page.draft_update)",
+            )
+        ],
+        trace,
+        run_id="run-a",
+    )
+
+    assert len(violations) == 1
+    assert violations[0].run_id == "run-a"
 
 
 def test_monitor_approval_check_is_scoped_to_rule_agent() -> None:

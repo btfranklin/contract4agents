@@ -6,14 +6,17 @@ manifests first, and this module projects those manifests onto OpenAI's SDK.
 
 from __future__ import annotations
 
-import inspect
-import os
-from collections.abc import Awaitable, Mapping
+from collections.abc import Mapping
 from typing import Any, cast
 
+from contract4agents.adapters._openai_hosted_tools import hosted_tool_from_registry, looks_like_sdk_tool
+from contract4agents.adapters._openai_names import contract_tool_name, openai_tool_name
 from contract4agents.adapters._openai_output_types import build_openai_output_type_registry
+from contract4agents.adapters._openai_run import run_openai_agent, run_openai_agent_with_contract
+from contract4agents.adapters._openai_sdk import build_openai_agent
+from contract4agents.adapters._openai_semantic import OpenAISemanticJudge
+from contract4agents.adapters._openai_trace import OpenAITraceHooks
 from contract4agents.adapters._openai_types import (
-    ApprovalCallback,
     OpenAIAdapterPlan,
     OpenAIAdapterResult,
     OpenAIAdapterUnavailable,
@@ -28,135 +31,12 @@ from contract4agents.adapters._openai_types import (
     OpenAIToolPlan,
     OpenAIToolRegistration,
 )
-from contract4agents.assertions import RunEvaluationResult, evaluate_run_contract
 from contract4agents.compiler import (
     AgentManifest,
     CompilerArtifacts,
 )
 from contract4agents.composition import parse_composition_declaration
 from contract4agents.guards import GuardPlanItem
-from contract4agents.hosted_tools import hosted_tool_kwargs
-from contract4agents.runtime import RuntimeContext, TraceRecorder
-
-_RunHooksBase: type[Any]
-try:
-    from agents import RunHooks as _ImportedRunHooks
-
-    _RunHooksBase = _ImportedRunHooks
-except Exception:  # noqa: BLE001 - optional adapter import boundary.
-    _RunHooksBase = object
-
-
-_OPENAI_TOOL_NAME_PREFIX = "c4a_"
-
-
-def openai_tool_name(contract_name: str) -> str:
-    """Convert a Contract4Agents capability name into an OpenAI-safe tool name."""
-    return _OPENAI_TOOL_NAME_PREFIX + "".join(f"{len(part)}_{part}" for part in contract_name.split("."))
-
-
-def contract_tool_name(openai_name: str) -> str:
-    """Convert a generated OpenAI tool name back into the Contract4Agents capability name."""
-    if not openai_name.startswith(_OPENAI_TOOL_NAME_PREFIX):
-        if "__" in openai_name:
-            raise OpenAIAgentFactoryError(
-                f"OpenAI tool name `{openai_name}` uses ambiguous legacy Contract4Agents encoding"
-            )
-        return openai_name
-
-    encoded = openai_name[len(_OPENAI_TOOL_NAME_PREFIX) :]
-    parts: list[str] = []
-    cursor = 0
-    while cursor < len(encoded):
-        delimiter = encoded.find("_", cursor)
-        if delimiter == -1 or delimiter == cursor:
-            raise OpenAIAgentFactoryError(f"OpenAI tool name `{openai_name}` is not valid Contract4Agents encoding")
-        raw_length = encoded[cursor:delimiter]
-        if not raw_length.isdigit():
-            raise OpenAIAgentFactoryError(f"OpenAI tool name `{openai_name}` is not valid Contract4Agents encoding")
-        length = int(raw_length)
-        start = delimiter + 1
-        end = start + length
-        if end > len(encoded):
-            raise OpenAIAgentFactoryError(f"OpenAI tool name `{openai_name}` is not valid Contract4Agents encoding")
-        parts.append(encoded[start:end])
-        cursor = end
-    return ".".join(parts)
-
-
-class OpenAITraceHooks(_RunHooksBase):  # type: ignore[misc]
-    """Minimal hook object that normalizes Agents SDK lifecycle events to Contract4Agents traces."""
-
-    def __init__(self, trace: TraceRecorder) -> None:
-        super().__init__()
-        self.trace = trace
-
-    async def on_agent_start(self, _context: Any, agent: Any) -> None:
-        self.trace.record("agent.started", agent=getattr(agent, "name", str(agent)))
-
-    async def on_agent_end(self, _context: Any, agent: Any, output: Any) -> None:
-        self.trace.record("agent.completed", agent=getattr(agent, "name", str(agent)), output=_serializable(output))
-
-    async def on_handoff(self, _context: Any, from_agent: Any, to_agent: Any) -> None:
-        self.trace.record(
-            "agent.handoff",
-            from_agent=getattr(from_agent, "name", str(from_agent)),
-            to_agent=getattr(to_agent, "name", str(to_agent)),
-        )
-
-    async def on_tool_start(self, _context: Any, agent: Any, tool: Any) -> None:
-        tool_name = _normalized_tool_name(tool)
-        event_type = "hosted_tool.started" if _is_hosted_sdk_tool(tool) else "tool.started"
-        self.trace.record(
-            event_type,
-            agent=getattr(agent, "name", str(agent)),
-            tool=tool_name,
-        )
-
-    async def on_tool_end(self, _context: Any, agent: Any, tool: Any, result: str) -> None:
-        tool_name = _normalized_tool_name(tool)
-        event_type = "hosted_tool.completed" if _is_hosted_sdk_tool(tool) else "tool.completed"
-        self.trace.record(
-            event_type,
-            agent=getattr(agent, "name", str(agent)),
-            tool=tool_name,
-            result=_serializable(result),
-        )
-
-    async def on_llm_start(self, _context: Any, agent: Any, _system_prompt: str | None, input_items: list[Any]) -> None:
-        self.trace.record("llm.started", agent=getattr(agent, "name", str(agent)), input_count=len(input_items))
-
-    async def on_llm_end(self, _context: Any, agent: Any, _response: Any) -> None:
-        self.trace.record("llm.completed", agent=getattr(agent, "name", str(agent)))
-
-
-def build_openai_agent(
-    manifest: AgentManifest,
-    instructions: str,
-    tools: list[Any] | None = None,
-    handoffs: list[Any] | None = None,
-    output_type: Any | None = None,
-    hooks: Any | None = None,
-    input_guardrails: list[Any] | None = None,
-) -> Any:
-    try:
-        from agents import Agent
-    except Exception as exc:  # noqa: BLE001 - optional adapter import boundary.
-        raise OpenAIAdapterUnavailable("openai-agents is not installed") from exc
-    kwargs: dict[str, Any] = {
-        "name": manifest["agent"],
-        "instructions": instructions,
-        "model": manifest.get("model", "gpt-5.5"),
-        "tools": tools or [],
-        "handoffs": handoffs or [],
-    }
-    if output_type is not None:
-        kwargs["output_type"] = output_type
-    if hooks is not None:
-        kwargs["hooks"] = hooks
-    if input_guardrails is not None:
-        kwargs["input_guardrails"] = input_guardrails
-    return Agent(**kwargs)
 
 
 def plan_openai_agents_from_contracts(
@@ -270,130 +150,6 @@ def build_openai_agents_from_contracts(
     return build_openai_agents_from_plan(plan)
 
 
-async def run_openai_agent(
-    agent: Any,
-    user_input: str,
-    *,
-    context: Any | None = None,
-    max_turns: int | None = 10,
-    hooks: Any | None = None,
-) -> OpenAIAdapterResult:
-    try:
-        from agents import Runner
-    except Exception as exc:  # noqa: BLE001 - optional adapter import boundary.
-        raise OpenAIAdapterUnavailable("openai-agents is not installed") from exc
-    result = await Runner.run(agent, user_input, context=context, max_turns=max_turns, hooks=hooks)
-    last_agent = getattr(getattr(result, "last_agent", None), "name", None)
-    return OpenAIAdapterResult(getattr(result, "final_output", None), last_agent, result)
-
-
-async def run_openai_agent_with_contract(
-    agent: Any,
-    user_input: str,
-    *,
-    contract: CompilerArtifacts,
-    agent_name: str,
-    trace: TraceRecorder | None = None,
-    runtime_context: RuntimeContext | None = None,
-    context: Any | None = None,
-    hidden_truth: Mapping[str, Any] | None = None,
-    approval_callback: ApprovalCallback | None = None,
-    max_turns: int | None = 10,
-    hooks: Any | None = None,
-) -> OpenAIContractRunResult:
-    """Run one OpenAI SDK agent and evaluate its Contract4Agents assertions.
-
-    This helper does not choose a route, replay a workflow, or orchestrate a
-    team. It runs the supplied SDK agent once, resolves SDK approval
-    interruptions if a callback is supplied, then evaluates the compiled
-    assertions for the named agent.
-    """
-    try:
-        from agents import Runner
-    except Exception as exc:  # noqa: BLE001 - optional adapter import boundary.
-        raise OpenAIAdapterUnavailable("openai-agents is not installed") from exc
-    run_trace = trace or TraceRecorder()
-    run_hooks = hooks or OpenAITraceHooks(run_trace)
-    prompt = _input_with_rendered_context(user_input, runtime_context)
-    runner_context = context if context is not None else runtime_context
-    result = await Runner.run(agent, prompt, context=runner_context, max_turns=max_turns, hooks=run_hooks)
-    result, approvals = await _resolve_approval_interruptions(
-        Runner,
-        agent,
-        result,
-        runner_context,
-        max_turns,
-        run_hooks,
-        run_trace,
-        approval_callback,
-    )
-    final_output = _serializable(getattr(result, "final_output", None))
-    assertion_result = evaluate_run_contract(
-        contract=contract,
-        trace=run_trace,
-        outputs={agent_name: final_output},
-        target_agents=[agent_name],
-        context=runtime_context.values if runtime_context is not None else None,
-        hidden_truth=hidden_truth,
-    )
-    _record_assertion_events(run_trace, assertion_result)
-    last_agent = getattr(getattr(result, "last_agent", None), "name", None)
-    return OpenAIContractRunResult(
-        OpenAIAdapterResult(final_output, last_agent, result),
-        assertion_result,
-        run_trace,
-        approvals,
-    )
-
-
-class OpenAISemanticJudge:
-    def __init__(self, model: str = "gpt-5.5", api_key_env: str = "OPENAI_API_KEY") -> None:
-        self.model = model
-        self.api_key_env = api_key_env
-
-    async def judge(self, *, output: dict[str, Any], criterion: str) -> bool:
-        if not os.getenv(self.api_key_env):
-            raise OpenAIAdapterUnavailable(f"{self.api_key_env} is not set")
-        try:
-            from openai import AsyncOpenAI
-        except Exception as exc:  # noqa: BLE001 - optional adapter import boundary.
-            raise OpenAIAdapterUnavailable("openai package is not installed") from exc
-        client = AsyncOpenAI()
-        response = await client.responses.create(
-            model=self.model,
-            input=[
-                {
-                    "role": "system",
-                    "content": "Return only PASS or FAIL. Evaluate whether the output satisfies the criterion.",
-                },
-                {
-                    "role": "user",
-                    "content": f"Criterion: {criterion}\nOutput: {output}",
-                },
-            ],
-        )
-        text = getattr(response, "output_text", "")
-        return str(text).strip().upper() == "PASS"
-
-
-def _serializable(value: Any) -> Any:
-    if hasattr(value, "model_dump"):
-        return value.model_dump()
-    if isinstance(value, dict | list | str | int | float | bool) or value is None:
-        return value
-    return str(value)
-
-
-def _normalized_tool_name(tool: Any) -> str:
-    if _is_hosted_sdk_tool(tool):
-        return "openai.web_search"
-    return contract_tool_name(getattr(tool, "name", str(tool)))
-
-
-def _is_hosted_sdk_tool(tool: Any) -> bool:
-    return str(tool.__class__.__name__) == "WebSearchTool"
-
-
 def _planned_tools(
     agent_name: str,
     manifest: AgentManifest,
@@ -449,7 +205,7 @@ def _tool_from_registry(
         if requires_approval:
             caveats.append(_approval_unverified_caveat(agent_name, name))
         return registry_entry.value, False
-    if callable(registry_entry) and not _looks_like_sdk_tool(registry_entry):
+    if callable(registry_entry) and not looks_like_sdk_tool(registry_entry):
         return _wrap_callable_tool(name, registry_entry, requires_approval, None), True
     if requires_approval:
         caveats.append(_approval_unverified_caveat(agent_name, name))
@@ -483,11 +239,6 @@ def _approval_unverified_caveat(agent_name: str, name: str) -> OpenAIAgentFactor
     )
 
 
-def _looks_like_sdk_tool(entry: Any) -> bool:
-    class_name = entry.__class__.__name__
-    return hasattr(entry, "name") or class_name in {"FunctionTool", "WebSearchTool"}
-
-
 def _planned_hosted_tools(
     agent_name: str,
     manifest: AgentManifest,
@@ -518,25 +269,10 @@ def _planned_hosted_tools(
                 tool_name=hosted_tool["tool"],
                 config=dict(hosted_tool["config"]),
                 permission=hosted_tool["permission"],
-                tool=_hosted_tool_from_registry(name, hosted_tool["config"], hosted_tool_registry[name]),
+                tool=hosted_tool_from_registry(name, hosted_tool["config"], hosted_tool_registry[name]),
             )
         )
     return tools
-
-
-def _hosted_tool_from_registry(name: str, config: dict[str, str], registry_entry: Any) -> Any:
-    kwargs = hosted_tool_kwargs(name, config)
-    if registry_entry is True:
-        if name == "openai.web_search":
-            try:
-                from agents import WebSearchTool
-            except Exception as exc:  # noqa: BLE001 - optional adapter import boundary.
-                raise OpenAIAdapterUnavailable("openai-agents is not installed") from exc
-            return WebSearchTool(search_context_size=cast(Any, kwargs["search_context_size"]))
-        raise OpenAIAgentFactoryError(f"No built-in OpenAI hosted tool mapping for `{name}`")
-    if callable(registry_entry):
-        return registry_entry(**kwargs)
-    return registry_entry
 
 
 def _planned_composition(
@@ -561,36 +297,20 @@ def _planned_composition(
             )
             plans.append(OpenAICompositionPlan(agent_name, child, "unsupported", source="isolated_subagent"))
             continue
-        if declared_mode in {"agent_as_tool", "as_tool"}:
+        if declared_mode == "agent_as_tool":
             plans.append(_agent_tool_composition(agent_name, child, agent_tool_registry, caveats, declared_mode))
             continue
         if declared_mode == "handoff":
             plans.append(_handoff_composition(agent_name, child, handoff_registry, caveats, "handoff"))
             continue
-        has_agent_tool = bool(agent_tool_registry and child in agent_tool_registry)
-        has_handoff = bool(handoff_registry and child in handoff_registry)
-        if has_agent_tool:
-            if has_handoff:
-                caveats.append(
-                    OpenAIAgentFactoryCaveat(
-                        agent_name,
-                        "composition_mode_ambiguous",
-                        f"Agent dependency `{child}` has both agent-tool and handoff registrations; "
-                        "agent-tool was used.",
-                    )
-                )
-            plans.append(_agent_tool_composition(agent_name, child, agent_tool_registry, caveats, "implicit"))
-        elif has_handoff:
-            plans.append(_handoff_composition(agent_name, child, handoff_registry, caveats, "implicit"))
-        else:
-            caveats.append(
-                OpenAIAgentFactoryCaveat(
-                    agent_name,
-                    "agent_dependency_unwired",
-                    f"Declared agent dependency `{child}` was not supplied as an agent tool or handoff.",
-                )
+        caveats.append(
+            OpenAIAgentFactoryCaveat(
+                agent_name,
+                "agent_dependency_unwired",
+                f"Declared agent dependency `{child}` has no explicit composition mapping.",
             )
-            plans.append(OpenAICompositionPlan(agent_name, child, "unwired"))
+        )
+        plans.append(OpenAICompositionPlan(agent_name, child, "unwired", source="undeclared"))
     return plans
 
 
@@ -729,73 +449,6 @@ def _instructions_for(
         return artifacts["instructions"][agent_name]
     except KeyError as exc:
         raise OpenAIAgentFactoryError(f"No instructions compiled for agent `{agent_name}`") from exc
-
-
-def _input_with_rendered_context(user_input: str, runtime_context: RuntimeContext | None) -> str:
-    if runtime_context is None:
-        return user_input
-    rendered = runtime_context.rendered_context()
-    if not rendered:
-        return user_input
-    return f"{user_input}\n\nResolved context:\n{rendered}"
-
-
-async def _resolve_approval_interruptions(
-    runner: Any,
-    agent: Any,
-    result: Any,
-    context: Any,
-    max_turns: int | None,
-    hooks: Any,
-    trace: TraceRecorder,
-    approval_callback: ApprovalCallback | None,
-) -> tuple[Any, list[OpenAIApprovalRequest]]:
-    approvals: list[OpenAIApprovalRequest] = []
-    loops = 0
-    while getattr(result, "interruptions", None):
-        loops += 1
-        if loops > 10:
-            raise OpenAIAgentFactoryError("Too many OpenAI approval interruption loops")
-        if approval_callback is None:
-            raise OpenAIAgentFactoryError("OpenAI approval interruption requires an approval_callback")
-        state = result.to_state()
-        for interruption in result.interruptions:
-            tool_name = contract_tool_name(str(getattr(interruption, "tool_name", "")))
-            arguments = _approval_arguments(interruption)
-            trace.record("approval.requested", tool=tool_name, arguments=arguments)
-            approved = bool(await _maybe_await(approval_callback(OpenAIApprovalRequest(tool_name, None, arguments))))
-            trace.record("approval.completed", tool=tool_name, approved=approved)
-            approvals.append(OpenAIApprovalRequest(tool_name, approved, arguments))
-            if approved:
-                state.approve(interruption)
-            else:
-                state.reject(interruption, rejection_message=f"Approval denied for {tool_name}")
-        result = await runner.run(agent, state, context=context, max_turns=max_turns, hooks=hooks)
-    return result, approvals
-
-
-def _approval_arguments(interruption: Any) -> dict[str, Any]:
-    for attr in ("arguments", "tool_arguments", "input"):
-        value = getattr(interruption, attr, None)
-        if isinstance(value, dict):
-            return dict(value)
-    return {}
-
-
-async def _maybe_await(value: bool | Awaitable[bool]) -> bool:
-    if inspect.isawaitable(value):
-        return bool(await value)
-    return bool(value)
-
-
-def _record_assertion_events(trace: TraceRecorder, result: RunEvaluationResult) -> None:
-    for agent_result in result.agents:
-        for check in agent_result.checks:
-            data: dict[str, Any] = {"status": check.status}
-            if check.failure is not None:
-                data["failure_kind"] = check.failure.kind
-                data["message"] = check.failure.message
-            trace.record("assertion.evaluated", agent=agent_result.agent, assertion=check.assertion, data=data)
 
 
 __all__ = [

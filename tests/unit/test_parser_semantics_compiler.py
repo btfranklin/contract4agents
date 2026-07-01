@@ -278,6 +278,27 @@ agent BadAgent() -> Result:
         "SEM055",
         "SEM053",
     }
+    assert next(diagnostic for diagnostic in result.diagnostics if diagnostic.code == "SEM061").severity == "warning"
+
+
+def test_semantic_analyzer_allows_unknown_hosted_provider_with_warning(tmp_path: Path) -> None:
+    (tmp_path / "unknown.contract").write_text(
+        """
+type Result:
+    ok: bool
+
+agent UnknownProviderAgent() -> Result:
+    use hosted_tool example.search context_size "medium"
+    assertions = [
+        expect(trace.hosted_tool_called(example.search)),
+    ]
+    goal = "unknown provider"
+""".strip()
+    )
+    result = analyze_project(parse_project(tmp_path))
+
+    assert result.ok
+    assert [(diagnostic.code, diagnostic.severity) for diagnostic in result.diagnostics] == [("SEM061", "warning")]
 
 
 def test_semantic_analyzer_rejects_malformed_and_unknown_composition(tmp_path: Path) -> None:
@@ -311,7 +332,7 @@ type Result:
     ok: bool
 
 agent Parent() -> Result:
-    composition = [as_tool(Child)]
+    composition = [agent_as_tool(Child)]
     goal = "bad"
 
 agent Child() -> Result:
@@ -324,7 +345,7 @@ agent Child() -> Result:
     assert [(diagnostic.code, diagnostic.message) for diagnostic in result.diagnostics] == [
         (
             "SEM068",
-            "Composition declaration `as_tool(Child)` references agent `Child` "
+            "Composition declaration `agent_as_tool(Child)` references agent `Child` "
             "without a matching `use agent` dependency",
         )
     ]
@@ -510,6 +531,33 @@ def test_compile_check_detects_stale_guard_plan(tmp_path: Path) -> None:
         compile_project(FIXTURE, tmp_path / "build", check=True)
 
     assert "guard-plan.json" in str(exc.value.diagnostics[0].hint)
+
+
+def test_compile_deletes_unexpected_managed_artifacts_but_keeps_visualization(tmp_path: Path) -> None:
+    build_dir = tmp_path / "build"
+    compile_project(FIXTURE, build_dir)
+    stale_manifest = build_dir / "manifests" / "RemovedAgent.json"
+    stale_manifest.write_text("{}\n")
+    visualization_output = build_dir / "visualization" / "index.html"
+    visualization_output.parent.mkdir(parents=True)
+    visualization_output.write_text("<!doctype html>\n")
+
+    compile_project(FIXTURE, build_dir)
+
+    assert not stale_manifest.exists()
+    assert visualization_output.exists()
+
+
+def test_compile_check_detects_unexpected_managed_file(tmp_path: Path) -> None:
+    build_dir = tmp_path / "build"
+    compile_project(FIXTURE, build_dir)
+    extra_doc = build_dir / "docs" / "old-summary.md"
+    extra_doc.write_text("stale\n")
+
+    with pytest.raises(ContractError) as exc:
+        compile_project(FIXTURE, build_dir, check=True)
+
+    assert "old-summary.md" in str(exc.value.diagnostics[0].hint)
 
 
 def test_build_artifacts_generates_docs() -> None:

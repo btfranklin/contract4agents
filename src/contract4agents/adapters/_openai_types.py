@@ -62,7 +62,7 @@ class OpenAICompositionPlan:
     target_agent: str
     mode: Literal["agent_as_tool", "handoff", "unsupported", "unwired"]
     sdk_object: Any | None = None
-    source: str = "implicit"
+    source: str = "undeclared"
 
 
 @dataclass(frozen=True)

@@ -183,8 +183,14 @@ Each error should include the agent name, missing or failing type, source locati
 Initial cache scopes:
 
 - `none`: never cache.
-- `run`: reuse within the current agent run.
-- `thread`: reuse within a conversation or task thread.
+- `run`: reuse within the current `RuntimeContext`.
+- `thread`: reuse through `RuntimeContext(thread_cache=shared_mapping)`.
+
+Thread caching is explicit. A host that wants conversation-level or task-level
+reuse should create one shared cache mapping and pass it to each
+`RuntimeContext` that belongs to that thread. Separate runtime contexts without
+the same host-provided mapping do not share `cache="thread"` datasource values.
+Datasource resolvers receive the active cache mapping as `DatasourceContext.cache`.
 
 ## Security
 

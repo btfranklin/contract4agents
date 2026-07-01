@@ -8,7 +8,7 @@ from typing import Any, Protocol
 from contract4agents.expressions._eval import evaluate_hidden_truth, evaluate_output, evaluate_trace
 from contract4agents.expressions._grammar import parse_expectation, parse_semantic_expectation
 from contract4agents.expressions._model import ExpressionError
-from contract4agents.runtime import TraceRecorder
+from contract4agents.runtime import TraceRecorder, scope_trace
 
 
 class SemanticJudge(Protocol):
@@ -44,10 +44,12 @@ class EvalRunner:
         expectations: list[str],
         semantic_expectations: list[str] | None = None,
         hidden_truth: dict[str, Any] | None = None,
+        run_id: str | None = None,
     ) -> EvalResult:
         result = EvalResult(name, True)
+        scoped_trace = scope_trace(trace, run_id=run_id)
         for expectation in expectations:
-            failure = self._check_expectation(expectation, output, output_type, trace, hidden_truth or {})
+            failure = self._check_expectation(expectation, output, output_type, scoped_trace, hidden_truth or {})
             if failure:
                 result.failures.append(failure)
         for criterion in semantic_expectations or []:

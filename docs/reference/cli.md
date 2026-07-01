@@ -79,7 +79,7 @@ versioned trace envelope from [Trace Schema Reference](trace-schema.md).
 
 - Default root: `.`
 - Required options: `--trace TRACE_JSONL`
-- Other options: `--allow-python-imports`
+- Other options: `--run-id RUN_ID`, `--allow-python-imports`
 - Writes: nothing
 - Success message: `Contract4Agents monitor passed`
 - Failure shape: monitor violations printed as `SEVERITY rule: message`, followed by `Contract4Agents monitor failed`; invalid trace files fail with a Click error that includes line-numbered trace diagnostics
@@ -87,7 +87,8 @@ versioned trace envelope from [Trace Schema Reference](trace-schema.md).
 
 `monitor --trace` accepts only canonical JSONL with `schema_version`,
 `event_id`, `event_type`, and `timestamp`. Legacy recorder JSONL with top-level
-`type` is rejected.
+`type` is rejected. If the trace contains events from multiple `run_id` values,
+pass `--run-id RUN_ID`; otherwise monitor evaluation fails closed.
 
 Use `--allow-python-imports` when monitor setup needs schemas derived from
 Pydantic-backed contract types.

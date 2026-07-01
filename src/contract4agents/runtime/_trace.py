@@ -57,25 +57,34 @@ class TraceEvent:
     data: dict[str, Any] = field(default_factory=dict)
 
 
+class TraceScopeError(ValueError):
+    """Raised when trace evaluation needs an explicit run scope."""
+
+
 class TraceRecorder:
-    def __init__(self, path: Path | None = None, *, run_id: str | None = None) -> None:
+    def __init__(self, path: Path | None = None, *, run_id: str | None = None, append: bool = False) -> None:
         self.path = path
         self.run_id = run_id or f"run-{uuid.uuid4().hex[:12]}"
+        self.append = append
+        self._path_initialized = False
         self._event_index = 0
         self.events: list[TraceEvent] = []
 
     def record(self, event_type: str, **data: Any) -> TraceEvent:
         envelope = self._envelope(event_type, data)
+        line = json.dumps(envelope, sort_keys=True) + "\n"
         event = TraceEvent(
             str(envelope["event_type"]),
             float(envelope["timestamp"]),
             event_data_from_envelope(envelope),
         )
-        self.events.append(event)
         if self.path:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            with self.path.open("a") as handle:
-                handle.write(json.dumps(envelope, sort_keys=True) + "\n")
+            mode = "a" if self.append or self._path_initialized else "w"
+            with self.path.open(mode) as handle:
+                handle.write(line)
+            self._path_initialized = True
+        self.events.append(event)
         return event
 
     def _envelope(self, event_type: str, event_data: dict[str, Any]) -> dict[str, Any]:
@@ -134,11 +143,48 @@ def event_data_from_envelope(envelope: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+def scope_trace(trace: TraceRecorder, *, run_id: str | None = None, agent: str | None = None) -> TraceRecorder:
+    """Return a trace containing one run, optionally scoped to one agent.
+
+    Single-run traces can be evaluated without an explicit run_id. Multi-run
+    traces must provide a run_id so events from separate runs cannot satisfy the
+    same trace assertion or monitor rule.
+    """
+    event_run_ids = {_event_run_id(trace, event) for event in trace.events}
+    if run_id is None:
+        if len(event_run_ids) > 1:
+            raise TraceScopeError("Trace contains multiple run_id values; pass run_id explicitly")
+        selected_run_id = next(iter(event_run_ids), trace.run_id)
+    else:
+        selected_run_id = run_id
+
+    scoped = TraceRecorder(run_id=selected_run_id)
+    scoped.events = [
+        event
+        for event in trace.events
+        if _event_run_id(trace, event) == selected_run_id and _event_matches_agent(event, agent)
+    ]
+    return scoped
+
+
+def _event_run_id(trace: TraceRecorder, event: TraceEvent) -> str:
+    return str(event.data.get("run_id", trace.run_id))
+
+
+def _event_matches_agent(event: TraceEvent, agent: str | None) -> bool:
+    if agent is None:
+        return True
+    event_agent = event.data.get("agent")
+    return event_agent is None or event_agent == agent
+
+
 __all__ = [
     "KNOWN_TRACE_EVENT_TYPES",
     "TRACE_ENVELOPE_INDEX_FIELDS",
     "TRACE_SCHEMA_VERSION",
     "TraceEvent",
     "TraceRecorder",
+    "TraceScopeError",
     "event_data_from_envelope",
+    "scope_trace",
 ]

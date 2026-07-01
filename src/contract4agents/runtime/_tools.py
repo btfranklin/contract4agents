@@ -49,10 +49,10 @@ class FakeToolRegistry:
             result = spec.func(**kwargs)
             if inspect.isawaitable(result):
                 result = await result
+            trace.record("tool.completed", tool=name, result=result)
         except Exception as exc:
             trace.record("tool.failed", tool=name, reason=str(exc))
             raise ToolExecutionFailed(name, str(exc)) from exc
-        trace.record("tool.completed", tool=name, result=result)
         return result
 
 

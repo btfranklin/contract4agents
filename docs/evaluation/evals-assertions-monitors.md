@@ -113,22 +113,25 @@ assertions = [
 Assertions should be invariant-like. They should not define one test fixture.
 
 Host applications can evaluate compiled assertions after a real run by calling
-`evaluate_run_contract(...)` with compiled artifacts, normalized trace events,
+`evaluate_run_assertions(...)` with compiled artifacts, normalized trace events,
 and outputs keyed by agent name:
 
 ```python
-from contract4agents.assertions import evaluate_run_contract
+from contract4agents.assertions import evaluate_run_assertions
 
-result = evaluate_run_contract(
+result = evaluate_run_assertions(
     contract=artifacts,
     trace=trace,
     outputs={"CustomerGreeter": output},
+    run_id="run-123",
 )
 ```
 
 The result separates assertion failures from eval failures and monitor
 violations. Conditional assertions whose `when(...)` trace condition is false
 are reported as skipped. Unsupported assertion syntax fails closed.
+Single-run traces can omit `run_id`; multi-run traces must pass it so events
+from separate runs cannot satisfy one assertion set.
 
 OpenAI adapter runs that use `run_openai_agent_with_contract(...)` call the same
 assertion API after the SDK run completes and record one `assertion.evaluated`

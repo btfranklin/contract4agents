@@ -409,7 +409,7 @@ type Result:
 
 agent Parent() -> Result:
     use agent Child from ./child
-    composition = [as_tool(Child)]
+    composition = [agent_as_tool(Child)]
     goal = "parent"
 
 agent Child() -> Result:
@@ -430,24 +430,7 @@ agent Child() -> Result:
     assert result.caveats == []
 
 
-def test_openai_agent_factory_maps_valid_as_tool_alias_composition(monkeypatch: pytest.MonkeyPatch) -> None:
-    _install_fake_agents_module(monkeypatch)
-    child_tool = object()
-
-    result = build_openai_agents_from_contracts(
-        _factory_artifacts(include_tool=False, composition=["as_tool(ChildAgent)"]),
-        output_type_registry={"ParentResult": dict, "ChildResult": list},
-        model_registry={"ParentAgent": "parent-model", "ChildAgent": "child-model"},
-        agent_tool_registry={"ChildAgent": child_tool},
-    )
-
-    assert result.agents["ParentAgent"].kwargs["tools"] == [child_tool]
-    assert result.agents["ParentAgent"].kwargs["handoffs"] == []
-    assert result.plan.agents["ParentAgent"].composition[0].mode == "agent_as_tool"
-    assert result.plan.agents["ParentAgent"].composition[0].source == "as_tool"
-
-
-def test_openai_agent_factory_reports_ambiguous_implicit_composition(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_openai_agent_factory_does_not_infer_undeclared_composition(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_fake_agents_module(monkeypatch)
 
     result = build_openai_agents_from_contracts(
@@ -458,9 +441,9 @@ def test_openai_agent_factory_reports_ambiguous_implicit_composition(monkeypatch
         handoff_registry={"ChildAgent": "handoff"},
     )
 
-    assert result.agents["ParentAgent"].kwargs["tools"] == ["agent-tool"]
+    assert result.agents["ParentAgent"].kwargs["tools"] == []
     assert result.agents["ParentAgent"].kwargs["handoffs"] == []
-    assert [caveat.kind for caveat in result.caveats] == ["composition_mode_ambiguous"]
+    assert [caveat.kind for caveat in result.caveats] == ["agent_dependency_unwired"]
 
 
 def test_openai_agent_factory_reports_unsupported_isolated_subagent(monkeypatch: pytest.MonkeyPatch) -> None:

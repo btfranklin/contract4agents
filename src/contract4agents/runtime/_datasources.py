@@ -38,10 +38,15 @@ class RuntimeStateValue:
 
 
 class DatasourceContext:
-    def __init__(self, values: dict[str, ContextValue], trace: TraceRecorder) -> None:
+    def __init__(
+        self,
+        values: dict[str, ContextValue],
+        trace: TraceRecorder,
+        cache: dict[str, ContextValue] | None = None,
+    ) -> None:
         self.values = values
         self.trace_recorder = trace
-        self.cache: dict[str, ContextValue] = {}
+        self.cache = cache if cache is not None else {}
 
     def get(self, type_name: str) -> ContextValue:
         if type_name not in self.values:
@@ -132,11 +137,13 @@ class RuntimeContext:
         values: dict[str, ContextValue] | None = None,
         hidden: dict[str, RuntimeStateValue] | None = None,
         trace: TraceRecorder | None = None,
+        thread_cache: dict[str, ContextValue] | None = None,
     ) -> None:
         self.values = values or {}
         self.hidden = hidden or {}
         self.trace = trace or TraceRecorder()
         self.datasource_cache: dict[str, ContextValue] = {}
+        self.thread_cache = thread_cache if thread_cache is not None else {}
 
     async def resolve(
         self,
@@ -303,25 +310,34 @@ class RuntimeContext:
             )
 
     def _cached_datasource_value(self, type_name: str, datasource_spec: DatasourceSpec) -> ContextValue | None:
-        if datasource_spec.cache == "none" or datasource_spec.name not in self.datasource_cache:
+        cache = self._cache_for(datasource_spec)
+        if cache is None or datasource_spec.name not in cache:
             return None
         self.trace.record("datasource.resolved", datasource=datasource_spec.name, produces=type_name, cache="hit")
-        value = self.datasource_cache[datasource_spec.name]
+        value = cache[datasource_spec.name]
         self.values[type_name] = value
         return value
 
     async def _execute_datasource(self, type_name: str, datasource_spec: DatasourceSpec) -> ContextValue:
         self.trace.record("datasource.started", datasource=datasource_spec.name, produces=type_name)
-        ds_context = DatasourceContext(self.values, self.trace)
+        ds_context = DatasourceContext(self.values, self.trace, self._cache_for(datasource_spec))
         result = datasource_spec.func(ds_context)
         if inspect.isawaitable(result):
             result = await result
         context_value = _coerce_context_value(datasource_spec, result)
         self.values[type_name] = context_value
-        if datasource_spec.cache != "none":
-            self.datasource_cache[datasource_spec.name] = context_value
+        cache = self._cache_for(datasource_spec)
+        if cache is not None:
+            cache[datasource_spec.name] = context_value
         self.trace.record("datasource.resolved", datasource=datasource_spec.name, produces=type_name, cache="miss")
         return context_value
+
+    def _cache_for(self, datasource_spec: DatasourceSpec) -> dict[str, ContextValue] | None:
+        if datasource_spec.cache == "none":
+            return None
+        if datasource_spec.cache == "thread":
+            return self.thread_cache
+        return self.datasource_cache
 
 
 def _coerce_context_value(spec: DatasourceSpec, result: Any) -> ContextValue:

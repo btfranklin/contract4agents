@@ -13,7 +13,7 @@ from contract4agents.docscheck import check_docs
 from contract4agents.fixtures import FixtureReport, run_fixture_project_sync
 from contract4agents.monitor import MonitorRule, run_monitors
 from contract4agents.parser import parse_project
-from contract4agents.runtime._trace_io import TraceFileError, load_trace_jsonl
+from contract4agents.runtime import TraceFileError, TraceScopeError, load_trace_jsonl
 from contract4agents.semantics import analyze_project
 from contract4agents.visualization import build_visualization_graph, write_visualization_artifacts
 
@@ -115,10 +115,14 @@ def _print_fixture_report(report: FixtureReport) -> None:
 @main.command()
 @click.argument("root", type=click.Path(path_type=Path), default=".", required=False)
 @click.option("--trace", "trace_path", type=click.Path(path_type=Path), required=True, help="Trace JSONL file.")
+@click.option("--run-id", type=str, default=None, help="Run ID to evaluate when the trace contains multiple runs.")
 @click.option("--allow-python-imports", is_flag=True, help="Import configured Python model types during monitor setup.")
-def monitor(root: Path, trace_path: Path, allow_python_imports: bool) -> None:
+def monitor(root: Path, trace_path: Path, run_id: str | None, allow_python_imports: bool) -> None:
     """Run project monitors against a trace JSONL file."""
-    artifacts = compile_project(root, allow_python_imports=allow_python_imports)
+    try:
+        artifacts = compile_project(root, allow_python_imports=allow_python_imports)
+    except ContractError as exc:
+        _print_contract_error(exc)
     try:
         trace = load_trace_jsonl(trace_path)
     except TraceFileError as exc:
@@ -127,7 +131,10 @@ def monitor(root: Path, trace_path: Path, allow_python_imports: bool) -> None:
         MonitorRule(item["name"], item["agent"], item["severity"], item["when"], item["expect"])
         for item in artifacts["monitors"]
     ]
-    violations = run_monitors(rules, trace)
+    try:
+        violations = run_monitors(rules, trace, run_id=run_id)
+    except TraceScopeError as exc:
+        raise click.ClickException(str(exc)) from exc
     for violation in violations:
         click.echo(f"{violation.severity.upper()} {violation.rule}: {violation.message}")
     if violations:

@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from contract4agents.assertions import evaluate_run_contract
+from contract4agents.assertions import evaluate_run_assertions
 from contract4agents.compiler import compile_project
 from contract4agents.evaluation import EvalRunner
 from contract4agents.fixtures import _execution, _reports
@@ -58,11 +58,11 @@ async def run_fixture_project(
         hidden_truth_func = load_python_ref(metadata["hidden_truth"])
         for start in starts:
             active_start_id = str(start.start_id)
-            output, trace, attempts, retry_errors = await _execution.run_start_with_retry(
+            output, trace, attempts, retry_errors, attempt_db_path = await _execution.run_start_with_retry(
                 runner, start, db_path, artifacts, run_root / "traces" / f"{start.start_id}.jsonl", mode
             )
             eval_pack = evals_by_start[start.start_id]
-            hidden_truth = hidden_truth_func(db_path, start.start_id)
+            hidden_truth = hidden_truth_func(attempt_db_path, start.start_id)
             eval_result = await eval_runner.evaluate(
                 name=str(eval_pack["name"]),
                 output=output,
@@ -71,15 +71,17 @@ async def run_fixture_project(
                 expectations=list(eval_pack["expects"]),
                 semantic_expectations=list(eval_pack["semantic_expects"]),
                 hidden_truth=hidden_truth,
+                run_id=trace.run_id,
             )
-            assertion_result = evaluate_run_contract(
+            assertion_result = evaluate_run_assertions(
                 contract=artifacts,
                 trace=trace,
                 outputs={str(metadata["entry_agent"]): output},
                 target_agents=[str(metadata["entry_agent"])],
                 hidden_truth=hidden_truth,
+                run_id=trace.run_id,
             )
-            violations = run_monitors(monitor_rules, trace)
+            violations = run_monitors(monitor_rules, trace, run_id=trace.run_id)
             start_reports.append(
                 StartReport(
                     start_id=start.start_id,

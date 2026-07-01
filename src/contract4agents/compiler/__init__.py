@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 from pathlib import Path
 from typing import Any, Literal, TypedDict
 
@@ -18,6 +19,17 @@ from contract4agents.semantics import analyze_project
 
 JsonSchema = dict[str, Any]
 CapabilityStatus = Literal["supported", "partial", "emulated"]
+MANAGED_ARTIFACT_DIRS = (
+    "schemas",
+    "types",
+    "manifests",
+    "instructions",
+    "evals",
+    "monitors",
+    "guards",
+    "adapters",
+    "docs",
+)
 
 
 class ManifestUse(TypedDict):
@@ -400,7 +412,15 @@ def write_artifacts(artifacts: CompilerArtifacts, output_dir: Path, check: bool 
     for name, text in artifacts["docs"].items():
         files[output_dir / "docs" / name] = text
     if check:
+        expected_paths = set(files)
         stale = [path for path, content in files.items() if not path.exists() or path.read_text() != content]
+        extra = [
+            path
+            for dirname in MANAGED_ARTIFACT_DIRS
+            for path in sorted((output_dir / dirname).rglob("*"))
+            if path.is_file() and path not in expected_paths
+        ]
+        stale.extend(extra)
         if stale:
             raise ContractError(
                 [
@@ -414,6 +434,10 @@ def write_artifacts(artifacts: CompilerArtifacts, output_dir: Path, check: bool 
                 ]
             )
         return
+    for dirname in MANAGED_ARTIFACT_DIRS:
+        managed_dir = output_dir / dirname
+        if managed_dir.exists():
+            shutil.rmtree(managed_dir)
     for path, content in files.items():
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)

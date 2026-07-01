@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 from pathlib import Path
 from typing import Any, cast
@@ -47,19 +48,20 @@ async def run_start_with_retry(
     artifacts: CompilerArtifacts,
     trace_path: Path,
     mode: str,
-) -> tuple[dict[str, Any], TraceRecorder, int, list[str]]:
+) -> tuple[dict[str, Any], TraceRecorder, int, list[str], Path]:
     retry_errors: list[str] = []
     max_attempts = 2 if mode == "openai" else 1
     for attempt in range(1, max_attempts + 1):
         attempt_trace = (
-            trace_path
-            if max_attempts == 1
-            else trace_path.with_name(f"{trace_path.stem}.attempt-{attempt}.jsonl")
+            trace_path if max_attempts == 1 else trace_path.with_name(f"{trace_path.stem}.attempt-{attempt}.jsonl")
         )
         attempt_trace.parent.mkdir(parents=True, exist_ok=True)
+        attempt_db = db_path.parent / "attempts" / f"{trace_path.stem}.attempt-{attempt}.sqlite"
+        attempt_db.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(db_path, attempt_db)
         try:
-            output, trace = await runner(start, db_path, artifacts, attempt_trace)
-            return output, trace, attempt, retry_errors
+            output, trace = await runner(start, attempt_db, artifacts, attempt_trace)
+            return output, trace, attempt, retry_errors, attempt_db
         except Exception as exc:
             if attempt >= max_attempts:
                 raise

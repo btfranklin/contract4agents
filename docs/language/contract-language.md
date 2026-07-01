@@ -150,9 +150,12 @@ Capability kinds matter:
 - `datasource`: Python resolver for a typed context slot.
 - `type`: compile-time shape used for validation and schemas.
 
-Hosted provider tools are distinct from host Python tools. V1 supports
+Hosted provider tools are distinct from host Python tools. Core language
+semantics accept any `provider.tool` declaration. Providers with built-in
+descriptors get richer validation; the built-in OpenAI descriptor supports
 `openai.web_search` with `context_size` set to `"low"`, `"medium"`, or
-`"high"`:
+`"high"`. Unknown providers are accepted with a warning so adapters or hosts can
+own their validation.
 
 ```contract
 use hosted_tool openai.web_search context_size "high"
@@ -259,7 +262,6 @@ Contract4Agents can preserve declared composition preferences while leaving exec
 ```contract
 composition = [
     agent_as_tool(ResearchAgent),
-    as_tool(BillingAgent),
     handoff(SupportAgent),
     isolated_subagent(LogInvestigator),
 ]
@@ -267,7 +269,7 @@ composition = [
 
 Common semantic modes:
 
-- `agent_as_tool` / `as_tool`: the current agent stays in control and calls another agent like a tool.
+- `agent_as_tool`: the current agent stays in control and calls another agent like a tool.
 - `handoff`: control transfers to a specialist agent.
 - `isolated_subagent`: the child agent has an isolated context and returns only a final result to the parent.
 

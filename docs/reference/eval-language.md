@@ -36,6 +36,9 @@ Typed trace spies match normalized target fields, not arbitrary payload values:
 tool and approval spies match `tool`, agent spies match `agent`, datasource
 spies match `datasource` or `produces`, and guardrail spies match `guardrail`.
 Use `trace.contains("text")` when a check intentionally searches payload text.
+Single-run traces can be evaluated without an explicit run scope. Multi-run
+traces require the host or CLI to pass a `run_id`, otherwise evaluation raises a
+scope error instead of combining events from separate runs.
 
 Agent assertions in `.contract` files use the same deterministic expression
 surface, wrapped as contract assertions:

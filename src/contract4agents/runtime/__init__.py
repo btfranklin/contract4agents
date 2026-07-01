@@ -23,7 +23,14 @@ from contract4agents.runtime._errors import (
     ToolPermissionDenied,
 )
 from contract4agents.runtime._tools import FakeToolRegistry, ToolCallable, ToolSpec
-from contract4agents.runtime._trace import KNOWN_TRACE_EVENT_TYPES, TRACE_SCHEMA_VERSION, TraceEvent, TraceRecorder
+from contract4agents.runtime._trace import (
+    KNOWN_TRACE_EVENT_TYPES,
+    TRACE_SCHEMA_VERSION,
+    TraceEvent,
+    TraceRecorder,
+    TraceScopeError,
+    scope_trace,
+)
 from contract4agents.runtime._trace_io import (
     TraceDiagnostic,
     TraceDiagnosticSeverity,
@@ -61,9 +68,11 @@ __all__ = [
     "TraceFileError",
     "TraceLoadResult",
     "TraceRecorder",
+    "TraceScopeError",
     "datasource",
     "load_trace_jsonl",
     "load_trace_jsonl_with_diagnostics",
     "load_python_ref",
     "run_async",
+    "scope_trace",
 ]

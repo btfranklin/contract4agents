@@ -4,9 +4,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from contract4agents.assertions import evaluate_agent_assertions, evaluate_run_contract
+import pytest
+
+from contract4agents.assertions import evaluate_agent_assertions, evaluate_run_assertions
 from contract4agents.compiler import AgentManifest, CompilerArtifacts
-from contract4agents.runtime import TraceRecorder, load_trace_jsonl
+from contract4agents.runtime import TraceRecorder, TraceScopeError, load_trace_jsonl
 
 
 def test_evaluate_agent_assertions_passes_output_trace_and_hidden_truth() -> None:
@@ -91,10 +93,10 @@ def test_evaluate_agent_assertions_fails_true_condition_expectation() -> None:
     assert result.checks[0].failure.kind == "output"
 
 
-def test_evaluate_run_contract_reports_missing_target_output_and_manifest() -> None:
+def test_evaluate_run_assertions_reports_missing_target_output_and_manifest() -> None:
     contract = _artifacts(_manifest(["expect(output.ok == true)"]))
 
-    result = evaluate_run_contract(
+    result = evaluate_run_assertions(
         contract=contract,
         trace=TraceRecorder(),
         outputs={},
@@ -105,10 +107,10 @@ def test_evaluate_run_contract_reports_missing_target_output_and_manifest() -> N
     assert [failure.kind for failure in result.failures] == ["missing_output", "contract"]
 
 
-def test_evaluate_run_contract_defaults_to_outputs_present() -> None:
+def test_evaluate_run_assertions_defaults_to_outputs_present() -> None:
     contract = _artifacts(_manifest(["expect(output.ok == true)"]))
 
-    result = evaluate_run_contract(
+    result = evaluate_run_assertions(
         contract=contract,
         trace=TraceRecorder(),
         outputs={"ExampleAgent": {"ok": True, "summary": "ok"}},
@@ -117,7 +119,7 @@ def test_evaluate_run_contract_defaults_to_outputs_present() -> None:
     assert result.passed
 
 
-def test_evaluate_run_contract_accepts_loaded_canonical_trace(tmp_path: Path) -> None:
+def test_evaluate_run_assertions_accepts_loaded_canonical_trace(tmp_path: Path) -> None:
     path = tmp_path / "trace.jsonl"
     path.write_text(
         json.dumps(
@@ -136,7 +138,7 @@ def test_evaluate_run_contract_accepts_loaded_canonical_trace(tmp_path: Path) ->
     )
     contract = _artifacts(_manifest(["expect(trace.tool_called(tools.lookup))"]))
 
-    result = evaluate_run_contract(
+    result = evaluate_run_assertions(
         contract=contract,
         trace=load_trace_jsonl(path),
         outputs={"ExampleAgent": {"ok": True, "summary": "ok"}},
@@ -145,7 +147,7 @@ def test_evaluate_run_contract_accepts_loaded_canonical_trace(tmp_path: Path) ->
     assert result.passed
 
 
-def test_evaluate_run_contract_accepts_hosted_tool_trace(tmp_path: Path) -> None:
+def test_evaluate_run_assertions_accepts_hosted_tool_trace(tmp_path: Path) -> None:
     path = tmp_path / "trace.jsonl"
     path.write_text(
         json.dumps(
@@ -165,13 +167,53 @@ def test_evaluate_run_contract_accepts_hosted_tool_trace(tmp_path: Path) -> None
     manifest = _manifest(["expect(trace.hosted_tool_called(openai.web_search))"])
     contract = _artifacts(manifest)
 
-    result = evaluate_run_contract(
+    result = evaluate_run_assertions(
         contract=contract,
         trace=load_trace_jsonl(path),
         outputs={"ExampleAgent": {"ok": True, "summary": "ok"}},
     )
 
     assert result.passed
+
+
+def test_evaluate_run_assertions_requires_run_id_for_multi_run_trace() -> None:
+    trace = TraceRecorder()
+    trace.record("tool.completed", run_id="run-a", tool="tools.lookup")
+    trace.record("tool.completed", run_id="run-b", tool="tools.other")
+    contract = _artifacts(_manifest(["expect(trace.tool_called(tools.lookup))"]))
+
+    with pytest.raises(TraceScopeError):
+        evaluate_run_assertions(
+            contract=contract,
+            trace=trace,
+            outputs={"ExampleAgent": {"ok": True, "summary": "ok"}},
+        )
+
+    scoped_result = evaluate_run_assertions(
+        contract=contract,
+        trace=trace,
+        outputs={"ExampleAgent": {"ok": True, "summary": "ok"}},
+        run_id="run-b",
+    )
+
+    assert not scoped_result.passed
+    assert scoped_result.failures[0].kind == "trace"
+
+
+def test_evaluate_agent_assertions_ignore_other_agent_trace_events() -> None:
+    trace = TraceRecorder()
+    trace.record("tool.completed", agent="OtherAgent", tool="tools.lookup")
+
+    result = evaluate_agent_assertions(
+        manifest=_manifest(["expect(trace.tool_called(tools.lookup))"]),
+        output={"ok": True, "summary": "ok"},
+        trace=trace,
+        schemas=_schemas(),
+    )
+
+    assert not result.passed
+    assert result.checks[0].failure
+    assert result.checks[0].failure.kind == "trace"
 
 
 def _manifest(assertions: list[str]) -> AgentManifest:

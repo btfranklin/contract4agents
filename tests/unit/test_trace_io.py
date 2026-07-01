@@ -6,10 +6,10 @@ from pathlib import Path
 import pytest
 
 from contract4agents.monitor import MonitorRule, run_monitors
-from contract4agents.runtime import TraceRecorder
-from contract4agents.runtime._trace_io import (
+from contract4agents.runtime import (
     TRACE_SCHEMA_VERSION,
     TraceFileError,
+    TraceRecorder,
     load_trace_jsonl,
     load_trace_jsonl_with_diagnostics,
 )

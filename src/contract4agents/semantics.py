@@ -17,7 +17,7 @@ from contract4agents.expressions._grammar import (
 from contract4agents.expressions._model import ExpressionError, ParsedExpression
 from contract4agents.expressions._refs import referenced_output_fields, referenced_trace_targets, referenced_type
 from contract4agents.expressions._trace_ops import TRACE_OPS
-from contract4agents.hosted_tools import SUPPORTED_HOSTED_TOOLS, split_hosted_tool_name
+from contract4agents.hosted_tools import hosted_tool_descriptor, split_hosted_tool_name
 from contract4agents.pydantic_interop import python_type_ref_diagnostics
 
 BUILTIN_TYPES = {"str", "int", "float", "bool", "AgentRef"}
@@ -313,10 +313,7 @@ def _check_composition(agent: AgentDef, index: _ProjectIndex) -> list[Diagnostic
                     "SEM066",
                     f"Malformed composition declaration `{item}` on agent `{agent.name}`",
                     span=agent.span,
-                    hint=(
-                        "Expected one of: agent_as_tool(AgentName), as_tool(AgentName), "
-                        "handoff(AgentName), isolated_subagent(AgentName)."
-                    ),
+                    hint="Expected one of: agent_as_tool(AgentName), handoff(AgentName), isolated_subagent(AgentName).",
                 )
             )
             continue
@@ -367,13 +364,22 @@ def _check_hosted_tools(agent: AgentDef) -> list[Diagnostic]:
             )
             continue
         provider, tool = split_name
-        provider_tools = SUPPORTED_HOSTED_TOOLS.get(provider)
-        if provider_tools is None:
+        descriptor = hosted_tool_descriptor(provider)
+        if descriptor is None:
             diagnostics.append(
-                Diagnostic("SEM061", f"Unknown hosted tool provider `{provider}` for `{use.name}`", span=use.span)
+                Diagnostic(
+                    "SEM061",
+                    f"Hosted tool provider `{provider}` for `{use.name}` has no built-in descriptor",
+                    severity="warning",
+                    span=use.span,
+                    hint=(
+                        "Core validation will keep the provider.tool declaration, "
+                        "but no bundled adapter validates it."
+                    ),
+                )
             )
             continue
-        tool_options = provider_tools.get(tool)
+        tool_options = descriptor.tool_options(tool)
         if tool_options is None:
             diagnostics.append(
                 Diagnostic("SEM062", f"Unknown hosted tool `{use.name}` for provider `{provider}`", span=use.span)
