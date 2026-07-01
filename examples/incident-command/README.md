@@ -105,6 +105,8 @@ After `compile`, these are the most useful files to inspect:
   from the agent contract.
 - `.contract/build/evals/evals.json`: the eval scenario in compiled form.
 - `.contract/build/monitors/monitors.json`: the monitor rule in compiled form.
+- `.contract/build/guards/guard-plan.json`: guard enforcement metadata for
+  output conformance and approval-required tools.
 - `.contract/build/adapters/capability-matrix.json`: adapter support notes.
 - `.contract/build/docs/summary.md`: a compact generated summary.
 - `.contract/build/visualization/index.html`: the static graph.
@@ -124,6 +126,9 @@ Instructions answer: what prompt-like guidance was derived for this agent?
 Eval packs answer: how should a scenario be judged?
 
 Monitor packs answer: what trace behavior should be watched after a run?
+
+Guard plans answer: which guard requirements can be enforced by host code or an
+adapter, such as output conformance or approval-required tools?
 
 The visualization answers: what agents, tools, types, evals, and monitors exist,
 and how are they connected?

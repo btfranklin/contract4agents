@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any, cast
 
 from contract4agents.compiler import AgentManifest, CompilerArtifacts
+from contract4agents.guards import GuardPlanItem
 from contract4agents.runtime import TraceRecorder
 
 _RunHooksBase: type[Any]
@@ -146,7 +147,9 @@ def build_openai_agents_from_contracts(
     """Build OpenAI Agents SDK objects from compiled artifacts plus explicit registries."""
     agents: dict[str, Any] = {}
     caveats: list[OpenAIAgentFactoryCaveat] = []
+    guard_plan_by_agent = _guard_plan_by_agent(artifacts["guard_plan"])
     for agent_name, manifest in artifacts["manifests"].items():
+        agent_guard_plan = guard_plan_by_agent.get(agent_name, [])
         model = model_registry.get(agent_name, default_model)
         if model is None:
             raise OpenAIAgentFactoryError(f"No model configured for agent `{agent_name}`")
@@ -155,7 +158,9 @@ def build_openai_agents_from_contracts(
             raise OpenAIAgentFactoryError(
                 f"No output type registered for `{output_type_name}` used by agent `{agent_name}`"
             )
-        tools = _registered_tools(agent_name, manifest, tool_registry)
+        _validate_output_guards(agent_name, output_type_name, output_type_registry, agent_guard_plan, caveats)
+        _collect_guard_caveats(agent_name, manifest, agent_guard_plan, caveats)
+        tools = _registered_tools(agent_name, manifest, tool_registry, agent_guard_plan, caveats)
         handoffs: list[Any] = []
         for dependency in manifest["agents"]:
             child = dependency["name"]
@@ -245,14 +250,112 @@ def _registered_tools(
     agent_name: str,
     manifest: AgentManifest,
     tool_registry: Mapping[str, Any] | None,
+    guard_plan: list[GuardPlanItem],
+    caveats: list[OpenAIAgentFactoryCaveat],
 ) -> list[Any]:
     tools: list[Any] = []
+    denied_tools = {item["target"] for item in guard_plan if item["kind"] == "denied_tool" and item["target"]}
     for tool in manifest["tools"]:
         name = tool["name"]
+        if name in denied_tools:
+            continue
+        if tool["permission"] == "denied":
+            caveats.append(
+                OpenAIAgentFactoryCaveat(
+                    agent_name,
+                    "denied_tool_omitted",
+                    f"Tool `{name}` is declared denied and was omitted from the OpenAI Agent.",
+                )
+            )
+            continue
         if not tool_registry or name not in tool_registry:
             raise OpenAIAgentFactoryError(f"No host tool registered for `{name}` used by agent `{agent_name}`")
         tools.append(tool_registry[name])
     return tools
+
+
+def _guard_plan_by_agent(guard_plan: list[GuardPlanItem]) -> dict[str, list[GuardPlanItem]]:
+    result: dict[str, list[GuardPlanItem]] = {}
+    for item in guard_plan:
+        result.setdefault(item["agent"], []).append(item)
+    return result
+
+
+def _validate_output_guards(
+    agent_name: str,
+    output_type_name: str,
+    output_type_registry: Mapping[str, Any],
+    guard_plan: list[GuardPlanItem],
+    caveats: list[OpenAIAgentFactoryCaveat],
+) -> None:
+    for item in guard_plan:
+        if item["kind"] != "output_conformance":
+            continue
+        output_type = item["output_type"]
+        if output_type is None:
+            continue
+        if output_type not in output_type_registry:
+            raise OpenAIAgentFactoryError(
+                f"No output type registered for guard `{item['expression']}` used by agent `{agent_name}`"
+            )
+        if output_type != output_type_name:
+            caveats.append(
+                OpenAIAgentFactoryCaveat(
+                    agent_name,
+                    "output_guard_type_mismatch",
+                    f"Guard `{item['expression']}` references `{output_type}` "
+                    f"but agent output is `{output_type_name}`.",
+                )
+            )
+
+
+def _collect_guard_caveats(
+    agent_name: str,
+    manifest: AgentManifest,
+    guard_plan: list[GuardPlanItem],
+    caveats: list[OpenAIAgentFactoryCaveat],
+) -> None:
+    tool_permissions = {tool["name"]: tool["permission"] for tool in manifest["tools"]}
+    for item in guard_plan:
+        if item["kind"] == "unsupported":
+            caveats.append(
+                OpenAIAgentFactoryCaveat(
+                    agent_name,
+                    "unsupported_guard",
+                    f"Guard `{item['expression']}` has no OpenAI adapter mapping: {item['message']}",
+                )
+            )
+            continue
+        if item["kind"] == "approval_required_tool":
+            target = item["target"]
+            caveats.append(
+                OpenAIAgentFactoryCaveat(
+                    agent_name,
+                    "approval_required_tool",
+                    f"Guard `{item['expression']}` requires host-owned approval enforcement for `{target}`.",
+                )
+            )
+            if target and tool_permissions.get(target) != "requires_approval":
+                caveats.append(
+                    OpenAIAgentFactoryCaveat(
+                        agent_name,
+                        "guard_permission_mismatch",
+                        f"Guard `{item['expression']}` requires approval but manifest permission is "
+                        f"`{tool_permissions.get(target)}`.",
+                    )
+                )
+            continue
+        if item["kind"] == "denied_tool":
+            target = item["target"]
+            if target and tool_permissions.get(target) != "denied":
+                caveats.append(
+                    OpenAIAgentFactoryCaveat(
+                        agent_name,
+                        "guard_permission_mismatch",
+                        f"Guard `{item['expression']}` denies a tool whose manifest permission is "
+                        f"`{tool_permissions.get(target)}`.",
+                    )
+                )
 
 
 def _instructions_for(

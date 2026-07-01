@@ -155,6 +155,10 @@ guards = [
 ```
 
 The compiler preserves guard intent in generated instructions and manifests so integrations can apply it at the relevant boundary.
+It also emits a structured guard plan for currently supported mappings:
+output conformance, approval-required tools, and denied tools. Unsupported
+guard expressions remain explicit in the plan rather than becoming hidden
+instructions-only behavior.
 
 ## Assertions
 

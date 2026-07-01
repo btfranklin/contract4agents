@@ -144,6 +144,27 @@ agent BadAgent() -> Result:
     assert any(diagnostic.code == "SEM050" for diagnostic in result.diagnostics)
 
 
+def test_semantic_analyzer_rejects_unknown_guard_type_and_tool(tmp_path: Path) -> None:
+    (tmp_path / "bad.contract").write_text(
+        """
+type Result:
+    ok: bool
+
+agent BadAgent() -> Result:
+    use tool tools.known from ./tools
+    goal = "bad"
+    guards = [
+        require(output conforms MissingType),
+        forbid(tool.tools.missing unless approved_by_human),
+    ]
+""".strip()
+    )
+    result = analyze_project(parse_project(tmp_path))
+
+    assert not result.ok
+    assert {diagnostic.code for diagnostic in result.diagnostics} >= {"SEM002", "SEM053"}
+
+
 def test_semantic_analyzer_rejects_duplicate_top_level_declarations(tmp_path: Path) -> None:
     (tmp_path / "a.contract").write_text(
         """
@@ -185,6 +206,8 @@ def test_compile_project_artifacts(tmp_path: Path) -> None:
     assert "IncidentCommander" in artifacts["manifests"]
     assert (tmp_path / "build" / "schemas" / "IncidentBrief.json").exists()
     assert (tmp_path / "build" / "instructions" / "IncidentCommander.md").exists()
+    assert (tmp_path / "build" / "guards" / "guard-plan.json").exists()
+    assert any(item["kind"] == "approval_required_tool" for item in artifacts["guard_plan"])
     assert artifacts["adapter_capability_matrix"]["openai"]["tools"]["status"] == "partial"
 
 
@@ -195,6 +218,17 @@ def test_compile_check_detects_stale_artifacts(tmp_path: Path) -> None:
 
     with pytest.raises(ContractError):
         compile_project(FIXTURE, tmp_path / "build", check=True)
+
+
+def test_compile_check_detects_stale_guard_plan(tmp_path: Path) -> None:
+    compile_project(FIXTURE, tmp_path / "build")
+    guard_plan = tmp_path / "build" / "guards" / "guard-plan.json"
+    guard_plan.write_text("[]\n")
+
+    with pytest.raises(ContractError) as exc:
+        compile_project(FIXTURE, tmp_path / "build", check=True)
+
+    assert "guard-plan.json" in str(exc.value.diagnostics[0].hint)
 
 
 def test_build_artifacts_generates_docs() -> None:

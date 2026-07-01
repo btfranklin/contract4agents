@@ -72,6 +72,7 @@ The compiler turns source contracts into artifacts:
 
 - LLM instructions.
 - Provider-neutral manifests.
+- Guard plans for host and adapter enforcement metadata.
 - Adapter capability metadata.
 - Eval packs.
 - Monitor packs.
@@ -99,7 +100,7 @@ The eval runner executes `.eval` cases against fixture-backed runs. It checks:
 
 - Structured output fields.
 - Trace spy assertions.
-- Guard and assertion outcomes.
+- Assertion outcomes.
 - Optional semantic rubric judgments.
 - Regression snapshots where appropriate.
 

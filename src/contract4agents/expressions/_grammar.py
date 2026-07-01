@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any, Literal, cast
 
 from lark import Lark, Transformer, UnexpectedInput
@@ -148,13 +149,23 @@ class _ExpressionTransformer(Transformer[Any, Any]):
         return unquote(str(items[0]).strip())
 
     def expect_wrapper(self, items: list[Any]) -> ParsedExpression:
-        return cast(ParsedExpression, items[0])
+        return replace(cast(ParsedExpression, items[0]), wrapper="expect")
 
     def require_wrapper(self, items: list[Any]) -> ParsedExpression:
-        return cast(ParsedExpression, items[0])
+        return replace(cast(ParsedExpression, items[0]), wrapper="require")
 
     def forbid_wrapper(self, items: list[Any]) -> ParsedExpression:
-        return ParsedExpression("trace", self.expression, trace_op="tool_called", args=(str(items[0]),))
+        return ParsedExpression(
+            "trace",
+            self.expression,
+            trace_op="tool_called",
+            args=(str(items[0]),),
+            wrapper="forbid",
+            approval_required=len(items) > 1,
+        )
+
+    def forbid_approval(self, _items: list[Any]) -> str:
+        return "approved_by_human"
 
     def when_wrapper(self, items: list[Any]) -> list[ParsedExpression]:
         return [cast(ParsedExpression, item) for item in items]

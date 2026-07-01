@@ -14,4 +14,7 @@ Each agent manifest includes:
 - routes and composition declarations
 - guards and assertions
 
+Raw guard strings stay in each manifest for review. The compiler also emits
+`guards/guard-plan.json` for host and adapter enforcement metadata.
+
 SDK adapters consume this manifest and emit adapter-specific objects or warnings.

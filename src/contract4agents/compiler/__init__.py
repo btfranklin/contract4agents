@@ -8,6 +8,7 @@ from typing import Any, Literal, TypedDict
 
 from contract4agents.ast import AgentDef, ContractProject, EvalCase, MonitorDef
 from contract4agents.diagnostics import ContractError, Diagnostic, raise_if_errors
+from contract4agents.guards import GuardPlanItem, build_guard_plan
 from contract4agents.parser import parse_project
 from contract4agents.schema import type_to_schema
 from contract4agents.semantics import analyze_project
@@ -89,6 +90,7 @@ class CompilerArtifacts(TypedDict):
     instructions: dict[str, str]
     evals: list[EvalPack]
     monitors: list[MonitorPack]
+    guard_plan: list[GuardPlanItem]
     adapter_capability_matrix: CapabilityMatrix
     docs: dict[str, str]
 
@@ -109,6 +111,7 @@ def build_artifacts(project: ContractProject) -> CompilerArtifacts:
     instructions = {name: agent_instructions(agent) for name, agent in project.agents.items()}
     eval_packs = [eval_pack(eval_case) for eval_case in project.evals]
     monitors = [monitor_pack(monitor) for monitor in project.monitors]
+    guard_plan = build_guard_plan(manifests)
     capability_matrix = adapter_capability_matrix()
     docs = generated_docs(project, manifests)
     return {
@@ -117,6 +120,7 @@ def build_artifacts(project: ContractProject) -> CompilerArtifacts:
         "instructions": instructions,
         "evals": eval_packs,
         "monitors": monitors,
+        "guard_plan": guard_plan,
         "adapter_capability_matrix": capability_matrix,
         "docs": docs,
     }
@@ -229,6 +233,11 @@ def adapter_capability_matrix() -> CapabilityMatrix:
                 "partial", "SDK hooks emit normalized lifecycle events; host tools own custom data."
             ),
             "approval_gates": _capability("partial", "Host code resolves SDK approval interruptions."),
+            "guards": _capability(
+                "partial",
+                "Guard plan classifies output conformance, denied tools, and approval-required tools; "
+                "host code enforces approvals.",
+            ),
             "semantic_judge": _capability("supported"),
         },
     }
@@ -259,6 +268,7 @@ def write_artifacts(artifacts: CompilerArtifacts, output_dir: Path, check: bool 
         files[output_dir / "instructions" / f"{name}.md"] = instructions
     files[output_dir / "evals" / "evals.json"] = _json(artifacts["evals"])
     files[output_dir / "monitors" / "monitors.json"] = _json(artifacts["monitors"])
+    files[output_dir / "guards" / "guard-plan.json"] = _json(artifacts["guard_plan"])
     files[output_dir / "adapters" / "capability-matrix.json"] = _json(artifacts["adapter_capability_matrix"])
     for name, text in artifacts["docs"].items():
         files[output_dir / "docs" / name] = text
@@ -292,6 +302,7 @@ __all__ = [
     "CapabilityMatrix",
     "CompilerArtifacts",
     "EvalPack",
+    "GuardPlanItem",
     "JsonSchema",
     "ManifestDatasource",
     "ManifestInput",

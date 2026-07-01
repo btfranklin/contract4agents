@@ -8,6 +8,7 @@ from typing import Any, Literal
 from contract4agents.expressions._trace_ops import TraceOp
 
 ExpressionKind = Literal["output_conforms", "output_compare", "output_text", "hidden_truth", "trace"]
+ExpressionWrapper = Literal["expect", "require", "forbid"]
 
 
 class ExpressionError(ValueError):
@@ -24,6 +25,8 @@ class ParsedExpression:
     value: Any = None
     trace_op: TraceOp | None = None
     args: tuple[str, ...] = ()
+    wrapper: ExpressionWrapper | None = None
+    approval_required: bool = False
 
 
-__all__ = ["ExpressionError", "ExpressionKind", "ParsedExpression"]
+__all__ = ["ExpressionError", "ExpressionKind", "ExpressionWrapper", "ParsedExpression"]

@@ -129,6 +129,11 @@ guards = [
 ]
 ```
 
+Compiled artifacts include a guard plan that classifies supported guards into
+output-schema enforcement, host-owned approval requirements, and adapter tool
+omission. Unsupported parseable guards remain visible as unsupported guard-plan
+items; integrations must not claim they are enforced.
+
 ## Monitors
 
 Monitors apply to recorded traces.

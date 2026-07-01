@@ -93,6 +93,7 @@ After `compile`, inspect:
 - `instructions/MarketResearchLead.md`: generated instructions for the lead.
 - `evals/evals.json`: compiled eval expectations.
 - `monitors/monitors.json`: compiled monitor rules.
+- `guards/guard-plan.json`: guard enforcement metadata.
 - `adapters/capability-matrix.json`: adapter support notes.
 - `docs/summary.md`: compact generated summary.
 - `visualization/index.html`: static review graph.

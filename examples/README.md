@@ -49,6 +49,7 @@ Common generated files:
 - `instructions/*.md`: instruction text derived from each agent contract.
 - `evals/evals.json`: compiled eval expectations.
 - `monitors/monitors.json`: compiled monitor rules.
+- `guards/guard-plan.json`: host and adapter enforcement metadata for guards.
 - `adapters/capability-matrix.json`: what each adapter can support directly,
   partially, or with caveats.
 - `docs/summary.md`: compact generated review summary.

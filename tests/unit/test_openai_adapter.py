@@ -137,6 +137,109 @@ def test_openai_agent_factory_rejects_missing_model(monkeypatch: pytest.MonkeyPa
         )
 
 
+def test_openai_agent_factory_omits_denied_guard_tool(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_fake_agents_module(monkeypatch)
+    child_tool = object()
+
+    result = build_openai_agents_from_contracts(
+        _factory_artifacts(
+            tool_permission="denied",
+            guard_plan=[
+                _guard_item(
+                    "denied_tool",
+                    "adapter_tool_omission",
+                    "forbid(tool.tools.lookup)",
+                    target="tools.lookup",
+                    declared_permission="denied",
+                )
+            ],
+        ),
+        output_type_registry={"ParentResult": dict, "ChildResult": list},
+        model_registry={"ParentAgent": "parent-model", "ChildAgent": "child-model"},
+        agent_tool_registry={"ChildAgent": child_tool},
+    )
+
+    assert result.agents["ParentAgent"].kwargs["tools"] == [child_tool]
+    assert result.caveats == []
+
+
+def test_openai_agent_factory_reports_approval_required_tool_caveat(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_fake_agents_module(monkeypatch)
+    tool = object()
+    child_tool = object()
+
+    result = build_openai_agents_from_contracts(
+        _factory_artifacts(
+            tool_permission="requires_approval",
+            guard_plan=[
+                _guard_item(
+                    "approval_required_tool",
+                    "host_approval_required",
+                    "forbid(tool.tools.lookup unless approved_by_human)",
+                    target="tools.lookup",
+                    declared_permission="requires_approval",
+                )
+            ],
+        ),
+        output_type_registry={"ParentResult": dict, "ChildResult": list},
+        model_registry={"ParentAgent": "parent-model", "ChildAgent": "child-model"},
+        tool_registry={"tools.lookup": tool},
+        agent_tool_registry={"ChildAgent": child_tool},
+    )
+
+    assert result.agents["ParentAgent"].kwargs["tools"] == [tool, child_tool]
+    assert [caveat.kind for caveat in result.caveats] == ["approval_required_tool"]
+
+
+def test_openai_agent_factory_reports_unsupported_guard_caveat(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_fake_agents_module(monkeypatch)
+
+    result = build_openai_agents_from_contracts(
+        _factory_artifacts(
+            include_tool=False,
+            include_agent_dependency=False,
+            guard_plan=[
+                _guard_item(
+                    "unsupported",
+                    "unsupported",
+                    "expect(output.ok == true)",
+                    status="unsupported",
+                    message="Guard syntax is valid but unsupported.",
+                )
+            ],
+        ),
+        output_type_registry={"ParentResult": dict, "ChildResult": list},
+        model_registry={"ParentAgent": "parent-model", "ChildAgent": "child-model"},
+    )
+
+    assert [caveat.kind for caveat in result.caveats] == ["unsupported_guard"]
+
+
+def test_openai_agent_factory_maps_output_guard_when_registered(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_fake_agents_module(monkeypatch)
+    child_tool = object()
+
+    result = build_openai_agents_from_contracts(
+        _factory_artifacts(
+            include_tool=False,
+            guard_plan=[
+                _guard_item(
+                    "output_conformance",
+                    "output_schema",
+                    "require(output conforms ParentResult)",
+                    output_type="ParentResult",
+                )
+            ],
+        ),
+        output_type_registry={"ParentResult": dict, "ChildResult": list},
+        model_registry={"ParentAgent": "parent-model", "ChildAgent": "child-model"},
+        agent_tool_registry={"ChildAgent": child_tool},
+    )
+
+    assert result.agents["ParentAgent"].kwargs["output_type"] is dict
+    assert result.caveats == []
+
+
 def _install_fake_agents_module(monkeypatch: pytest.MonkeyPatch) -> None:
     module = ModuleType("agents")
 
@@ -148,8 +251,18 @@ def _install_fake_agents_module(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(sys.modules, "agents", module)
 
 
-def _factory_artifacts(include_tool: bool = True) -> dict[str, object]:
-    parent_tools = [{"name": "tools.lookup", "module": "tools", "permission": "available"}] if include_tool else []
+def _factory_artifacts(
+    include_tool: bool = True,
+    include_agent_dependency: bool = True,
+    tool_permission: str = "available",
+    guard_plan: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
+    parent_tools = (
+        [{"name": "tools.lookup", "module": "tools", "permission": tool_permission}] if include_tool else []
+    )
+    parent_agents = (
+        [{"name": "ChildAgent", "module": "./child", "permission": "available"}] if include_agent_dependency else []
+    )
     return {
         "schemas": {},
         "manifests": {
@@ -160,7 +273,7 @@ def _factory_artifacts(include_tool: bool = True) -> dict[str, object]:
                 "inputs": [],
                 "output": {"type": "ParentResult", "schema_ref": "schemas/ParentResult.json"},
                 "tools": parent_tools,
-                "agents": [{"name": "ChildAgent", "module": "./child", "permission": "available"}],
+                "agents": parent_agents,
                 "datasources": [],
                 "policy": [],
                 "success": [],
@@ -189,6 +302,31 @@ def _factory_artifacts(include_tool: bool = True) -> dict[str, object]:
         "instructions": {"ParentAgent": "parent instructions", "ChildAgent": "child instructions"},
         "evals": [],
         "monitors": [],
+        "guard_plan": guard_plan or [],
         "adapter_capability_matrix": {},
         "docs": {},
+    }
+
+
+def _guard_item(
+    kind: str,
+    enforcement: str,
+    expression: str,
+    *,
+    status: str = "supported",
+    target: str | None = None,
+    output_type: str | None = None,
+    declared_permission: str | None = None,
+    message: str | None = None,
+) -> dict[str, object]:
+    return {
+        "agent": "ParentAgent",
+        "expression": expression,
+        "kind": kind,
+        "status": status,
+        "enforcement": enforcement,
+        "target": target,
+        "output_type": output_type,
+        "declared_permission": declared_permission,
+        "message": message,
     }

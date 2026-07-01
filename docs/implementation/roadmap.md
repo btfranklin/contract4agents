@@ -8,35 +8,6 @@ Keep this file limited to unimplemented or materially incomplete work. When an i
 
 If an item no longer belongs in the product, remove it from `VISION.md` first and then delete it from this roadmap.
 
-## Guard Mapping For Adapters And Hosts
-
-Vision gap: guards describe safety intent and enforcement metadata for adapters and host runtimes. Today guards are preserved as contract text and statically checked, but the OpenAI adapter does not translate them into concrete guardrail objects, approval hooks, output validation, or host enforcement metadata.
-
-Implementation work:
-
-- Introduce a typed guard plan built from manifest guards.
-- Classify supported guard patterns, starting with output-conformance guards, approval-required tool guards, denied-tool guards, and input or prompt-rejection guardrails where the expression can be represented safely.
-- Emit explicit unsupported-guard diagnostics or adapter caveats when a guard cannot be represented by the selected adapter or host boundary.
-- Map `require(output conforms TypeName)` to output schema validation metadata that host code and adapters can apply after the model returns.
-- Map `forbid(tool.name unless approved_by_human)` to approval-required tool metadata and host approval hooks.
-- Map denied tools to adapter or host preflight rejection where a tool registry is available.
-- Extend the OpenAI adapter so it can consume the guard plan when building agents and tools, rather than requiring example code to hand-wire all guard behavior.
-- Keep guard execution honest: do not claim hard enforcement for guards that are only preserved as instructions or warnings.
-- Add unit tests for guard-plan classification, unsupported guard reporting, and OpenAI adapter mapping.
-
-Validation:
-
-```bash
-pdm run test:unit
-pdm run test:integration
-```
-
-Definition of done:
-
-- Compiled artifacts expose a typed guard plan or equivalent metadata.
-- The OpenAI adapter consumes the guard plan for every supported guard category.
-- Unsupported guard semantics are reported clearly instead of being silently treated as enforced.
-
 ## Hosted Provider Tool Declarations
 
 Vision gap: Contract4Agents currently treats tool declarations primarily as host-supplied capabilities. Real OpenAI Agents SDK applications also use provider-native hosted tools such as web search, which need to appear distinctly in manifests, adapter plans, traces, assertions, and capability reports.
@@ -77,22 +48,22 @@ Definition of done:
 
 ## OpenAI Adapter Planning And Agent Factory Helpers
 
-Vision gap: the OpenAI adapter can build one Agent SDK object and now has a registry-driven `build_openai_agents_from_contracts(...)` helper for basic multi-agent construction. It still lacks a richer adapter plan that consumes the full manifest surface: hosted tools, guard plans, context rendering, approvals, handoff semantics, composition metadata, and assertion metadata.
+Vision gap: the OpenAI adapter can build one Agent SDK object and has a registry-driven `build_openai_agents_from_contracts(...)` helper that consumes basic guard-plan metadata. It still lacks a richer adapter plan for hosted tools, context rendering, executable approval flows, handoff semantics, composition metadata, assertion metadata, and deeper provider caveats.
 
 Design boundary: factory helpers reduce wiring friction; they do not replace the host app runtime. Host code still supplies model choices, Python output classes, real tool callables, hosted-tool enablement, approval behavior, and orchestration.
 
 Implementation work:
 
 - Add an adapter planning layer that consumes compiler artifacts and returns a typed OpenAI adapter plan before constructing SDK objects.
-- Include manifest source paths, generated instruction paths, output schema refs, hosted tool declarations, guard plans, assertion metadata, composition metadata, and adapter caveats in the plan.
+- Include manifest source paths, generated instruction paths, output schema refs, hosted tool declarations, assertion metadata, composition metadata, and adapter caveats in the plan.
 - Extend the existing factory helper to consume the typed adapter plan rather than assembling SDK objects directly from manifests.
 - Add a supported generated output type strategy for callers that do not want to hand-supply every `output_type`.
 - Build OpenAI tool wrappers from a richer registered tool surface and manifest permission metadata.
 - Map hosted provider tool declarations to OpenAI hosted tool objects only when enabled through the hosted tool registry.
-- Carry approval-required tools into SDK or host approval handling consistently and record approval trace events.
+- Carry approval-required tools from guard-plan metadata into concrete SDK or host approval handling and record approval trace events.
 - Map composition metadata to OpenAI handoffs or agents-as-tools when the caller provides the corresponding child agent objects.
 - Render typed context into model input using `RuntimeContext.rendered_context()` or an adapter-specific equivalent, while preserving hidden state outside the model prompt.
-- Feed guard plans and assertion metadata into the adapter run path so OpenAI runs can produce the same normalized trace and post-run assertion checks as fixture runs.
+- Feed assertion metadata into the adapter run path so OpenAI runs can produce the same normalized trace and post-run assertion checks as fixture runs.
 - Return explicit caveats for unsupported semantics. The helper must not silently degrade a contract into instructions-only behavior.
 - Add offline unit and integration tests around planning, hosted tools, guard mapping, approval metadata, context rendering, and object construction with fake registries; keep live OpenAI tests behind existing opt-in environment flags.
 
@@ -108,7 +79,7 @@ Definition of done:
 
 - A host can construct OpenAI Agents SDK objects from a typed adapter plan plus explicit registries.
 - Host code remains responsible for workflow control flow, approval UX, and real runtime dependencies.
-- Permissions, hosted tools, guards, context rendering, traces, and post-run assertions follow the same semantics as local fixture runs where the SDK surface allows it.
+- Permissions, hosted tools, executable approvals, context rendering, traces, and post-run assertions follow the same semantics as local fixture runs where the SDK surface allows it.
 - Unsupported adapter semantics are explicit caveats, not hidden behavior.
 
 ## Pydantic Model Interop For Contract Types

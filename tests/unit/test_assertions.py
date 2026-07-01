@@ -181,6 +181,7 @@ def _artifacts(manifest: AgentManifest) -> CompilerArtifacts:
         "instructions": {"ExampleAgent": "instructions"},
         "evals": [],
         "monitors": [],
+        "guard_plan": [],
         "adapter_capability_matrix": {},
         "docs": {},
     }

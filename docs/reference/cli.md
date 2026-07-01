@@ -21,7 +21,7 @@ Generates provider-neutral artifacts from a valid project.
 - Default root: `.`
 - Default output: `.contract/build`
 - Options: `--out PATH`, `--check`
-- Writes without `--check`: schemas, manifests, instructions, eval packs, monitor packs, adapter capability matrix, and generated docs under `PATH`
+- Writes without `--check`: schemas, manifests, instructions, eval packs, monitor packs, guard plan, adapter capability matrix, and generated docs under `PATH`
 - Writes with `--check`: nothing
 - Success message: `Contract4Agents compile passed`
 - Failure shape: diagnostics; stale generated files use `COMPILE001`

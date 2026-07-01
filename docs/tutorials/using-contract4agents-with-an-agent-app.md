@@ -211,6 +211,7 @@ Use `compile` to generate artifacts:
 - `instructions/*.md`: generated instruction text.
 - `evals/evals.json`: compiled eval expectations.
 - `monitors/monitors.json`: compiled monitor rules.
+- `guards/guard-plan.json`: guard enforcement metadata.
 - `adapters/capability-matrix.json`: adapter support and caveats.
 - `docs/summary.md`: generated review summary.
 
@@ -323,12 +324,19 @@ forbid(tool.crm.create_note unless approved_by_human)
 ```
 
 The compiled manifest and instructions preserve that requirement. Your SDK
-integration should then enforce it at the right boundary:
+integration should then use the compiled guard plan and enforce it at the right
+boundary:
 
+- check `artifacts["guard_plan"]` for output, approval, and denied-tool requirements;
 - configure the SDK tool as approval-required if the SDK supports that;
 - pause and ask your approval UI before continuing;
 - record `approval.requested` and `approval.completed` trace events;
 - run monitors against recorded traces.
+
+`build_openai_agents_from_contracts(...)` consumes the guard plan when
+constructing OpenAI `Agent` objects. It omits denied tools, relies on your
+registered output type for output-conformance guards, and returns caveats for
+approval-required or unsupported guards that still need host code.
 
 Contract4Agents makes the intended behavior explicit and testable. The host app
 still performs the runtime action.

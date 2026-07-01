@@ -9,7 +9,7 @@ The Contract4Agents compiler turns source files into artifacts used by humans, h
 3. Resolve modules and names.
 4. Resolve types and schemas.
 5. Build the capability and context graph.
-6. Preserve guards, assertions, policies, and monitors in generated artifacts.
+6. Classify guards and preserve assertions, policies, and monitors in generated artifacts.
 7. Validate eval references.
 8. Generate target artifacts.
 9. Optionally check generated artifacts for freshness.
@@ -68,6 +68,20 @@ Example shape:
 ```
 
 The manifest is provider-neutral. SDK adapters consume it.
+
+### Guard Plan
+
+The compiler emits `guards/guard-plan.json`, a provider-neutral host and adapter
+enforcement plan derived from manifest guards.
+
+Supported V1 guard mappings are:
+
+- `require(output conforms TypeName)` -> `output_conformance` with `output_schema` enforcement.
+- `forbid(tool.name unless approved_by_human)` -> `approval_required_tool` with host-owned approval enforcement.
+- `forbid(tool.name)` -> `denied_tool` with adapter tool omission.
+
+Unsupported parseable guard expressions are emitted as `unsupported` guard-plan
+items instead of being silently treated as enforced.
 
 ### Adapter Capability Matrix
 

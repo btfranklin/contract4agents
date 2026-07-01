@@ -11,6 +11,7 @@ V1 maps Contract4Agents manifests to:
 - Caller-supplied function tools from local callables.
 - Caller-supplied handoffs or agents-as-tools where used.
 - Caller-supplied output model types.
+- Guard-plan metadata for output conformance, denied tools, and approval-required tools.
 - SDK lifecycle hooks normalized to Contract4Agents trace events.
 
 Use `build_openai_agent(...)` when constructing one SDK object directly from a
@@ -38,6 +39,14 @@ The helper is registry-driven. It does not import application models, discover
 tools, resolve approvals, or run the workflow. Missing declared host tools or
 output types are configuration errors. Declared agent dependencies without
 handoff or agent-tool wiring are returned as explicit caveats.
+
+The helper consumes compiled `guard_plan` items conservatively:
+
+- output-conformance guards rely on the same caller-supplied output type registry;
+- denied-tool guards omit the tool from the SDK `Agent`;
+- approval-required tool guards attach the registered tool but return a caveat
+  because approval enforcement remains host-owned;
+- unsupported guard mappings return caveats instead of being treated as enforced.
 
 The adapter capability matrix uses structured `status` and `caveats` entries.
 Features that depend on host code are marked `partial` or `emulated` rather than

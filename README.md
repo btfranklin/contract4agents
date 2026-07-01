@@ -4,7 +4,7 @@
 
 Contract4Agents is a typed declarative language and local toolchain for defining AI agents as inspectable contracts.
 
-The source artifact is a `.contract` file. It describes an agent's callable interface, allowed capabilities, policies, guards, assertions, and output contract. The compiler turns that source into prompts, provider-neutral manifests, JSON Schemas, eval packs, monitor rules, and visualization artifacts.
+The source artifact is a `.contract` file. It describes an agent's callable interface, allowed capabilities, policies, guards, assertions, and output contract. The compiler turns that source into prompts, provider-neutral manifests, JSON Schemas, guard plans, eval packs, monitor rules, and visualization artifacts.
 
 Contract4Agents includes the compiler, CLI, local fixtures, monitor checks, runtime primitives, and provider adapters needed to use those contracts beside a host agent application.
 
