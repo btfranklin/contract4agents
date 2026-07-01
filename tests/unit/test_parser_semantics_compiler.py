@@ -280,6 +280,56 @@ agent BadAgent() -> Result:
     }
 
 
+def test_semantic_analyzer_rejects_malformed_and_unknown_composition(tmp_path: Path) -> None:
+    (tmp_path / "bad.contract").write_text(
+        """
+type Result:
+    ok: bool
+
+agent Parent() -> Result:
+    use agent B from ./b
+    composition = [handof(B), handoff(Missing)]
+    goal = "bad"
+
+agent B() -> Result:
+    goal = "child"
+""".strip()
+    )
+    result = analyze_project(parse_project(tmp_path))
+
+    assert not result.ok
+    assert [(diagnostic.code, diagnostic.message) for diagnostic in result.diagnostics] == [
+        ("SEM066", "Malformed composition declaration `handof(B)` on agent `Parent`"),
+        ("SEM067", "Composition declaration `handoff(Missing)` references unknown agent `Missing`"),
+    ]
+
+
+def test_semantic_analyzer_requires_composition_use_agent_dependency(tmp_path: Path) -> None:
+    (tmp_path / "bad.contract").write_text(
+        """
+type Result:
+    ok: bool
+
+agent Parent() -> Result:
+    composition = [as_tool(Child)]
+    goal = "bad"
+
+agent Child() -> Result:
+    goal = "child"
+""".strip()
+    )
+    result = analyze_project(parse_project(tmp_path))
+
+    assert not result.ok
+    assert [(diagnostic.code, diagnostic.message) for diagnostic in result.diagnostics] == [
+        (
+            "SEM068",
+            "Composition declaration `as_tool(Child)` references agent `Child` "
+            "without a matching `use agent` dependency",
+        )
+    ]
+
+
 def test_semantic_analyzer_rejects_duplicate_top_level_declarations(tmp_path: Path) -> None:
     (tmp_path / "a.contract").write_text(
         """

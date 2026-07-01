@@ -382,6 +382,57 @@ def test_openai_agent_factory_maps_handoff_composition(monkeypatch: pytest.Monke
     assert result.plan.agents["ParentAgent"].composition[0].mode == "handoff"
 
 
+def test_valid_composition_source_compiles_and_maps_in_openai_adapter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_fake_agents_module(monkeypatch)
+    child_tool = object()
+    (tmp_path / "agents.contract").write_text(
+        """
+type Result:
+    ok: bool
+
+agent Parent() -> Result:
+    use agent Child from ./child
+    composition = [as_tool(Child)]
+    goal = "parent"
+
+agent Child() -> Result:
+    goal = "child"
+""".strip()
+    )
+
+    result = build_openai_agents_from_contracts(
+        compile_project(tmp_path),
+        output_type_registry={"Result": dict},
+        model_registry={"Parent": "parent-model", "Child": "child-model"},
+        agent_tool_registry={"Child": child_tool},
+    )
+
+    assert result.agents["Parent"].kwargs["tools"] == [child_tool]
+    assert result.agents["Parent"].kwargs["handoffs"] == []
+    assert result.plan.agents["Parent"].composition[0].mode == "agent_as_tool"
+    assert result.caveats == []
+
+
+def test_openai_agent_factory_maps_valid_as_tool_alias_composition(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_fake_agents_module(monkeypatch)
+    child_tool = object()
+
+    result = build_openai_agents_from_contracts(
+        _factory_artifacts(include_tool=False, composition=["as_tool(ChildAgent)"]),
+        output_type_registry={"ParentResult": dict, "ChildResult": list},
+        model_registry={"ParentAgent": "parent-model", "ChildAgent": "child-model"},
+        agent_tool_registry={"ChildAgent": child_tool},
+    )
+
+    assert result.agents["ParentAgent"].kwargs["tools"] == [child_tool]
+    assert result.agents["ParentAgent"].kwargs["handoffs"] == []
+    assert result.plan.agents["ParentAgent"].composition[0].mode == "agent_as_tool"
+    assert result.plan.agents["ParentAgent"].composition[0].source == "as_tool"
+
+
 def test_openai_agent_factory_reports_ambiguous_implicit_composition(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_fake_agents_module(monkeypatch)
 

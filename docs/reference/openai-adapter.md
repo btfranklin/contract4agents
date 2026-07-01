@@ -98,6 +98,9 @@ objects:
 - `handoff(...)` uses `handoff_registry`.
 - `isolated_subagent(...)` is reported as unsupported.
 
+Semantic analysis rejects malformed composition declarations and declarations
+that target unknown agents before adapter planning runs.
+
 Without an explicit composition declaration, the planner prefers an agent-tool
 registration, then a handoff registration. If both are supplied, it uses the
 agent tool and emits a `composition_mode_ambiguous` caveat.

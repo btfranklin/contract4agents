@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import inspect
 import os
-import re
 from collections.abc import Awaitable, Mapping
 from typing import Any, cast
 
@@ -34,6 +33,7 @@ from contract4agents.compiler import (
     AgentManifest,
     CompilerArtifacts,
 )
+from contract4agents.composition import parse_composition_declaration
 from contract4agents.guards import GuardPlanItem
 from contract4agents.hosted_tools import hosted_tool_kwargs
 from contract4agents.runtime import RuntimeContext, TraceRecorder
@@ -608,10 +608,9 @@ def _handoff_composition(
 def _composition_declarations(items: list[str]) -> dict[str, str]:
     declarations: dict[str, str] = {}
     for item in items:
-        match = re.fullmatch(r"\s*(agent_as_tool|as_tool|handoff|isolated_subagent)\(([^)]+)\)\s*", item)
-        if match:
-            mode, agent = match.groups()
-            declarations[agent.strip()] = mode
+        declaration = parse_composition_declaration(item)
+        if declaration:
+            declarations[declaration.agent] = declaration.mode
     return declarations
 
 

@@ -258,6 +258,7 @@ Contract4Agents can preserve declared composition preferences while leaving exec
 
 ```contract
 composition = [
+    agent_as_tool(ResearchAgent),
     as_tool(BillingAgent),
     handoff(SupportAgent),
     isolated_subagent(LogInvestigator),
@@ -266,9 +267,12 @@ composition = [
 
 Common semantic modes:
 
-- `as_tool`: the current agent stays in control and calls another agent like a tool.
+- `agent_as_tool` / `as_tool`: the current agent stays in control and calls another agent like a tool.
 - `handoff`: control transfers to a specialist agent.
 - `isolated_subagent`: the child agent has an isolated context and returns only a final result to the parent.
+
+Composition declarations must use one of these function forms and target a known
+agent declared with `use agent` on the current agent.
 
 ## Static Checks
 

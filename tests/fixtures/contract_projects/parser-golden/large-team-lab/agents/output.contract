@@ -45,10 +45,13 @@ agent TeamCoordinator(
     use tool tools.audit.write from ./tools/audit preapproved
     goal = "Coordinate the large parser-golden team."
     composition = [
-        route intake through IntakeRouter,
-        collect research from ProfileResearcher and KnowledgeResearcher,
-        check risk through PolicyChecker and SecurityReviewer,
-        prepare output with ResolutionWriter and QualityReviewer,
+        handoff(IntakeRouter),
+        isolated_subagent(ProfileResearcher),
+        isolated_subagent(KnowledgeResearcher),
+        isolated_subagent(PolicyChecker),
+        isolated_subagent(SecurityReviewer),
+        isolated_subagent(ResolutionWriter),
+        isolated_subagent(QualityReviewer),
     ]
     assertions = [
         expect(output conforms WorkResult),

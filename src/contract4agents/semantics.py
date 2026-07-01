@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from contract4agents.ast import AgentDef, ContractProject, DatasourceDef, MonitorDef, SourceSpan, TypeDef
+from contract4agents.composition import parse_composition_declaration
 from contract4agents.diagnostics import Diagnostic
 from contract4agents.expressions._grammar import (
     parse_contract_expression,
@@ -167,6 +168,7 @@ def _check_agent(
     tool_names = {use.name for use in agent.uses if use.kind == "tool"}
     hosted_tool_names = {use.name for use in agent.uses if use.kind == "hosted_tool"}
     diagnostics.extend(_check_hosted_tools(agent))
+    diagnostics.extend(_check_composition(agent, index))
     for use in agent.uses:
         if use.kind == "agent" and use.name not in index.agent_defs:
             diagnostics.append(
@@ -296,6 +298,46 @@ def _check_monitor(
         if parsed:
             diagnostics.extend(
                 _check_trace_refs(parsed, index, index.project_tools, index.project_hosted_tools, rule.span)
+            )
+    return diagnostics
+
+
+def _check_composition(agent: AgentDef, index: _ProjectIndex) -> list[Diagnostic]:
+    diagnostics: list[Diagnostic] = []
+    agent_dependencies = {use.name for use in agent.uses if use.kind == "agent"}
+    for item in agent.list_attr("composition"):
+        declaration = parse_composition_declaration(item)
+        if declaration is None:
+            diagnostics.append(
+                Diagnostic(
+                    "SEM066",
+                    f"Malformed composition declaration `{item}` on agent `{agent.name}`",
+                    span=agent.span,
+                    hint=(
+                        "Expected one of: agent_as_tool(AgentName), as_tool(AgentName), "
+                        "handoff(AgentName), isolated_subagent(AgentName)."
+                    ),
+                )
+            )
+            continue
+        if declaration.agent not in index.agent_defs:
+            diagnostics.append(
+                Diagnostic(
+                    "SEM067",
+                    f"Composition declaration `{item}` references unknown agent `{declaration.agent}`",
+                    span=agent.span,
+                )
+            )
+            continue
+        if declaration.agent not in agent_dependencies:
+            diagnostics.append(
+                Diagnostic(
+                    "SEM068",
+                    f"Composition declaration `{item}` references agent `{declaration.agent}` "
+                    "without a matching `use agent` dependency",
+                    span=agent.span,
+                    hint=f"Add `use agent {declaration.agent} from ...` before declaring composition.",
+                )
             )
     return diagnostics
 
