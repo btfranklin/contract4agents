@@ -66,7 +66,6 @@ async def run_fixture_project(
             eval_result = await eval_runner.evaluate(
                 name=str(eval_pack["name"]),
                 output=output,
-                output_type=str(metadata["output_type"]),
                 trace=trace,
                 expectations=list(eval_pack["expects"]),
                 semantic_expectations=list(eval_pack["semantic_expects"]),

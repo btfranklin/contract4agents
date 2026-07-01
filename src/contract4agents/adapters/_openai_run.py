@@ -123,9 +123,16 @@ async def _resolve_approval_interruptions(
         for interruption in result.interruptions:
             tool_name = contract_tool_name(str(getattr(interruption, "tool_name", "")))
             arguments = _approval_arguments(interruption)
-            trace.record("approval.requested", tool=tool_name, arguments=arguments)
+            approval_agent = _approval_agent_name(interruption, agent)
+            requested_data: dict[str, Any] = {"tool": tool_name, "arguments": arguments}
+            if approval_agent is not None:
+                requested_data["agent"] = approval_agent
+            trace.record("approval.requested", **requested_data)
             approved = bool(await _maybe_await(approval_callback(OpenAIApprovalRequest(tool_name, None, arguments))))
-            trace.record("approval.completed", tool=tool_name, approved=approved)
+            completed_data: dict[str, Any] = {"tool": tool_name, "approved": approved}
+            if approval_agent is not None:
+                completed_data["agent"] = approval_agent
+            trace.record("approval.completed", **completed_data)
             approvals.append(OpenAIApprovalRequest(tool_name, approved, arguments))
             if approved:
                 state.approve(interruption)
@@ -141,6 +148,36 @@ def _approval_arguments(interruption: Any) -> dict[str, Any]:
         if isinstance(value, dict):
             return dict(value)
     return {}
+
+
+def _approval_agent_name(interruption: Any, root_agent: Any) -> str | None:
+    for source in (interruption, getattr(interruption, "item", None), getattr(interruption, "raw_item", None)):
+        name = _agent_name(source)
+        if name is not None:
+            return name
+    return _agent_name(root_agent)
+
+
+def _agent_name(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    for attr in ("agent_name", "agent"):
+        attr_value = getattr(value, attr, None)
+        if isinstance(attr_value, str):
+            return attr_value
+        if attr_value is not None:
+            nested_name = _agent_name(attr_value)
+            if nested_name is not None:
+                return nested_name
+    name = getattr(value, "name", None)
+    if name is not None:
+        return str(name)
+    kwargs = getattr(value, "kwargs", None)
+    if isinstance(kwargs, Mapping) and kwargs.get("name") is not None:
+        return str(kwargs["name"])
+    return None
 
 
 async def _maybe_await(value: bool | Awaitable[bool]) -> bool:

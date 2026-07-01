@@ -27,6 +27,10 @@ def check_eval(
     if not agent:
         return [Diagnostic("SEM040", f"Eval references unknown agent `{agent_name}`")]
     diagnostics: list[Diagnostic] = []
+    reachable_agent_names = index.reachable_agent_names(agent.name)
+    reachable_tools = index.reachable_tools(agent.name)
+    reachable_hosted_tools = index.reachable_hosted_tools(agent.name)
+    reachable_datasource_targets = index.reachable_datasource_targets(agent.name)
     for expression in expects:
         diagnostics.extend(
             check_expression_refs(
@@ -34,10 +38,12 @@ def check_eval(
                 agent.name,
                 agent.return_type,
                 index,
-                index.project_tools,
-                index.project_hosted_tools,
+                reachable_tools,
+                reachable_hosted_tools,
                 span=agent.span,
                 contract_expression=False,
+                agent_names=reachable_agent_names,
+                datasource_targets=reachable_datasource_targets,
             )
         )
     for expression in semantic_expects:
@@ -56,6 +62,15 @@ def check_monitor(
     agent = index.agent_defs.get(rule.agent)
     if agent is None:
         diagnostics.append(Diagnostic("SEM030", f"Monitor references unknown agent `{rule.agent}`", span=rule.span))
+        reachable_agent_names: set[str] = set()
+        reachable_tools: set[str] = set()
+        reachable_hosted_tools: set[str] = set()
+        reachable_datasource_targets: set[str] = set()
+    else:
+        reachable_agent_names = index.reachable_agent_names(agent.name)
+        reachable_tools = index.reachable_tools(agent.name)
+        reachable_hosted_tools = index.reachable_hosted_tools(agent.name)
+        reachable_datasource_targets = index.reachable_datasource_targets(agent.name)
     for expression, parser in [
         (rule.condition, parse_monitor_condition),
         (rule.expectation, parse_monitor_expectation),
@@ -67,7 +82,15 @@ def check_monitor(
             continue
         if parsed:
             diagnostics.extend(
-                check_trace_refs(parsed, index, index.project_tools, index.project_hosted_tools, rule.span)
+                check_trace_refs(
+                    parsed,
+                    index,
+                    reachable_tools,
+                    reachable_hosted_tools,
+                    rule.span,
+                    agent_names=reachable_agent_names,
+                    datasource_targets=reachable_datasource_targets,
+                )
             )
     return diagnostics
 
@@ -82,6 +105,8 @@ def check_expression_refs(
     *,
     span: SourceSpan,
     contract_expression: bool,
+    agent_names: set[str] | None = None,
+    datasource_targets: set[str] | None = None,
 ) -> list[Diagnostic]:
     try:
         parsed_items = parse_contract_expression(expression) if contract_expression else [parse_expectation(expression)]
@@ -98,6 +123,8 @@ def check_expression_refs(
                 tool_names,
                 hosted_tool_names,
                 span,
+                agent_names,
+                datasource_targets,
             )
         )
     return diagnostics
@@ -111,6 +138,8 @@ def _check_parsed_expression(
     tool_names: set[str],
     hosted_tool_names: set[str],
     span: SourceSpan,
+    agent_names: set[str] | None,
+    datasource_targets: set[str] | None,
 ) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     type_name = referenced_type(parsed)
@@ -128,7 +157,17 @@ def _check_parsed_expression(
                         span=span,
                     )
                 )
-    diagnostics.extend(check_trace_refs(parsed, index, tool_names, hosted_tool_names, span))
+    diagnostics.extend(
+        check_trace_refs(
+            parsed,
+            index,
+            tool_names,
+            hosted_tool_names,
+            span,
+            agent_names=agent_names,
+            datasource_targets=datasource_targets,
+        )
+    )
     return diagnostics
 
 
@@ -138,16 +177,21 @@ def check_trace_refs(
     tool_names: set[str],
     hosted_tool_names: set[str],
     span: SourceSpan,
+    *,
+    agent_names: set[str] | None = None,
+    datasource_targets: set[str] | None = None,
 ) -> list[Diagnostic]:
     op, targets = referenced_trace_targets(parsed)
     if not op:
         return []
     diagnostics: list[Diagnostic] = []
     spec = TRACE_OPS[op]
+    allowed_agent_names = agent_names if agent_names is not None else index.agent_names
+    allowed_datasource_targets = datasource_targets if datasource_targets is not None else index.datasource_targets
     for target in targets:
         if target.isdigit():
             continue
-        if spec.target_kind == "agent" and target not in index.agent_names:
+        if spec.target_kind == "agent" and target not in allowed_agent_names:
             diagnostics.append(Diagnostic("SEM051", f"Expression references unknown agent `{target}`", span=span))
         elif spec.target_kind == "tool" and target not in tool_names:
             diagnostics.append(Diagnostic("SEM053", f"Expression references unknown tool `{target}`", span=span))
@@ -159,12 +203,12 @@ def check_trace_refs(
             diagnostics.append(
                 Diagnostic("SEM053", f"Expression references approval for unknown tool `{target}`", span=span)
             )
-        elif spec.target_kind == "datasource" and target not in index.datasource_targets:
+        elif spec.target_kind == "datasource" and target not in allowed_datasource_targets:
             diagnostics.append(
                 Diagnostic("SEM054", f"Expression references unknown datasource target `{target}`", span=span)
             )
         elif spec.target_kind == "any":
-            known_targets = index.agent_names | tool_names | hosted_tool_names | index.datasource_targets
+            known_targets = allowed_agent_names | tool_names | hosted_tool_names | allowed_datasource_targets
             if target not in known_targets:
                 diagnostics.append(
                     Diagnostic("SEM051", f"Expression references unknown trace target `{target}`", span=span)

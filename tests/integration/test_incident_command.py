@@ -27,7 +27,6 @@ def test_incident_command_local_end_to_end(tmp_path: Path) -> None:
         runner.evaluate(
             name="discovers_checkout_cause",
             output=output,
-            output_type="IncidentBrief",
             trace=trace,
             expectations=artifacts["evals"][0]["expects"],
             semantic_expectations=artifacts["evals"][0]["semantic_expects"],

@@ -30,6 +30,7 @@ from contract4agents.runtime import (
     TraceRecorder,
     TraceScopeError,
     datasource,
+    scope_trace,
 )
 from examples.incident_command_imports.harness import (
     load_hidden_truth,
@@ -260,7 +261,6 @@ async def test_eval_runner_checks_output_trace_and_hidden_truth() -> None:
     result = await runner.evaluate(
         name="case",
         output={"summary": "checkout", "likely_cause": "deploy 8f31c2 changed timeout handling"},
-        output_type="IncidentBrief",
         trace=trace,
         expectations=[
             "output conforms IncidentBrief",
@@ -297,14 +297,12 @@ agent NestedAgent() -> Parent:
     valid = await runner.evaluate(
         name="valid",
         output={"child": {"name": "ok", "score": 1}},
-        output_type="Parent",
         trace=TraceRecorder(),
         expectations=["output conforms Parent"],
     )
     invalid = await runner.evaluate(
         name="invalid",
         output={"child": {"name": "bad", "score": "not an integer"}},
-        output_type="Parent",
         trace=TraceRecorder(),
         expectations=["output conforms Parent"],
     )
@@ -353,7 +351,6 @@ async def test_eval_runner_reports_failures() -> None:
     result = await runner.evaluate(
         name="case",
         output={},
-        output_type="Result",
         trace=trace,
         expectations=[
             "trace.tool_called(logs.search)",
@@ -379,7 +376,6 @@ async def test_eval_runner_requires_run_id_for_multi_run_trace() -> None:
         await runner.evaluate(
             name="case",
             output={},
-            output_type="Result",
             trace=trace,
             expectations=["trace.tool_called(logs.search)"],
         )
@@ -387,7 +383,6 @@ async def test_eval_runner_requires_run_id_for_multi_run_trace() -> None:
     scoped = await runner.evaluate(
         name="case",
         output={},
-        output_type="Result",
         trace=trace,
         expectations=["trace.tool_called(logs.search)"],
         run_id="run-b",
@@ -413,7 +408,6 @@ async def test_eval_runner_supports_documented_trace_spies() -> None:
     result = await runner.evaluate(
         name="case",
         output={},
-        output_type="Result",
         trace=trace,
         expectations=[
             "trace.called(A)",
@@ -437,6 +431,23 @@ async def test_eval_runner_supports_documented_trace_spies() -> None:
 
 
 @pytest.mark.asyncio
+async def test_approval_granted_requires_literal_boolean() -> None:
+    trace = TraceRecorder()
+    trace.record("approval.completed", tool="tool.x", approved="false")
+    runner = EvalRunner({"Result": {"type": "object", "properties": {}}})
+
+    result = await runner.evaluate(
+        name="case",
+        output={},
+        trace=trace,
+        expectations=["trace.approval_granted(tool.x)"],
+    )
+
+    assert not result.passed
+    assert result.failures[0].kind == "trace"
+
+
+@pytest.mark.asyncio
 async def test_hosted_tool_spy_does_not_satisfy_host_tool_spy() -> None:
     trace = TraceRecorder()
     trace.record("hosted_tool.completed", tool="openai.web_search")
@@ -445,7 +456,6 @@ async def test_hosted_tool_spy_does_not_satisfy_host_tool_spy() -> None:
     result = await runner.evaluate(
         name="case",
         output={},
-        output_type="Result",
         trace=trace,
         expectations=[
             "trace.called(openai.web_search)",
@@ -468,7 +478,6 @@ async def test_tool_spy_ignores_target_only_in_tool_result() -> None:
     result = await runner.evaluate(
         name="case",
         output={},
-        output_type="Result",
         trace=trace,
         expectations=["trace.tool_called(status_page.draft_update)"],
     )
@@ -542,6 +551,29 @@ def test_monitor_run_id_prevents_cross_run_false_pass() -> None:
 
     assert len(violations) == 1
     assert violations[0].run_id == "run-a"
+
+
+def test_explicit_run_id_scope_fails_when_no_events_match() -> None:
+    trace = TraceRecorder()
+    trace.record("tool.completed", run_id="run-a", tool="status_page.draft_update")
+
+    with pytest.raises(TraceScopeError, match="no events"):
+        scope_trace(trace, run_id="typo")
+
+    with pytest.raises(TraceScopeError, match="no events"):
+        run_monitors(
+            [
+                MonitorRule(
+                    "approval_required",
+                    "IncidentCommander",
+                    "high",
+                    "trace.tool_called(status_page.draft_update)",
+                    "trace.approval_granted(status_page.draft_update)",
+                )
+            ],
+            trace,
+            run_id="typo",
+        )
 
 
 def test_monitor_approval_check_is_scoped_to_rule_agent() -> None:

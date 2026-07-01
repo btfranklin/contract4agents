@@ -334,7 +334,6 @@ async def test_eval_runner_supports_generic_trace_and_hidden_truth_checks() -> N
     result = await runner.evaluate(
         name="case",
         output={"reply": "duplicate invoice credit approval"},
-        output_type="Result",
         trace=trace,
         expectations=[
             "output discovers hidden_truth.expected_resolution",

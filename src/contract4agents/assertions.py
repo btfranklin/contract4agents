@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from contract4agents.compiler import AgentManifest, CompilerArtifacts
-from contract4agents.expressions._eval import evaluate_hidden_truth, evaluate_output, evaluate_trace
+from contract4agents.expressions._eval import evaluate_parsed_expression, evaluate_trace
 from contract4agents.expressions._grammar import parse_contract_expression
 from contract4agents.expressions._model import ExpressionError, ParsedExpression
 from contract4agents.runtime import TraceRecorder, scope_trace
@@ -176,16 +176,14 @@ def _evaluate_parsed(
     schemas: Mapping[str, dict[str, Any]],
     hidden_truth: Mapping[str, Any],
 ) -> AssertionCheck:
-    if parsed.kind.startswith("output"):
-        failure = evaluate_output(parsed, output, dict(schemas))
-        return _failed(agent, assertion, "output", failure) if failure else AssertionCheck(assertion, "passed")
-    if parsed.kind == "trace":
-        failure = evaluate_trace(parsed, trace)
-        return _failed(agent, assertion, "trace", failure) if failure else AssertionCheck(assertion, "passed")
-    if parsed.kind == "hidden_truth":
-        failure = evaluate_hidden_truth(parsed, output, dict(hidden_truth))
-        return _failed(agent, assertion, "hidden_truth", failure) if failure else AssertionCheck(assertion, "passed")
-    return _failed(agent, assertion, "unsupported", f"Unsupported assertion: {assertion}")
+    failure = evaluate_parsed_expression(
+        parsed,
+        output=output,
+        schemas=dict(schemas),
+        trace=trace,
+        hidden_truth=dict(hidden_truth),
+    )
+    return _failed(agent, assertion, failure[0], failure[1]) if failure else AssertionCheck(assertion, "passed")
 
 
 def _failed(agent: str, assertion: str, kind: str, message: str) -> AssertionCheck:

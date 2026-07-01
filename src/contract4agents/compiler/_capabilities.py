@@ -22,6 +22,11 @@ def adapter_capability_matrix() -> CapabilityMatrix:
             ),
             "handoff": _capability("partial", "Host code supplies SDK handoff objects when used."),
             "agent_as_tool": _capability("emulated", "Host code wraps child agents as SDK tools."),
+            "isolated_subagent": _capability(
+                "unsupported",
+                "OpenAI adapter planning reports isolated subagent composition as unsupported because it cannot "
+                "safely map isolated child context semantics to SDK objects.",
+            ),
             "trace_capture": _capability(
                 "partial", "SDK hooks emit normalized lifecycle events; host tools own custom data."
             ),

@@ -23,6 +23,7 @@ from contract4agents.adapters.openai import (
     run_openai_agent_with_contract,
 )
 from contract4agents.compiler import compile_project
+from contract4agents.monitor import MonitorRule, run_monitors
 from contract4agents.runtime import ContextValue, RuntimeContext
 from tests.fixtures.pydantic_models import ResearchSummaryModel
 
@@ -572,6 +573,21 @@ async def test_openai_run_with_contract_renders_context_resolves_approvals_and_a
     assert "hidden" not in first_input
     assert result.trace.count("approval.requested", "tools.lookup") == 1
     assert result.trace.count("approval.completed", "tools.lookup") == 1
+    approval_events = [event for event in result.trace.events if event.type.startswith("approval.")]
+    assert {event.data["agent"] for event in approval_events} == {"ParentAgent"}
+    assert run_monitors(
+        [
+            MonitorRule(
+                "other_agent_approval",
+                "OtherAgent",
+                "high",
+                "",
+                "trace.approval_granted(tools.lookup)",
+            )
+        ],
+        result.trace,
+        run_id=result.trace.run_id,
+    )
     assert result.trace.count("assertion.evaluated", "expect(output.ok == true)") == 1
 
 
@@ -612,6 +628,7 @@ def _install_fake_agents_module(monkeypatch: pytest.MonkeyPatch, interrupt_once:
     class FakeInterruption:
         tool_name = openai_tool_name("tools.lookup")
         arguments = {"id": "123"}
+        agent_name = "ParentAgent"
 
     class FakeState:
         def __init__(self) -> None:

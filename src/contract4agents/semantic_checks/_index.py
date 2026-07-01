@@ -35,5 +35,53 @@ class ProjectIndex:
     def agent_names(self) -> set[str]:
         return set(self.agent_defs)
 
+    def reachable_agent_names(self, agent_name: str) -> set[str]:
+        reachable: set[str] = set()
+        pending = [agent_name]
+        while pending:
+            current_name = pending.pop()
+            if current_name in reachable:
+                continue
+            current_agent = self.agent_defs.get(current_name)
+            if current_agent is None:
+                continue
+            reachable.add(current_name)
+            pending.extend(use.name for use in current_agent.uses if use.kind == "agent")
+        return reachable
+
+    def reachable_tools(self, agent_name: str) -> set[str]:
+        return {
+            use.name
+            for reachable_agent in self._reachable_agents(agent_name)
+            for use in reachable_agent.uses
+            if use.kind == "tool"
+        }
+
+    def reachable_hosted_tools(self, agent_name: str) -> set[str]:
+        return {
+            use.name
+            for reachable_agent in self._reachable_agents(agent_name)
+            for use in reachable_agent.uses
+            if use.kind == "hosted_tool"
+        }
+
+    def reachable_datasource_targets(self, agent_name: str) -> set[str]:
+        targets: set[str] = set()
+        for reachable_agent in self._reachable_agents(agent_name):
+            for use in reachable_agent.uses:
+                if use.kind != "datasource":
+                    continue
+                datasource = self.datasource_defs.get(use.name)
+                if datasource is not None:
+                    targets.update({datasource.name, datasource.produces})
+        return targets
+
+    def _reachable_agents(self, agent_name: str) -> list[AgentDef]:
+        return [
+            self.agent_defs[name]
+            for name in sorted(self.reachable_agent_names(agent_name))
+            if name in self.agent_defs
+        ]
+
 
 __all__ = ["ProjectIndex"]

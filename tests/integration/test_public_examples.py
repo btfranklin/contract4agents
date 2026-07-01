@@ -60,7 +60,7 @@ def test_multi_lens_research_local_end_to_end(tmp_path: Path) -> None:
     output, trace = run_multi_lens_research_harness_sync(db_path)
     hidden_truth = load_multi_lens_hidden_truth(db_path)
 
-    result = asyncio.run(_evaluate_first_case(artifacts, output, "ResearchBrief", trace, hidden_truth))
+    result = asyncio.run(_evaluate_first_case(artifacts, output, trace, hidden_truth))
 
     assert result.passed
     assert result.skipped_semantic
@@ -84,7 +84,7 @@ def test_market_research_brief_local_end_to_end(tmp_path: Path) -> None:
     output, trace = run_market_research_brief_harness_sync(db_path)
     hidden_truth = load_market_hidden_truth(db_path)
 
-    result = asyncio.run(_evaluate_first_case(artifacts, output, "MarketOpportunityReport", trace, hidden_truth))
+    result = asyncio.run(_evaluate_first_case(artifacts, output, trace, hidden_truth))
 
     assert result.passed
     assert result.skipped_semantic
@@ -114,7 +114,6 @@ def test_incident_command_fixture_eval_smoke() -> None:
 async def _evaluate_first_case(
     artifacts: CompilerArtifacts,
     output: dict[str, Any],
-    output_type: str,
     trace: TraceRecorder,
     hidden_truth: dict[str, Any],
 ) -> Any:
@@ -123,7 +122,6 @@ async def _evaluate_first_case(
     return await runner.evaluate(
         name=eval_case["name"],
         output=output,
-        output_type=output_type,
         trace=trace,
         expectations=eval_case["expects"],
         semantic_expectations=eval_case["semantic_expects"],

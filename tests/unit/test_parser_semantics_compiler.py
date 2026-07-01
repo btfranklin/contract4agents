@@ -301,6 +301,56 @@ agent UnknownProviderAgent() -> Result:
     assert [(diagnostic.code, diagnostic.severity) for diagnostic in result.diagnostics] == [("SEM061", "warning")]
 
 
+def test_eval_and_monitor_trace_refs_allow_child_dependency_capabilities(tmp_path: Path) -> None:
+    _write_reachability_project(tmp_path)
+    (tmp_path / "good.eval").write_text(
+        """
+eval good_child_refs for Parent:
+    given start = "case"
+    expect trace.agent_called(Child)
+    expect trace.tool_called(child.lookup)
+    expect trace.hosted_tool_called(openai.web_search)
+    expect trace.datasource_resolved(ChildContext)
+""".strip()
+    )
+    (tmp_path / "good.monitors.contract").write_text(
+        """
+monitor child_tool_required for Parent:
+    severity = "high"
+    when trace.agent_called(Child)
+    expect trace.tool_called(child.lookup)
+""".strip()
+    )
+
+    result = analyze_project(parse_project(tmp_path))
+
+    assert result.ok, [diagnostic.format() for diagnostic in result.diagnostics]
+
+
+def test_eval_and_monitor_trace_refs_reject_unrelated_project_capabilities(tmp_path: Path) -> None:
+    _write_reachability_project(tmp_path)
+    (tmp_path / "bad.eval").write_text(
+        """
+eval bad_other_tool for Parent:
+    given start = "case"
+    expect trace.tool_called(other.lookup)
+""".strip()
+    )
+    (tmp_path / "bad.monitors.contract").write_text(
+        """
+monitor other_agent_tool for Parent:
+    severity = "high"
+    when trace.agent_called(Other)
+    expect trace.tool_called(other.lookup)
+""".strip()
+    )
+
+    result = analyze_project(parse_project(tmp_path))
+
+    assert not result.ok
+    assert {diagnostic.code for diagnostic in result.diagnostics} >= {"SEM051", "SEM053"}
+
+
 def test_semantic_analyzer_rejects_malformed_and_unknown_composition(tmp_path: Path) -> None:
     (tmp_path / "bad.contract").write_text(
         """
@@ -422,6 +472,33 @@ def test_pydantic_compile_check_detects_stale_type_bindings(tmp_path: Path) -> N
     assert "type-bindings.json" in str(exc.value.diagnostics[0].hint)
 
 
+def test_compile_project_refuses_source_root_output_and_preserves_docs(tmp_path: Path) -> None:
+    (tmp_path / "docs").mkdir()
+    source_doc = tmp_path / "docs" / "source.md"
+    source_doc.write_text("source docs\n")
+    (tmp_path / "project.contract").write_text(
+        """
+type Result:
+    ok: bool
+
+agent RootAgent() -> Result:
+    goal = "ok"
+""".strip()
+    )
+
+    with pytest.raises(ContractError) as exc:
+        compile_project(tmp_path, tmp_path)
+
+    assert exc.value.diagnostics[0].code == "COMPILE002"
+    assert source_doc.read_text() == "source docs\n"
+
+    with pytest.raises(ContractError) as docs_exc:
+        compile_project(tmp_path, tmp_path / "docs")
+
+    assert docs_exc.value.diagnostics[0].code == "COMPILE002"
+    assert source_doc.read_text() == "source docs\n"
+
+
 @pytest.mark.parametrize(
     ("python_ref", "code"),
     [
@@ -458,6 +535,7 @@ def test_compile_project_artifacts(tmp_path: Path) -> None:
     assert any(item["kind"] == "approval_required_tool" for item in artifacts["guard_plan"])
     assert artifacts["adapter_capability_matrix"]["openai"]["tools"]["status"] == "partial"
     assert artifacts["adapter_capability_matrix"]["openai"]["hosted_tools"]["status"] == "partial"
+    assert artifacts["adapter_capability_matrix"]["openai"]["isolated_subagent"]["status"] == "unsupported"
     assert artifacts["type_bindings"][0]["source"] == "native"
 
 
@@ -573,3 +651,34 @@ def test_build_artifacts_generates_docs() -> None:
     assert "| status_page.draft_update | tools.status_page | requires_approval |" in agent_doc
     assert "- `discovers_checkout_cause`" in agent_doc
     assert "Output schema: `schemas/IncidentBrief.json`" in agent_doc
+
+
+def _write_reachability_project(path: Path) -> None:
+    (path / "project.contract").write_text(
+        """
+type ChildContext:
+    value: str
+
+type Result:
+    ok: bool
+
+datasource ChildContextSource:
+    python = "pkg.context:load"
+    produces = ChildContext
+    requires = []
+
+agent Parent() -> Result:
+    use agent Child from ./child
+    goal = "parent"
+
+agent Child() -> Result:
+    use tool child.lookup from ./tools
+    use hosted_tool openai.web_search context_size "medium"
+    use datasource ChildContextSource from ./context
+    goal = "child"
+
+agent Other() -> Result:
+    use tool other.lookup from ./tools
+    goal = "other"
+""".strip()
+    )

@@ -29,10 +29,13 @@ Generates provider-neutral artifacts from a valid project.
 - Writes without `--check`: schemas, type bindings, manifests, instructions, eval packs, monitor packs, guard plan, adapter capability matrix, and generated docs under `PATH`
 - Writes with `--check`: nothing
 - Success message: `Contract4Agents compile passed`
-- Failure shape: diagnostics; stale generated files use `COMPILE001`
+- Failure shape: diagnostics; stale generated files use `COMPILE001`, unsafe output paths use `COMPILE002`
 - Side effects: creates parent directories for generated files unless `--check` is used
 
 When `--check` fails with `COMPILE001`, rerun the same compile command without `--check` to refresh generated artifacts.
+The compiler refuses output paths that are the project root or obvious
+source-owned top-level directories such as `docs`; choose a generated directory
+such as `.contract/build`.
 
 Projects that declare `type Name from python "module:Model"` require
 `--allow-python-imports` for compile, because schema generation imports host

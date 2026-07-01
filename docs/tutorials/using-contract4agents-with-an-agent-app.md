@@ -378,10 +378,10 @@ from contract4agents.runtime import TraceRecorder
 
 trace = TraceRecorder(Path("runs/support-001.trace.jsonl"), run_id="run-support-001")
 trace.record("agent.started", event_id="evt-001", agent="SupportCoordinator")
-trace.record("approval.requested", event_id="evt-002", tool="crm.create_note")
-trace.record("approval.completed", event_id="evt-003", tool="crm.create_note", approved=True)
-trace.record("tool.completed", event_id="evt-004", tool="crm.create_note", data={"note_id": "note-123"})
-trace.record("hosted_tool.completed", event_id="evt-005", tool="openai.web_search")
+trace.record("approval.requested", event_id="evt-002", agent="SupportCoordinator", tool="crm.create_note")
+trace.record("approval.completed", event_id="evt-003", agent="SupportCoordinator", tool="crm.create_note", approved=True)
+trace.record("tool.completed", event_id="evt-004", agent="SupportCoordinator", tool="crm.create_note", data={"note_id": "note-123"})
+trace.record("hosted_tool.completed", event_id="evt-005", agent="SupportCoordinator", tool="openai.web_search")
 trace.record("agent.completed", event_id="evt-006", agent="SupportCoordinator")
 ```
 

@@ -7,7 +7,7 @@ from typing import Any, Literal, TypedDict
 from contract4agents.guards import GuardPlanItem
 
 JsonSchema = dict[str, Any]
-CapabilityStatus = Literal["supported", "partial", "emulated"]
+CapabilityStatus = Literal["supported", "partial", "emulated", "unsupported"]
 MANAGED_ARTIFACT_DIRS = (
     "schemas",
     "types",

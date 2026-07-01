@@ -118,6 +118,27 @@ def evaluate_trace(parsed: ParsedExpression, trace: TraceRecorder) -> str | None
     return None if _trace_contains(trace, args[0], event_type, target_kind) else f"Expected trace to include {args[0]}"
 
 
+def evaluate_parsed_expression(
+    parsed: ParsedExpression,
+    *,
+    output: dict[str, Any],
+    schemas: dict[str, dict[str, Any]],
+    trace: TraceRecorder,
+    hidden_truth: dict[str, Any],
+) -> tuple[str, str] | None:
+    """Return `(failure_kind, message)` for a parsed expression, or None when it passes."""
+    if parsed.kind.startswith("output"):
+        failure = evaluate_output(parsed, output, schemas)
+        return ("output", failure) if failure else None
+    if parsed.kind == "trace":
+        failure = evaluate_trace(parsed, trace)
+        return ("trace", failure) if failure else None
+    if parsed.kind == "hidden_truth":
+        failure = evaluate_hidden_truth(parsed, output, hidden_truth)
+        return ("hidden_truth", failure) if failure else None
+    return ("unsupported", f"Unsupported expression: {parsed.expression}")
+
+
 def _hidden_truth_matches(rule: Any, text: str) -> bool:
     if isinstance(rule, dict):
         if "contains_all" in rule:
@@ -180,7 +201,7 @@ def _target_in_event_fields(target: str, data: dict[str, Any], fields: tuple[str
 def _approval_matches(trace: TraceRecorder, target: str, approved: bool) -> bool:
     return any(
         event.type == "approval.completed"
-        and bool(event.data.get("approved")) is approved
+        and event.data.get("approved") is approved
         and _target_in_event_fields(target, event.data, _TARGET_FIELDS_BY_KIND["approval_tool"])
         for event in trace.events
     )

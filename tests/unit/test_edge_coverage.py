@@ -224,7 +224,6 @@ async def test_eval_edges() -> None:
     result = await runner.evaluate(
         name="bad",
         output={"ok": False, "message": "contains forbidden"},
-        output_type="Result",
         trace=RuntimeContext().trace,
         expectations=[
             "output.ok != true",

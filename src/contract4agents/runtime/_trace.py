@@ -157,6 +157,8 @@ def scope_trace(trace: TraceRecorder, *, run_id: str | None = None, agent: str |
         selected_run_id = next(iter(event_run_ids), trace.run_id)
     else:
         selected_run_id = run_id
+        if selected_run_id not in event_run_ids:
+            raise TraceScopeError(f"Trace contains no events for run_id `{selected_run_id}`")
 
     scoped = TraceRecorder(run_id=selected_run_id)
     scoped.events = [

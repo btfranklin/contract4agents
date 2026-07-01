@@ -95,6 +95,11 @@ Approval events:
 - `approval.requested`
 - `approval.completed`
 
+Approval events should carry `agent` when the approval belongs to a specific
+agent. `approval.completed` uses `data.approved` as a literal boolean; monitor
+and eval spies do not treat string values such as `"false"` as approval
+decisions.
+
 Run review events:
 
 - `stage.completed`

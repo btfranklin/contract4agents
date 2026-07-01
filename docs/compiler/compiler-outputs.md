@@ -8,9 +8,9 @@ The Contract4Agents compiler turns source files into artifacts used by humans, h
 2. Parse `.contract` and `.eval` files into ASTs.
 3. Resolve modules and names.
 4. Resolve types and schemas.
-5. Build the capability and context graph.
+5. Build declared capability metadata and runtime context metadata.
 6. Classify guards and preserve assertions, policies, and monitors in generated artifacts.
-7. Validate eval references.
+7. Validate eval and monitor references against declared agent reachability.
 8. Generate target artifacts.
 9. Optionally check generated artifacts for freshness.
 
@@ -212,18 +212,26 @@ V1 visualization is conservative. It renders declared relationships such as agen
 
 ## Static Checks
 
-The compiler should fail on:
+The compiler currently fails on:
 
 - Parse errors.
 - Unknown references.
 - Invalid type definitions.
 - Invalid agent signatures.
 - Missing return type schemas.
-- Missing datasource implementations.
-- Ambiguous datasource resolution.
-- Tool access that violates declared permissions.
-- Eval references to missing trace events or output fields.
-- Monitor references to unavailable trace fields.
+- Duplicate top-level declarations.
+- Malformed agent attributes.
+- Invalid hosted-tool provider metadata for bundled descriptors.
+- Ambiguous datasource declarations for the same agent and produced type.
+- Guards and assertions that reference unavailable local tools, hosted tools, output fields, or types.
+- Eval and monitor references to unavailable output fields, types, or trace targets outside the scoped agent's declared `use agent` dependency closure.
+
+The active roadmap covers checks that require more host or flow knowledge:
+
+- Full child-agent context satisfiability across parent inputs and datasource chains.
+- Missing datasource implementation imports and broader host-code drift checks.
+- Tool permission drift against an explicit host capability registry.
+- Prompt, output-type, and adapter registry drift checks.
 
 The compiler can warn on:
 
@@ -266,3 +274,7 @@ pdm run contract4agents compile --check
 ```
 
 `pdm run contract4agents compile --check` should fail when generated artifacts are stale.
+Compiler output paths are guarded before any managed artifact directory is
+removed. Writing directly to the project root or to obvious source-owned
+top-level directories such as `docs` fails with `COMPILE002`; use a generated
+artifact directory such as `.contract/build`.

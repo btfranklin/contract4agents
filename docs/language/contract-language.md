@@ -125,7 +125,11 @@ Host integrations and runtime primitives supply parameters from:
 - The parent agent context.
 - Datasources allowed by the contract.
 
-If a required context slot cannot be supplied or resolved, compilation or invocation should fail with a deterministic error.
+If a required context slot cannot be supplied or resolved at runtime,
+invocation fails with a deterministic error. Full compiler proof that every
+child-agent context slot is satisfiable from parent context or datasource chains
+is roadmap work; current static checks validate declared types, known
+datasources, and expression references.
 
 ## Capability Declarations
 
@@ -278,14 +282,17 @@ agent declared with `use agent` on the current agent.
 
 ## Static Checks
 
-The compiler should reject:
+The compiler currently rejects:
 
 - Unknown types.
 - Unknown agents, tools, or datasources.
 - Duplicate names in the same module scope.
-- Agent dependencies whose required parameters cannot be supplied or resolved.
 - Ambiguous datasource resolution.
 - Guards that reference unavailable tools.
 - Assertions that reference unavailable trace events.
-- Eval cases that reference missing agents, fields, or tools.
+- Eval cases and monitors that reference missing fields or capabilities outside
+  the scoped agent's declared dependency closure.
 - Return types that cannot produce an output schema.
+
+Roadmap checks will add full child-context satisfiability analysis and
+host-code or capability-registry drift validation.

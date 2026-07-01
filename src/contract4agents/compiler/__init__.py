@@ -26,10 +26,24 @@ from contract4agents.compiler._types import (
     TypeBinding,
 )
 from contract4agents.compiler._writer import write_artifacts
-from contract4agents.diagnostics import raise_if_errors
+from contract4agents.diagnostics import ContractError, Diagnostic, raise_if_errors
 from contract4agents.guards import GuardPlanItem, build_guard_plan
 from contract4agents.parser import parse_project
 from contract4agents.semantics import analyze_project
+
+SOURCE_OWNED_OUTPUT_DIRS = frozenset(
+    {
+        "agents",
+        "datasources",
+        "docs",
+        "evals",
+        "examples",
+        "monitors",
+        "src",
+        "tests",
+        "types",
+    }
+)
 
 
 def compile_project(
@@ -43,8 +57,31 @@ def compile_project(
     raise_if_errors(diagnostics)
     artifacts = build_artifacts(project, allow_python_imports=allow_python_imports)
     if output_dir is not None:
-        write_artifacts(artifacts, Path(output_dir), check=check)
+        output_path = Path(output_dir)
+        _validate_output_dir(Path(root), output_path)
+        write_artifacts(artifacts, output_path, check=check)
     return artifacts
+
+
+def _validate_output_dir(root: Path, output_dir: Path) -> None:
+    root_path = root.resolve()
+    output_path = output_dir.resolve()
+    if output_path == root_path:
+        _raise_unsafe_output_dir(output_dir, "it is the project root")
+    if output_path.parent == root_path and output_path.name in SOURCE_OWNED_OUTPUT_DIRS:
+        _raise_unsafe_output_dir(output_dir, f"`{output_path.name}` is a source-owned project directory")
+
+
+def _raise_unsafe_output_dir(output_dir: Path, reason: str) -> None:
+    raise ContractError(
+        [
+            Diagnostic(
+                "COMPILE002",
+                f"Refusing to write compiler artifacts to `{output_dir}` because {reason}.",
+                hint="Choose a generated artifact directory such as `.contract/build`.",
+            )
+        ]
+    )
 
 
 def build_artifacts(project: ContractProject, allow_python_imports: bool = False) -> CompilerArtifacts:
