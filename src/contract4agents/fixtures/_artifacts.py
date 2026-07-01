@@ -42,9 +42,7 @@ def verify_fixture_artifacts(metadata: dict[str, Any], artifacts: CompilerArtifa
         for tool in manifest.get("tools", [])
     }
     _expect_set("tools", expected.get("tools", []), all_tools)
-    for tool_name in ["billing.create_credit", "security.lock_account", "access.grant_access"]:
-        if all_tools.get(tool_name) != "requires_approval":
-            raise FixtureArtifactError(f"{tool_name} must be approval-gated")
+    _expect_permissions("tool permissions", expected.get("tool_permissions", {}), all_tools)
     checks.append("expected tools and permissions present")
     coordinator = manifests[metadata["entry_agent"]]
     datasource_artifacts = {item["name"]: item for item in coordinator["datasources"]}
@@ -60,6 +58,16 @@ def _expect_set(label: str, expected: list[str], actual: dict[str, Any]) -> None
     missing = sorted(set(expected) - set(actual))
     if missing:
         raise FixtureArtifactError(f"missing {label}: {missing}")
+
+
+def _expect_permissions(label: str, expected: dict[str, str], actual: dict[str, str]) -> None:
+    mismatches = {
+        name: {"expected": permission, "actual": actual.get(name)}
+        for name, permission in expected.items()
+        if actual.get(name) != permission
+    }
+    if mismatches:
+        raise FixtureArtifactError(f"unexpected {label}: {mismatches}")
 
 
 __all__ = ["verify_fixture_artifacts"]

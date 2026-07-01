@@ -25,7 +25,22 @@ Each fixture project must include `fixture.json` with:
 
 - `entry_agent` and `output_type`
 - Python references for `seed`, `hidden_truth`, `starts`, `local_runner`, and `live_runner`
-- expected agents, types, tools, datasources, eval count, and monitor count
+- expected agents, types, tools, tool permissions, datasources, eval count, and monitor count
+
+`expected.tool_permissions` is a map of tool name to required compiled
+permission. Use it for fixture-specific approval or denial expectations, for
+example:
+
+```json
+{
+  "expected": {
+    "tools": ["status_page.draft_update", "incident.lookup"],
+    "tool_permissions": {
+      "status_page.draft_update": "requires_approval"
+    }
+  }
+}
+```
 
 The runner compiles the project into a temp build directory, runs compile check mode against that output, verifies key artifact contents, then runs starts. Execution does not begin if artifact verification fails.
 For each start, the runner evaluates the matching `.eval` case, then evaluates

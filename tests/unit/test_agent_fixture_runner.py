@@ -47,6 +47,120 @@ def test_fixture_artifact_verifier_passes_and_fails(tmp_path: Path) -> None:
         verify_fixture_artifacts(bad_metadata, artifacts, tmp_path / "build")
 
 
+def test_fixture_artifact_verifier_uses_declared_tool_permissions(tmp_path: Path) -> None:
+    build_dir = tmp_path / "build"
+    for relative in [
+        "schemas/ResearchResult.json",
+        "manifests/ResearchCoordinator.json",
+        "instructions/ResearchCoordinator.md",
+        "evals/evals.json",
+        "monitors/monitors.json",
+        "adapters/capability-matrix.json",
+        "docs/summary.md",
+    ]:
+        path = build_dir / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}")
+
+    metadata = {
+        "entry_agent": "ResearchCoordinator",
+        "output_type": "ResearchResult",
+        "expected": {
+            "agents": ["ResearchCoordinator"],
+            "types": ["ResearchResult"],
+            "tools": ["research.publish_brief", "research.search"],
+            "tool_permissions": {"research.publish_brief": "requires_approval"},
+            "datasources": ["ResearchSource"],
+            "eval_count": 1,
+            "monitor_count": 1,
+        },
+    }
+    artifacts = {
+        "schemas": {"ResearchResult": {"type": "object"}},
+        "type_bindings": [],
+        "manifests": {
+            "ResearchCoordinator": {
+                "agent": "ResearchCoordinator",
+                "source_path": "agents/research.contract",
+                "description": "",
+                "goal": "",
+                "inputs": [],
+                "output": {
+                    "type": "ResearchResult",
+                    "schema_ref": "schemas/ResearchResult.json",
+                    "python_ref": None,
+                },
+                "tools": [
+                    {
+                        "name": "research.publish_brief",
+                        "module": "tools.research",
+                        "permission": "requires_approval",
+                    },
+                    {"name": "research.search", "module": "tools.research", "permission": "preapproved"},
+                ],
+                "hosted_tools": [],
+                "agents": [],
+                "datasources": [
+                    {
+                        "name": "ResearchSource",
+                        "python": "tests.fixtures.research:source",
+                        "produces": "ResearchInput",
+                        "requires": [],
+                        "render": "markdown",
+                        "cache": "none",
+                    }
+                ],
+                "policy": [],
+                "success": [],
+                "routes": [],
+                "composition": [],
+                "guards": [],
+                "assertions": [],
+            }
+        },
+        "instructions": {},
+        "evals": [
+            {
+                "name": "case",
+                "agent": "ResearchCoordinator",
+                "givens": {},
+                "expects": [],
+                "semantic_expects": [],
+            }
+        ],
+        "monitors": [
+            {
+                "name": "publish_requires_approval",
+                "agent": "ResearchCoordinator",
+                "severity": "error",
+                "when": "trace.tool_called(research.publish_brief)",
+                "expect": "trace.approval_granted(research.publish_brief)",
+            }
+        ],
+        "guard_plan": [],
+        "adapter_capability_matrix": {
+            "openai": {
+                "trace_capture": {
+                    "status": "partial",
+                    "caveats": [],
+                }
+            }
+        },
+        "docs": {},
+    }
+
+    checks = verify_fixture_artifacts(metadata, artifacts, build_dir)
+
+    assert "expected tools and permissions present" in checks
+    bad_metadata = dict(metadata)
+    bad_metadata["expected"] = {
+        **metadata["expected"],
+        "tool_permissions": {"research.publish_brief": "preapproved"},
+    }
+    with pytest.raises(FixtureArtifactError, match="research.publish_brief"):
+        verify_fixture_artifacts(bad_metadata, artifacts, build_dir)
+
+
 def test_fixture_report_serializer_includes_required_sections() -> None:
     report = FixtureReport(
         project="project",

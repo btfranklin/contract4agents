@@ -34,6 +34,11 @@
       "security.audit_log",
       "security.lock_account"
     ],
+    "tool_permissions": {
+      "access.grant_access": "requires_approval",
+      "billing.create_credit": "requires_approval",
+      "security.lock_account": "requires_approval"
+    },
     "datasources": [
       "CustomerAccountSource",
       "RequestIntentSource"
