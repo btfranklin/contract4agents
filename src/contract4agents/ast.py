@@ -72,6 +72,7 @@ class AgentDef:
     uses: list[UseDecl]
     attributes: dict[str, Any]
     span: SourceSpan
+    attribute_spans: dict[str, SourceSpan] = field(default_factory=dict)
 
     def list_attr(self, key: str) -> list[str]:
         value = self.attributes.get(key, [])

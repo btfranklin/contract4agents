@@ -15,4 +15,9 @@ Contract4Agents V1 supports:
 - `.eval` files with `given` and `expect` statements.
 - `monitor Name for Agent:` declarations.
 
+Semantic analysis rejects unknown agent assignment attributes and known
+attribute type mismatches. Text attributes (`goal`, `description`) must be
+strings. List attributes (`policy`, `success`, `routes`, `composition`,
+`guards`, `assertions`) must be list values.
+
 General-purpose loops, executable expression blocks, and inline eval suites inside agent files are intentionally out of scope for V1.

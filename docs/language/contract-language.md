@@ -91,6 +91,22 @@ agent CustomerGreeter(
     ]
 ```
 
+Agent bodies accept capability declarations plus these assignment attributes:
+
+- `goal`: string.
+- `description`: string.
+- `policy`: list of text or contract expressions.
+- `success`: list of text or contract expressions.
+- `routes`: list of routing declarations.
+- `composition`: list of composition declarations.
+- `guards`: list of guard expressions.
+- `assertions`: list of assertion expressions.
+
+Unknown agent attributes are semantic errors. Known attributes must use the
+declared value shape; for example, `guards` and `assertions` must be lists, and
+`goal` and `description` must be strings. Misspellings such as `guard = [...]`
+fail instead of compiling to an empty guard plan.
+
 ## Agent Parameters
 
 Every agent parameter is a required typed context slot unless it is nullable or has a default.

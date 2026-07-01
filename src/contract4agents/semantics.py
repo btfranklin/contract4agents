@@ -20,6 +20,14 @@ from contract4agents.hosted_tools import SUPPORTED_HOSTED_TOOLS, split_hosted_to
 from contract4agents.pydantic_interop import python_type_ref_diagnostics
 
 BUILTIN_TYPES = {"str", "int", "float", "bool", "AgentRef"}
+TEXT_AGENT_ATTRIBUTES = {"description", "goal"}
+LIST_AGENT_ATTRIBUTES = {"assertions", "composition", "guards", "policy", "routes", "success"}
+AGENT_ATTRIBUTES = TEXT_AGENT_ATTRIBUTES | LIST_AGENT_ATTRIBUTES
+COMMON_AGENT_ATTRIBUTE_MISSPELLINGS = {
+    "assertion": "assertions",
+    "guard": "guards",
+    "route": "routes",
+}
 
 
 @dataclass(frozen=True)
@@ -151,6 +159,7 @@ def _check_agent(
     index: _ProjectIndex,
 ) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
+    diagnostics.extend(_check_agent_attributes(agent))
     for parameter in agent.parameters:
         diagnostics.extend(_check_type_ref(parameter.type_name, index, parameter.span, "agent parameter"))
     diagnostics.extend(_check_type_ref(agent.return_type, index, agent.span, "agent return type"))
@@ -194,6 +203,47 @@ def _check_agent(
             )
         )
     return diagnostics
+
+
+def _check_agent_attributes(agent: AgentDef) -> list[Diagnostic]:
+    diagnostics: list[Diagnostic] = []
+    for key, value in agent.attributes.items():
+        span = agent.attribute_spans.get(key, agent.span)
+        if key not in AGENT_ATTRIBUTES:
+            hint = _unknown_agent_attribute_hint(key)
+            diagnostics.append(
+                Diagnostic(
+                    "SEM070",
+                    f"Unknown agent attribute `{key}` on `{agent.name}`",
+                    span=span,
+                    hint=hint,
+                )
+            )
+            continue
+        if key in TEXT_AGENT_ATTRIBUTES and not isinstance(value, str):
+            diagnostics.append(
+                Diagnostic(
+                    "SEM071",
+                    f"Agent attribute `{key}` on `{agent.name}` must be a string",
+                    span=span,
+                )
+            )
+        elif key in LIST_AGENT_ATTRIBUTES and not isinstance(value, list):
+            diagnostics.append(
+                Diagnostic(
+                    "SEM071",
+                    f"Agent attribute `{key}` on `{agent.name}` must be a list",
+                    span=span,
+                )
+            )
+    return diagnostics
+
+
+def _unknown_agent_attribute_hint(key: str) -> str:
+    expected = COMMON_AGENT_ATTRIBUTE_MISSPELLINGS.get(key)
+    if expected:
+        return f"Use `{expected}`."
+    return "Accepted agent attributes are: " + ", ".join(f"`{item}`" for item in sorted(AGENT_ATTRIBUTES)) + "."
 
 
 def _check_eval(

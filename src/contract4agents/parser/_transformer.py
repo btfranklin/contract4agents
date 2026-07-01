@@ -87,19 +87,20 @@ class _ModuleTransformer(Transformer[Any, Any]):
             span=_span(self.path, name),
         )
 
-    def assignment_block(self, items: list[Any]) -> list[tuple[str, Any]]:
-        return [cast(tuple[str, Any], item) for item in items]
+    def assignment_block(self, items: list[Any]) -> list[Any]:
+        return items
 
     def agent_def(self, items: list[Any]) -> AgentDef:
         agent_parts = _agent_parts(items)
         uses: list[UseDecl] = []
         attributes: dict[str, Any] = {}
+        attribute_spans: dict[str, SourceSpan] = {}
         for item in agent_parts.body:
             if isinstance(item, UseDecl):
                 uses.append(item)
-            elif isinstance(item, tuple):
-                key, value = cast(tuple[str, Any], item)
-                attributes[key] = value
+            elif isinstance(item, _Assignment):
+                attributes[item.key] = item.value
+                attribute_spans[item.key] = item.span
         return AgentDef(
             str(agent_parts.name),
             agent_parts.params,
@@ -107,6 +108,7 @@ class _ModuleTransformer(Transformer[Any, Any]):
             uses,
             attributes,
             _span(self.path, agent_parts.name),
+            attribute_spans,
         )
 
     def agent_block(self, items: list[Any]) -> list[Any]:
@@ -157,8 +159,9 @@ class _ModuleTransformer(Transformer[Any, Any]):
     def requires_approval(self, _items: list[Any]) -> str:
         return "requires_approval"
 
-    def assignment(self, items: list[Any]) -> tuple[str, Any]:
-        return str(items[0]), items[1]
+    def assignment(self, items: list[Any]) -> _Assignment:
+        name = _token(items[0])
+        return _Assignment(str(name), items[1], _span(self.path, name))
 
     def scalar_value(self, items: list[Any]) -> str:
         return str(items[0]).strip()
@@ -248,6 +251,13 @@ class _AgentParts:
     body: list[Any]
 
 
+@dataclass(frozen=True)
+class _Assignment:
+    key: str
+    value: Any
+    span: SourceSpan
+
+
 def _agent_parts(items: list[Any]) -> _AgentParts:
     payload = _agent_payload_items(items)
     name = _token(payload[0])
@@ -275,9 +285,8 @@ def _assignment_attrs(items: list[Any]) -> dict[str, Any]:
     for item in items:
         if isinstance(item, list):
             attrs.update(_assignment_attrs(item))
-        elif isinstance(item, tuple):
-            key, value = cast(tuple[str, Any], item)
-            attrs[key] = value
+        elif isinstance(item, _Assignment):
+            attrs[item.key] = item.value
     return attrs
 
 

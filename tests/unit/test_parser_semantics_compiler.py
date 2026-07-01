@@ -213,6 +213,40 @@ agent BadAgent() -> Result:
     assert {diagnostic.code for diagnostic in result.diagnostics} >= {"SEM002", "SEM053"}
 
 
+@pytest.mark.parametrize(
+    ("assignment", "code", "message"),
+    [
+        ("guard = [require(output conforms Result)]", "SEM070", "Unknown agent attribute `guard`"),
+        ('guards = "require(output conforms Result)"', "SEM071", "Agent attribute `guards`"),
+        ('assertions = "expect(output.ok == true)"', "SEM071", "Agent attribute `assertions`"),
+        ('goal = ["bad"]', "SEM071", "Agent attribute `goal`"),
+    ],
+)
+def test_compile_rejects_invalid_agent_attribute_assignments(
+    tmp_path: Path,
+    assignment: str,
+    code: str,
+    message: str,
+) -> None:
+    (tmp_path / "bad.contract").write_text(
+        f"""
+type Result:
+    ok: bool
+
+agent BadAgent() -> Result:
+    {assignment}
+""".strip()
+    )
+
+    with pytest.raises(ContractError) as exc:
+        compile_project(tmp_path, tmp_path / "build")
+
+    diagnostics = exc.value.diagnostics
+    assert diagnostics[0].code == code
+    assert message in diagnostics[0].message
+    assert not (tmp_path / "build" / "guards" / "guard-plan.json").exists()
+
+
 def test_semantic_analyzer_rejects_invalid_hosted_tools(tmp_path: Path) -> None:
     (tmp_path / "bad.contract").write_text(
         """
