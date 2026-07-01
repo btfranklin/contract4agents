@@ -16,6 +16,8 @@ from contract4agents.adapters.openai import (
     build_openai_agents_from_contracts,
     build_openai_agents_from_plan,
     build_openai_output_type_registry,
+    contract_tool_name,
+    openai_tool_name,
     plan_openai_agents_from_contracts,
     run_openai_agent,
     run_openai_agent_with_contract,
@@ -146,6 +148,18 @@ def test_openai_agent_factory_builds_from_existing_plan(monkeypatch: pytest.Monk
 
     assert result.plan is plan
     assert result.agents["ParentAgent"].kwargs["model"] == "parent-model"
+
+
+def test_openai_tool_name_mapping_is_injective_for_dots_and_underscores() -> None:
+    first = openai_tool_name("a.b__c")
+    second = openai_tool_name("a__b.c")
+
+    assert first != second
+    assert contract_tool_name(first) == "a.b__c"
+    assert contract_tool_name(second) == "a__b.c"
+    assert contract_tool_name("plain_tool") == "plain_tool"
+    with pytest.raises(OpenAIAgentFactoryError, match="ambiguous legacy"):
+        contract_tool_name("a__b")
 
 
 def test_openai_agent_factory_reports_unwired_agent_dependency(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -281,7 +295,7 @@ def test_openai_agent_factory_wraps_raw_callable_with_approval(monkeypatch: pyte
     )
 
     tool = result.agents["ParentAgent"].kwargs["tools"][0]
-    assert tool.name == "tools__lookup"
+    assert tool.name == openai_tool_name("tools.lookup")
     assert tool.needs_approval is True
     assert tool.description == "Lookup"
     assert result.plan.agents["ParentAgent"].tools[0].wrapped
@@ -291,7 +305,7 @@ def test_openai_agent_factory_reports_unverified_approval_for_prebuilt_tool(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _install_fake_agents_module(monkeypatch)
-    tool = SimpleNamespace(name="tools__lookup")
+    tool = SimpleNamespace(name=openai_tool_name("tools.lookup"))
 
     result = build_openai_agents_from_contracts(
         _factory_artifacts(
@@ -613,7 +627,7 @@ def _install_fake_agents_module(monkeypatch: pytest.MonkeyPatch, interrupt_once:
             self.kwargs = kwargs
 
     class FakeInterruption:
-        tool_name = "tools__lookup"
+        tool_name = openai_tool_name("tools.lookup")
         arguments = {"id": "123"}
 
     class FakeState:

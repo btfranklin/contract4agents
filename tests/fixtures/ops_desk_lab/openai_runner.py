@@ -249,27 +249,34 @@ def _coordinator_instructions(base: str) -> str:
         "Use exactly one specialist tool for billing, security, access, or knowledge routes. "
         "For unknown accounts, do not call specialist tools. "
         "For approval routes, call the specialist first, then call the matching approval-gated action tool yourself. "
-        "Use billing__create_credit for duplicate billing credits, security__lock_account for lock requests, "
-        "and access__grant_access for admin grants. Return only an OpsDeskResult."
+        f"Use {openai_tool_name('billing.create_credit')} for duplicate billing credits, "
+        f"{openai_tool_name('security.lock_account')} for lock requests, and "
+        f"{openai_tool_name('access.grant_access')} for admin grants. Return only an OpsDeskResult."
     )
 
 
 def _specialist_instructions(name: str, base: str) -> str:
     extra = {
         "BillingSpecialist": (
-            "Use billing__lookup_invoice first. If the action is credit or the message says duplicate/charged twice, "
-            "you must call billing__create_credit. If approval is denied, return status needs_approval."
+            f"Use {openai_tool_name('billing.lookup_invoice')} first. "
+            "If the action is credit or the message says duplicate/charged twice, "
+            f"you must call {openai_tool_name('billing.create_credit')}. "
+            "If approval is denied, return status needs_approval."
         ),
         "SecuritySpecialist": (
-            "Use security__audit_log first. If the action is lock, you must call security__lock_account. "
+            f"Use {openai_tool_name('security.audit_log')} first. "
+            f"If the action is lock, you must call {openai_tool_name('security.lock_account')}. "
             "If approval is denied, return status needs_approval."
         ),
         "AccessSpecialist": (
-            "Use access__list_permissions first. If the action is grant or the message asks for admin access, "
-            "you must call access__grant_access. If approval is denied, return status needs_approval."
+            f"Use {openai_tool_name('access.list_permissions')} first. "
+            "If the action is grant or the message asks for admin access, "
+            f"you must call {openai_tool_name('access.grant_access')}. "
+            "If approval is denied, return status needs_approval."
         ),
         "KnowledgeSpecialist": (
-            "Use knowledge__search before answering. Query with the shortest key phrase, such as MFA."
+            f"Use {openai_tool_name('knowledge.search')} before answering. "
+            "Query with the shortest key phrase, such as MFA."
         ),
     }[name]
     return f"{base}\n{extra}\nReturn only an OpsDeskResult for the provided start_id."

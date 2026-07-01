@@ -74,6 +74,12 @@ closed with `OpenAIAgentFactoryError`.
 
 Host tools may be supplied as existing SDK tool objects or raw Python callables.
 Raw callables are wrapped with `agents.function_tool(name_override=...)`.
+Contract4Agents encodes contract tool names as length-prefixed OpenAI SDK names
+with a `c4a_` prefix. For example, `billing.create_credit` becomes
+`c4a_7_billing13_create_credit`. Use `openai_tool_name(...)` and
+`contract_tool_name(...)` instead of hand-writing or parsing these names; legacy
+`__` dotted-name spellings are rejected because underscores make them
+ambiguous.
 Approval-required raw callables are wrapped with `needs_approval=True`.
 Prebuilt SDK tools are accepted, but approval enforcement cannot be verified by
 Contract4Agents, so the plan returns an `approval_enforcement_unverified`

@@ -278,12 +278,12 @@ async def test_openai_trace_hooks_and_tool_name_helpers() -> None:
     trace = TraceRecorder()
     hooks = OpenAITraceHooks(trace)
 
-    assert openai_tool_name("billing.create_credit") == "billing__create_credit"
-    assert contract_tool_name("billing__create_credit") == "billing.create_credit"
+    sdk_tool_name = openai_tool_name("billing.create_credit")
+    assert contract_tool_name(sdk_tool_name) == "billing.create_credit"
 
     await hooks.on_agent_start(None, SimpleNamespace(name="AgentA"))
-    await hooks.on_tool_start(None, SimpleNamespace(name="AgentA"), SimpleNamespace(name="billing__create_credit"))
-    await hooks.on_tool_end(None, SimpleNamespace(name="AgentA"), SimpleNamespace(name="billing__create_credit"), "ok")
+    await hooks.on_tool_start(None, SimpleNamespace(name="AgentA"), SimpleNamespace(name=sdk_tool_name))
+    await hooks.on_tool_end(None, SimpleNamespace(name="AgentA"), SimpleNamespace(name=sdk_tool_name), "ok")
     await hooks.on_agent_end(None, SimpleNamespace(name="AgentA"), {"ok": True})
 
     assert trace.count("agent.started", "AgentA") == 1
