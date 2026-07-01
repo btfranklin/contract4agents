@@ -26,6 +26,7 @@ class StartReport:
     start_id: str
     passed: bool
     failures: list[str] = field(default_factory=list)
+    assertion_failures: list[str] = field(default_factory=list)
     skipped_semantic: list[str] = field(default_factory=list)
     monitor_violations: list[str] = field(default_factory=list)
     attempts: int = 1
@@ -57,6 +58,7 @@ class FixtureReport:
                 "passed": self.passed,
                 "start_count": len(self.starts),
                 "failures": sum(len(item.failures) for item in self.starts),
+                "assertion_failures": sum(len(item.assertion_failures) for item in self.starts),
                 "monitor_violations": sum(len(item.monitor_violations) for item in self.starts),
             },
         }

@@ -13,6 +13,32 @@ V1 maps Contract4Agents manifests to:
 - Caller-supplied output model types.
 - SDK lifecycle hooks normalized to Contract4Agents trace events.
 
+Use `build_openai_agent(...)` when constructing one SDK object directly from a
+manifest and instructions.
+
+Use `build_openai_agents_from_contracts(...)` when constructing a team from
+compiled artifacts plus explicit registries:
+
+```python
+from contract4agents.adapters.openai import build_openai_agents_from_contracts
+
+factory_result = build_openai_agents_from_contracts(
+    artifacts,
+    output_type_registry={"SupportReply": SupportReplyModel},
+    model_registry={"SupportCoordinator": config.support_model},
+    tool_registry={"crm.create_note": crm_create_note_tool},
+    agent_tool_registry={"BillingSpecialist": billing_specialist_tool},
+    default_model=config.default_agent_model,
+)
+
+agents = factory_result.agents
+```
+
+The helper is registry-driven. It does not import application models, discover
+tools, resolve approvals, or run the workflow. Missing declared host tools or
+output types are configuration errors. Declared agent dependencies without
+handoff or agent-tool wiring are returned as explicit caveats.
+
 The adapter capability matrix uses structured `status` and `caveats` entries.
 Features that depend on host code are marked `partial` or `emulated` rather than
 fully supported.

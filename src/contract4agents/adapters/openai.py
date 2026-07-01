@@ -7,10 +7,11 @@ manifests first, and this module projects those manifests onto OpenAI's SDK.
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
-from contract4agents.compiler import AgentManifest
+from contract4agents.compiler import AgentManifest, CompilerArtifacts
 from contract4agents.runtime import TraceRecorder
 
 _RunHooksBase: type[Any]
@@ -29,7 +30,24 @@ class OpenAIAdapterResult:
     raw_result: Any
 
 
+@dataclass(frozen=True)
+class OpenAIAgentFactoryCaveat:
+    agent: str
+    kind: str
+    message: str
+
+
+@dataclass(frozen=True)
+class OpenAIAgentFactoryResult:
+    agents: dict[str, Any]
+    caveats: list[OpenAIAgentFactoryCaveat]
+
+
 class OpenAIAdapterUnavailable(RuntimeError):
+    pass
+
+
+class OpenAIAgentFactoryError(ValueError):
     pass
 
 
@@ -114,6 +132,60 @@ def build_openai_agent(
     return Agent(**kwargs)
 
 
+def build_openai_agents_from_contracts(
+    artifacts: CompilerArtifacts,
+    *,
+    output_type_registry: Mapping[str, Any],
+    model_registry: Mapping[str, Any],
+    tool_registry: Mapping[str, Any] | None = None,
+    agent_tool_registry: Mapping[str, Any] | None = None,
+    handoff_registry: Mapping[str, Any] | None = None,
+    instruction_overrides: Mapping[str, str] | None = None,
+    default_model: Any | None = None,
+) -> OpenAIAgentFactoryResult:
+    """Build OpenAI Agents SDK objects from compiled artifacts plus explicit registries."""
+    agents: dict[str, Any] = {}
+    caveats: list[OpenAIAgentFactoryCaveat] = []
+    for agent_name, manifest in artifacts["manifests"].items():
+        model = model_registry.get(agent_name, default_model)
+        if model is None:
+            raise OpenAIAgentFactoryError(f"No model configured for agent `{agent_name}`")
+        output_type_name = manifest["output"]["type"]
+        if output_type_name not in output_type_registry:
+            raise OpenAIAgentFactoryError(
+                f"No output type registered for `{output_type_name}` used by agent `{agent_name}`"
+            )
+        tools = _registered_tools(agent_name, manifest, tool_registry)
+        handoffs: list[Any] = []
+        for dependency in manifest["agents"]:
+            child = dependency["name"]
+            wired = False
+            if agent_tool_registry and child in agent_tool_registry:
+                tools.append(agent_tool_registry[child])
+                wired = True
+            if handoff_registry and child in handoff_registry:
+                handoffs.append(handoff_registry[child])
+                wired = True
+            if not wired:
+                caveats.append(
+                    OpenAIAgentFactoryCaveat(
+                        agent_name,
+                        "agent_dependency_unwired",
+                        f"Declared agent dependency `{child}` was not supplied as an agent tool or handoff.",
+                    )
+                )
+        manifest_with_model = dict(manifest)
+        manifest_with_model["model"] = model
+        agents[agent_name] = build_openai_agent(
+            cast(AgentManifest, manifest_with_model),
+            _instructions_for(agent_name, artifacts, instruction_overrides),
+            tools=tools,
+            handoffs=handoffs,
+            output_type=output_type_registry[output_type_name],
+        )
+    return OpenAIAgentFactoryResult(agents, caveats)
+
+
 async def run_openai_agent(
     agent: Any,
     user_input: str,
@@ -167,3 +239,30 @@ def _serializable(value: Any) -> Any:
     if isinstance(value, dict | list | str | int | float | bool) or value is None:
         return value
     return str(value)
+
+
+def _registered_tools(
+    agent_name: str,
+    manifest: AgentManifest,
+    tool_registry: Mapping[str, Any] | None,
+) -> list[Any]:
+    tools: list[Any] = []
+    for tool in manifest["tools"]:
+        name = tool["name"]
+        if not tool_registry or name not in tool_registry:
+            raise OpenAIAgentFactoryError(f"No host tool registered for `{name}` used by agent `{agent_name}`")
+        tools.append(tool_registry[name])
+    return tools
+
+
+def _instructions_for(
+    agent_name: str,
+    artifacts: CompilerArtifacts,
+    instruction_overrides: Mapping[str, str] | None,
+) -> str:
+    if instruction_overrides and agent_name in instruction_overrides:
+        return instruction_overrides[agent_name]
+    try:
+        return artifacts["instructions"][agent_name]
+    except KeyError as exc:
+        raise OpenAIAgentFactoryError(f"No instructions compiled for agent `{agent_name}`") from exc

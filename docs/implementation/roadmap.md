@@ -8,33 +8,44 @@ Keep this file limited to unimplemented or materially incomplete work. When an i
 
 If an item no longer belongs in the product, remove it from `VISION.md` first and then delete it from this roadmap.
 
-## Assertion Execution
+## Normalized Trace JSONL Loading And Diagnostics
 
-Vision gap: assertions are part of the agent contract and should be checked during or after a run. Today they are parsed, statically checked, compiled into manifests and instructions, and documented, but they are not executed as a general invariant layer for every run path.
+Vision gap: local JSONL traces are an accepted storage starting point, and normalized trace events are documented, but host applications do not yet have a stable enough trace file contract to emit real workflow traces for eval, monitor, and assertion evaluation.
+
+Design boundary: the trace format records observable behavior. It should be rich enough to verify host workflows, but it should not become a workflow definition or replay language.
 
 Implementation work:
 
-- Add a small assertion execution module that accepts an agent name, that agent's manifest assertions, final output, and normalized trace events.
-- Reuse the existing expression parser and evaluator instead of adding a second assertion language.
-- Support both unconditional `expect(...)` assertions and conditional `when(..., expect(...))` assertions.
-- Treat unsupported assertion syntax as a failed assertion, not as a skipped check.
-- Return structured assertion results with assertion text, pass/fail state, failure kind, and enough trace or output context to debug the violation.
-- Integrate assertion execution into the fixture runner so `contract4agents eval` reports assertion failures separately from output, trace-spy, and semantic-eval failures.
-- Expose a host-callable assertion API so SDK adapters can run the same checks after a model run without depending on the fixture runner.
-- Add tests for passing assertions, output failures, trace failures, conditional assertions whose condition is false, and unsupported expressions.
+- Define a versioned JSONL event envelope for host-emitted traces, including `schema_version`, `run_id`, `event_id`, `event_type`, timestamp, agent name when applicable, stage name when applicable, tool name when applicable, datasource type when applicable, and provider metadata.
+- Document event categories for:
+  - agent started and completed;
+  - hosted provider tool requested, started, completed, and failed;
+  - host Python tool requested, allowed, denied, started, completed, and failed;
+  - datasource started, resolved, and failed;
+  - approval requested, granted, denied, and completed;
+  - stage checkpoint completed;
+  - output accepted, rejected, and schema-validation failed;
+  - guardrail rejected;
+  - assertion evaluated.
+- Keep existing V1 event names stable where possible, and add missing event names only when existing names cannot represent the host-workflow use case.
+- Add a trace JSONL loader that validates each line, preserves original line numbers, and returns typed normalized events plus structured diagnostics.
+- Allow eval, monitor, and assertion execution to consume loaded trace files as well as in-memory trace event objects.
+- Ensure trace diagnostics identify the exact event, missing event, or ordering relationship that caused a failure.
+- Add fixture traces that cover ordered agent calls, repeated section-agent calls, hosted web-search calls, host-tool calls, approval decisions, output rejection, and assertion evaluation.
+- Update `docs/reference/trace-schema.md` with envelope fields, event type definitions, required fields by event category, and extension rules for provider metadata.
 
 Validation:
 
 ```bash
 pdm run test:unit
-pdm run contract4agents eval tests/fixtures/contract_projects/ops-desk-lab
+pdm run contract4agents monitor tests/fixtures/contract_projects/ops-desk-lab --trace tests/fixtures/traces/ops-desk-lab.jsonl
 ```
 
 Definition of done:
 
-- Any run path that returns output and a Contract4Agents trace can execute compiled assertions for the target agent.
-- Assertion failures are visible in reports with a distinct failure type.
-- Existing eval behavior stays deterministic when assertions pass.
+- Host applications can emit a documented `<base>.trace.jsonl` file and load it with Contract4Agents tooling.
+- Eval, monitor, and assertion paths can run against loaded trace JSONL.
+- Trace-related failures point to the relevant event or missing event instead of producing generic assertion failures.
 
 ## Guard Mapping For Adapters And Hosts
 
@@ -65,6 +76,119 @@ Definition of done:
 - The OpenAI adapter consumes the guard plan for every supported guard category.
 - Unsupported guard semantics are reported clearly instead of being silently treated as enforced.
 
+## Hosted Provider Tool Declarations
+
+Vision gap: Contract4Agents currently treats tool declarations primarily as host-supplied capabilities. Real OpenAI Agents SDK applications also use provider-native hosted tools such as web search, which need to appear distinctly in manifests, adapter plans, traces, assertions, and capability reports.
+
+Design boundary: hosted provider tools should be first-class capabilities, but core language semantics should stay provider-neutral. OpenAI-specific names belong in adapter metadata and provider-specific declarations, not in a hard-coded assumption that every runtime has OpenAI web search.
+
+Implementation work:
+
+- Add source syntax for hosted provider tools, choosing a form that keeps capability kind explicit, for example:
+
+  ```contract
+  use hosted_tool openai.web_search context_size "medium"
+  use hosted_tool openai.web_search context_size "high"
+  ```
+
+- Represent hosted tools separately from host Python tools in the AST, semantic model, provider-neutral manifest, generated docs, visualization, and adapter capability matrix.
+- Preserve provider name, hosted tool identifier, provider-specific configuration, and permission state.
+- Add semantic checks for unknown hosted tool provider names, unsupported hosted tool options, duplicate declarations, and trace assertions that reference undeclared hosted tools.
+- Extend trace spies and assertion evaluation so contracts can express that one agent may call `openai.web_search` while another must not.
+- Extend normalized trace events so hosted provider tool calls are distinguishable from host Python tool calls while still using shared tool-call concepts where useful.
+- Extend the OpenAI adapter plan so `WebSearchTool(search_context_size="medium")` and `WebSearchTool(search_context_size="high")` can be represented from contract metadata when the caller enables the hosted tool registry.
+- Ensure adapter capability output explains which tools are provider-native and which tools must be wired by host code.
+- Add parser, semantic, compile, trace, and OpenAI adapter tests for agents with and without hosted web search.
+
+Validation:
+
+```bash
+pdm run test:unit
+pdm run test:integration
+CONTRACT4AGENTS_RUN_OPENAI_AGENT_LIVE=1 pdm run test:openai-agent-live
+```
+
+Definition of done:
+
+- Hosted tools appear distinctly from host-supplied tools in generated manifests and docs.
+- Trace assertions can refer to hosted tools by stable contract names.
+- The OpenAI adapter can plan hosted web-search tools with explicit caveats when the SDK or host registry cannot supply them.
+
+## OpenAI Adapter Planning And Agent Factory Helpers
+
+Vision gap: the OpenAI adapter can build one Agent SDK object and now has a registry-driven `build_openai_agents_from_contracts(...)` helper for basic multi-agent construction. It still lacks a richer adapter plan that consumes the full manifest surface: hosted tools, guard plans, context rendering, approvals, handoff semantics, composition metadata, and assertion metadata.
+
+Design boundary: factory helpers reduce wiring friction; they do not replace the host app runtime. Host code still supplies model choices, Python output classes, real tool callables, hosted-tool enablement, approval behavior, and orchestration.
+
+Implementation work:
+
+- Add an adapter planning layer that consumes compiler artifacts and returns a typed OpenAI adapter plan before constructing SDK objects.
+- Include manifest source paths, generated instruction paths, output schema refs, hosted tool declarations, guard plans, assertion metadata, composition metadata, and adapter caveats in the plan.
+- Extend the existing factory helper to consume the typed adapter plan rather than assembling SDK objects directly from manifests.
+- Add a supported generated output type strategy for callers that do not want to hand-supply every `output_type`.
+- Build OpenAI tool wrappers from a richer registered tool surface and manifest permission metadata.
+- Map hosted provider tool declarations to OpenAI hosted tool objects only when enabled through the hosted tool registry.
+- Carry approval-required tools into SDK or host approval handling consistently and record approval trace events.
+- Map composition metadata to OpenAI handoffs or agents-as-tools when the caller provides the corresponding child agent objects.
+- Render typed context into model input using `RuntimeContext.rendered_context()` or an adapter-specific equivalent, while preserving hidden state outside the model prompt.
+- Feed guard plans and assertion metadata into the adapter run path so OpenAI runs can produce the same normalized trace and post-run assertion checks as fixture runs.
+- Return explicit caveats for unsupported semantics. The helper must not silently degrade a contract into instructions-only behavior.
+- Add offline unit and integration tests around planning, hosted tools, guard mapping, approval metadata, context rendering, and object construction with fake registries; keep live OpenAI tests behind existing opt-in environment flags.
+
+Validation:
+
+```bash
+pdm run test:unit
+pdm run test:integration
+CONTRACT4AGENTS_RUN_OPENAI_AGENT_LIVE=1 pdm run test:openai-agent-live
+```
+
+Definition of done:
+
+- A host can construct OpenAI Agents SDK objects from a typed adapter plan plus explicit registries.
+- Host code remains responsible for workflow control flow, approval UX, and real runtime dependencies.
+- Permissions, hosted tools, guards, context rendering, traces, and post-run assertions follow the same semantics as local fixture runs where the SDK surface allows it.
+- Unsupported adapter semantics are explicit caveats, not hidden behavior.
+
+## Pydantic Model Interop For Contract Types
+
+Vision gap: JSON Schema is the canonical interchange format for Contract4Agents types, but real Python agent applications often already define their output and artifact shapes as Pydantic models. Users should not need to manually duplicate every schema in `.contract` files when the host app already has stable Pydantic model classes.
+
+Design boundary: imported Python models are a type source convenience and drift-check input. They do not replace JSON Schema as the canonical interchange artifact, and Contract4Agents source should not require Python imports for every project.
+
+Implementation work:
+
+- Add source syntax for binding a contract type to an explicit Python model import path, for example:
+
+  ```contract
+  type ResearchPlan from python "compendiumscribe.research.agents_workflow.artifacts:ResearchPlan"
+  type ResearchAgenda from python "compendiumscribe.research.agents_workflow.artifacts:ResearchAgenda"
+  type SectionResearchBrief from python "compendiumscribe.research.agents_workflow.artifacts:SectionResearchBrief"
+  type VerificationReport from python "compendiumscribe.research.agents_workflow.artifacts:VerificationReport"
+  type CompendiumPayload from python "compendiumscribe.research.agents_workflow.artifacts:CompendiumPayload"
+  ```
+
+- Load configured Python model imports only during checks that explicitly allow host-code imports.
+- Derive JSON Schema from supported Pydantic models and emit it through the same schema artifact path as native `.contract` type declarations.
+- Support Pydantic v2 first; produce clear diagnostics for missing imports, non-Pydantic objects, unsupported Pydantic versions, schemas that cannot be represented safely, and import-time side effects if they can be detected.
+- Ensure generated manifests can reference imported types by contract type name while preserving model import metadata for adapters and drift checks.
+- Add a schema snapshot or structural comparison mechanism so drift checks can compare the generated schema against the current Python model shape.
+- Document how host apps should expose importable model classes without executing workflow code at import time.
+- Add tests with local fixture Pydantic models, including nested models, optional fields, enums or literals, lists, dictionaries, validation constraints, unsupported fields, and missing import paths.
+
+Validation:
+
+```bash
+pdm run test:unit
+pdm run contract4agents check tests/fixtures/contract_projects/pydantic-model-interop
+```
+
+Definition of done:
+
+- `contract4agents check` can derive JSON Schema from explicitly configured Pydantic models.
+- Generated manifests and schema artifacts treat imported models consistently with native contract types.
+- Diagnostics are clear when a Python import path is missing, unsupported, or not Pydantic-compatible.
+
 ## Stronger Context-Dependency Analysis
 
 Vision gap: the compiler should reject unsatisfied context dependencies. Today datasource definitions and type references are checked, but the analyzer does not fully prove that agent-to-agent calls have all required typed context slots satisfiable from caller inputs, declared datasources, or host-supplied context.
@@ -92,25 +216,38 @@ Definition of done:
 - Diagnostics point to the contract declaration that created the unsatisfied dependency.
 - Valid existing fixtures still pass without host-specific wiring.
 
-## Missing Capability Checks
+## Capability Registry And Host-Code Drift Checks
 
-Vision gap: contracts should make missing tools visible before an agent is wired into a host application. Today trace and eval expressions can be checked against known tools, but declared tool sources are not validated against a registry or importable implementation surface.
+Vision gap: contracts should make missing tools and implementation drift visible before an agent is wired into a host application. Today trace and eval expressions can be checked against known tools, but declared tool sources are not validated against a registry or importable implementation surface, and there is no opt-in check that compares contract declarations with actual host application code.
+
+Design boundary: drift checks are CI-oriented verification. They should import only explicitly configured host surfaces, avoid executing business workflows, and report mismatches without claiming to prove all runtime behavior.
 
 Implementation work:
 
-- Define a lightweight local capability registry contract for tools, including tool name, source, permission, and Python callable or host-provided marker.
+- Define a lightweight local capability registry contract for tools, hosted tools, agents, output types, prompts, and host-provided markers.
 - Teach project checks to load that registry when present, starting with fixture projects and local examples.
 - For importable Python tool references, verify that the referenced module and callable exist without executing business logic.
 - For explicitly host-provided tools, require a registry entry that marks the tool as external so the compiler can distinguish intentional host ownership from a typo.
 - Check that manifest permissions match the registry permission for the same tool, or report a targeted diagnostic.
+- Add opt-in host-code drift checks that can verify:
+  - contract agent names match actual OpenAI Agents SDK agent names or configured factory names;
+  - contract output types match actual Pydantic output classes;
+  - contract hosted tool declarations match actual agent factory configuration;
+  - declared host tool permissions match registered tool surfaces;
+  - configured prompt or instruction assets have not obviously drifted from contract expectations.
+- Keep prompt drift checks conservative. They should catch obvious mismatches such as missing configured prompt assets or wrong agent-to-prompt mappings, not attempt to semantically prove that prompt prose fully matches the contract.
+- Support a small project configuration file or contract declaration for drift-check import paths, registry paths, and strictness settings.
+- Add a CI-usable command or command option for drift checks, with deterministic exit codes.
+- Ensure failures name the Python import path, registry entry, contract declaration, and expected versus actual value when possible.
 - Keep the default developer path practical: projects without a registry may still compile, but strict fixture and example validation should fail on missing local tools.
-- Add tests for missing tool source, misspelled callable, permission mismatch, and intentionally external host-provided capability.
+- Add tests for missing tool source, misspelled callable, permission mismatch, intentionally external host-provided capability, mismatched agent name, mismatched Pydantic output type, hosted tool drift, and prompt asset drift.
 
 Validation:
 
 ```bash
 pdm run test:unit
 pdm run contract4agents check examples/incident-command
+pdm run contract4agents check tests/fixtures/contract_projects/host-drift --strict-drift
 ```
 
 Definition of done:
@@ -118,6 +255,57 @@ Definition of done:
 - Local fixtures and public examples can prove that every declared local tool has an implementation surface.
 - Typos in declared tool sources fail during validation rather than surfacing only during a run.
 - Host-owned tools remain possible, but they must be explicit.
+- Opt-in drift checks can run in CI and produce actionable diagnostics that name the host code surface involved.
+
+## Run And Trace Contract Source Syntax
+
+Vision gap: current contract files describe agents, evals, assertions, guards, monitors, and composition metadata, but there is no first-class source declaration for the expected behavior of a host-owned multi-agent workflow. Existing agent assertions can express parts of this, but real workflows need a machine-readable declaration of stage outputs, ordering constraints, tool constraints, and run-level invariants.
+
+Design boundary: run contracts describe and verify workflow behavior. They must not introduce branching, loops, retries, checkpointing, recovery, or executable orchestration semantics. If a declaration decides what happens next, it belongs in Python, not in Contract4Agents.
+
+Implementation work:
+
+- Choose a source declaration name, likely `run_contract` or `trace_contract`, and document why that name does not imply executable workflow ownership.
+- Add syntax for declaring expected stage or agent outputs and run-level assertions, for example:
+
+  ```contract
+  run_contract CompendiumResearch:
+
+      agents = [
+          PlannerAgent -> ResearchPlan,
+          ResearchManagerAgent -> ResearchAgenda,
+          SectionResearchAgent -> SectionResearchBrief,
+          VerifierAgent -> VerificationReport,
+          SynthesisAgent -> CompendiumPayload,
+      ]
+
+      assertions = [
+          expect(trace.called_before(PlannerAgent, ResearchManagerAgent)),
+          expect(trace.called_before(VerifierAgent, SynthesisAgent)),
+          expect(trace.max_calls(VerifierAgent, 2)),
+          expect(trace.not_tool_called_by(SynthesisAgent, openai.web_search)),
+      ]
+  ```
+
+- Reuse the existing expression parser and evaluator for run-level assertions.
+- Compile run contracts into a machine-readable artifact that references agent manifests, output schemas, trace assertions, and stage-output expectations.
+- Allow `evaluate_run_contract(...)` to evaluate this artifact against normalized trace events and stage outputs emitted by a host application.
+- Add static checks for unknown agents, unknown output types, duplicate stage names, trace assertions that reference undeclared agents or tools, and unsupported workflow semantics.
+- Make ordering and cardinality checks operate on normalized trace events rather than on source declaration order alone.
+- Add parser, compiler, artifact, and runtime evaluation tests for simple linear workflows, repeated per-section agents, optional follow-up passes, forbidden tool use, and missing stage outputs.
+
+Validation:
+
+```bash
+pdm run test:unit
+pdm run contract4agents check tests/fixtures/contract_projects/run-contracts
+```
+
+Definition of done:
+
+- A `.contract` file can declare run-level expectations for a host-owned workflow without defining executable control flow.
+- Compiled run-contract artifacts can be evaluated against host-emitted traces and stage outputs.
+- Unsupported workflow-like semantics are rejected with diagnostics that point back to the design boundary.
 
 ## Public Example As A First-Class Fixture
 
@@ -172,33 +360,3 @@ Definition of done:
 - Generated docs contain enough information to review an agent contract without opening the raw manifest JSON.
 - Generated docs are deterministic and covered by tests.
 - Compile check mode catches stale generated docs.
-
-## Fuller OpenAI Adapter Integration
-
-Vision gap: the OpenAI adapter can build Agents SDK objects and normalize trace hooks, but it still relies heavily on caller-supplied wiring. More of the manifest surface should be consumed directly: permissions, guards, context rendering, approvals, output schemas, handoffs, composition metadata, and assertion metadata.
-
-Implementation work:
-
-- Add an adapter planning layer that consumes compiler artifacts and returns a typed OpenAI adapter plan before constructing SDK objects.
-- Generate or accept output types from Contract4Agents schemas so callers do not need to hand-supply every `output_type`.
-- Build OpenAI tool wrappers from a registered tool surface and manifest permission metadata.
-- Carry approval-required tools into SDK or host approval handling consistently and record approval trace events.
-- Map composition metadata to OpenAI handoffs or agents-as-tools when the caller provides the corresponding child agent objects.
-- Render typed context into model input using `RuntimeContext.rendered_context()` or an adapter-specific equivalent, while preserving hidden state outside the model prompt.
-- Feed guard plans and assertion metadata into the adapter run path so OpenAI runs produce the same normalized trace and post-run checks as fixture runs.
-- Return adapter caveats when a manifest feature cannot be represented directly by the OpenAI Agents SDK.
-- Add live-test coverage only behind existing opt-in environment flags; normal validation must remain offline.
-
-Validation:
-
-```bash
-pdm run test:unit
-pdm run test:integration
-CONTRACT4AGENTS_RUN_OPENAI_AGENT_LIVE=1 pdm run test:openai-agent-live
-```
-
-Definition of done:
-
-- A host can construct and run the OpenAI adapter from Contract4Agents artifacts with minimal manual wiring.
-- Permissions, guards, context rendering, traces, and assertions follow the same semantics as local fixture runs where the SDK surface allows it.
-- Unsupported adapter semantics are explicit caveats, not hidden behavior.

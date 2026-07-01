@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from contract4agents.assertions import evaluate_run_contract
 from contract4agents.compiler import compile_project
 from contract4agents.evaluation import EvalRunner
 from contract4agents.fixtures import _execution, _reports
@@ -70,12 +71,22 @@ async def run_fixture_project(
                 semantic_expectations=list(eval_pack["semantic_expects"]),
                 hidden_truth=hidden_truth,
             )
+            assertion_result = evaluate_run_contract(
+                contract=artifacts,
+                trace=trace,
+                outputs={str(metadata["entry_agent"]): output},
+                target_agents=[str(metadata["entry_agent"])],
+                hidden_truth=hidden_truth,
+            )
             violations = run_monitors(monitor_rules, trace)
             start_reports.append(
                 StartReport(
                     start_id=start.start_id,
-                    passed=eval_result.passed and not violations,
+                    passed=eval_result.passed and assertion_result.passed and not violations,
                     failures=[f"{failure.kind}: {failure.message}" for failure in eval_result.failures],
+                    assertion_failures=[
+                        f"{failure.kind}: {failure.message}" for failure in assertion_result.failures
+                    ],
                     skipped_semantic=eval_result.skipped_semantic,
                     monitor_violations=[f"{item.severity}: {item.message}" for item in violations],
                     attempts=attempts,

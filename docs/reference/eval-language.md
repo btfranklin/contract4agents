@@ -28,9 +28,19 @@ Supported deterministic expectations:
 - `trace.contains("text")`
 - `output discovers hidden_truth.field_name`
 
+Agent assertions in `.contract` files use the same deterministic expression
+surface, wrapped as contract assertions:
+
+- `expect(output conforms TypeName)`
+- `expect(output.field == value)`
+- `expect(trace.tool_called(name))`
+- `when(trace.tool_called(name), expect(output.field == value))`
+
 Unsupported deterministic expectations fail closed. Semantic analysis reports
 unsupported expressions in source files, and the eval runner reports an
 `unsupported` failure defensively if an unchecked expression reaches runtime.
+The host-callable assertion API follows the same fail-closed rule for unchecked
+assertion text.
 
 Hidden-truth values may be scalar strings, which use a loose keyword heuristic,
 or explicit matchers such as:

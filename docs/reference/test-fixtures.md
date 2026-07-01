@@ -28,6 +28,10 @@ Each fixture project must include `fixture.json` with:
 - expected agents, types, tools, datasources, eval count, and monitor count
 
 The runner compiles the project into a temp build directory, runs compile check mode against that output, verifies key artifact contents, then runs starts. Execution does not begin if artifact verification fails.
+For each start, the runner evaluates the matching `.eval` case, then evaluates
+compiled assertions for the fixture `entry_agent`, then runs project monitors.
+Reports keep eval failures, assertion failures, monitor violations, and skipped
+semantic checks in separate fields.
 
 ## Reports And Cleanup
 

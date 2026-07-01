@@ -100,6 +100,24 @@ assertions = [
 
 Assertions should be invariant-like. They should not define one test fixture.
 
+Host applications can evaluate compiled assertions after a real run by calling
+`evaluate_run_contract(...)` with compiled artifacts, normalized trace events,
+and outputs keyed by agent name:
+
+```python
+from contract4agents.assertions import evaluate_run_contract
+
+result = evaluate_run_contract(
+    contract=artifacts,
+    trace=trace,
+    outputs={"CustomerGreeter": output},
+)
+```
+
+The result separates assertion failures from eval failures and monitor
+violations. Conditional assertions whose `when(...)` trace condition is false
+are reported as skipped. Unsupported assertion syntax fails closed.
+
 ## Guards
 
 Guards describe safety constraints that adapters and host runtimes can enforce at the appropriate boundary.
@@ -157,8 +175,9 @@ The eval runner should:
 5. Capture normalized traces.
 6. Check deterministic output expectations.
 7. Check trace spies.
-8. Run semantic judgments through a configured judge adapter, or report them as skipped.
-9. Report failures with source locations and trace excerpts.
+8. Check compiled agent assertions for the entry agent.
+9. Run semantic judgments through a configured judge adapter, or report them as skipped.
+10. Report failures with source locations and trace excerpts.
 
 ## Monitor Reports
 

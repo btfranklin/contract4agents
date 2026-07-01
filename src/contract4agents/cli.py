@@ -94,6 +94,8 @@ def _print_fixture_report(report: FixtureReport) -> None:
         click.echo(f"{status} {start.start_id}")
         for failure in start.failures:
             click.echo(f"  {failure}")
+        for failure in start.assertion_failures:
+            click.echo(f"  assertion: {failure}")
         for violation in start.monitor_violations:
             click.echo(f"  monitor: {violation}")
         for skipped in start.skipped_semantic:

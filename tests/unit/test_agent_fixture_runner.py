@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -103,6 +104,26 @@ def test_fixture_runner_reports_active_start_failure(tmp_path: Path, monkeypatch
     assert report["starts"][0]["start_id"] == "billing_invoice_explain"
     assert "boom billing_invoice_explain" in report["starts"][0]["failures"][0]
     assert (run_root / "traces").exists()
+
+
+def test_fixture_runner_reports_assertion_failures_separately(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    shutil.copytree(DEFAULT_PROJECT, project)
+    coordinator = project / "agents" / "ops_desk_coordinator.contract"
+    coordinator.write_text(
+        coordinator.read_text().replace(
+            "expect(output.reply excludes hidden_truth)",
+            "expect(output.reply contains definitely_missing_assertion_token)",
+        )
+    )
+
+    report = fixture_runner_module.run_fixture_project_sync(project_root=project, run_root=tmp_path / "run")
+
+    assert not report.passed
+    assert any(item.assertion_failures for item in report.starts)
+    failed = next(item for item in report.starts if item.assertion_failures)
+    assert failed.failures == []
+    assert "definitely_missing_assertion_token" in failed.assertion_failures[0]
 
 
 @pytest.mark.asyncio

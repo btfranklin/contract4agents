@@ -271,14 +271,14 @@ Typical flow:
 3. Read the generated instructions for each agent.
 4. Create SDK function tools from your real Python callables.
 5. Create SDK output models that match the generated JSON Schemas.
-6. Build OpenAI `Agent` objects from the manifest and instructions.
+6. Build OpenAI `Agent` objects from artifacts and explicit registries.
 7. Run the SDK agent through your normal runner.
-8. Capture traces and run eval or monitor checks against those traces.
+8. Capture traces and run assertions, evals, or monitor checks against those traces.
 
-The current OpenAI adapter is intentionally thin. It can build an OpenAI `Agent`
-from a Contract4Agents manifest and instructions, but caller code still supplies
-SDK function tools, output types, handoffs or agents-as-tools, approvals, and
-runtime context.
+The current OpenAI adapter is intentionally thin. It can build OpenAI `Agent`
+objects from Contract4Agents artifacts, but caller code still supplies SDK
+function tools, output types, handoffs or agents-as-tools, approvals, models,
+and runtime context.
 
 The detailed adapter notes are in
 [OpenAI Adapter Reference](../reference/openai-adapter.md).
@@ -290,7 +290,7 @@ from pathlib import Path
 
 from agents import function_tool
 
-from contract4agents.adapters.openai import build_openai_agent, openai_tool_name
+from contract4agents.adapters.openai import build_openai_agents_from_contracts, openai_tool_name
 from contract4agents.compiler import compile_project
 
 artifacts = compile_project(Path("agent_contracts"))
@@ -299,12 +299,14 @@ artifacts = compile_project(Path("agent_contracts"))
 def crm_create_note(account_id: str, note: str) -> str:
     return create_note_in_your_app(account_id, note)
 
-agent = build_openai_agent(
-    artifacts["manifests"]["SupportCoordinator"],
-    artifacts["instructions"]["SupportCoordinator"],
-    tools=[crm_create_note],
-    output_type=SupportReplyModel,
+factory_result = build_openai_agents_from_contracts(
+    artifacts,
+    output_type_registry={"SupportReply": SupportReplyModel},
+    model_registry={"SupportCoordinator": config.support_model},
+    tool_registry={"crm.create_note": crm_create_note},
 )
+
+agent = factory_result.agents["SupportCoordinator"]
 ```
 
 The manifest tells you which tools are declared and what permission state they
@@ -342,6 +344,22 @@ Use monitor files for rules you want to apply to recorded traces. They catch
 runtime behavior that final output alone might hide, such as an approval-gated
 tool call without approval.
 
+Use compiled assertions for invariants that should hold after every run of an
+agent, including runs from your real SDK integration:
+
+```python
+from contract4agents.assertions import evaluate_run_contract
+
+assertion_result = evaluate_run_contract(
+    contract=artifacts,
+    trace=trace,
+    outputs={"SupportCoordinator": output},
+)
+```
+
+Assertion failures are reported separately from `.eval` failures and monitor
+violations. A conditional assertion whose trace condition is false is skipped.
+
 For public examples in this repo, deterministic harnesses run fake tools and use
 the eval runner directly. In a production app, you can use the same idea against
 your real or staged agent runs:
@@ -349,7 +367,7 @@ your real or staged agent runs:
 1. compile contracts;
 2. run your agent with a controlled input;
 3. capture normalized trace events;
-4. evaluate output expectations and trace expectations;
+4. evaluate compiled assertions, output expectations, and trace expectations;
 5. run monitors against the trace.
 
 ## What To Commit

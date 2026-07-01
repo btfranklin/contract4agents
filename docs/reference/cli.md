@@ -51,6 +51,9 @@ Runs the local deterministic fixture project declared by `ROOT/fixture.json`.
 - Failure shape: Click error `Contract4Agents fixture eval failed: ...` for runner failures, or `Contract4Agents eval failed` after a completed failing report
 - Side effects: compiles the fixture, seeds fixture data, writes traces and reports, and cleans transient build/data/trace artifacts only after successful runs unless `CONTRACT4AGENTS_KEEP_FIXTURE_ARTIFACTS=1`
 
+Completed reports separate eval failures, assertion failures, monitor violations,
+and skipped semantic checks.
+
 Failed eval runs keep generated artifacts and traces in `ROOT/.contract/runs/last` for debugging.
 
 ## `monitor [ROOT] --trace TRACE_JSONL`

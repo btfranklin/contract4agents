@@ -30,8 +30,9 @@ def write_report(report: FixtureReport, run_root: Path) -> None:
             "",
             "## Starts",
             "",
-            "| Start | Status | Attempts | Failures | Monitor Violations | Skipped Semantic Checks |",
-            "| --- | --- | ---: | --- | --- | --- |",
+            "| Start | Status | Attempts | Failures | Assertion Failures | "
+            "Monitor Violations | Skipped Semantic Checks |",
+            "| --- | --- | ---: | --- | --- | --- | --- |",
         ]
     )
     for item in report.starts:
@@ -42,6 +43,7 @@ def write_report(report: FixtureReport, run_root: Path) -> None:
             f"{status} | "
             f"{item.attempts} | "
             f"{_cell(item.failures)} | "
+            f"{_cell(item.assertion_failures)} | "
             f"{_cell(item.monitor_violations)} | "
             f"{_cell(item.skipped_semantic)} |"
         )
