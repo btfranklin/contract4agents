@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from contract4agents.expressions._trace_ops import TraceOp
 
-ExpressionKind = Literal["output_conforms", "output_compare", "output_text", "hidden_truth", "trace"]
+ExpressionKind = Literal["output_conforms", "output_compare", "output_text", "hidden_truth", "trace", "semantic"]
 ExpressionWrapper = Literal["expect", "require", "forbid"]
 
 

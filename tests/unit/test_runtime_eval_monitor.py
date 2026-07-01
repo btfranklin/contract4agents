@@ -11,6 +11,7 @@ from contract4agents.expressions import (
     parse_contract_expression,
     parse_expectation,
     parse_monitor_condition,
+    parse_semantic_expectation,
 )
 from contract4agents.expressions._trace_ops import TRACE_OPS
 from contract4agents.monitor import MonitorRule, run_monitors
@@ -142,6 +143,7 @@ def test_lark_expression_parser_characterizes_supported_surface() -> None:
     assert parse_expectation("output.count != 2").value == 2
     assert parse_expectation("output.message contains payment timeout").value == "payment timeout"
     assert parse_expectation("output discovers hidden_truth.likely_cause").field == "likely_cause"
+    assert parse_semantic_expectation('semantic(output, "clear and grounded")').value == "clear and grounded"
     assert parse_monitor_condition('trace.contains("payment, timeout")').args == ("payment, timeout",)
 
     wrapped = parse_contract_expression("when(trace.tool_called(logs.search), expect(output.ok == true))")

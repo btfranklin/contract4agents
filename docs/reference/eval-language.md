@@ -56,10 +56,13 @@ or explicit matchers such as:
 {"contains_any": ["rollback", "revert"]}
 ```
 
-Semantic expectations use:
+Semantic expectations are parsed separately from deterministic expectations. They
+use:
 
 ```contract
 expect semantic(output, "Criterion text")
 ```
 
 When no semantic judge is configured, semantic expectations are reported as skipped.
+Malformed semantic expectation syntax fails semantic analysis instead of being
+reported as a skipped semantic check.

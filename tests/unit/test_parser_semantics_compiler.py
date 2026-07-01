@@ -169,6 +169,29 @@ agent BadAgent() -> Result:
     assert any(diagnostic.code == "SEM050" for diagnostic in result.diagnostics)
 
 
+def test_semantic_analyzer_rejects_malformed_semantic_eval(tmp_path: Path) -> None:
+    (tmp_path / "bad.contract").write_text(
+        """
+type Result:
+    ok: bool
+
+agent BadAgent() -> Result:
+    goal = "bad"
+""".strip()
+    )
+    (tmp_path / "bad.eval").write_text(
+        """
+eval bad_semantic for BadAgent:
+    expect semantic(output, bad)
+""".strip()
+    )
+
+    result = analyze_project(parse_project(tmp_path))
+
+    assert not result.ok
+    assert any(diagnostic.code == "SEM056" for diagnostic in result.diagnostics)
+
+
 def test_semantic_analyzer_rejects_unknown_guard_type_and_tool(tmp_path: Path) -> None:
     (tmp_path / "bad.contract").write_text(
         """

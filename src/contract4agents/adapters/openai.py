@@ -9,20 +9,34 @@ from __future__ import annotations
 import inspect
 import os
 import re
-from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass, field
-from typing import Any, Literal, cast
+from collections.abc import Awaitable, Mapping
+from typing import Any, cast
 
+from contract4agents.adapters._openai_output_types import build_openai_output_type_registry
+from contract4agents.adapters._openai_types import (
+    ApprovalCallback,
+    OpenAIAdapterPlan,
+    OpenAIAdapterResult,
+    OpenAIAdapterUnavailable,
+    OpenAIAgentFactoryCaveat,
+    OpenAIAgentFactoryError,
+    OpenAIAgentFactoryResult,
+    OpenAIAgentPlan,
+    OpenAIApprovalRequest,
+    OpenAICompositionPlan,
+    OpenAIContractRunResult,
+    OpenAIHostedToolPlan,
+    OpenAIToolPlan,
+    OpenAIToolRegistration,
+)
 from contract4agents.assertions import RunEvaluationResult, evaluate_run_contract
 from contract4agents.compiler import (
     AgentManifest,
     CompilerArtifacts,
-    ManifestDatasource,
-    ManifestInput,
 )
 from contract4agents.guards import GuardPlanItem
 from contract4agents.hosted_tools import hosted_tool_kwargs
-from contract4agents.runtime import RuntimeContext, TraceRecorder, load_python_ref
+from contract4agents.runtime import RuntimeContext, TraceRecorder
 
 _RunHooksBase: type[Any]
 try:
@@ -31,123 +45,6 @@ try:
     _RunHooksBase = _ImportedRunHooks
 except Exception:  # noqa: BLE001 - optional adapter import boundary.
     _RunHooksBase = object
-
-@dataclass(frozen=True)
-class OpenAIAdapterResult:
-    final_output: Any
-    last_agent: str | None
-    raw_result: Any
-
-
-@dataclass(frozen=True)
-class OpenAIAgentFactoryCaveat:
-    agent: str
-    kind: str
-    message: str
-
-
-@dataclass(frozen=True)
-class OpenAIToolRegistration:
-    value: Any
-    raw_callable: bool = False
-    description: str | None = None
-
-
-@dataclass(frozen=True)
-class OpenAIToolPlan:
-    agent: str
-    name: str
-    permission: str
-    sdk_name: str
-    tool: Any
-    source: str
-    wrapped: bool = False
-    requires_approval: bool = False
-
-
-@dataclass(frozen=True)
-class OpenAIHostedToolPlan:
-    agent: str
-    name: str
-    provider: str
-    tool_name: str
-    config: dict[str, str]
-    permission: str
-    tool: Any
-
-
-@dataclass(frozen=True)
-class OpenAICompositionPlan:
-    agent: str
-    target_agent: str
-    mode: Literal["agent_as_tool", "handoff", "unsupported", "unwired"]
-    sdk_object: Any | None = None
-    source: str = "implicit"
-
-
-@dataclass(frozen=True)
-class OpenAIAgentPlan:
-    agent: str
-    manifest: AgentManifest
-    source_path: str
-    instruction_ref: str
-    instructions: str
-    model: Any
-    output_type_name: str
-    output_schema_ref: str
-    output_type: Any
-    tools: list[OpenAIToolPlan] = field(default_factory=list)
-    hosted_tools: list[OpenAIHostedToolPlan] = field(default_factory=list)
-    composition: list[OpenAICompositionPlan] = field(default_factory=list)
-    inputs: list[ManifestInput] = field(default_factory=list)
-    datasources: list[ManifestDatasource] = field(default_factory=list)
-    guards: list[GuardPlanItem] = field(default_factory=list)
-    assertions: list[str] = field(default_factory=list)
-    caveats: list[OpenAIAgentFactoryCaveat] = field(default_factory=list)
-
-
-@dataclass(frozen=True)
-class OpenAIAdapterPlan:
-    artifacts: CompilerArtifacts
-    agents: dict[str, OpenAIAgentPlan]
-    caveats: list[OpenAIAgentFactoryCaveat]
-
-
-@dataclass(frozen=True)
-class OpenAIAgentFactoryResult:
-    agents: dict[str, Any]
-    caveats: list[OpenAIAgentFactoryCaveat]
-    plan: OpenAIAdapterPlan
-
-
-@dataclass(frozen=True)
-class OpenAIApprovalRequest:
-    tool: str
-    approved: bool | None = None
-    arguments: dict[str, Any] = field(default_factory=dict)
-
-
-ApprovalCallback = Callable[[OpenAIApprovalRequest], bool | Awaitable[bool]]
-
-
-@dataclass(frozen=True)
-class OpenAIContractRunResult:
-    adapter_result: OpenAIAdapterResult
-    assertion_result: RunEvaluationResult
-    trace: TraceRecorder
-    approvals: list[OpenAIApprovalRequest] = field(default_factory=list)
-
-    @property
-    def passed(self) -> bool:
-        return self.assertion_result.passed
-
-
-class OpenAIAdapterUnavailable(RuntimeError):
-    pass
-
-
-class OpenAIAgentFactoryError(ValueError):
-    pass
 
 
 def openai_tool_name(contract_name: str) -> str:
@@ -420,103 +317,6 @@ async def run_openai_agent_with_contract(
         run_trace,
         approvals,
     )
-
-
-def build_openai_output_type_registry(artifacts: CompilerArtifacts) -> dict[str, type[Any]]:
-    """Generate Pydantic v2 output types from compiled Contract4Agents JSON Schemas."""
-    try:
-        from pydantic import BaseModel, ConfigDict, Field, create_model
-    except Exception as exc:  # noqa: BLE001 - optional OpenAI adapter dependency boundary.
-        raise OpenAIAgentFactoryError("Pydantic v2 is required to generate OpenAI output types") from exc
-
-    schemas = artifacts["schemas"]
-    imported_types = {
-        binding["type"]: binding["python_ref"]
-        for binding in artifacts["type_bindings"]
-        if binding["source"] == "python" and binding["python_ref"] is not None
-    }
-    built: dict[str, type[Any]] = {}
-    resolving: set[str] = set()
-
-    def build_model(name: str) -> type[Any]:
-        if name in built:
-            return built[name]
-        if name in imported_types:
-            try:
-                model = load_python_ref(imported_types[name])
-            except Exception as exc:
-                raise OpenAIAgentFactoryError(f"Could not import Pydantic output type `{name}`") from exc
-            if not isinstance(model, type) or not issubclass(model, BaseModel):
-                raise OpenAIAgentFactoryError(f"Imported output type `{name}` is not a Pydantic BaseModel")
-            built[name] = cast(type[Any], model)
-            return built[name]
-        if name in resolving:
-            raise OpenAIAgentFactoryError(f"Cannot generate recursive OpenAI output type `{name}`")
-        schema = schemas.get(name)
-        if schema is None:
-            raise OpenAIAgentFactoryError(f"No schema compiled for `{name}`")
-        if schema.get("type") != "object" or not isinstance(schema.get("properties"), dict):
-            raise OpenAIAgentFactoryError(f"Cannot generate OpenAI output type `{name}` from non-object schema")
-        resolving.add(name)
-        required = set(_string_list(schema.get("required", [])))
-        fields: dict[str, tuple[Any, Any]] = {}
-        for field_name, field_schema in schema["properties"].items():
-            if not isinstance(field_schema, dict):
-                raise OpenAIAgentFactoryError(f"Cannot generate field `{name}.{field_name}` from non-object schema")
-            annotation, field_kwargs = annotation_for(field_schema)
-            if "default" in field_schema:
-                default: Any = field_schema["default"]
-            elif field_name in required:
-                default = ...
-            else:
-                default = None
-            fields[str(field_name)] = (annotation, Field(default, **field_kwargs))
-        create_model_any = cast(Any, create_model)
-        model = create_model_any(
-            name,
-            __config__=ConfigDict(extra="forbid"),
-            __module__="contract4agents.adapters.openai.generated",
-            **fields,
-        )
-        built[name] = cast(type[Any], model)
-        resolving.remove(name)
-        return built[name]
-
-    def annotation_for(schema: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
-        nullable = _nullable_schema(schema)
-        if nullable is not None:
-            annotation, kwargs = annotation_for(nullable)
-            return annotation | None, kwargs
-        if "$ref" in schema:
-            ref_name = _schema_ref_name(str(schema["$ref"]))
-            return build_model(ref_name), {}
-        if "enum" in schema:
-            values = _string_list(schema["enum"])
-            if not values:
-                raise OpenAIAgentFactoryError("Cannot generate OpenAI output type from empty enum")
-            from typing import Literal as TypingLiteral
-
-            return TypingLiteral.__getitem__(tuple(values)), {}
-        schema_type = schema.get("type")
-        if schema_type == "array":
-            items = schema.get("items")
-            if not isinstance(items, dict):
-                raise OpenAIAgentFactoryError("Cannot generate OpenAI output type from array without item schema")
-            item_annotation, _ = annotation_for(items)
-            return list.__class_getitem__(item_annotation), {}
-        if schema_type == "string":
-            return str, {}
-        if schema_type == "integer":
-            return int, _numeric_constraints(schema)
-        if schema_type == "number":
-            return float, _numeric_constraints(schema)
-        if schema_type == "boolean":
-            return bool, {}
-        raise OpenAIAgentFactoryError(f"Cannot generate OpenAI output type from unsupported schema `{schema}`")
-
-    for type_name in schemas:
-        build_model(type_name)
-    return built
 
 
 class OpenAISemanticJudge:
@@ -970,39 +770,6 @@ def _record_assertion_events(trace: TraceRecorder, result: RunEvaluationResult) 
                 data["failure_kind"] = check.failure.kind
                 data["message"] = check.failure.message
             trace.record("assertion.evaluated", agent=agent_result.agent, assertion=check.assertion, data=data)
-
-
-def _schema_ref_name(ref: str) -> str:
-    prefix = "#/$defs/"
-    if not ref.startswith(prefix):
-        raise OpenAIAgentFactoryError(f"Unsupported schema reference `{ref}`")
-    return ref.removeprefix(prefix)
-
-
-def _nullable_schema(schema: dict[str, Any]) -> dict[str, Any] | None:
-    any_of = schema.get("anyOf")
-    if not isinstance(any_of, list) or len(any_of) != 2:
-        return None
-    non_null = [item for item in any_of if isinstance(item, dict) and item.get("type") != "null"]
-    nulls = [item for item in any_of if isinstance(item, dict) and item.get("type") == "null"]
-    if len(non_null) == 1 and len(nulls) == 1:
-        return cast(dict[str, Any], non_null[0])
-    return None
-
-
-def _numeric_constraints(schema: dict[str, Any]) -> dict[str, Any]:
-    constraints: dict[str, Any] = {}
-    if "minimum" in schema:
-        constraints["ge"] = schema["minimum"]
-    if "maximum" in schema:
-        constraints["le"] = schema["maximum"]
-    return constraints
-
-
-def _string_list(value: Any) -> list[str]:
-    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        raise OpenAIAgentFactoryError("Expected a list of strings in generated schema")
-    return list(value)
 
 
 __all__ = [

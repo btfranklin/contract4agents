@@ -65,7 +65,11 @@ class TraceRecorder:
 
     def record(self, event_type: str, **data: Any) -> TraceEvent:
         envelope = self._envelope(event_type, data)
-        event = TraceEvent(str(envelope["event_type"]), float(envelope["timestamp"]), _event_data(envelope))
+        event = TraceEvent(
+            str(envelope["event_type"]),
+            float(envelope["timestamp"]),
+            event_data_from_envelope(envelope),
+        )
         self.events.append(event)
         if self.path:
             self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -114,20 +118,9 @@ class TraceRecorder:
         )
 
 
-def _event_data(envelope: dict[str, Any]) -> dict[str, Any]:
+def event_data_from_envelope(envelope: dict[str, Any]) -> dict[str, Any]:
     data = dict(envelope.get("data", {}))
-    for field_name in (
-        "schema_version",
-        "run_id",
-        "event_id",
-        "event_type",
-        "agent",
-        "tool",
-        "datasource",
-        "stage",
-        "guardrail",
-        "assertion",
-    ):
+    for field_name in ("schema_version", "run_id", "event_id", "event_type", *TRACE_ENVELOPE_INDEX_FIELDS):
         if field_name in envelope:
             data[field_name] = envelope[field_name]
     data["data"] = dict(envelope.get("data", {}))
@@ -141,4 +134,5 @@ __all__ = [
     "TRACE_SCHEMA_VERSION",
     "TraceEvent",
     "TraceRecorder",
+    "event_data_from_envelope",
 ]

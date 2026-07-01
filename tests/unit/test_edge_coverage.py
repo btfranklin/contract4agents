@@ -232,7 +232,7 @@ async def test_eval_edges() -> None:
             "trace.not_called(anything)",
             "output discovers hidden_truth.likely_cause",
         ],
-        semantic_expectations=["semantic(output, bad)"],
+        semantic_expectations=['semantic(output, "bad")'],
         hidden_truth={"likely_cause": "missing evidence"},
     )
 

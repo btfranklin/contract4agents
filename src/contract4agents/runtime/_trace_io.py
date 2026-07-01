@@ -13,6 +13,7 @@ from contract4agents.runtime._trace import (
     TRACE_SCHEMA_VERSION,
     TraceEvent,
     TraceRecorder,
+    event_data_from_envelope,
 )
 
 TraceDiagnosticSeverity = Literal["fatal", "warning"]
@@ -131,7 +132,7 @@ def _trace_event(line: str, path: Path, line_number: int) -> tuple[TraceEvent | 
     assert event_type is not None
     assert event_id is not None
     timestamp = float(payload["timestamp"])
-    event = TraceEvent(event_type, timestamp, _event_data(payload))
+    event = TraceEvent(event_type, timestamp, event_data_from_envelope(payload))
     if event_type not in KNOWN_TRACE_EVENT_TYPES:
         diagnostics.append(
             TraceDiagnostic(
@@ -224,22 +225,6 @@ def _fatal(
         event_id=event_id,
         event_type=event_type,
     )
-
-
-def _event_data(payload: dict[str, Any]) -> dict[str, Any]:
-    data = dict(payload.get("data", {}))
-    for field_name in (
-        "schema_version",
-        "run_id",
-        "event_id",
-        "event_type",
-        *TRACE_ENVELOPE_INDEX_FIELDS,
-    ):
-        if field_name in payload:
-            data[field_name] = payload[field_name]
-    data["data"] = dict(payload.get("data", {}))
-    data["provider"] = dict(payload.get("provider", {}))
-    return data
 
 
 __all__ = [

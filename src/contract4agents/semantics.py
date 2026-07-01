@@ -11,6 +11,7 @@ from contract4agents.expressions._grammar import (
     parse_expectation,
     parse_monitor_condition,
     parse_monitor_expectation,
+    parse_semantic_expectation,
 )
 from contract4agents.expressions._model import ExpressionError, ParsedExpression
 from contract4agents.expressions._refs import referenced_output_fields, referenced_trace_targets, referenced_type
@@ -85,7 +86,7 @@ def analyze_project(project: ContractProject) -> SemanticResult:
     for agent in index.agent_defs.values():
         diagnostics.extend(_check_agent(agent, index))
     for eval_case in project.evals:
-        diagnostics.extend(_check_eval(eval_case.agent, eval_case.expects, index))
+        diagnostics.extend(_check_eval(eval_case.agent, eval_case.expects, eval_case.semantic_expects, index))
     for monitor in project.monitors:
         diagnostics.extend(_check_monitor(monitor, index))
     return SemanticResult(diagnostics)
@@ -198,6 +199,7 @@ def _check_agent(
 def _check_eval(
     agent_name: str,
     expects: list[str],
+    semantic_expects: list[str],
     index: _ProjectIndex,
 ) -> list[Diagnostic]:
     agent = index.agent_defs.get(agent_name)
@@ -216,6 +218,11 @@ def _check_eval(
                 contract_expression=False,
             )
         )
+    for expression in semantic_expects:
+        try:
+            parse_semantic_expectation(expression)
+        except ExpressionError as exc:
+            diagnostics.append(Diagnostic("SEM056", str(exc), span=agent.span))
     return diagnostics
 
 

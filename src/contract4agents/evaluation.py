@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from contract4agents.expressions._eval import evaluate_hidden_truth, evaluate_output, evaluate_trace
-from contract4agents.expressions._grammar import parse_expectation
+from contract4agents.expressions._grammar import parse_expectation, parse_semantic_expectation
 from contract4agents.expressions._model import ExpressionError
 from contract4agents.runtime import TraceRecorder
 
@@ -51,10 +51,15 @@ class EvalRunner:
             if failure:
                 result.failures.append(failure)
         for criterion in semantic_expectations or []:
+            try:
+                parsed_criterion = parse_semantic_expectation(criterion)
+            except ExpressionError as exc:
+                result.failures.append(EvalFailure("unsupported", str(exc)))
+                continue
             if not self.judge:
                 result.skipped_semantic.append(criterion)
                 continue
-            ok = await self.judge.judge(output=output, criterion=criterion)
+            ok = await self.judge.judge(output=output, criterion=str(parsed_criterion.value))
             if not ok:
                 result.failures.append(EvalFailure("semantic", f"Semantic expectation failed: {criterion}"))
         result.passed = not result.failures

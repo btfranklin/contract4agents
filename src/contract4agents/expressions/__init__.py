@@ -8,6 +8,7 @@ from contract4agents.expressions._grammar import (
     parse_expectation,
     parse_monitor_condition,
     parse_monitor_expectation,
+    parse_semantic_expectation,
 )
 from contract4agents.expressions._model import ExpressionError, ExpressionKind, ParsedExpression
 from contract4agents.expressions._refs import referenced_output_fields, referenced_trace_targets, referenced_type
@@ -25,6 +26,7 @@ __all__ = [
     "parse_expectation",
     "parse_monitor_condition",
     "parse_monitor_expectation",
+    "parse_semantic_expectation",
     "referenced_output_fields",
     "referenced_trace_targets",
     "referenced_type",
