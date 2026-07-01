@@ -7,8 +7,19 @@ import re
 from typing import Any
 
 from contract4agents.expressions._model import ExpressionError, ParsedExpression
-from contract4agents.expressions._trace_ops import TRACE_OPS
+from contract4agents.expressions._trace_ops import TRACE_OPS, TraceTargetKind
 from contract4agents.runtime import TraceEvent, TraceRecorder
+
+_TARGET_FIELDS_BY_KIND: dict[TraceTargetKind, tuple[str, ...]] = {
+    "any": ("agent", "tool", "datasource", "produces", "guardrail", "assertion", "stage"),
+    "agent": ("agent",),
+    "tool": ("tool",),
+    "hosted_tool": ("tool",),
+    "datasource": ("datasource", "produces"),
+    "approval_tool": ("tool",),
+    "guardrail": ("guardrail",),
+    "text": (),
+}
 
 
 def evaluate_output(parsed: ParsedExpression, output: dict[str, Any], schemas: dict[str, dict[str, Any]]) -> str | None:
@@ -66,26 +77,29 @@ def evaluate_trace(parsed: ParsedExpression, trace: TraceRecorder) -> str | None
         raise ExpressionError(f"Not a trace expression: {parsed.expression}")
     op = parsed.trace_op
     args = parsed.args
+    target_kind = TRACE_OPS[op].target_kind
 
     if op == "not_called":
-        return f"Expected trace not to include {args[0]}" if _trace_contains(trace, args[0], None) else None
+        if _trace_contains(trace, args[0], None, target_kind):
+            return f"Expected trace not to include {args[0]}"
+        return None
     if op == "called_once":
-        count = _trace_count(trace, args[0], None)
+        count = _trace_count(trace, args[0], None, target_kind)
         return None if count == 1 else f"Expected trace to include {args[0]} exactly once, found {count}"
     if op == "called_times":
         expected = int(args[1])
-        count = _trace_count(trace, args[0], None)
+        count = _trace_count(trace, args[0], None, target_kind)
         return None if count == expected else f"Expected trace to include {args[0]} {expected} times, found {count}"
     if op == "max_calls":
         maximum = int(args[1])
-        count = _trace_count(trace, args[0], None)
+        count = _trace_count(trace, args[0], None, target_kind)
         if count <= maximum:
             return None
         return f"Expected trace to include {args[0]} at most {maximum} times, found {count}"
     if op in {"called_before", "called_after"}:
         left, right = args
-        left_index = _first_trace_index(trace, left, None)
-        right_index = _first_trace_index(trace, right, None)
+        left_index = _first_trace_index(trace, left, None, target_kind)
+        right_index = _first_trace_index(trace, right, None, target_kind)
         if left_index is None or right_index is None:
             return f"Expected trace to include both {left} and {right}"
         ok = left_index < right_index if op == "called_before" else left_index > right_index
@@ -101,7 +115,7 @@ def evaluate_trace(parsed: ParsedExpression, trace: TraceRecorder) -> str | None
         return f"Expected trace to contain {args[0]}"
 
     event_type = TRACE_OPS[op].event_type
-    return None if _trace_contains(trace, args[0], event_type) else f"Expected trace to include {args[0]}"
+    return None if _trace_contains(trace, args[0], event_type, target_kind) else f"Expected trace to include {args[0]}"
 
 
 def _hidden_truth_matches(rule: Any, text: str) -> bool:
@@ -117,36 +131,56 @@ def _hidden_truth_matches(rule: Any, text: str) -> bool:
     return bool(words) and sum(word in text for word in words) >= max(1, len(words) // 3)
 
 
-def _trace_contains(trace: TraceRecorder, target: str, event_type: str | None) -> bool:
-    return _first_trace_index(trace, target, event_type) is not None
+def _trace_contains(
+    trace: TraceRecorder,
+    target: str,
+    event_type: str | None,
+    target_kind: TraceTargetKind,
+) -> bool:
+    return _first_trace_index(trace, target, event_type, target_kind) is not None
 
 
-def _trace_count(trace: TraceRecorder, target: str, event_type: str | None) -> int:
-    return sum(1 for event in trace.events if _event_matches(event, target, event_type))
+def _trace_count(
+    trace: TraceRecorder,
+    target: str,
+    event_type: str | None,
+    target_kind: TraceTargetKind,
+) -> int:
+    return sum(1 for event in trace.events if _event_matches(event, target, event_type, target_kind))
 
 
-def _first_trace_index(trace: TraceRecorder, target: str, event_type: str | None) -> int | None:
+def _first_trace_index(
+    trace: TraceRecorder,
+    target: str,
+    event_type: str | None,
+    target_kind: TraceTargetKind,
+) -> int | None:
     for index, event in enumerate(trace.events):
-        if _event_matches(event, target, event_type):
+        if _event_matches(event, target, event_type, target_kind):
             return index
     return None
 
 
-def _event_matches(event: TraceEvent, target: str, event_type: str | None) -> bool:
+def _event_matches(
+    event: TraceEvent,
+    target: str,
+    event_type: str | None,
+    target_kind: TraceTargetKind,
+) -> bool:
     if event_type and event.type != event_type:
         return False
-    return _target_in_event(target, event.data)
+    return _target_in_event_fields(target, event.data, _TARGET_FIELDS_BY_KIND[target_kind])
 
 
-def _target_in_event(target: str, data: dict[str, Any]) -> bool:
+def _target_in_event_fields(target: str, data: dict[str, Any], fields: tuple[str, ...]) -> bool:
     clean_target = target.strip().strip('"')
-    return clean_target in {str(value) for value in data.values()}
+    return clean_target in {str(data[field]) for field in fields if field in data}
 
 
 def _approval_matches(trace: TraceRecorder, target: str, approved: bool) -> bool:
     return any(
         event.type == "approval.completed"
         and bool(event.data.get("approved")) is approved
-        and _target_in_event(target, event.data)
+        and _target_in_event_fields(target, event.data, _TARGET_FIELDS_BY_KIND["approval_tool"])
         for event in trace.events
     )

@@ -292,6 +292,25 @@ async def test_hosted_tool_spy_does_not_satisfy_host_tool_spy() -> None:
     assert "openai.web_search" in result.failures[0].message
 
 
+@pytest.mark.asyncio
+async def test_tool_spy_ignores_target_only_in_tool_result() -> None:
+    trace = TraceRecorder()
+    trace.record("tool.completed", tool="logs.search", result="status_page.draft_update")
+    runner = EvalRunner({"Result": {"type": "object", "properties": {}}})
+
+    result = await runner.evaluate(
+        name="case",
+        output={},
+        output_type="Result",
+        trace=trace,
+        expectations=["trace.tool_called(status_page.draft_update)"],
+    )
+
+    assert not result.passed
+    assert [failure.kind for failure in result.failures] == ["trace"]
+    assert "status_page.draft_update" in result.failures[0].message
+
+
 def test_monitor_violation() -> None:
     trace = TraceRecorder()
     trace.record("tool.completed", tool="status_page.draft_update")
@@ -310,6 +329,49 @@ def test_monitor_violation() -> None:
     )
 
     assert violations[0].severity == "high"
+
+
+def test_monitor_approval_check_is_scoped_to_rule_agent() -> None:
+    trace = TraceRecorder()
+    trace.record("tool.completed", agent="IncidentCommander", tool="status_page.draft_update")
+    trace.record("approval.completed", agent="SupportAgent", tool="status_page.draft_update", approved=True)
+
+    violations = run_monitors(
+        [
+            MonitorRule(
+                "approval_required",
+                "IncidentCommander",
+                "high",
+                "trace.tool_called(status_page.draft_update)",
+                "trace.approval_granted(status_page.draft_update)",
+            )
+        ],
+        trace,
+    )
+
+    assert len(violations) == 1
+    assert violations[0].rule == "approval_required"
+
+
+def test_monitor_condition_ignores_other_agent_behavior() -> None:
+    trace = TraceRecorder()
+    trace.record("tool.completed", agent="SupportAgent", tool="status_page.draft_update")
+    trace.record("approval.completed", agent="SupportAgent", tool="status_page.draft_update", approved=True)
+
+    violations = run_monitors(
+        [
+            MonitorRule(
+                "approval_required",
+                "IncidentCommander",
+                "high",
+                "trace.tool_called(status_page.draft_update)",
+                "trace.approval_granted(status_page.draft_update)",
+            )
+        ],
+        trace,
+    )
+
+    assert violations == []
 
 
 @pytest.mark.asyncio

@@ -56,10 +56,15 @@ Initial spy vocabulary:
 - `trace.approval_granted(name)`
 - `trace.approval_denied(name)`
 
-`trace.tool_called(...)` checks host-supplied tool events. `trace.hosted_tool_called(...)`
-checks provider-native hosted-tool events such as `hosted_tool.completed`.
-Generic spies such as `trace.called(...)` can still match either category by
-target name.
+`trace.tool_called(...)` checks host-supplied `tool.completed` events by their
+normalized `tool` index field. `trace.hosted_tool_called(...)` checks
+provider-native hosted-tool events such as `hosted_tool.completed` by the same
+field. Other typed spies follow the same pattern: agent spies match `agent`,
+datasource spies match `datasource` or produced type, approval spies match the
+approved tool, and guardrail spies match `guardrail`. Generic spies such as
+`trace.called(...)` can still match these normalized target fields across
+categories by target name. Use `trace.contains(...)` for free-text payload
+searches.
 
 Spies should work for tools, hosted tools, agents, datasources, approvals,
 output validation, and guardrail-style trace events.
@@ -155,6 +160,12 @@ monitor refund_without_evidence for BillingAgent:
     when trace.tool_called(stripe.create_refund)
     expect trace.contains("charge_evidence")
 ```
+
+The `for Agent` scope is applied before evaluating both `when` and `expect`.
+Events with a different `agent` index field do not satisfy that monitor,
+including approval events. Legacy or local fixture events that omit `agent` are
+treated as unscoped events, so trace producers should include `agent` on
+tool and approval events when agent-specific monitoring matters.
 
 ## Trace Event Schema
 

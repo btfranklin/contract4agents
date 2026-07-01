@@ -47,6 +47,7 @@ KNOWN_TRACE_EVENT_TYPES = frozenset(
 )
 
 TRACE_ENVELOPE_INDEX_FIELDS = ("agent", "tool", "datasource", "stage", "guardrail", "assertion")
+TRACE_TARGET_FIELDS = TRACE_ENVELOPE_INDEX_FIELDS + ("produces",)
 
 
 @dataclass(frozen=True)
@@ -114,7 +115,12 @@ class TraceRecorder:
         return sum(
             1
             for event in self.events
-            if event.type == event_type and (target is None or target in event.data.values())
+            if event.type == event_type
+            and (
+                target is None
+                or target.strip().strip('"')
+                in {str(event.data[field]) for field in TRACE_TARGET_FIELDS if field in event.data}
+            )
         )
 
 

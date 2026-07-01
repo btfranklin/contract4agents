@@ -32,6 +32,10 @@ Supported deterministic expectations:
 Trace expressions evaluate over in-memory `TraceRecorder` events. When events
 come from disk, load them from canonical schema-versioned trace JSONL using
 `load_trace_jsonl(...)`; legacy top-level `type` JSONL is invalid.
+Typed trace spies match normalized target fields, not arbitrary payload values:
+tool and approval spies match `tool`, agent spies match `agent`, datasource
+spies match `datasource` or `produces`, and guardrail spies match `guardrail`.
+Use `trace.contains("text")` when a check intentionally searches payload text.
 
 Agent assertions in `.contract` files use the same deterministic expression
 surface, wrapped as contract assertions:
