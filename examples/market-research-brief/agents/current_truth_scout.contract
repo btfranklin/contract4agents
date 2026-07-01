@@ -5,6 +5,7 @@ agent CurrentTruthScout(
     use tool current_facts.search from tools.current_facts preapproved
     use tool current_facts.fetch from tools.current_facts preapproved
     use tool citation.format from tools.citation preapproved
+    use hosted_tool openai.web_search context_size "medium"
 
     goal = "Check seeded current-world facts before the report states market claims."
 

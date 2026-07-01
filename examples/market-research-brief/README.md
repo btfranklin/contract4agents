@@ -68,6 +68,9 @@ old internal documents as current truth.
 `MarketOpportunityReport` with citations and freshness notes.
 
 `MarketResearchLead` coordinates the team and owns the final report.
+`CurrentTruthScout` also declares `use hosted_tool openai.web_search
+context_size "medium"` to show how provider-native hosted tools appear
+separately from host Python tools in manifests and visualization artifacts.
 
 ## Run It
 

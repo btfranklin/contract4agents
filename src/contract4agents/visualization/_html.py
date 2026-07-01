@@ -268,6 +268,7 @@ def render_html(graph: VisualizationGraph, mermaid: str) -> str:
         agent: ["agent", "agents"],
         datasource: ["datasource", "datasources"],
         eval: ["eval", "evals"],
+        hosted_tool: ["hosted tool", "hosted tools"],
         monitor: ["monitor", "monitors"],
         tool: ["tool", "tools"],
         type: ["type", "types"]
@@ -313,6 +314,7 @@ def render_html(graph: VisualizationGraph, mermaid: str) -> str:
           <div class="field-label">goal</div><div>${{esc(agent.goal || "No goal declared.")}}</div>
         </div>
         <div class="field"><div class="field-label">tools</div><div>${{objectTags(agent.tools)}}</div></div>
+        <div class="field"><div class="field-label">hosted</div><div>${{objectTags(agent.hosted_tools)}}</div></div>
       `;
     }}
 
@@ -366,6 +368,8 @@ def render_html(graph: VisualizationGraph, mermaid: str) -> str:
         <p><span class="tag">${{esc(agent.output.type)}}</span></p>
         <h3>Tools</h3>
         ${{objectTags(agent.tools)}}
+        <h3>Hosted Tools</h3>
+        ${{objectTags(agent.hosted_tools)}}
         <h3>Subagents</h3>
         ${{objectTags(agent.subagents)}}
         <h3>Datasources</h3>

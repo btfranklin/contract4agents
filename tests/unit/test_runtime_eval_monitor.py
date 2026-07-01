@@ -157,6 +157,7 @@ def test_lark_expression_parser_characterizes_supported_surface() -> None:
 def test_trace_op_specs_cover_documented_spies() -> None:
     assert TRACE_OPS["called_times"].count_arg_index == 1
     assert TRACE_OPS["tool_called"].event_type == "tool.completed"
+    assert TRACE_OPS["hosted_tool_called"].event_type == "hosted_tool.completed"
     assert TRACE_OPS["agent_called"].target_kind == "agent"
     assert TRACE_OPS["approval_granted"].target_kind == "approval_tool"
     assert TRACE_OPS["guardrail_rejected"].event_type == "guardrail.rejected"
@@ -193,6 +194,7 @@ async def test_eval_runner_supports_documented_trace_spies() -> None:
     trace.record("agent.completed", agent="A")
     trace.record("tool.completed", tool="tool.x")
     trace.record("tool.completed", tool="tool.x")
+    trace.record("hosted_tool.completed", tool="openai.web_search")
     trace.record("datasource.resolved", datasource="Source", produces="Thing")
     trace.record("approval.requested", tool="tool.x")
     trace.record("approval.completed", tool="tool.x", approved=True)
@@ -212,6 +214,7 @@ async def test_eval_runner_supports_documented_trace_spies() -> None:
             "trace.called_before(A, tool.x)",
             "trace.called_after(tool.x, A)",
             "trace.tool_called(tool.x)",
+            "trace.hosted_tool_called(openai.web_search)",
             "trace.agent_called(A)",
             "trace.datasource_resolved(Thing)",
             "trace.approval_requested(tool.x)",
@@ -222,6 +225,29 @@ async def test_eval_runner_supports_documented_trace_spies() -> None:
     )
 
     assert result.passed
+
+
+@pytest.mark.asyncio
+async def test_hosted_tool_spy_does_not_satisfy_host_tool_spy() -> None:
+    trace = TraceRecorder()
+    trace.record("hosted_tool.completed", tool="openai.web_search")
+    runner = EvalRunner({"Result": {"type": "object", "properties": {}}})
+
+    result = await runner.evaluate(
+        name="case",
+        output={},
+        output_type="Result",
+        trace=trace,
+        expectations=[
+            "trace.called(openai.web_search)",
+            "trace.hosted_tool_called(openai.web_search)",
+            "trace.tool_called(openai.web_search)",
+        ],
+    )
+
+    assert not result.passed
+    assert [failure.kind for failure in result.failures] == ["trace"]
+    assert "openai.web_search" in result.failures[0].message
 
 
 def test_monitor_violation() -> None:

@@ -64,14 +64,16 @@ async def test_openai_semantic_judge_with_mocked_client(monkeypatch: pytest.Monk
 def test_openai_agent_factory_builds_agents_from_registries(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_fake_agents_module(monkeypatch)
     tool = object()
+    hosted_tool = object()
     child_tool = object()
     handoff = object()
 
     result = build_openai_agents_from_contracts(
-        _factory_artifacts(),
+        _factory_artifacts(include_hosted_tool=True),
         output_type_registry={"ParentResult": dict, "ChildResult": list},
         model_registry={"ParentAgent": "parent-model"},
         tool_registry={"tools.lookup": tool},
+        hosted_tool_registry={"openai.web_search": hosted_tool},
         agent_tool_registry={"ChildAgent": child_tool},
         handoff_registry={"ChildAgent": handoff},
         instruction_overrides={"ParentAgent": "override"},
@@ -83,7 +85,7 @@ def test_openai_agent_factory_builds_agents_from_registries(monkeypatch: pytest.
     assert result.caveats == []
     assert parent.kwargs["model"] == "parent-model"
     assert parent.kwargs["instructions"] == "override"
-    assert parent.kwargs["tools"] == [tool, child_tool]
+    assert parent.kwargs["tools"] == [tool, hosted_tool, child_tool]
     assert parent.kwargs["handoffs"] == [handoff]
     assert parent.kwargs["output_type"] is dict
     assert child.kwargs["model"] == "default-model"
@@ -126,6 +128,17 @@ def test_openai_agent_factory_rejects_missing_declared_tool(monkeypatch: pytest.
         )
 
 
+def test_openai_agent_factory_rejects_missing_hosted_tool(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_fake_agents_module(monkeypatch)
+
+    with pytest.raises(OpenAIAgentFactoryError, match="No hosted tool registered"):
+        build_openai_agents_from_contracts(
+            _factory_artifacts(include_tool=False, include_hosted_tool=True, include_agent_dependency=False),
+            output_type_registry={"ParentResult": dict, "ChildResult": list},
+            model_registry={"ParentAgent": "parent-model", "ChildAgent": "child-model"},
+        )
+
+
 def test_openai_agent_factory_rejects_missing_model(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_fake_agents_module(monkeypatch)
 
@@ -161,6 +174,40 @@ def test_openai_agent_factory_omits_denied_guard_tool(monkeypatch: pytest.Monkey
 
     assert result.agents["ParentAgent"].kwargs["tools"] == [child_tool]
     assert result.caveats == []
+
+
+def test_openai_agent_factory_builds_enabled_openai_web_search(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_fake_agents_module(monkeypatch)
+
+    result = build_openai_agents_from_contracts(
+        _factory_artifacts(include_tool=False, include_hosted_tool=True, include_agent_dependency=False),
+        output_type_registry={"ParentResult": dict, "ChildResult": list},
+        model_registry={"ParentAgent": "parent-model", "ChildAgent": "child-model"},
+        hosted_tool_registry={"openai.web_search": True},
+    )
+
+    hosted_tool = result.agents["ParentAgent"].kwargs["tools"][0]
+    assert hosted_tool.kwargs == {"search_context_size": "medium"}
+    assert result.caveats == []
+
+
+def test_openai_agent_factory_omits_denied_hosted_tool(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_fake_agents_module(monkeypatch)
+
+    result = build_openai_agents_from_contracts(
+        _factory_artifacts(
+            include_tool=False,
+            include_hosted_tool=True,
+            hosted_tool_permission="denied",
+            include_agent_dependency=False,
+        ),
+        output_type_registry={"ParentResult": dict, "ChildResult": list},
+        model_registry={"ParentAgent": "parent-model", "ChildAgent": "child-model"},
+        hosted_tool_registry={"openai.web_search": object()},
+    )
+
+    assert result.agents["ParentAgent"].kwargs["tools"] == []
+    assert [caveat.kind for caveat in result.caveats] == ["denied_hosted_tool_omitted"]
 
 
 def test_openai_agent_factory_reports_approval_required_tool_caveat(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -248,17 +295,38 @@ def _install_fake_agents_module(monkeypatch: pytest.MonkeyPatch) -> None:
             self.kwargs = kwargs
 
     module.Agent = FakeAgent  # type: ignore[attr-defined]
+
+    class FakeWebSearchTool:
+        def __init__(self, **kwargs: object) -> None:
+            self.kwargs = kwargs
+
+    module.WebSearchTool = FakeWebSearchTool  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "agents", module)
 
 
 def _factory_artifacts(
     include_tool: bool = True,
+    include_hosted_tool: bool = False,
     include_agent_dependency: bool = True,
     tool_permission: str = "available",
+    hosted_tool_permission: str = "available",
     guard_plan: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     parent_tools = (
         [{"name": "tools.lookup", "module": "tools", "permission": tool_permission}] if include_tool else []
+    )
+    parent_hosted_tools = (
+        [
+            {
+                "name": "openai.web_search",
+                "provider": "openai",
+                "tool": "web_search",
+                "config": {"context_size": "medium"},
+                "permission": hosted_tool_permission,
+            }
+        ]
+        if include_hosted_tool
+        else []
     )
     parent_agents = (
         [{"name": "ChildAgent", "module": "./child", "permission": "available"}] if include_agent_dependency else []
@@ -273,6 +341,7 @@ def _factory_artifacts(
                 "inputs": [],
                 "output": {"type": "ParentResult", "schema_ref": "schemas/ParentResult.json"},
                 "tools": parent_tools,
+                "hosted_tools": parent_hosted_tools,
                 "agents": parent_agents,
                 "datasources": [],
                 "policy": [],
@@ -289,6 +358,7 @@ def _factory_artifacts(
                 "inputs": [],
                 "output": {"type": "ChildResult", "schema_ref": "schemas/ChildResult.json"},
                 "tools": [],
+                "hosted_tools": [],
                 "agents": [],
                 "datasources": [],
                 "policy": [],

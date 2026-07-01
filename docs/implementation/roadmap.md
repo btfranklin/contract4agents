@@ -8,64 +8,26 @@ Keep this file limited to unimplemented or materially incomplete work. When an i
 
 If an item no longer belongs in the product, remove it from `VISION.md` first and then delete it from this roadmap.
 
-## Hosted Provider Tool Declarations
-
-Vision gap: Contract4Agents currently treats tool declarations primarily as host-supplied capabilities. Real OpenAI Agents SDK applications also use provider-native hosted tools such as web search, which need to appear distinctly in manifests, adapter plans, traces, assertions, and capability reports.
-
-Design boundary: hosted provider tools should be first-class capabilities, but core language semantics should stay provider-neutral. OpenAI-specific names belong in adapter metadata and provider-specific declarations, not in a hard-coded assumption that every runtime has OpenAI web search.
-
-Implementation work:
-
-- Add source syntax for hosted provider tools, choosing a form that keeps capability kind explicit, for example:
-
-  ```contract
-  use hosted_tool openai.web_search context_size "medium"
-  use hosted_tool openai.web_search context_size "high"
-  ```
-
-- Represent hosted tools separately from host Python tools in the AST, semantic model, provider-neutral manifest, generated docs, visualization, and adapter capability matrix.
-- Preserve provider name, hosted tool identifier, provider-specific configuration, and permission state.
-- Add semantic checks for unknown hosted tool provider names, unsupported hosted tool options, duplicate declarations, and trace assertions that reference undeclared hosted tools.
-- Extend trace spies and assertion evaluation so contracts can express that one agent may call `openai.web_search` while another must not.
-- Extend normalized trace events so hosted provider tool calls are distinguishable from host Python tool calls while still using shared tool-call concepts where useful.
-- Extend the OpenAI adapter plan so `WebSearchTool(search_context_size="medium")` and `WebSearchTool(search_context_size="high")` can be represented from contract metadata when the caller enables the hosted tool registry.
-- Ensure adapter capability output explains which tools are provider-native and which tools must be wired by host code.
-- Add parser, semantic, compile, trace, and OpenAI adapter tests for agents with and without hosted web search.
-
-Validation:
-
-```bash
-pdm run test:unit
-pdm run test:integration
-CONTRACT4AGENTS_RUN_OPENAI_AGENT_LIVE=1 pdm run test:openai-agent-live
-```
-
-Definition of done:
-
-- Hosted tools appear distinctly from host-supplied tools in generated manifests and docs.
-- Trace assertions can refer to hosted tools by stable contract names.
-- The OpenAI adapter can plan hosted web-search tools with explicit caveats when the SDK or host registry cannot supply them.
-
 ## OpenAI Adapter Planning And Agent Factory Helpers
 
-Vision gap: the OpenAI adapter can build one Agent SDK object and has a registry-driven `build_openai_agents_from_contracts(...)` helper that consumes basic guard-plan metadata. It still lacks a richer adapter plan for hosted tools, context rendering, executable approval flows, handoff semantics, composition metadata, assertion metadata, and deeper provider caveats.
+Vision gap: the OpenAI adapter can build Agent SDK objects from compiler artifacts and explicit registries, including basic guard-plan metadata and hosted web-search declarations. It still lacks a richer typed adapter plan for context rendering, executable approval flows, handoff semantics, composition metadata, assertion metadata, and deeper provider caveats.
 
 Design boundary: factory helpers reduce wiring friction; they do not replace the host app runtime. Host code still supplies model choices, Python output classes, real tool callables, hosted-tool enablement, approval behavior, and orchestration.
 
 Implementation work:
 
 - Add an adapter planning layer that consumes compiler artifacts and returns a typed OpenAI adapter plan before constructing SDK objects.
-- Include manifest source paths, generated instruction paths, output schema refs, hosted tool declarations, assertion metadata, composition metadata, and adapter caveats in the plan.
+- Include manifest source paths, generated instruction paths, output schema refs, hosted-tool metadata, assertion metadata, composition metadata, and adapter caveats in the plan.
 - Extend the existing factory helper to consume the typed adapter plan rather than assembling SDK objects directly from manifests.
 - Add a supported generated output type strategy for callers that do not want to hand-supply every `output_type`.
 - Build OpenAI tool wrappers from a richer registered tool surface and manifest permission metadata.
-- Map hosted provider tool declarations to OpenAI hosted tool objects only when enabled through the hosted tool registry.
+- Carry hosted-tool registry decisions and caveats through the typed adapter plan instead of assembling them only inside the factory helper.
 - Carry approval-required tools from guard-plan metadata into concrete SDK or host approval handling and record approval trace events.
 - Map composition metadata to OpenAI handoffs or agents-as-tools when the caller provides the corresponding child agent objects.
 - Render typed context into model input using `RuntimeContext.rendered_context()` or an adapter-specific equivalent, while preserving hidden state outside the model prompt.
 - Feed assertion metadata into the adapter run path so OpenAI runs can produce the same normalized trace and post-run assertion checks as fixture runs.
 - Return explicit caveats for unsupported semantics. The helper must not silently degrade a contract into instructions-only behavior.
-- Add offline unit and integration tests around planning, hosted tools, guard mapping, approval metadata, context rendering, and object construction with fake registries; keep live OpenAI tests behind existing opt-in environment flags.
+- Add offline unit and integration tests around planning, guard mapping, approval metadata, context rendering, hosted-tool plan metadata, and object construction with fake registries; keep live OpenAI tests behind existing opt-in environment flags.
 
 Validation:
 

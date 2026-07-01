@@ -18,7 +18,8 @@ Python package.
   guardrails, evals, and monitors.
 - `market-research-brief/`: a document-driven market research team. It shows
   internal document review, dated current-fact snapshots, competitor signals,
-  customer-signal analysis, evals, and monitors.
+  customer-signal analysis, an OpenAI hosted web-search declaration, evals, and
+  monitors.
 
 Start with [incident-command/README.md](incident-command/README.md).
 

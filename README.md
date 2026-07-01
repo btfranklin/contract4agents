@@ -19,7 +19,8 @@ Start here:
 - `examples/multi-lens-research/README.md` shows a complex research team split
   into focused expert lenses.
 - `examples/market-research-brief/README.md` shows document-driven market
-  research against dated current-fact snapshots.
+  research against dated current-fact snapshots, including an OpenAI hosted
+  web-search declaration.
 - `examples/README.md` explains the reusable pattern for future examples.
 - `docs/index.md` is the documentation map.
 - `docs/examples/incident-command-walkthrough.md` walks through the clone-only example.

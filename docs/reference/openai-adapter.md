@@ -9,6 +9,7 @@ V1 maps Contract4Agents manifests to:
 
 - OpenAI `Agent` name and instructions.
 - Caller-supplied function tools from local callables.
+- Caller-enabled hosted provider tools such as OpenAI web search.
 - Caller-supplied handoffs or agents-as-tools where used.
 - Caller-supplied output model types.
 - Guard-plan metadata for output conformance, denied tools, and approval-required tools.
@@ -28,6 +29,7 @@ factory_result = build_openai_agents_from_contracts(
     output_type_registry={"SupportReply": SupportReplyModel},
     model_registry={"SupportCoordinator": config.support_model},
     tool_registry={"crm.create_note": crm_create_note_tool},
+    hosted_tool_registry={"openai.web_search": True},
     agent_tool_registry={"BillingSpecialist": billing_specialist_tool},
     default_model=config.default_agent_model,
 )
@@ -36,9 +38,21 @@ agents = factory_result.agents
 ```
 
 The helper is registry-driven. It does not import application models, discover
-tools, resolve approvals, or run the workflow. Missing declared host tools or
-output types are configuration errors. Declared agent dependencies without
-handoff or agent-tool wiring are returned as explicit caveats.
+tools, resolve approvals, or run the workflow. Missing declared host tools,
+enabled hosted tools, or output types are configuration errors. Declared agent
+dependencies without handoff or agent-tool wiring are returned as explicit
+caveats.
+
+Hosted provider tools are declared separately from host tools:
+
+```contract
+use hosted_tool openai.web_search context_size "medium"
+```
+
+Pass `hosted_tool_registry={"openai.web_search": True}` to let the helper build
+`agents.WebSearchTool(search_context_size="medium")`. Alternatively, pass a
+provider object or a factory callable for `openai.web_search`. Declared hosted
+tools with `denied` permission are omitted and reported as caveats.
 
 The helper consumes compiled `guard_plan` items conservatively:
 
@@ -68,4 +82,4 @@ Use the live agent fixture when changing OpenAI Agents SDK execution behavior:
 CONTRACT4AGENTS_RUN_OPENAI_AGENT_LIVE=1 pdm run test:openai-agent-live
 ```
 
-That path builds SDK `Agent` objects from compiled Contract4Agents manifests, wraps fake local Python tools as function tools, uses agents-as-tools for specialists, runs input guardrails, resolves approval interruptions in fixture code, and normalizes SDK lifecycle hooks back into Contract4Agents trace events.
+That path builds SDK `Agent` objects from compiled Contract4Agents manifests, wraps fake local Python tools as function tools, uses agents-as-tools for specialists, runs input guardrails, resolves approval interruptions in fixture code, and normalizes SDK lifecycle hooks back into Contract4Agents trace events. Hosted SDK tools are normalized with `hosted_tool.*` event names when the hook can identify the SDK hosted-tool object.

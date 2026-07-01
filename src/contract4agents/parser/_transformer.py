@@ -123,6 +123,21 @@ class _ModuleTransformer(Transformer[Any, Any]):
         permission = cast(Permission, str(items[3])) if len(items) > 3 else "available"
         return UseDecl(kind, str(name), source, permission, _span(self.path, name))
 
+    def hosted_use_stmt(self, items: list[Any]) -> UseDecl:
+        name = _token(items[0])
+        config: dict[str, str] = {}
+        permission: Permission = "available"
+        for item in items[1:]:
+            if isinstance(item, tuple):
+                key, value = cast(tuple[str, str], item)
+                config[key] = value
+            elif isinstance(item, str):
+                permission = cast(Permission, item)
+        return UseDecl("hosted_tool", str(name), "", permission, _span(self.path, name), config)
+
+    def hosted_option(self, items: list[Any]) -> tuple[str, str]:
+        return str(items[0]), unquote(str(items[1]))
+
     def preapproved(self, _items: list[Any]) -> str:
         return "preapproved"
 

@@ -145,6 +145,35 @@ def test_evaluate_run_contract_accepts_loaded_canonical_trace(tmp_path: Path) ->
     assert result.passed
 
 
+def test_evaluate_run_contract_accepts_hosted_tool_trace(tmp_path: Path) -> None:
+    path = tmp_path / "trace.jsonl"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": "1",
+                "run_id": "run-assertions",
+                "event_id": "evt-1",
+                "event_type": "hosted_tool.completed",
+                "timestamp": 1.0,
+                "tool": "openai.web_search",
+                "data": {},
+                "provider": {},
+            }
+        )
+        + "\n"
+    )
+    manifest = _manifest(["expect(trace.hosted_tool_called(openai.web_search))"])
+    contract = _artifacts(manifest)
+
+    result = evaluate_run_contract(
+        contract=contract,
+        trace=load_trace_jsonl(path),
+        outputs={"ExampleAgent": {"ok": True, "summary": "ok"}},
+    )
+
+    assert result.passed
+
+
 def _manifest(assertions: list[str]) -> AgentManifest:
     return {
         "agent": "ExampleAgent",
@@ -153,6 +182,15 @@ def _manifest(assertions: list[str]) -> AgentManifest:
         "inputs": [],
         "output": {"type": "Result", "schema_ref": "schemas/Result.json"},
         "tools": [{"name": "tools.lookup", "module": "tools", "permission": "available"}],
+        "hosted_tools": [
+            {
+                "name": "openai.web_search",
+                "provider": "openai",
+                "tool": "web_search",
+                "config": {"context_size": "medium"},
+                "permission": "available",
+            }
+        ],
         "agents": [],
         "datasources": [],
         "policy": [],

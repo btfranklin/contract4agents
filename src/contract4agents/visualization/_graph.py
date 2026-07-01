@@ -93,6 +93,30 @@ def build_visualization_graph(project: ContractProject, artifacts: CompilerArtif
                 permission=permission,
             )
 
+        for hosted_tool in manifest["hosted_tools"]:
+            tool_name = hosted_tool["name"]
+            permission = hosted_tool["permission"]
+            _add_node(
+                nodes,
+                f"hosted_tool:{tool_name}",
+                "hosted_tool",
+                tool_name,
+                provider=hosted_tool["provider"],
+                tool=hosted_tool["tool"],
+                config=hosted_tool["config"],
+            )
+            _add_edge(
+                edges,
+                agent_id,
+                f"hosted_tool:{tool_name}",
+                "agent_uses_hosted_tool",
+                permission,
+                provider=hosted_tool["provider"],
+                tool=hosted_tool["tool"],
+                config=hosted_tool["config"],
+                permission=permission,
+            )
+
         for manifest_datasource in manifest["datasources"]:
             datasource_name = manifest_datasource["name"]
             _add_node(nodes, f"datasource:{datasource_name}", "datasource", datasource_name)
@@ -164,6 +188,7 @@ def _agent_detail(
         "inputs": inputs,
         "output": output,
         "tools": [dict(item) for item in manifest["tools"]],
+        "hosted_tools": [dict(item) for item in manifest["hosted_tools"]],
         "subagents": [dict(item) for item in manifest["agents"]],
         "datasources": [dict(item) for item in manifest["datasources"]],
         "policy": manifest["policy"],

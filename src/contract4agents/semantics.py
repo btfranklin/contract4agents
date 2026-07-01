@@ -15,6 +15,7 @@ from contract4agents.expressions._grammar import (
 from contract4agents.expressions._model import ExpressionError, ParsedExpression
 from contract4agents.expressions._refs import referenced_output_fields, referenced_trace_targets, referenced_type
 from contract4agents.expressions._trace_ops import TRACE_OPS
+from contract4agents.hosted_tools import SUPPORTED_HOSTED_TOOLS, split_hosted_tool_name
 
 BUILTIN_TYPES = {"str", "int", "float", "bool", "AgentRef"}
 
@@ -34,6 +35,7 @@ class _ProjectIndex:
     agent_defs: dict[str, AgentDef]
     datasource_defs: dict[str, DatasourceDef]
     project_tools: set[str]
+    project_hosted_tools: set[str]
     datasource_targets: set[str]
 
     @classmethod
@@ -45,6 +47,9 @@ class _ProjectIndex:
             agent_defs=agent_defs,
             datasource_defs=datasource_defs,
             project_tools={use.name for agent in agent_defs.values() for use in agent.uses if use.kind == "tool"},
+            project_hosted_tools={
+                use.name for agent in agent_defs.values() for use in agent.uses if use.kind == "hosted_tool"
+            },
             datasource_targets=set(datasource_defs) | {item.produces for item in datasource_defs.values()},
         )
 
@@ -146,6 +151,8 @@ def _check_agent(
     diagnostics.extend(_check_type_ref(agent.return_type, index, agent.span, "agent return type"))
     datasource_outputs: dict[str, int] = {}
     tool_names = {use.name for use in agent.uses if use.kind == "tool"}
+    hosted_tool_names = {use.name for use in agent.uses if use.kind == "hosted_tool"}
+    diagnostics.extend(_check_hosted_tools(agent))
     for use in agent.uses:
         if use.kind == "agent" and use.name not in index.agent_defs:
             diagnostics.append(
@@ -176,6 +183,7 @@ def _check_agent(
                 agent,
                 index,
                 tool_names,
+                hosted_tool_names,
                 span=agent.span,
                 contract_expression=True,
             )
@@ -199,6 +207,7 @@ def _check_eval(
                 agent,
                 index,
                 index.project_tools,
+                index.project_hosted_tools,
                 span=agent.span,
                 contract_expression=False,
             )
@@ -211,7 +220,8 @@ def _check_monitor(
     index: _ProjectIndex,
 ) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
-    if rule.agent not in index.agent_defs:
+    agent = index.agent_defs.get(rule.agent)
+    if agent is None:
         diagnostics.append(Diagnostic("SEM030", f"Monitor references unknown agent `{rule.agent}`", span=rule.span))
     for expression, parser in [
         (rule.condition, parse_monitor_condition),
@@ -223,7 +233,69 @@ def _check_monitor(
             diagnostics.append(Diagnostic("SEM052", str(exc), span=rule.span))
             continue
         if parsed:
-            diagnostics.extend(_check_trace_refs(parsed, index, index.project_tools, rule.span))
+            diagnostics.extend(
+                _check_trace_refs(parsed, index, index.project_tools, index.project_hosted_tools, rule.span)
+            )
+    return diagnostics
+
+
+def _check_hosted_tools(agent: AgentDef) -> list[Diagnostic]:
+    diagnostics: list[Diagnostic] = []
+    seen: dict[str, SourceSpan | None] = {}
+    for use in agent.uses:
+        if use.kind != "hosted_tool":
+            continue
+        if use.name in seen:
+            first_span = seen[use.name]
+            diagnostics.append(
+                Diagnostic(
+                    "SEM065",
+                    f"Agent `{agent.name}` declares hosted tool `{use.name}` more than once",
+                    span=use.span,
+                    hint=f"First declaration was at {first_span.display()}" if first_span else None,
+                )
+            )
+        else:
+            seen[use.name] = use.span
+        split_name = split_hosted_tool_name(use.name)
+        if split_name is None:
+            diagnostics.append(
+                Diagnostic("SEM060", f"Hosted tool `{use.name}` must be declared as `provider.tool`", span=use.span)
+            )
+            continue
+        provider, tool = split_name
+        provider_tools = SUPPORTED_HOSTED_TOOLS.get(provider)
+        if provider_tools is None:
+            diagnostics.append(
+                Diagnostic("SEM061", f"Unknown hosted tool provider `{provider}` for `{use.name}`", span=use.span)
+            )
+            continue
+        tool_options = provider_tools.get(tool)
+        if tool_options is None:
+            diagnostics.append(
+                Diagnostic("SEM062", f"Unknown hosted tool `{use.name}` for provider `{provider}`", span=use.span)
+            )
+            continue
+        for option_name, option_value in use.config.items():
+            allowed_values = tool_options.get(option_name)
+            if allowed_values is None:
+                diagnostics.append(
+                    Diagnostic(
+                        "SEM063",
+                        f"Unsupported hosted tool option `{option_name}` for `{use.name}`",
+                        span=use.span,
+                    )
+                )
+                continue
+            if option_value not in allowed_values:
+                diagnostics.append(
+                    Diagnostic(
+                        "SEM064",
+                        f"Invalid value `{option_value}` for hosted tool option `{option_name}` on `{use.name}`",
+                        span=use.span,
+                        hint=f"Expected one of: {', '.join(sorted(allowed_values))}",
+                    )
+                )
     return diagnostics
 
 
@@ -232,6 +304,7 @@ def _check_expression_refs(
     agent: AgentDef,
     index: _ProjectIndex,
     tool_names: set[str],
+    hosted_tool_names: set[str],
     *,
     span: SourceSpan,
     contract_expression: bool,
@@ -242,7 +315,7 @@ def _check_expression_refs(
         return [Diagnostic("SEM052", str(exc), span=span)]
     diagnostics: list[Diagnostic] = []
     for parsed in parsed_items:
-        diagnostics.extend(_check_parsed_expression(parsed, agent, index, tool_names, span))
+        diagnostics.extend(_check_parsed_expression(parsed, agent, index, tool_names, hosted_tool_names, span))
     return diagnostics
 
 
@@ -251,6 +324,7 @@ def _check_parsed_expression(
     agent: AgentDef,
     index: _ProjectIndex,
     tool_names: set[str],
+    hosted_tool_names: set[str],
     span: SourceSpan,
 ) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
@@ -269,7 +343,7 @@ def _check_parsed_expression(
                         span=span,
                     )
                 )
-    diagnostics.extend(_check_trace_refs(parsed, index, tool_names, span))
+    diagnostics.extend(_check_trace_refs(parsed, index, tool_names, hosted_tool_names, span))
     return diagnostics
 
 
@@ -277,6 +351,7 @@ def _check_trace_refs(
     parsed: ParsedExpression,
     index: _ProjectIndex,
     tool_names: set[str],
+    hosted_tool_names: set[str],
     span: SourceSpan,
 ) -> list[Diagnostic]:
     op, targets = referenced_trace_targets(parsed)
@@ -291,6 +366,10 @@ def _check_trace_refs(
             diagnostics.append(Diagnostic("SEM051", f"Expression references unknown agent `{target}`", span=span))
         elif spec.target_kind == "tool" and target not in tool_names:
             diagnostics.append(Diagnostic("SEM053", f"Expression references unknown tool `{target}`", span=span))
+        elif spec.target_kind == "hosted_tool" and target not in hosted_tool_names:
+            diagnostics.append(
+                Diagnostic("SEM055", f"Expression references unknown hosted tool `{target}`", span=span)
+            )
         elif spec.target_kind == "approval_tool" and target not in tool_names:
             diagnostics.append(
                 Diagnostic("SEM053", f"Expression references approval for unknown tool `{target}`", span=span)
@@ -300,7 +379,7 @@ def _check_trace_refs(
                 Diagnostic("SEM054", f"Expression references unknown datasource target `{target}`", span=span)
             )
         elif spec.target_kind == "any":
-            known_targets = index.agent_names | tool_names | index.datasource_targets
+            known_targets = index.agent_names | tool_names | hosted_tool_names | index.datasource_targets
             if target not in known_targets:
                 diagnostics.append(
                     Diagnostic("SEM051", f"Expression references unknown trace target `{target}`", span=span)

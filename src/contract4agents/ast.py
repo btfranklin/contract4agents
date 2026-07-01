@@ -38,7 +38,7 @@ class TypeDef:
 
 
 Permission = Literal["available", "preapproved", "requires_approval", "denied", "sandboxed"]
-UseKind = Literal["tool", "agent", "datasource"]
+UseKind = Literal["tool", "agent", "datasource", "hosted_tool"]
 
 
 @dataclass(frozen=True)
@@ -48,6 +48,7 @@ class UseDecl:
     source: str
     permission: Permission = "available"
     span: SourceSpan | None = None
+    config: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

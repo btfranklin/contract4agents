@@ -30,7 +30,8 @@ Optional index fields:
 
 - `run_id`: run identifier shared by events from the same run.
 - `agent`: agent name when the event belongs to an agent.
-- `tool`: host or provider tool name when the event belongs to a tool call.
+- `tool`: host tool name for `tool.*` or `host_tool.*` events, and provider
+  hosted-tool contract name for `hosted_tool.*` events.
 - `datasource`: datasource name or type when the event belongs to datasource resolution.
 - `stage`: stage or checkpoint name.
 - `guardrail`: guardrail name.
@@ -74,6 +75,11 @@ Hosted provider tool events:
 - `hosted_tool.started`
 - `hosted_tool.completed`
 - `hosted_tool.failed`
+
+Hosted provider tools use the same `tool` index field as host tools, but their
+event type prefix stays `hosted_tool`. For example, an OpenAI web-search call is
+recorded with `event_type` set to `hosted_tool.completed` and `tool` set to
+`openai.web_search`.
 
 Datasource events:
 

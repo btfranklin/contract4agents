@@ -6,9 +6,10 @@ import json
 from pathlib import Path
 from typing import Any, Literal, TypedDict
 
-from contract4agents.ast import AgentDef, ContractProject, EvalCase, MonitorDef
+from contract4agents.ast import AgentDef, ContractProject, EvalCase, MonitorDef, UseDecl
 from contract4agents.diagnostics import ContractError, Diagnostic, raise_if_errors
 from contract4agents.guards import GuardPlanItem, build_guard_plan
+from contract4agents.hosted_tools import split_hosted_tool_name
 from contract4agents.parser import parse_project
 from contract4agents.schema import type_to_schema
 from contract4agents.semantics import analyze_project
@@ -20,6 +21,14 @@ CapabilityStatus = Literal["supported", "partial", "emulated"]
 class ManifestUse(TypedDict):
     name: str
     module: str
+    permission: str
+
+
+class ManifestHostedTool(TypedDict):
+    name: str
+    provider: str
+    tool: str
+    config: dict[str, str]
     permission: str
 
 
@@ -50,6 +59,7 @@ class AgentManifest(TypedDict):
     inputs: list[ManifestInput]
     output: ManifestOutput
     tools: list[ManifestUse]
+    hosted_tools: list[ManifestHostedTool]
     agents: list[ManifestUse]
     datasources: list[ManifestDatasource]
     policy: list[str]
@@ -132,6 +142,7 @@ def agent_manifest(agent: AgentDef, project: ContractProject) -> AgentManifest:
         for use in agent.uses
         if use.kind == "tool"
     ]
+    hosted_tools = [_hosted_tool_manifest(use) for use in agent.uses if use.kind == "hosted_tool"]
     agents: list[ManifestUse] = [
         {"name": use.name, "module": use.source, "permission": use.permission}
         for use in agent.uses
@@ -167,6 +178,7 @@ def agent_manifest(agent: AgentDef, project: ContractProject) -> AgentManifest:
         ],
         "output": {"type": agent.return_type, "schema_ref": f"schemas/{agent.return_type}.json"},
         "tools": tools,
+        "hosted_tools": hosted_tools,
         "agents": agents,
         "datasources": datasources,
         "policy": agent.list_attr("policy"),
@@ -175,6 +187,18 @@ def agent_manifest(agent: AgentDef, project: ContractProject) -> AgentManifest:
         "composition": agent.list_attr("composition"),
         "guards": agent.list_attr("guards"),
         "assertions": agent.list_attr("assertions"),
+    }
+
+
+def _hosted_tool_manifest(use: UseDecl) -> ManifestHostedTool:
+    split_name = split_hosted_tool_name(use.name)
+    provider, tool = split_name if split_name is not None else ("", "")
+    return {
+        "name": use.name,
+        "provider": provider,
+        "tool": tool,
+        "config": dict(use.config),
+        "permission": use.permission,
     }
 
 
@@ -223,6 +247,9 @@ def adapter_capability_matrix() -> CapabilityMatrix:
         "openai": {
             "instructions": _capability("supported"),
             "tools": _capability("partial", "Host code supplies SDK function tools from manifest capabilities."),
+            "hosted_tools": _capability(
+                "partial", "Host code enables provider-native hosted tools through explicit adapter registries."
+            ),
             "output_schema": _capability("partial", "Host code supplies the SDK output type."),
             "context": _capability(
                 "partial", "Contract4Agents resolves context; host code renders it into the SDK prompt/context."
@@ -255,6 +282,17 @@ def generated_docs(project: ContractProject, manifests: dict[str, AgentManifest]
     lines.extend(["", "## Types"])
     for name in sorted(project.types):
         lines.append(f"- `{name}`")
+    hosted_tools = [
+        (agent_name, tool)
+        for agent_name, manifest in sorted(manifests.items())
+        for tool in manifest["hosted_tools"]
+    ]
+    if hosted_tools:
+        lines.extend(["", "## Hosted Tools"])
+        for agent_name, tool in hosted_tools:
+            config = ", ".join(f"{key}={value}" for key, value in sorted(tool["config"].items()))
+            suffix = f" ({config})" if config else ""
+            lines.append(f"- `{agent_name}` may use `{tool['name']}`{suffix}")
     return {"summary.md": "\n".join(lines) + "\n"}
 
 
@@ -304,6 +342,7 @@ __all__ = [
     "EvalPack",
     "GuardPlanItem",
     "JsonSchema",
+    "ManifestHostedTool",
     "ManifestDatasource",
     "ManifestInput",
     "ManifestOutput",

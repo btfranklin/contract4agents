@@ -21,8 +21,10 @@ MODULE_GRAMMAR = r"""
     agent_block: _NEWLINE _INDENT agent_stmt* _DEDENT
     params: param (_COMMA _NEWLINE* param)* _COMMA?
     param: NAME ":" PARAM_TYPE
-    ?agent_stmt: use_stmt _NEWLINE | assignment
+    ?agent_stmt: hosted_use_stmt _NEWLINE | use_stmt _NEWLINE | assignment
     use_stmt: "use" USE_KIND DOTTED_NAME "from" SOURCE permission?
+    hosted_use_stmt: "use" "hosted_tool" DOTTED_NAME hosted_option? permission?
+    hosted_option: NAME ESCAPED_STRING
 
     permission: "preapproved" -> preapproved
         | "denied" -> denied
@@ -67,6 +69,7 @@ MODULE_GRAMMAR = r"""
     COMMENT: /#[^\n]*/
     _NEWLINE: /(\r?\n[ \t]*)+/
 
+    %import common.ESCAPED_STRING
     %declare _INDENT _DEDENT
     %ignore /[ \t\f]+/
     %ignore COMMENT

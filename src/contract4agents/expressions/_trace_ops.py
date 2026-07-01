@@ -14,6 +14,7 @@ TraceOp = Literal[
     "called_after",
     "max_calls",
     "tool_called",
+    "hosted_tool_called",
     "agent_called",
     "datasource_resolved",
     "approval_requested",
@@ -22,7 +23,7 @@ TraceOp = Literal[
     "guardrail_rejected",
     "contains",
 ]
-TraceTargetKind = Literal["any", "agent", "tool", "datasource", "approval_tool", "guardrail", "text"]
+TraceTargetKind = Literal["any", "agent", "tool", "hosted_tool", "datasource", "approval_tool", "guardrail", "text"]
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,7 @@ TRACE_OPS: dict[TraceOp, TraceOpSpec] = {
     "called_after": TraceOpSpec(2, "any"),
     "max_calls": TraceOpSpec(2, "any", count_arg_index=1),
     "tool_called": TraceOpSpec(1, "tool", "tool.completed"),
+    "hosted_tool_called": TraceOpSpec(1, "hosted_tool", "hosted_tool.completed"),
     "agent_called": TraceOpSpec(1, "agent", "agent.completed"),
     "datasource_resolved": TraceOpSpec(1, "datasource", "datasource.resolved"),
     "approval_requested": TraceOpSpec(1, "approval_tool", "approval.requested"),

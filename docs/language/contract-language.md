@@ -110,14 +110,29 @@ use tool read_logs from tools.log_search preapproved
 use tool run_shell from tools.local denied
 use agent BillingAgent from ./billing
 use datasource AccountRejectionStatus from datasources.account_rejection_status
+use hosted_tool openai.web_search context_size "medium"
 ```
 
 Capability kinds matter:
 
 - `tool`: a deterministic or external callable capability with a schema.
+- `hosted_tool`: a provider-native capability such as OpenAI web search,
+  configured as metadata and enabled by an adapter registry.
 - `agent`: another Contract4Agents agent with its own contract and trace.
 - `datasource`: Python resolver for a typed context slot.
 - `type`: compile-time shape used for validation and schemas.
+
+Hosted provider tools are distinct from host Python tools. V1 supports
+`openai.web_search` with `context_size` set to `"low"`, `"medium"`, or
+`"high"`:
+
+```contract
+use hosted_tool openai.web_search context_size "high"
+```
+
+Adapters may project hosted tools to SDK-native objects when host code enables
+them explicitly. The provider-specific name remains metadata; core language
+semantics do not assume every runtime has OpenAI web search.
 
 Tool permission state should be explicit. The surveyed SDKs do not all use the same meaning for "allowed." Contract4Agents should distinguish:
 

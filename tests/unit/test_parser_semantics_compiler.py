@@ -60,10 +60,12 @@ agent MultiLine(
 ) -> Output:
     use datasource InputSource from ./datasources/input
     use tool tool.name from ./tools/name requires approval
+    use hosted_tool openai.web_search context_size "medium"
     policy = ["a", "b"]
     assertions = [
         expect(output.ok == true),
         when(trace.tool_called(tool.name), expect(output.ok == true)),
+        expect(trace.hosted_tool_called(openai.web_search)),
     ]
     goal = "ok"
 
@@ -81,13 +83,16 @@ monitor approval_required for MultiLine:
     assert module.datasources[0].requires == ["Input"]
     assert module.agents[0].parameters[0].name == "input"
     assert module.agents[0].uses[1].permission == "requires_approval"
+    assert module.agents[0].uses[2].kind == "hosted_tool"
+    assert module.agents[0].uses[2].config == {"context_size": "medium"}
     assert module.agents[0].list_attr("policy") == ["a", "b"]
     assert module.agents[0].list_attr("assertions") == [
         "expect(output.ok == true)",
         "when(trace.tool_called(tool.name), expect(output.ok == true))",
+        "expect(trace.hosted_tool_called(openai.web_search))",
     ]
     assert module.monitors[0].severity == "high"
-    assert module.monitors[0].span.line == 28
+    assert module.monitors[0].span.line == 30
 
 
 def test_parser_reports_invalid_syntax(tmp_path: Path) -> None:
@@ -165,6 +170,39 @@ agent BadAgent() -> Result:
     assert {diagnostic.code for diagnostic in result.diagnostics} >= {"SEM002", "SEM053"}
 
 
+def test_semantic_analyzer_rejects_invalid_hosted_tools(tmp_path: Path) -> None:
+    (tmp_path / "bad.contract").write_text(
+        """
+type Result:
+    ok: bool
+
+agent BadAgent() -> Result:
+    use hosted_tool anthropic.web_search context_size "medium"
+    use hosted_tool openai.file_search context_size "medium"
+    use hosted_tool openai.web_search unknown "medium"
+    use hosted_tool openai.web_search context_size "huge"
+    use hosted_tool openai.web_search context_size "low" denied
+    assertions = [
+        expect(trace.hosted_tool_called(openai.missing)),
+        expect(trace.tool_called(openai.web_search)),
+    ]
+    goal = "bad"
+""".strip()
+    )
+    result = analyze_project(parse_project(tmp_path))
+
+    assert not result.ok
+    assert {diagnostic.code for diagnostic in result.diagnostics} >= {
+        "SEM061",
+        "SEM062",
+        "SEM063",
+        "SEM064",
+        "SEM065",
+        "SEM055",
+        "SEM053",
+    }
+
+
 def test_semantic_analyzer_rejects_duplicate_top_level_declarations(tmp_path: Path) -> None:
     (tmp_path / "a.contract").write_text(
         """
@@ -209,6 +247,60 @@ def test_compile_project_artifacts(tmp_path: Path) -> None:
     assert (tmp_path / "build" / "guards" / "guard-plan.json").exists()
     assert any(item["kind"] == "approval_required_tool" for item in artifacts["guard_plan"])
     assert artifacts["adapter_capability_matrix"]["openai"]["tools"]["status"] == "partial"
+    assert artifacts["adapter_capability_matrix"]["openai"]["hosted_tools"]["status"] == "partial"
+
+
+def test_compile_project_artifacts_include_hosted_tools(tmp_path: Path) -> None:
+    project_dir = tmp_path / "hosted"
+    project_dir.mkdir()
+    (project_dir / "hosted.contract").write_text(
+        """
+type Result:
+    ok: bool
+
+agent HostedAgent() -> Result:
+    use hosted_tool openai.web_search context_size "high" preapproved
+    assertions = [
+        expect(trace.hosted_tool_called(openai.web_search)),
+    ]
+    goal = "ok"
+""".strip()
+    )
+
+    artifacts = compile_project(project_dir, tmp_path / "build")
+
+    hosted_tool = artifacts["manifests"]["HostedAgent"]["hosted_tools"][0]
+    assert hosted_tool == {
+        "name": "openai.web_search",
+        "provider": "openai",
+        "tool": "web_search",
+        "config": {"context_size": "high"},
+        "permission": "preapproved",
+    }
+    assert "`HostedAgent` may use `openai.web_search` (context_size=high)" in artifacts["docs"]["summary.md"]
+
+
+def test_compile_check_detects_stale_hosted_tool_manifest(tmp_path: Path) -> None:
+    project_dir = tmp_path / "hosted"
+    project_dir.mkdir()
+    (project_dir / "hosted.contract").write_text(
+        """
+type Result:
+    ok: bool
+
+agent HostedAgent() -> Result:
+    use hosted_tool openai.web_search context_size "high"
+    goal = "ok"
+""".strip()
+    )
+    compile_project(project_dir, tmp_path / "build")
+    manifest = tmp_path / "build" / "manifests" / "HostedAgent.json"
+    manifest.write_text("{}\n")
+
+    with pytest.raises(ContractError) as exc:
+        compile_project(project_dir, tmp_path / "build", check=True)
+
+    assert "HostedAgent.json" in str(exc.value.diagnostics[0].hint)
 
 
 def test_compile_check_detects_stale_artifacts(tmp_path: Path) -> None:

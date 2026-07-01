@@ -10,6 +10,7 @@ Contract4Agents V1 supports:
 - `datasource Name:` declarations with `python`, `requires`, `produces`, `render`, and `cache`.
 - `agent Name(params) -> ReturnType:` declarations.
 - Inline capability declarations: `use tool|agent|datasource Name from source [permission]`.
+- Hosted provider tool declarations: `use hosted_tool openai.web_search context_size "medium" [permission]`.
 - Structured assignments for `goal`, `description`, `policy`, `success`, `routes`, `composition`, `guards`, and `assertions`.
 - `.eval` files with `given` and `expect` statements.
 - `monitor Name for Agent:` declarations.

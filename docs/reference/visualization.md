@@ -18,6 +18,7 @@ V1 renders configured/static relationships only:
 
 - agent-to-agent capability declarations
 - agent-to-tool capability declarations
+- agent-to-hosted-provider-tool declarations
 - agent-to-datasource declarations
 - datasource required and produced types
 - agent input and output types

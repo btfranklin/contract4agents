@@ -39,6 +39,7 @@ class VisualizationAgentDetail(TypedDict):
     inputs: list[dict[str, Any]]
     output: dict[str, Any]
     tools: list[dict[str, Any]]
+    hosted_tools: list[dict[str, Any]]
     subagents: list[dict[str, Any]]
     datasources: list[dict[str, Any]]
     policy: list[str]

@@ -13,6 +13,7 @@ from typing import Any, cast
 
 from contract4agents.compiler import AgentManifest, CompilerArtifacts
 from contract4agents.guards import GuardPlanItem
+from contract4agents.hosted_tools import hosted_tool_kwargs
 from contract4agents.runtime import TraceRecorder
 
 _RunHooksBase: type[Any]
@@ -83,17 +84,21 @@ class OpenAITraceHooks(_RunHooksBase):  # type: ignore[misc]
         )
 
     async def on_tool_start(self, _context: Any, agent: Any, tool: Any) -> None:
+        tool_name = _normalized_tool_name(tool)
+        event_type = "hosted_tool.started" if _is_hosted_sdk_tool(tool) else "tool.started"
         self.trace.record(
-            "tool.started",
+            event_type,
             agent=getattr(agent, "name", str(agent)),
-            tool=contract_tool_name(getattr(tool, "name", str(tool))),
+            tool=tool_name,
         )
 
     async def on_tool_end(self, _context: Any, agent: Any, tool: Any, result: str) -> None:
+        tool_name = _normalized_tool_name(tool)
+        event_type = "hosted_tool.completed" if _is_hosted_sdk_tool(tool) else "tool.completed"
         self.trace.record(
-            "tool.completed",
+            event_type,
             agent=getattr(agent, "name", str(agent)),
-            tool=contract_tool_name(getattr(tool, "name", str(tool))),
+            tool=tool_name,
             result=_serializable(result),
         )
 
@@ -139,6 +144,7 @@ def build_openai_agents_from_contracts(
     output_type_registry: Mapping[str, Any],
     model_registry: Mapping[str, Any],
     tool_registry: Mapping[str, Any] | None = None,
+    hosted_tool_registry: Mapping[str, Any] | None = None,
     agent_tool_registry: Mapping[str, Any] | None = None,
     handoff_registry: Mapping[str, Any] | None = None,
     instruction_overrides: Mapping[str, str] | None = None,
@@ -161,6 +167,7 @@ def build_openai_agents_from_contracts(
         _validate_output_guards(agent_name, output_type_name, output_type_registry, agent_guard_plan, caveats)
         _collect_guard_caveats(agent_name, manifest, agent_guard_plan, caveats)
         tools = _registered_tools(agent_name, manifest, tool_registry, agent_guard_plan, caveats)
+        tools.extend(_registered_hosted_tools(agent_name, manifest, hosted_tool_registry, caveats))
         handoffs: list[Any] = []
         for dependency in manifest["agents"]:
             child = dependency["name"]
@@ -246,6 +253,16 @@ def _serializable(value: Any) -> Any:
     return str(value)
 
 
+def _normalized_tool_name(tool: Any) -> str:
+    if _is_hosted_sdk_tool(tool):
+        return "openai.web_search"
+    return contract_tool_name(getattr(tool, "name", str(tool)))
+
+
+def _is_hosted_sdk_tool(tool: Any) -> bool:
+    return str(tool.__class__.__name__) == "WebSearchTool"
+
+
 def _registered_tools(
     agent_name: str,
     manifest: AgentManifest,
@@ -272,6 +289,47 @@ def _registered_tools(
             raise OpenAIAgentFactoryError(f"No host tool registered for `{name}` used by agent `{agent_name}`")
         tools.append(tool_registry[name])
     return tools
+
+
+def _registered_hosted_tools(
+    agent_name: str,
+    manifest: AgentManifest,
+    hosted_tool_registry: Mapping[str, Any] | None,
+    caveats: list[OpenAIAgentFactoryCaveat],
+) -> list[Any]:
+    tools: list[Any] = []
+    for hosted_tool in manifest["hosted_tools"]:
+        name = hosted_tool["name"]
+        if hosted_tool["permission"] == "denied":
+            caveats.append(
+                OpenAIAgentFactoryCaveat(
+                    agent_name,
+                    "denied_hosted_tool_omitted",
+                    f"Hosted tool `{name}` is declared denied and was omitted from the OpenAI Agent.",
+                )
+            )
+            continue
+        if not hosted_tool_registry or name not in hosted_tool_registry:
+            raise OpenAIAgentFactoryError(
+                f"No hosted tool registered for `{name}` used by agent `{agent_name}`"
+            )
+        tools.append(_hosted_tool_from_registry(name, hosted_tool["config"], hosted_tool_registry[name]))
+    return tools
+
+
+def _hosted_tool_from_registry(name: str, config: dict[str, str], registry_entry: Any) -> Any:
+    kwargs = hosted_tool_kwargs(name, config)
+    if registry_entry is True:
+        if name == "openai.web_search":
+            try:
+                from agents import WebSearchTool
+            except Exception as exc:  # noqa: BLE001 - optional adapter import boundary.
+                raise OpenAIAdapterUnavailable("openai-agents is not installed") from exc
+            return WebSearchTool(search_context_size=cast(Any, kwargs["search_context_size"]))
+        raise OpenAIAgentFactoryError(f"No built-in OpenAI hosted tool mapping for `{name}`")
+    if callable(registry_entry):
+        return registry_entry(**kwargs)
+    return registry_entry
 
 
 def _guard_plan_by_agent(guard_plan: list[GuardPlanItem]) -> dict[str, list[GuardPlanItem]]:

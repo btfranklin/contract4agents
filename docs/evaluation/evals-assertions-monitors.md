@@ -49,13 +49,20 @@ Initial spy vocabulary:
 - `trace.called_after(A, B)`
 - `trace.max_calls(Target, n)`
 - `trace.tool_called(tool_name)`
+- `trace.hosted_tool_called(openai.web_search)`
 - `trace.agent_called(agent_name)`
 - `trace.datasource_resolved(type_name)`
 - `trace.approval_requested(name)`
 - `trace.approval_granted(name)`
 - `trace.approval_denied(name)`
 
-Spies should work for tools, agents, datasources, approvals, output validation, and guardrail-style trace events.
+`trace.tool_called(...)` checks host-supplied tool events. `trace.hosted_tool_called(...)`
+checks provider-native hosted-tool events such as `hosted_tool.completed`.
+Generic spies such as `trace.called(...)` can still match either category by
+target name.
+
+Spies should work for tools, hosted tools, agents, datasources, approvals,
+output validation, and guardrail-style trace events.
 The Contract4Agents language term is `guard`; `guardrail` is adapter and trace
 vocabulary, preserved in trace event names such as `guardrail.rejected` and
 spy names such as `trace.guardrail_rejected(...)`.

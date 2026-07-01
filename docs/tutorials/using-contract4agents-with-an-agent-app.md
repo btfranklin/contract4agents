@@ -34,7 +34,7 @@ Contract4Agents owns the contract layer:
 
 - what agents exist;
 - what inputs and outputs they accept;
-- which tools, subagents, and datasources each agent may use;
+- which host tools, hosted provider tools, subagents, and datasources each agent may use;
 - what policies, guards, assertions, evals, and monitors should travel with the
   team;
 - what generated artifacts should be reviewed or consumed by an adapter.
@@ -132,6 +132,7 @@ agent SupportCoordinator(
 
     use agent BillingSpecialist from ./billing_specialist
     use tool crm.create_note from tools.crm requires approval
+    use hosted_tool openai.web_search context_size "medium"
 
     goal = "Route the support request and produce a source-backed reply."
 
@@ -271,15 +272,16 @@ Typical flow:
 2. Read the manifest for each agent.
 3. Read the generated instructions for each agent.
 4. Create SDK function tools from your real Python callables.
-5. Create SDK output models that match the generated JSON Schemas.
-6. Build OpenAI `Agent` objects from artifacts and explicit registries.
-7. Run the SDK agent through your normal runner.
-8. Capture traces and run assertions, evals, or monitor checks against those traces.
+5. Enable SDK hosted tools from declared `hosted_tools` when you intend to use them.
+6. Create SDK output models that match the generated JSON Schemas.
+7. Build OpenAI `Agent` objects from artifacts and explicit registries.
+8. Run the SDK agent through your normal runner.
+9. Capture traces and run assertions, evals, or monitor checks against those traces.
 
 The current OpenAI adapter is intentionally thin. It can build OpenAI `Agent`
 objects from Contract4Agents artifacts, but caller code still supplies SDK
 function tools, output types, handoffs or agents-as-tools, approvals, models,
-and runtime context.
+hosted-tool enablement, and runtime context.
 
 The detailed adapter notes are in
 [OpenAI Adapter Reference](../reference/openai-adapter.md).
@@ -289,7 +291,7 @@ Sketch:
 ```python
 from pathlib import Path
 
-from agents import function_tool
+from agents import WebSearchTool, function_tool
 
 from contract4agents.adapters.openai import build_openai_agents_from_contracts, openai_tool_name
 from contract4agents.compiler import compile_project
@@ -305,14 +307,16 @@ factory_result = build_openai_agents_from_contracts(
     output_type_registry={"SupportReply": SupportReplyModel},
     model_registry={"SupportCoordinator": config.support_model},
     tool_registry={"crm.create_note": crm_create_note},
+    hosted_tool_registry={"openai.web_search": WebSearchTool},
 )
 
 agent = factory_result.agents["SupportCoordinator"]
 ```
 
-The manifest tells you which tools are declared and what permission state they
-have. It does not magically create your real CRM function, approval UI, or
-Pydantic model. Those remain application code.
+The manifest tells you which host tools and hosted provider tools are declared
+and what permission state they have. It does not magically create your real CRM
+function, approval UI, hosted-tool policy, or Pydantic model. Those remain
+application code.
 
 ## How To Think About Guards And Approvals
 
@@ -356,7 +360,8 @@ trace.record("agent.started", event_id="evt-001", agent="SupportCoordinator")
 trace.record("approval.requested", event_id="evt-002", tool="crm.create_note")
 trace.record("approval.completed", event_id="evt-003", tool="crm.create_note", approved=True)
 trace.record("tool.completed", event_id="evt-004", tool="crm.create_note", data={"note_id": "note-123"})
-trace.record("agent.completed", event_id="evt-005", agent="SupportCoordinator")
+trace.record("hosted_tool.completed", event_id="evt-005", tool="openai.web_search")
+trace.record("agent.completed", event_id="evt-006", agent="SupportCoordinator")
 ```
 
 Each JSONL line uses `schema_version`, `event_id`, `event_type`, `timestamp`,

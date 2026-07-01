@@ -9,6 +9,7 @@ from contract4agents.visualization._types import VisualizationGraph
 MERMAID_CLASS_STYLES = {
     "agent": "fill:#d9f2ee,stroke:#0f766e,color:#134e4a",
     "tool": "fill:#fff3c4,stroke:#b7791f,color:#744210",
+    "hosted_tool": "fill:#ede9fe,stroke:#7c3aed,color:#4c1d95",
     "datasource": "fill:#dbeafe,stroke:#2563eb,color:#1e3a8a",
     "type": "fill:#f2f4f7,stroke:#667085,color:#344054",
     "eval": "fill:#dcfce7,stroke:#16a34a,color:#14532d",

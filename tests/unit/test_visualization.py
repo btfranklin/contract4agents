@@ -61,6 +61,32 @@ def test_build_visualization_graph_for_ops_desk() -> None:
     assert any("not inferred into graph edges" in warning for warning in graph["warnings"])
 
 
+def test_visualization_graph_represents_hosted_tools(tmp_path: Path) -> None:
+    (tmp_path / "hosted.contract").write_text(
+        """
+type Result:
+    ok: bool
+
+agent HostedAgent() -> Result:
+    use hosted_tool openai.web_search context_size "medium"
+    goal = "ok"
+""".strip()
+    )
+    project = parse_project(tmp_path)
+    graph = build_visualization_graph(project, build_artifacts(project))
+
+    node_ids = {node["id"] for node in graph["nodes"]}
+    edge_keys = {(edge["source"], edge["target"], edge["kind"]) for edge in graph["edges"]}
+
+    assert "hosted_tool:openai.web_search" in node_ids
+    assert (
+        "agent:HostedAgent",
+        "hosted_tool:openai.web_search",
+        "agent_uses_hosted_tool",
+    ) in edge_keys
+    assert graph["agents"]["HostedAgent"]["hosted_tools"][0]["config"] == {"context_size": "medium"}
+
+
 def test_visualization_public_facade_exports_expected_functions() -> None:
     assert visualization.build_visualization_graph is build_visualization_graph
     assert visualization.render_agent_mermaid is render_agent_mermaid

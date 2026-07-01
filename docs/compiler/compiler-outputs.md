@@ -25,7 +25,7 @@ Agent instructions are model-facing prose generated from structured fields:
 - Agent identity.
 - Goal.
 - Parameters and rendered context descriptions.
-- Allowed tools and agents.
+- Allowed host tools, hosted provider tools, and agents.
 - Policies.
 - Success criteria.
 - Output contract.
@@ -50,6 +50,15 @@ Example shape:
   "tools": [
     {"name": "calculate", "module": "mathlib", "permission": "preapproved"}
   ],
+  "hosted_tools": [
+    {
+      "name": "openai.web_search",
+      "provider": "openai",
+      "tool": "web_search",
+      "config": {"context_size": "medium"},
+      "permission": "available"
+    }
+  ],
   "agents": [
     {"name": "BillingAgent", "module": "./billing"},
     {"name": "SupportAgent", "module": "./support"}
@@ -67,7 +76,10 @@ Example shape:
 }
 ```
 
-The manifest is provider-neutral. SDK adapters consume it.
+The manifest is provider-neutral, but it can carry provider-native capability
+metadata explicitly. Host Python tools stay in `tools`; provider-hosted tools
+stay in `hosted_tools` so adapters and capability reports can distinguish what
+the host must wire from what a provider SDK may supply.
 
 ### Guard Plan
 
@@ -91,6 +103,7 @@ Example dimensions:
 
 - Instructions or system prompt.
 - Tool declarations.
+- Hosted provider tool declarations.
 - Permission states: available, preapproved, approval-required, denied, sandboxed.
 - Output schema support.
 - Tool-plus-output-schema compatibility.

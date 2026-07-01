@@ -19,6 +19,7 @@ Supported deterministic expectations:
 - `trace.called_after(a, b)`
 - `trace.max_calls(name, n)`
 - `trace.tool_called(name)`
+- `trace.hosted_tool_called(name)`
 - `trace.agent_called(Name)`
 - `trace.datasource_resolved(TypeName)`
 - `trace.approval_requested(name)`
@@ -38,6 +39,7 @@ surface, wrapped as contract assertions:
 - `expect(output conforms TypeName)`
 - `expect(output.field == value)`
 - `expect(trace.tool_called(name))`
+- `expect(trace.hosted_tool_called(openai.web_search))`
 - `when(trace.tool_called(name), expect(output.field == value))`
 
 Unsupported deterministic expectations fail closed. Semantic analysis reports
