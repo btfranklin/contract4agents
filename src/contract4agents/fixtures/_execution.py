@@ -25,6 +25,8 @@ def runner_for_mode(metadata: dict[str, Any], mode: str) -> RunnerFunc:
     if mode == "local":
         return cast(RunnerFunc, load_python_ref(metadata["local_runner"]))
     if mode == "openai":
+        if "live_runner" not in metadata:
+            raise FixtureConfigError("Fixture mode `openai` requires `live_runner` in fixture.json")
         return cast(RunnerFunc, load_python_ref(metadata["live_runner"]))
     raise FixtureConfigError(f"Unknown fixture mode: {mode}")
 

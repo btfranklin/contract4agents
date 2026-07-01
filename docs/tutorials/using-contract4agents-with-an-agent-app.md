@@ -218,7 +218,7 @@ Use `compile` to generate artifacts:
 - `monitors/monitors.json`: compiled monitor rules.
 - `guards/guard-plan.json`: guard enforcement metadata.
 - `adapters/capability-matrix.json`: adapter support and caveats.
-- `docs/summary.md`: generated review summary.
+- `docs/summary.md` and `docs/agents/*.md`: generated review docs.
 
 The compiler artifact reference is [Compiler Outputs](../compiler/compiler-outputs.md).
 

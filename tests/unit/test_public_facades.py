@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import contract4agents
-from contract4agents import adapters, expressions, guards, pydantic_interop, runtime
+from contract4agents import adapters, compiler, expressions, guards, pydantic_interop, runtime
 from contract4agents.adapters.openai import (
     OpenAIAdapterPlan,
     OpenAIAgentPlan,
@@ -12,6 +12,7 @@ from contract4agents.adapters.openai import (
     run_openai_agent_with_contract,
 )
 from contract4agents.assertions import AssertionFailure, evaluate_agent_assertions, evaluate_run_assertions
+from contract4agents.compiler import AgentManifest, CompilerArtifacts, compile_project
 from contract4agents.expressions import ExpressionError, ParsedExpression
 from contract4agents.guards import build_guard_plan
 from contract4agents.pydantic_interop import PydanticSchemaError, schema_from_pydantic_type
@@ -31,6 +32,15 @@ def test_expression_facade_exports_canonical_public_surface() -> None:
     assert callable(expressions.parse_expectation)
     assert callable(expressions.evaluate_output)
     assert callable(expressions.referenced_trace_targets)
+
+
+def test_compiler_facade_exports_canonical_public_surface() -> None:
+    assert compiler.AgentManifest is AgentManifest
+    assert compiler.CompilerArtifacts is CompilerArtifacts
+    assert compiler.compile_project is compile_project
+    assert callable(compiler.build_artifacts)
+    assert callable(compiler.generated_docs)
+    assert callable(compiler.write_artifacts)
 
 
 def test_runtime_facade_exports_canonical_public_surface() -> None:

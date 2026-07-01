@@ -26,6 +26,9 @@ from tests.fixtures.fixture_runner import (
     verify_fixture_artifacts,
 )
 
+ROOT = Path(__file__).resolve().parents[2]
+INCIDENT_PROJECT = ROOT / "examples" / "incident-command"
+
 
 def test_fixture_metadata_loads_and_rejects_missing(tmp_path: Path) -> None:
     metadata = load_fixture_metadata(DEFAULT_PROJECT)
@@ -33,6 +36,16 @@ def test_fixture_metadata_loads_and_rejects_missing(tmp_path: Path) -> None:
 
     with pytest.raises(FixtureConfigError):
         load_fixture_metadata(tmp_path)
+
+
+def test_local_fixture_metadata_does_not_require_live_runner() -> None:
+    metadata = load_fixture_metadata(INCIDENT_PROJECT)
+
+    assert metadata["entry_agent"] == "IncidentCommander"
+    assert "live_runner" not in metadata
+    assert _execution.runner_for_mode(metadata, "local")
+    with pytest.raises(FixtureConfigError, match="requires `live_runner`"):
+        _execution.runner_for_mode(metadata, "openai")
 
 
 def test_fixture_artifact_verifier_passes_and_fails(tmp_path: Path) -> None:
@@ -46,6 +59,16 @@ def test_fixture_artifact_verifier_passes_and_fails(tmp_path: Path) -> None:
     bad_metadata["expected"] = {**metadata["expected"], "eval_count": 999}
     with pytest.raises(FixtureArtifactError):
         verify_fixture_artifacts(bad_metadata, artifacts, tmp_path / "build")
+
+
+def test_incident_command_fixture_artifact_verifier_passes(tmp_path: Path) -> None:
+    metadata = load_fixture_metadata(INCIDENT_PROJECT)
+    artifacts = compile_project(INCIDENT_PROJECT, tmp_path / "build")
+
+    checks = verify_fixture_artifacts(metadata, artifacts, tmp_path / "build")
+
+    assert "expected generated files present" in checks
+    assert "expected tools and permissions present" in checks
 
 
 def test_fixture_artifact_verifier_uses_declared_tool_permissions(tmp_path: Path) -> None:

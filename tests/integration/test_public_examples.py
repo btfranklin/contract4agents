@@ -101,6 +101,16 @@ def test_market_research_monitor_catches_missing_current_facts() -> None:
     assert violations[0].rule == "current_claims_need_current_facts"
 
 
+def test_incident_command_fixture_eval_smoke() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(main, ["eval", str(ROOT / "examples" / "incident-command")])
+
+    assert result.exit_code == 0, result.output
+    assert "Fixture eval passed: 1 starts" in result.output
+    assert "PASS discovers_checkout_cause" in result.output
+
+
 async def _evaluate_first_case(
     artifacts: CompilerArtifacts,
     output: dict[str, Any],

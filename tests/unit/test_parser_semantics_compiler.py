@@ -453,6 +453,7 @@ def test_compile_project_artifacts(tmp_path: Path) -> None:
     assert artifacts["manifests"]["IncidentCommander"]["source_path"].endswith("agents/incident_commander.contract")
     assert (tmp_path / "build" / "schemas" / "IncidentBrief.json").exists()
     assert (tmp_path / "build" / "instructions" / "IncidentCommander.md").exists()
+    assert (tmp_path / "build" / "docs" / "agents" / "IncidentCommander.md").exists()
     assert (tmp_path / "build" / "guards" / "guard-plan.json").exists()
     assert any(item["kind"] == "approval_required_tool" for item in artifacts["guard_plan"])
     assert artifacts["adapter_capability_matrix"]["openai"]["tools"]["status"] == "partial"
@@ -565,4 +566,10 @@ def test_build_artifacts_generates_docs() -> None:
     artifacts = build_artifacts(project)
 
     assert "summary.md" in artifacts["docs"]
+    assert "agents/IncidentCommander.md" in artifacts["docs"]
     assert "IncidentCommander" in artifacts["docs"]["summary.md"]
+    agent_doc = artifacts["docs"]["agents/IncidentCommander.md"]
+    assert "| Name | Source | Permission |" in agent_doc
+    assert "| status_page.draft_update | tools.status_page | requires_approval |" in agent_doc
+    assert "- `discovers_checkout_cause`" in agent_doc
+    assert "Output schema: `schemas/IncidentBrief.json`" in agent_doc

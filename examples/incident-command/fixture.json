@@ -1,0 +1,39 @@
+{
+  "name": "incident-command",
+  "entry_agent": "IncidentCommander",
+  "output_type": "IncidentBrief",
+  "seed": "examples.incident_command_imports.harness:seed_incident_command",
+  "hidden_truth": "examples.incident_command_imports.harness:load_hidden_truth",
+  "starts": "examples.incident_command_imports.harness:incident_command_starts",
+  "local_runner": "examples.incident_command_imports.harness:run_incident_command_start",
+  "expected": {
+    "agents": [
+      "CustomerImpactWriter",
+      "DeployAnalyst",
+      "IncidentCommander",
+      "LogInvestigator",
+      "MetricsAnalyst"
+    ],
+    "types": [
+      "IncidentBrief",
+      "IncidentReportRequest",
+      "LogEvidenceBundle",
+      "MetricSnapshot",
+      "RecentDeploys",
+      "ServiceCatalogEntry",
+      "TimeWindow"
+    ],
+    "tools": [
+      "deploys.list",
+      "logs.search",
+      "metrics.query",
+      "status_page.draft_update"
+    ],
+    "tool_permissions": {
+      "status_page.draft_update": "requires_approval"
+    },
+    "datasources": [],
+    "eval_count": 1,
+    "monitor_count": 1
+  }
+}

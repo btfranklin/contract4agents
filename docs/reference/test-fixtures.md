@@ -2,12 +2,13 @@
 
 Contract4Agents' multi-agent fixture runner lives in `contract4agents.fixtures` and is used by both tests and `contract4agents eval` when a project has `fixture.json`.
 
-The default project lives at `tests/fixtures/contract_projects/ops-desk-lab/`. It is intentionally separate from `examples/` so the fixture can exercise edge cases, guardrails, and failure paths without becoming user-facing demo code.
+The public smoke project lives at `examples/incident-command/`. The richer internal fixture lives at `tests/fixtures/contract_projects/ops-desk-lab/` so tests can exercise edge cases, guardrails, and failure paths without making the beginner example noisy.
 
 Run the local deterministic fixture:
 
 ```bash
 pdm run test:agent-fixture
+pdm run contract4agents eval examples/incident-command
 pdm run contract4agents eval tests/fixtures/contract_projects/ops-desk-lab
 ```
 
@@ -24,8 +25,10 @@ The live run loads `OPENAI_API_KEY` from the environment, falling back to the ig
 Each fixture project must include `fixture.json` with:
 
 - `entry_agent` and `output_type`
-- Python references for `seed`, `hidden_truth`, `starts`, `local_runner`, and `live_runner`
+- Python references for `seed`, `hidden_truth`, `starts`, and `local_runner`
 - expected agents, types, tools, tool permissions, datasources, eval count, and monitor count
+
+Use `live_runner` only for fixture projects that support the opt-in OpenAI mode.
 
 `expected.tool_permissions` is a map of tool name to required compiled
 permission. Use it for fixture-specific approval or denial expectations, for

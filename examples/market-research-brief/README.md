@@ -98,7 +98,7 @@ After `compile`, inspect:
 - `monitors/monitors.json`: compiled monitor rules.
 - `guards/guard-plan.json`: guard enforcement metadata.
 - `adapters/capability-matrix.json`: adapter support notes.
-- `docs/summary.md`: compact generated summary.
+- `docs/summary.md` and `docs/agents/*.md`: generated review docs.
 - `visualization/index.html`: static review graph.
 
 The `.contract` and `.eval` files are the source of truth. Generated artifacts

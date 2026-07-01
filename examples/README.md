@@ -53,7 +53,8 @@ Common generated files:
 - `guards/guard-plan.json`: host and adapter enforcement metadata for guards.
 - `adapters/capability-matrix.json`: what each adapter can support directly,
   partially, or with caveats.
-- `docs/summary.md`: compact generated review summary.
+- `docs/summary.md`: generated project review summary.
+- `docs/agents/*.md`: generated per-agent review pages.
 - `visualization/index.html`: static graph for human review.
 
 ## Reusable Example Pattern

@@ -80,6 +80,7 @@ pdm run python examples/incident-command/data/seed.py
 pdm run contract4agents check examples/incident-command
 pdm run contract4agents compile examples/incident-command --out .contract/build
 pdm run contract4agents visualize examples/incident-command --out .contract/build/visualization
+pdm run contract4agents eval examples/incident-command
 ```
 
 `check` reads the source files and validates that references, types, tools,
@@ -90,6 +91,9 @@ evals, and monitors are coherent.
 `visualize` writes a human-review graph under `.contract/build/visualization`.
 Open `.contract/build/visualization/index.html` in a browser to inspect the
 agent, type, tool, eval, and monitor relationships.
+
+`eval` runs the local deterministic fixture, evaluates the compiled eval case,
+checks compiled assertions, and applies project monitors.
 
 The `.contract/` directory is generated local output. It is safe to delete and
 regenerate.
@@ -108,7 +112,9 @@ After `compile`, these are the most useful files to inspect:
 - `.contract/build/guards/guard-plan.json`: guard enforcement metadata for
   output conformance and approval-required tools.
 - `.contract/build/adapters/capability-matrix.json`: adapter support notes.
-- `.contract/build/docs/summary.md`: a compact generated summary.
+- `.contract/build/docs/summary.md`: generated project summary.
+- `.contract/build/docs/agents/IncidentCommander.md`: generated agent review
+  page with signature, capabilities, checks, and artifact links.
 - `.contract/build/visualization/index.html`: the static graph.
 
 These files are not hand-edited. The `.contract` source files are the source of
@@ -135,6 +141,9 @@ and how are they connected?
 
 The adapter capability matrix answers: which parts of the contract can a target
 adapter support directly, partially, or with caveats.
+
+Generated docs answer: what should a human inspect before wiring or changing an
+agent?
 
 ## What To Notice
 

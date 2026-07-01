@@ -42,6 +42,10 @@ def test_docs_check_supports_anchor_line_and_angle_markdown_links(tmp_path: Path
         path = tmp_path / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("# ok\n")
+    for relative in ["docs/reference/cli.md", "docs/reference/trace-schema.md"]:
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# ok\n")
     (tmp_path / "docs" / "index.md").write_text(
         "- `reference/cli.md#monitor-root-trace-trace-jsonl`\n"
         "- [Trace](<reference/trace-schema.md:12>)\n"
@@ -49,3 +53,17 @@ def test_docs_check_supports_anchor_line_and_angle_markdown_links(tmp_path: Path
     (tmp_path / "README.md").write_text("[CLI](<docs/reference/cli.md#monitor-root-trace-trace-jsonl>)\n")
 
     assert check_docs(tmp_path) == []
+
+
+def test_docs_check_uses_docs_index_as_required_map(tmp_path: Path) -> None:
+    for relative in REQUIRED_DOCS:
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# ok\n")
+    (tmp_path / "docs" / "index.md").write_text("- `quality/validation.md`\n")
+
+    diagnostics = check_docs(tmp_path)
+
+    assert [(diagnostic.code, diagnostic.message) for diagnostic in diagnostics] == [
+        ("DOC001", "Missing required doc `docs/quality/validation.md`")
+    ]

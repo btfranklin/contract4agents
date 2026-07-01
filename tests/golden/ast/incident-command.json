@@ -720,6 +720,7 @@
           "name": "discovers_checkout_cause",
           "agent": "IncidentCommander",
           "givens": {
+            "start": "\"discovers_checkout_cause\"",
             "request": "IncidentReportRequest.fixture(\"checkout_latency\")",
             "service": "ServiceCatalogEntry.fixture(\"checkout-api\")",
             "window": "TimeWindow.fixture(\"incident_window\")"

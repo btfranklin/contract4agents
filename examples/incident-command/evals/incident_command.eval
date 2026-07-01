@@ -1,4 +1,5 @@
 eval discovers_checkout_cause for IncidentCommander:
+    given start = "discovers_checkout_cause"
     given request = IncidentReportRequest.fixture("checkout_latency")
     given service = ServiceCatalogEntry.fixture("checkout-api")
     given window = TimeWindow.fixture("incident_window")
@@ -13,4 +14,3 @@ eval discovers_checkout_cause for IncidentCommander:
     expect trace.agent_called(MetricsAnalyst)
     expect trace.not_called(status_page.draft_update)
     expect semantic(output, "The brief is clear, operationally useful, and supported by evidence.")
-

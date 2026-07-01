@@ -170,6 +170,15 @@ def test_cli_eval_runs_fixture_json_project(contract_project_path: Path) -> None
     assert "Fixture eval passed: 12 starts" in result.output
 
 
+def test_cli_eval_runs_incident_command_public_fixture() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(main, ["eval", str(ROOT / "examples" / "incident-command")])
+
+    assert result.exit_code == 0
+    assert "Fixture eval passed: 1 starts" in result.output
+
+
 def _trace_event(
     *,
     run_id: str = "run-cli",

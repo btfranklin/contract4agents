@@ -54,12 +54,12 @@ pdm run contract4agents --help
 pdm run contract4agents check examples/incident-command
 pdm run contract4agents compile examples/incident-command --out .contract/build
 pdm run contract4agents visualize examples/incident-command --out .contract/build/visualization
-pdm run contract4agents eval tests/fixtures/contract_projects/ops-desk-lab
+pdm run contract4agents eval examples/incident-command
 pdm run docs-check
 pdm run validate
 ```
 
-The `examples/incident-command` project is the public walkthrough fixture for check, compile, and visualization. The eval command currently uses the richer `tests/fixtures/contract_projects/ops-desk-lab` fixture because the reusable fixture runner expects a `fixture.json` project.
+The `examples/incident-command` project is the public walkthrough fixture for check, compile, visualization, and eval. The richer `tests/fixtures/contract_projects/ops-desk-lab` fixture remains available for internal edge-case coverage.
 
 ## OpenAI Adapter Checks
 

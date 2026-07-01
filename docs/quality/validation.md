@@ -50,10 +50,12 @@ pdm run contract4agents --help
 pdm run contract4agents check examples/incident-command
 pdm run contract4agents compile examples/incident-command --out .contract/build
 pdm run contract4agents visualize examples/incident-command --out .contract/build/visualization
-pdm run contract4agents eval tests/fixtures/contract_projects/ops-desk-lab
+pdm run contract4agents eval examples/incident-command
 ```
 
 Generated `.contract/` output is local state and should stay untracked.
+Use `pdm run test:agent-fixture` or `pdm run contract4agents eval tests/fixtures/contract_projects/ops-desk-lab`
+when changing internal fixture edge-case behavior.
 
 ## Live OpenAI Checks
 

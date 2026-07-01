@@ -189,9 +189,10 @@ They include:
 
 Generated docs should help humans review what will run:
 
-- Agent summary pages.
+- `docs/summary.md`: project-level index of agents, types, evals, monitors, and hosted tools.
+- `docs/agents/*.md`: per-agent pages with signature, intent, inputs, output, capabilities,
+  checks, evals, monitors, and artifact links.
 - Capability tables.
-- Context dependency graphs.
 - Eval coverage summaries.
 - Guard and assertion matrices.
 

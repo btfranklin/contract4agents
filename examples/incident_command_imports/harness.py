@@ -7,6 +7,7 @@ import json
 import os
 import sqlite3
 from contextlib import closing
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,13 @@ from contract4agents.runtime import FakeToolRegistry, TraceRecorder
 from examples.incident_command_imports import deploys, logs, metrics, status_page
 
 SCENARIO_ID = "checkout-latency-2026-05-01"
+FIXTURE_START_ID = "discovers_checkout_cause"
+
+
+@dataclass(frozen=True)
+class IncidentCommandStart:
+    start_id: str
+    approve_status_page: bool = False
 
 
 def seed_incident_command(db_path: Path) -> Path:
@@ -134,6 +142,8 @@ def seed_incident_command(db_path: Path) -> Path:
 
 
 def load_hidden_truth(db_path: Path, scenario_id: str = SCENARIO_ID) -> dict[str, Any]:
+    if scenario_id == FIXTURE_START_ID:
+        scenario_id = SCENARIO_ID
     with closing(sqlite3.connect(db_path)) as conn:
         row = conn.execute(
             "SELECT likely_cause, required_evidence FROM scenario_truth WHERE scenario_id = ?",
@@ -144,12 +154,16 @@ def load_hidden_truth(db_path: Path, scenario_id: str = SCENARIO_ID) -> dict[str
     return {"likely_cause": row[0], "required_evidence": json.loads(row[1])}
 
 
+def incident_command_starts() -> list[IncidentCommandStart]:
+    return [IncidentCommandStart(FIXTURE_START_ID)]
+
+
 async def run_incident_command_harness(
-    db_path: Path, approve_status_page: bool = False
+    db_path: Path, approve_status_page: bool = False, trace_path: Path | None = None
 ) -> tuple[dict[str, Any], TraceRecorder]:
     os.environ["CONTRACT4AGENTS_INCIDENT_DB"] = str(db_path)
 
-    trace = TraceRecorder()
+    trace = TraceRecorder(trace_path)
     tools = FakeToolRegistry(approval_callback=lambda _name, _kwargs: approve_status_page)
     tools.register("logs.search", logs.search, "preapproved")
     tools.register("deploys.list", deploys.list, "preapproved")
@@ -199,3 +213,12 @@ def run_incident_command_harness_sync(
     db_path: Path, approve_status_page: bool = False
 ) -> tuple[dict[str, Any], TraceRecorder]:
     return asyncio.run(run_incident_command_harness(db_path, approve_status_page))
+
+
+async def run_incident_command_start(
+    start: IncidentCommandStart,
+    db_path: Path,
+    _artifacts: dict[str, Any],
+    trace_path: Path,
+) -> tuple[dict[str, Any], TraceRecorder]:
+    return await run_incident_command_harness(db_path, start.approve_status_page, trace_path)
