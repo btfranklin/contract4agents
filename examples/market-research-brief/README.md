@@ -73,6 +73,9 @@ customer-signal values that the host passes between child agents.
 `CurrentTruthScout` also declares `use hosted_tool openai.web_search
 context_size "medium"` to show how provider-native hosted tools appear
 separately from host Python tools in manifests and visualization artifacts.
+`contract4agents.registry.json` maps local fake tools, the hosted web-search
+configuration, and host-provided intermediate context to the surfaces checked by
+`--strict-drift`.
 
 ## Run It
 
@@ -81,6 +84,7 @@ From the repository root:
 ```bash
 pdm run python examples/market-research-brief/data/seed.py
 pdm run contract4agents check examples/market-research-brief
+pdm run contract4agents check examples/market-research-brief --strict-drift
 pdm run contract4agents compile examples/market-research-brief --out .contract/build/market-research-brief
 pdm run contract4agents visualize examples/market-research-brief --out .contract/build/market-research-brief/visualization
 ```

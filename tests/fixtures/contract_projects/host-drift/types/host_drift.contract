@@ -1,0 +1,9 @@
+type DriftRequest:
+    query: str
+
+type HostSummary:
+    summary: str
+
+type DriftResult:
+    summary: str
+    score: int

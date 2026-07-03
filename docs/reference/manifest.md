@@ -28,3 +28,9 @@ wiring child-agent calls. They participate in static child-context
 satisfiability checks but do not define workflow ordering or execution.
 
 SDK adapters consume this manifest and emit adapter-specific objects or warnings.
+
+`contract4agents.registry.json` is not a generated manifest artifact. It is a
+source-owned validation file used by `contract4agents check --strict-drift` to
+prove that manifest tools, hosted tools, agent names, selected output types,
+prompt assets, and `host_context` markers still match explicit host-code
+surfaces. See [Capability Registry Reference](capability-registry.md).

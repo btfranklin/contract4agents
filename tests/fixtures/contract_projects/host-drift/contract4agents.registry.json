@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "tools": {
+    "drift.lookup": {
+      "python": "tests.fixtures.host_drift_app:lookup",
+      "permission": "preapproved"
+    }
+  },
+  "hosted_tools": {
+    "openai.web_search": {
+      "provider": "openai",
+      "tool": "web_search",
+      "config": {
+        "context_size": "medium"
+      },
+      "permission": "available",
+      "factory": "tests.fixtures.host_drift_app:build_web_search_tool"
+    }
+  },
+  "agents": {
+    "HostDriftAgent": {
+      "name": "HostDriftAgent",
+      "factory": "tests.fixtures.host_drift_app:build_agent_factory"
+    }
+  },
+  "output_types": {
+    "DriftResult": {
+      "python": "tests.fixtures.host_drift_app:DriftResultModel"
+    }
+  },
+  "prompts": {
+    "HostDriftAgent": {
+      "path": "prompts/HostDriftAgent.md"
+    }
+  },
+  "host_context": {
+    "HostDriftAgent": [
+      "HostSummary"
+    ]
+  }
+}

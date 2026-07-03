@@ -38,6 +38,11 @@ Each `OpenAIAgentPlan` includes manifest `source_path`, generated
 host-tool plans, hosted-tool plans, composition plans, context inputs,
 datasources, guards, assertions, and caveats.
 
+The adapter registries in this API are runtime construction inputs. They are
+separate from the source-owned `contract4agents.registry.json` file used by
+`contract4agents check --strict-drift`; use the capability registry in CI to
+catch obvious drift before host code builds SDK objects.
+
 Use `build_openai_agents_from_plan(plan)` after inspection, or use
 `build_openai_agents_from_contracts(...)` as the convenience function that plans
 and builds in one call. `build_openai_agent(...)` remains the low-level helper

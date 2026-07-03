@@ -114,6 +114,9 @@ The default policy should be:
 - Hosts should pass the compiled manifest's datasource names as the runtime allowlist when resolving context.
 - Hosts should populate manifest `host_context` entries explicitly when they
   wire child-agent calls that consume host-orchestrated intermediate values.
+- Projects that use strict drift checks should also mark those host-provided
+  types in `contract4agents.registry.json` so CI can distinguish intentional
+  host ownership from missing context wiring.
 - Do not search arbitrary installed Python modules.
 - Do not resolve sensitive context unless the agent is allowed to receive its rendered form.
 - Allow sensitive context to remain hidden runtime state when tools or guards need it but the model should not see it.

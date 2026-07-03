@@ -34,6 +34,8 @@ A Contract4Agents example should make these pieces visible:
   should produce and what should appear in the trace.
 - `monitors/`: trace rules for behavior that should be watched after a run.
 - `data/`: optional local seed data for deterministic fake tools.
+- `contract4agents.registry.json`: optional capability registry for strict
+  host-code drift checks.
 - importable Python helpers: optional local tools or harness code used by tests
   and demos.
 - `README.md`: the human explanation of the example.
@@ -73,6 +75,7 @@ examples/example-name/
     scenario.eval
   monitors/
     behavior.monitors.contract
+  contract4agents.registry.json
   data/
     seed.py
 ```

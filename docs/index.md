@@ -51,6 +51,7 @@ For project planning:
 - `tutorials/using-contract4agents-with-an-agent-app.md`: practical tutorial for using Contract4Agents beside an existing agent SDK implementation.
 - `reference/grammar.md`: implemented V1 grammar surface.
 - `reference/manifest.md`: provider-neutral manifest reference.
+- `reference/capability-registry.md`: source-owned capability registry and strict drift checks.
 - `reference/visualization.md`: static project visualization command and artifact reference.
 - `reference/trace-schema.md`: normalized trace event reference.
 - `reference/eval-language.md`: deterministic, trace-spy, hidden-truth, and semantic eval syntax.

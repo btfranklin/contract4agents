@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "tools": {
+    "citation.format": {
+      "python": "examples.multi_lens_research_imports.citation:format",
+      "permission": "preapproved"
+    },
+    "evidence.score": {
+      "python": "examples.multi_lens_research_imports.evidence:score",
+      "permission": "preapproved"
+    },
+    "expert_review.request": {
+      "python": "examples.multi_lens_research_imports.expert_review:request",
+      "permission": "requires_approval"
+    },
+    "sources.fetch": {
+      "python": "examples.multi_lens_research_imports.sources:fetch",
+      "permission": "preapproved"
+    },
+    "sources.search": {
+      "python": "examples.multi_lens_research_imports.sources:search",
+      "permission": "preapproved"
+    }
+  },
+  "hosted_tools": {},
+  "agents": {
+    "CounterargumentAnalyst": {
+      "name": "CounterargumentAnalyst"
+    },
+    "EvidenceMapper": {
+      "name": "EvidenceMapper"
+    },
+    "PolicySafetyLensAnalyst": {
+      "name": "PolicySafetyLensAnalyst"
+    },
+    "ResearchDirector": {
+      "name": "ResearchDirector"
+    },
+    "SynthesisWriter": {
+      "name": "SynthesisWriter"
+    },
+    "TechnicalLensAnalyst": {
+      "name": "TechnicalLensAnalyst"
+    }
+  },
+  "output_types": {},
+  "prompts": {},
+  "host_context": {
+    "ResearchDirector": [
+      "EvidenceMap",
+      "TechnicalAssessment",
+      "PolicySafetyAssessment",
+      "CounterargumentSet"
+    ]
+  }
+}

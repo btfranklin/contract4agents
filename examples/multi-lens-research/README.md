@@ -70,6 +70,9 @@ implementation planning.
 `ResearchDirector` coordinates the whole team and owns the final
 `ResearchBrief`. Its `host_context` declaration names the intermediate
 specialist outputs that host orchestration passes between child agents.
+`contract4agents.registry.json` maps the fake source, evidence, citation, and
+expert-review tools to importable Python callables and marks those host-provided
+intermediate values.
 
 ## Run It
 
@@ -78,6 +81,7 @@ From the repository root:
 ```bash
 pdm run python examples/multi-lens-research/data/seed.py
 pdm run contract4agents check examples/multi-lens-research
+pdm run contract4agents check examples/multi-lens-research --strict-drift
 pdm run contract4agents compile examples/multi-lens-research --out .contract/build/multi-lens-research
 pdm run contract4agents visualize examples/multi-lens-research --out .contract/build/multi-lens-research/visualization
 ```

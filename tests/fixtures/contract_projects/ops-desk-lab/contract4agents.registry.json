@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "tools": {
+    "access.grant_access": {
+      "python": "tests.fixtures.ops_desk_lab.tools:access_grant_access",
+      "permission": "requires_approval"
+    },
+    "access.list_permissions": {
+      "python": "tests.fixtures.ops_desk_lab.tools:access_list_permissions",
+      "permission": "preapproved"
+    },
+    "billing.create_credit": {
+      "python": "tests.fixtures.ops_desk_lab.tools:billing_create_credit",
+      "permission": "requires_approval"
+    },
+    "billing.lookup_invoice": {
+      "python": "tests.fixtures.ops_desk_lab.tools:billing_lookup_invoice",
+      "permission": "preapproved"
+    },
+    "knowledge.search": {
+      "python": "tests.fixtures.ops_desk_lab.tools:knowledge_search",
+      "permission": "preapproved"
+    },
+    "security.audit_log": {
+      "python": "tests.fixtures.ops_desk_lab.tools:security_audit_log",
+      "permission": "preapproved"
+    },
+    "security.lock_account": {
+      "python": "tests.fixtures.ops_desk_lab.tools:security_lock_account",
+      "permission": "requires_approval"
+    }
+  },
+  "hosted_tools": {},
+  "agents": {
+    "AccessSpecialist": {
+      "name": "AccessSpecialist"
+    },
+    "BillingSpecialist": {
+      "name": "BillingSpecialist"
+    },
+    "CustomerReplyWriter": {
+      "name": "CustomerReplyWriter"
+    },
+    "KnowledgeSpecialist": {
+      "name": "KnowledgeSpecialist"
+    },
+    "OpsDeskCoordinator": {
+      "name": "OpsDeskCoordinator"
+    },
+    "SecuritySpecialist": {
+      "name": "SecuritySpecialist"
+    }
+  },
+  "output_types": {},
+  "prompts": {},
+  "host_context": {
+    "OpsDeskCoordinator": [
+      "OpsDeskResult"
+    ]
+  }
+}

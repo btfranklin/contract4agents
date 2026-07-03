@@ -7,8 +7,9 @@ from pathlib import Path
 
 import click
 
+from contract4agents.capability_registry import check_capability_drift, load_capability_registry
 from contract4agents.compiler import build_artifacts, compile_project
-from contract4agents.diagnostics import ContractError, raise_if_errors
+from contract4agents.diagnostics import ContractError, Diagnostic, raise_if_errors
 from contract4agents.docscheck import check_docs
 from contract4agents.fixtures import FixtureReport, run_fixture_project_sync
 from contract4agents.monitor import MonitorRule, run_monitors
@@ -26,16 +27,37 @@ def main() -> None:
 @main.command()
 @click.argument("root", type=click.Path(path_type=Path), default=".", required=False)
 @click.option("--allow-python-imports", is_flag=True, help="Import configured Python model types during checks.")
-def check(root: Path, allow_python_imports: bool) -> None:
+@click.option("--strict-drift", is_flag=True, help="Require and validate the project capability registry.")
+@click.option(
+    "--registry",
+    "registry_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Capability registry path.",
+)
+def check(root: Path, allow_python_imports: bool, strict_drift: bool, registry_path: Path | None) -> None:
     """Parse and semantically validate a Contract4Agents project."""
     try:
         project = parse_project(root)
         result = analyze_project(project)
-        for diagnostic in result.diagnostics:
-            click.echo(diagnostic.format(), err=diagnostic.severity == "error")
+        _print_diagnostics(result.diagnostics)
         if not result.ok:
             raise click.ClickException("Contract4Agents check failed")
-        if allow_python_imports:
+        registry_load = load_capability_registry(
+            project.root,
+            registry_path,
+            required=strict_drift or registry_path is not None,
+        )
+        _print_diagnostics(registry_load.diagnostics)
+        if _has_errors(registry_load.diagnostics):
+            raise click.ClickException("Contract4Agents capability registry check failed")
+        if strict_drift:
+            artifacts = build_artifacts(project, allow_python_imports=allow_python_imports)
+            drift_diagnostics = check_capability_drift(project, artifacts, registry_load.registry)
+            _print_diagnostics(drift_diagnostics)
+            if _has_errors(drift_diagnostics):
+                raise click.ClickException("Contract4Agents strict drift check failed")
+        elif allow_python_imports:
             build_artifacts(project, allow_python_imports=True)
         click.echo("Contract4Agents check passed")
     except ContractError as exc:
@@ -155,6 +177,15 @@ def docs_check(root: Path) -> None:
     if diagnostics:
         raise click.ClickException("Docs check failed")
     click.echo("Docs check passed")
+
+
+def _print_diagnostics(diagnostics: list[Diagnostic]) -> None:
+    for diagnostic in diagnostics:
+        click.echo(diagnostic.format(), err=diagnostic.severity == "error")
+
+
+def _has_errors(diagnostics: list[Diagnostic]) -> bool:
+    return any(diagnostic.severity == "error" for diagnostic in diagnostics)
 
 
 def _print_contract_error(exc: ContractError) -> None:

@@ -8,47 +8,6 @@ Keep this file limited to unimplemented or materially incomplete work. When an i
 
 If an item no longer belongs in the product, remove it from `VISION.md` first and then delete it from this roadmap.
 
-## Capability Registry And Host-Code Drift Checks
-
-Vision gap: contracts should make missing tools and implementation drift visible before an agent is wired into a host application. Today trace and eval expressions can be checked against known tools, but declared tool sources are not validated against a registry or importable implementation surface, and there is no opt-in check that compares contract declarations with actual host application code.
-
-Design boundary: drift checks are CI-oriented verification. They should import only explicitly configured host surfaces, avoid executing business workflows, and report mismatches without claiming to prove all runtime behavior.
-
-Implementation work:
-
-- Define a lightweight local capability registry contract for tools, hosted tools, agents, output types, prompts, and host-provided markers.
-- Teach project checks to load that registry when present, starting with fixture projects and local examples.
-- For importable Python tool references, verify that the referenced module and callable exist without executing business logic.
-- For explicitly host-provided tools, require a registry entry that marks the tool as external so the compiler can distinguish intentional host ownership from a typo.
-- Check that manifest permissions match the registry permission for the same tool, or report a targeted diagnostic.
-- Add opt-in host-code drift checks that can verify:
-  - contract agent names match actual OpenAI Agents SDK agent names or configured factory names;
-  - contract output types match actual Pydantic output classes;
-  - contract hosted tool declarations match actual agent factory configuration;
-  - declared host tool permissions match registered tool surfaces;
-  - configured prompt or instruction assets have not obviously drifted from contract expectations.
-- Keep prompt drift checks conservative. They should catch obvious mismatches such as missing configured prompt assets or wrong agent-to-prompt mappings, not attempt to semantically prove that prompt prose fully matches the contract.
-- Support a small project configuration file or contract declaration for drift-check import paths, registry paths, and strictness settings.
-- Add a CI-usable command or command option for drift checks, with deterministic exit codes.
-- Ensure failures name the Python import path, registry entry, contract declaration, and expected versus actual value when possible.
-- Keep the default developer path practical: projects without a registry may still compile, but strict fixture and example validation should fail on missing local tools.
-- Add tests for missing tool source, misspelled callable, permission mismatch, intentionally external host-provided capability, mismatched agent name, mismatched Pydantic output type, hosted tool drift, and prompt asset drift.
-
-Validation:
-
-```bash
-pdm run test:unit
-pdm run contract4agents check examples/incident-command
-pdm run contract4agents check tests/fixtures/contract_projects/host-drift --strict-drift
-```
-
-Definition of done:
-
-- Local fixtures and public examples can prove that every declared local tool has an implementation surface.
-- Typos in declared tool sources fail during validation rather than surfacing only during a run.
-- Host-owned tools remain possible, but they must be explicit.
-- Opt-in drift checks can run in CI and produce actionable diagnostics that name the host code surface involved.
-
 ## Run And Trace Contract Source Syntax
 
 Vision gap: current contract files describe agents, evals, assertions, guards, monitors, and composition metadata, but there is no first-class source declaration for the expected behavior of a host-owned multi-agent workflow. Existing agent assertions can express parts of this, but real workflows need a machine-readable declaration of stage outputs, ordering constraints, tool constraints, and run-level invariants.

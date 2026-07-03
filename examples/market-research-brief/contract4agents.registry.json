@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "tools": {
+    "citation.format": {
+      "python": "examples.market_research_brief_imports.citation:format",
+      "permission": "preapproved"
+    },
+    "competitors.lookup": {
+      "python": "examples.market_research_brief_imports.competitors:lookup",
+      "permission": "preapproved"
+    },
+    "current_facts.fetch": {
+      "python": "examples.market_research_brief_imports.current_facts:fetch",
+      "permission": "preapproved"
+    },
+    "current_facts.search": {
+      "python": "examples.market_research_brief_imports.current_facts:search",
+      "permission": "preapproved"
+    },
+    "documents.fetch": {
+      "python": "examples.market_research_brief_imports.documents:fetch",
+      "permission": "preapproved"
+    },
+    "documents.search": {
+      "python": "examples.market_research_brief_imports.documents:search",
+      "permission": "preapproved"
+    }
+  },
+  "hosted_tools": {
+    "openai.web_search": {
+      "provider": "openai",
+      "tool": "web_search",
+      "config": {
+        "context_size": "medium"
+      },
+      "permission": "available"
+    }
+  },
+  "agents": {
+    "CompetitorAnalyst": {
+      "name": "CompetitorAnalyst"
+    },
+    "CurrentTruthScout": {
+      "name": "CurrentTruthScout"
+    },
+    "CustomerSignalAnalyst": {
+      "name": "CustomerSignalAnalyst"
+    },
+    "DocumentAnalyst": {
+      "name": "DocumentAnalyst"
+    },
+    "MarketResearchLead": {
+      "name": "MarketResearchLead"
+    },
+    "ReportWriter": {
+      "name": "ReportWriter"
+    }
+  },
+  "output_types": {},
+  "prompts": {},
+  "host_context": {
+    "MarketResearchLead": [
+      "DocumentEvidence",
+      "CurrentFactEvidence",
+      "CompetitorSnapshot",
+      "CustomerSignalSummary"
+    ]
+  }
+}

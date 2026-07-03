@@ -35,6 +35,7 @@ Start here:
 - Lark-backed parser
 - semantic analyzer
 - static child-agent context dependency checks
+- source-owned capability registry and strict host-code drift checks
 - JSON Schema and provider-neutral manifest compiler
 - local fake-tool and datasource runtime primitives
 - eval and monitor runners
@@ -53,6 +54,7 @@ pdm run contract4agents --help
 
 ```bash
 pdm run contract4agents check examples/incident-command
+pdm run contract4agents check examples/incident-command --strict-drift
 pdm run contract4agents compile examples/incident-command --out .contract/build
 pdm run contract4agents visualize examples/incident-command --out .contract/build/visualization
 pdm run contract4agents eval examples/incident-command

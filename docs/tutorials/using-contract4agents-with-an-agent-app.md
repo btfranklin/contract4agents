@@ -267,6 +267,19 @@ classes and derive canonical JSON Schema.
 
 That API gives your application the same data the CLI writes to disk.
 
+For CI checks against the host application, add
+`agent_contracts/contract4agents.registry.json` and run:
+
+```bash
+contract4agents check agent_contracts --strict-drift
+```
+
+The registry names the local tool callables, external host-provided tools,
+hosted-tool configuration, SDK agent names or factories, Pydantic output
+classes, prompt assets, and host-provided context markers that should match the
+compiled manifests. The checker imports only explicit registry refs and does not
+execute tools or workflow code.
+
 ## Where It Fits With The OpenAI Agents SDK
 
 In an OpenAI Agents SDK app, Contract4Agents usually sits just before SDK object

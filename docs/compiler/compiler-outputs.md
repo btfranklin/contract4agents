@@ -88,6 +88,24 @@ the host must wire from what a provider SDK may supply.
 When a type is imported from a Pydantic model, the manifest preserves the import
 path on matching input, output, and host-context references as `python_ref`.
 
+### Capability Registry Checks
+
+`contract4agents.registry.json` is a source-owned validation file, not a
+generated artifact. When present, `contract4agents check` validates its shape.
+`contract4agents check --strict-drift` requires it and compares compiled
+manifest declarations against explicit host surfaces:
+
+- Python tool refs import and are callable, unless marked `external: true`.
+- Tool and hosted-tool permissions match the manifest.
+- Hosted-tool provider, tool, and config match the manifest.
+- Registered agent names and factory imports match contract agent declarations.
+- Registered Pydantic output classes match contract output schemas.
+- Registered prompt assets exist and point at known agents.
+- Manifest `host_context` entries are marked as host-provided.
+
+Strict drift checks import only configured registry refs and never call tools,
+factories, hosted-tool providers, or business workflows.
+
 ### Type Bindings
 
 The compiler emits `types/type-bindings.json` beside `schemas/*.json`. Each entry
@@ -232,11 +250,10 @@ The compiler currently fails on:
 - Guards and assertions that reference unavailable local tools, hosted tools, output fields, or types.
 - Eval and monitor references to unavailable output fields, types, or trace targets outside the scoped agent's declared `use agent` dependency closure.
 
-The active roadmap covers checks that require more host or flow knowledge:
-
-- Missing datasource implementation imports and broader host-code drift checks.
-- Tool permission drift against an explicit host capability registry.
-- Prompt, output-type, and adapter registry drift checks.
+With `contract4agents check --strict-drift`, project checks also fail on missing
+capability registry entries, unresolved registry Python refs, permission drift,
+hosted-tool config drift, agent-name drift, registered Pydantic output-type
+drift, prompt asset drift, and unmarked host-provided context.
 
 The compiler can warn on:
 
@@ -269,12 +286,16 @@ Fix: add `AccountRejectionStatus` as a required parent parameter, declare
 `CustomerGreeter` that can produce it.
 ```
 
+Strict drift diagnostics use `CAP###` codes; see
+[Capability Registry Reference](../reference/capability-registry.md).
+
 ## Freshness
 
 Once generated artifacts exist, the CLI should support:
 
 ```bash
 pdm run contract4agents check
+pdm run contract4agents check --strict-drift
 pdm run contract4agents compile
 pdm run contract4agents compile --check
 ```

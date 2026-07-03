@@ -6,11 +6,16 @@ The public smoke project lives at `examples/incident-command/`. The richer inter
 The Ops Desk coordinator declares `host_context = [OpsDeskResult]` because its
 local runner passes a specialist result into `CustomerReplyWriter` as a
 host-orchestrated intermediate value.
+Both fixture projects include `contract4agents.registry.json` so strict drift
+checks can verify declared fake tools and host-provided context markers before a
+fixture run.
 
 Run the local deterministic fixture:
 
 ```bash
 pdm run test:agent-fixture
+pdm run contract4agents check examples/incident-command --strict-drift
+pdm run contract4agents check tests/fixtures/contract_projects/ops-desk-lab --strict-drift
 pdm run contract4agents eval examples/incident-command
 pdm run contract4agents eval tests/fixtures/contract_projects/ops-desk-lab
 ```

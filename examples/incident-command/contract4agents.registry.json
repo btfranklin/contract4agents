@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "tools": {
+    "deploys.list": {
+      "python": "examples.incident_command_imports.deploys:list",
+      "permission": "preapproved"
+    },
+    "logs.search": {
+      "python": "examples.incident_command_imports.logs:search",
+      "permission": "preapproved"
+    },
+    "metrics.query": {
+      "python": "examples.incident_command_imports.metrics:query",
+      "permission": "preapproved"
+    },
+    "status_page.draft_update": {
+      "python": "examples.incident_command_imports.status_page:draft_update",
+      "permission": "requires_approval"
+    }
+  },
+  "hosted_tools": {},
+  "agents": {
+    "CustomerImpactWriter": {
+      "name": "CustomerImpactWriter"
+    },
+    "DeployAnalyst": {
+      "name": "DeployAnalyst"
+    },
+    "IncidentCommander": {
+      "name": "IncidentCommander"
+    },
+    "LogInvestigator": {
+      "name": "LogInvestigator"
+    },
+    "MetricsAnalyst": {
+      "name": "MetricsAnalyst"
+    }
+  },
+  "output_types": {},
+  "prompts": {},
+  "host_context": {
+    "IncidentCommander": [
+      "IncidentBrief"
+    ]
+  }
+}

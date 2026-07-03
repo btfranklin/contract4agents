@@ -313,5 +313,5 @@ The compiler currently rejects:
 - Eval cases and monitors that reference missing fields or capabilities outside
   the scoped agent's declared dependency closure.
 - Return types that cannot produce an output schema.
-
-Roadmap checks will add host-code or capability-registry drift validation.
+- Missing, misspelled, or drifted host-code surfaces when
+  `contract4agents check --strict-drift` is run with a capability registry.

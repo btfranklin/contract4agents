@@ -73,6 +73,10 @@ the status-page draft tool is called, the trace must show approval.
 `data/seed.py` creates `data/fixture.sqlite`, the local SQLite database used by
 the fake tools.
 
+`contract4agents.registry.json` maps the declared fake tools to their importable
+Python callables and marks the host-supplied `IncidentBrief` context used by the
+coordinator.
+
 ## Run It
 
 From the repository root:
@@ -80,6 +84,7 @@ From the repository root:
 ```bash
 pdm run python examples/incident-command/data/seed.py
 pdm run contract4agents check examples/incident-command
+pdm run contract4agents check examples/incident-command --strict-drift
 pdm run contract4agents compile examples/incident-command --out .contract/build
 pdm run contract4agents visualize examples/incident-command --out .contract/build/visualization
 pdm run contract4agents eval examples/incident-command

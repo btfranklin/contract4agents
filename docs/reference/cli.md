@@ -11,15 +11,28 @@ This includes static child-agent context satisfiability across required parent
 parameters, declared `host_context`, and parent datasource chains.
 
 - Default root: `.`
-- Options: `--allow-python-imports`
+- Options: `--allow-python-imports`, `--strict-drift`, `--registry PATH`
 - Writes: nothing
 - Success message: `Contract4Agents check passed`
-- Failure message: diagnostics followed by `Contract4Agents check failed`
+- Failure message: diagnostics followed by `Contract4Agents check failed`,
+  `Contract4Agents capability registry check failed`, or
+  `Contract4Agents strict drift check failed`
 - Side effects: none
 
 By default, `check` validates Pydantic-backed type declarations without
 importing host code. Use `--allow-python-imports` to import configured Pydantic
 models and verify schema derivation.
+
+If `ROOT/contract4agents.registry.json` exists, `check` validates the registry
+shape without importing host code or requiring complete coverage. Use
+`--strict-drift` to require the registry and compare declared tools, hosted
+tools, agents, Pydantic output types, prompt assets, and `host_context` markers
+against explicitly configured host-code surfaces. `--registry PATH` overrides
+the default registry path and fails if the requested file is missing.
+
+Capability registry diagnostics use `CAP###` codes. See
+[Capability Registry Reference](capability-registry.md) for the file shape and
+strict drift rules.
 
 ## `compile [ROOT]`
 

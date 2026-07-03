@@ -48,6 +48,7 @@ Use this path when changing parser, semantic analyzer, compiler, visualization, 
 ```bash
 pdm run contract4agents --help
 pdm run contract4agents check examples/incident-command
+pdm run contract4agents check examples/incident-command --strict-drift
 pdm run contract4agents compile examples/incident-command --out .contract/build
 pdm run contract4agents visualize examples/incident-command --out .contract/build/visualization
 pdm run contract4agents eval examples/incident-command
@@ -56,6 +57,8 @@ pdm run contract4agents eval examples/incident-command
 Generated `.contract/` output is local state and should stay untracked.
 Use `pdm run test:agent-fixture` or `pdm run contract4agents eval tests/fixtures/contract_projects/ops-desk-lab`
 when changing internal fixture edge-case behavior.
+Use `pdm run contract4agents check tests/fixtures/contract_projects/host-drift --strict-drift`
+when changing capability registry or host-code drift behavior.
 
 ## Live OpenAI Checks
 
