@@ -3,6 +3,9 @@
 Contract4Agents' multi-agent fixture runner lives in `contract4agents.fixtures` and is used by both tests and `contract4agents eval` when a project has `fixture.json`.
 
 The public smoke project lives at `examples/incident-command/`. The richer internal fixture lives at `tests/fixtures/contract_projects/ops-desk-lab/` so tests can exercise edge cases, guardrails, and failure paths without making the beginner example noisy.
+The Ops Desk coordinator declares `host_context = [OpsDeskResult]` because its
+local runner passes a specialist result into `CustomerReplyWriter` as a
+host-orchestrated intermediate value.
 
 Run the local deterministic fixture:
 

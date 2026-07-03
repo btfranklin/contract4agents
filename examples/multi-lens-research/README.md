@@ -67,7 +67,9 @@ implementation planning.
 
 `SynthesisWriter` writes the final brief from specialist outputs.
 
-`ResearchDirector` coordinates the whole team and owns the final `ResearchBrief`.
+`ResearchDirector` coordinates the whole team and owns the final
+`ResearchBrief`. Its `host_context` declaration names the intermediate
+specialist outputs that host orchestration passes between child agents.
 
 ## Run It
 

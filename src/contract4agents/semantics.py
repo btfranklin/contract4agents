@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from contract4agents.ast import ContractProject, SourceSpan
 from contract4agents.diagnostics import Diagnostic
 from contract4agents.semantic_checks._agents import check_agent
+from contract4agents.semantic_checks._context import check_context_dependencies
 from contract4agents.semantic_checks._expressions import check_eval, check_monitor
 from contract4agents.semantic_checks._index import ProjectIndex
 from contract4agents.semantic_checks._types import check_datasource, check_type
@@ -46,6 +47,7 @@ def analyze_project(project: ContractProject) -> SemanticResult:
         diagnostics.extend(check_datasource(datasource, index))
     for agent in index.agent_defs.values():
         diagnostics.extend(check_agent(agent, index))
+    diagnostics.extend(check_context_dependencies(index))
     for eval_case in project.evals:
         diagnostics.extend(check_eval(eval_case.agent, eval_case.expects, eval_case.semantic_expects, index))
     for monitor in project.monitors:

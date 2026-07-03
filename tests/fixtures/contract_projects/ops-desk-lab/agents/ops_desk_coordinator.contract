@@ -15,6 +15,8 @@ agent OpsDeskCoordinator(
     use tool security.lock_account from tools.security requires approval
     use tool access.grant_access from tools.access requires approval
 
+    host_context = [OpsDeskResult]
+
     goal = "Route an Ops Desk request to the right specialist and return a concise, evidence-backed response."
 
     description = "Coordinator for the isolated Ops Desk Lab multi-agent fixture."

@@ -5,7 +5,13 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from contract4agents.ast import ContractProject
-from contract4agents.compiler._types import AgentManifest, ManifestDatasource, ManifestHostedTool, ManifestUse
+from contract4agents.compiler._types import (
+    AgentManifest,
+    ManifestDatasource,
+    ManifestHostContext,
+    ManifestHostedTool,
+    ManifestUse,
+)
 
 
 def generated_docs(project: ContractProject, manifests: dict[str, AgentManifest]) -> dict[str, str]:
@@ -84,6 +90,10 @@ def _agent_doc(name: str, manifest: AgentManifest, project: ContractProject) -> 
                     ]
                 ],
             ),
+            "",
+            "## Host Context",
+            "",
+            *_table(["Type", "Python ref"], _host_context_rows(manifest["host_context"])),
             "",
             "## Capabilities",
             "",
@@ -170,6 +180,10 @@ def _hosted_tool_rows(values: list[ManifestHostedTool]) -> list[list[str]]:
         ]
         for item in sorted(values, key=lambda item: item["name"])
     ]
+
+
+def _host_context_rows(values: list[ManifestHostContext]) -> list[list[str]]:
+    return [[item["type"], item["python_ref"] or ""] for item in values]
 
 
 def _datasource_rows(values: list[ManifestDatasource]) -> list[list[str]]:

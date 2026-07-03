@@ -11,7 +11,7 @@ from contract4agents.semantic_checks._index import ProjectIndex
 from contract4agents.semantic_checks._types import check_type_ref
 
 TEXT_AGENT_ATTRIBUTES = {"description", "goal"}
-LIST_AGENT_ATTRIBUTES = {"assertions", "composition", "guards", "policy", "routes", "success"}
+LIST_AGENT_ATTRIBUTES = {"assertions", "composition", "guards", "host_context", "policy", "routes", "success"}
 AGENT_ATTRIBUTES = TEXT_AGENT_ATTRIBUTES | LIST_AGENT_ATTRIBUTES
 COMMON_AGENT_ATTRIBUTE_MISSPELLINGS = {
     "assertion": "assertions",
@@ -29,6 +29,8 @@ def check_agent(
     for parameter in agent.parameters:
         diagnostics.extend(check_type_ref(parameter.type_name, index, parameter.span, "agent parameter"))
     diagnostics.extend(check_type_ref(agent.return_type, index, agent.span, "agent return type"))
+    for type_name in agent.list_attr("host_context"):
+        diagnostics.extend(check_type_ref(type_name, index, agent.attribute_spans.get("host_context"), "host_context"))
     datasource_outputs: dict[str, int] = {}
     tool_names = {use.name for use in agent.uses if use.kind == "tool"}
     hosted_tool_names = {use.name for use in agent.uses if use.kind == "hosted_tool"}

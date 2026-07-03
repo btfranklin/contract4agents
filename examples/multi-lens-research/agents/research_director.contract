@@ -9,6 +9,8 @@ agent ResearchDirector(
     use agent SynthesisWriter from ./synthesis_writer
     use tool expert_review.request from tools.expert_review requires approval
 
+    host_context = [EvidenceMap, TechnicalAssessment, PolicySafetyAssessment, CounterargumentSet]
+
     goal = "Coordinate a multi-lens research brief for a high-stakes decision."
 
     description = "Keeps the research process split into focused specialist lenses before writing a final recommendation."

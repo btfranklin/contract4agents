@@ -16,6 +16,12 @@ agent SupportAgent(
 
 The host integration must produce a context frame containing each required slot before the agent can run.
 
+For child-agent dependencies, the compiler checks that required child context is
+available from the parent agent's required parameters, explicit `host_context`,
+or datasources declared on the parent. `host_context` marks typed intermediate
+values that host orchestration supplies between agent calls; it does not define
+workflow control flow.
+
 ## Context Value Envelope
 
 Runtime primitives preserve more than the string rendered to the model.
@@ -106,6 +112,8 @@ The default policy should be:
 
 - Resolve missing required slots automatically only from datasources explicitly allowed by the agent.
 - Hosts should pass the compiled manifest's datasource names as the runtime allowlist when resolving context.
+- Hosts should populate manifest `host_context` entries explicitly when they
+  wire child-agent calls that consume host-orchestrated intermediate values.
 - Do not search arbitrary installed Python modules.
 - Do not resolve sensitive context unless the agent is allowed to receive its rendered form.
 - Allow sensitive context to remain hidden runtime state when tools or guards need it but the model should not see it.

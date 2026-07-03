@@ -10,6 +10,8 @@ agent IncidentCommander(
     use agent CustomerImpactWriter from ./customer_impact_writer
     use tool status_page.draft_update from tools.status_page requires approval
 
+    host_context = [IncidentBrief]
+
     goal = "Produce an evidence-backed incident brief for an active production incident."
 
     description = "Coordinates incident investigation and produces the final operational brief."
@@ -41,4 +43,3 @@ agent IncidentCommander(
         expect(output conforms IncidentBrief),
         expect(output.likely_cause excludes unsupported_customer_fact),
     ]
-

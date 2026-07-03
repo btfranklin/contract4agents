@@ -8,33 +8,6 @@ Keep this file limited to unimplemented or materially incomplete work. When an i
 
 If an item no longer belongs in the product, remove it from `VISION.md` first and then delete it from this roadmap.
 
-## Stronger Context-Dependency Analysis
-
-Vision gap: the compiler should reject unsatisfied context dependencies. Today datasource definitions and type references are checked, but the analyzer does not fully prove that agent-to-agent calls have all required typed context slots satisfiable from caller inputs, declared datasources, or host-supplied context.
-
-Implementation work:
-
-- Build a per-agent context graph from typed parameters, declared datasources, and declared agent dependencies.
-- For each `use agent` dependency and each composition declaration that references another agent, compare the child agent's required parameters against the parent agent's available context.
-- Recursively account for datasources that can produce missing context slots when their own requirements are satisfiable from the parent context.
-- Detect missing context, ambiguous datasource choices, and datasource requirement cycles across the full dependency path.
-- Add diagnostics that name the parent agent, child agent, missing type, and failed resolution path.
-- Keep host-owned context explicit: if a type must be supplied by the host, represent that as a known requirement rather than pretending it is resolved.
-- Add focused parser fixture cases for satisfied parent-to-child context, missing child context, datasource-satisfied child context, ambiguous datasource paths, and cyclic datasource requirements.
-
-Validation:
-
-```bash
-pdm run test:unit
-pdm run contract4agents check examples/incident-command
-```
-
-Definition of done:
-
-- `contract4agents check` can reject an agent dependency whose required typed inputs cannot be supplied or resolved.
-- Diagnostics point to the contract declaration that created the unsatisfied dependency.
-- Valid existing fixtures still pass without host-specific wiring.
-
 ## Capability Registry And Host-Code Drift Checks
 
 Vision gap: contracts should make missing tools and implementation drift visible before an agent is wired into a host application. Today trace and eval expressions can be checked against known tools, but declared tool sources are not validated against a registry or importable implementation surface, and there is no opt-in check that compares contract declarations with actual host application code.

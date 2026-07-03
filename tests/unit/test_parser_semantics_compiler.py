@@ -401,6 +401,280 @@ agent Child() -> Result:
     ]
 
 
+def test_semantic_analyzer_accepts_child_context_from_parent_inputs(tmp_path: Path) -> None:
+    (tmp_path / "good.contract").write_text(
+        """
+type SharedContext:
+    value: str
+
+type Result:
+    ok: bool
+
+agent Parent(shared: SharedContext) -> Result:
+    use agent Child from ./child
+    goal = "parent"
+
+agent Child(shared: SharedContext) -> Result:
+    goal = "child"
+""".strip()
+    )
+
+    result = analyze_project(parse_project(tmp_path))
+
+    assert result.ok, [diagnostic.format() for diagnostic in result.diagnostics]
+
+
+def test_semantic_analyzer_rejects_missing_child_context(tmp_path: Path) -> None:
+    (tmp_path / "bad.contract").write_text(
+        """
+type Request:
+    value: str
+
+type ChildContext:
+    value: str
+
+type Result:
+    ok: bool
+
+agent Parent(request: Request) -> Result:
+    use agent Child from ./child
+    goal = "parent"
+
+agent Child(context: ChildContext) -> Result:
+    goal = "child"
+""".strip()
+    )
+
+    result = analyze_project(parse_project(tmp_path))
+
+    assert not result.ok
+    diagnostic = next(item for item in result.diagnostics if item.code == "SEM072")
+    assert "Parent" in diagnostic.message
+    assert "ChildContext" in diagnostic.message
+    assert "Child" in diagnostic.message
+
+
+def test_semantic_analyzer_treats_optional_parent_context_as_not_required_context(tmp_path: Path) -> None:
+    (tmp_path / "bad.contract").write_text(
+        """
+type ChildContext:
+    value: str
+
+type Result:
+    ok: bool
+
+agent Parent(context: ChildContext?) -> Result:
+    use agent Child from ./child
+    goal = "parent"
+
+agent Child(context: ChildContext) -> Result:
+    goal = "child"
+""".strip()
+    )
+
+    result = analyze_project(parse_project(tmp_path))
+
+    assert not result.ok
+    assert any(item.code == "SEM072" for item in result.diagnostics)
+
+
+def test_semantic_analyzer_accepts_child_context_from_parent_datasource(tmp_path: Path) -> None:
+    (tmp_path / "good.contract").write_text(
+        """
+type Request:
+    value: str
+
+type ChildContext:
+    value: str
+
+type Result:
+    ok: bool
+
+datasource ChildContextSource:
+    python = "pkg.context:load"
+    requires = [Request]
+    produces = ChildContext
+
+agent Parent(request: Request) -> Result:
+    use datasource ChildContextSource from ./context
+    use agent Child from ./child
+    goal = "parent"
+
+agent Child(context: ChildContext) -> Result:
+    goal = "child"
+""".strip()
+    )
+
+    result = analyze_project(parse_project(tmp_path))
+
+    assert result.ok, [diagnostic.format() for diagnostic in result.diagnostics]
+
+
+def test_semantic_analyzer_accepts_child_context_from_recursive_datasource_chain(tmp_path: Path) -> None:
+    (tmp_path / "good.contract").write_text(
+        """
+type Request:
+    value: str
+
+type Intermediate:
+    value: str
+
+type ChildContext:
+    value: str
+
+type Result:
+    ok: bool
+
+datasource IntermediateSource:
+    python = "pkg.context:intermediate"
+    requires = [Request]
+    produces = Intermediate
+
+datasource ChildContextSource:
+    python = "pkg.context:child"
+    requires = [Intermediate]
+    produces = ChildContext
+
+agent Parent(request: Request) -> Result:
+    use datasource IntermediateSource from ./context
+    use datasource ChildContextSource from ./context
+    use agent Child from ./child
+    goal = "parent"
+
+agent Child(context: ChildContext) -> Result:
+    goal = "child"
+""".strip()
+    )
+
+    result = analyze_project(parse_project(tmp_path))
+
+    assert result.ok, [diagnostic.format() for diagnostic in result.diagnostics]
+
+
+def test_semantic_analyzer_rejects_ambiguous_child_context_datasource(tmp_path: Path) -> None:
+    (tmp_path / "bad.contract").write_text(
+        """
+type Request:
+    value: str
+
+type ChildContext:
+    value: str
+
+type Result:
+    ok: bool
+
+datasource ChildContextSourceA:
+    python = "pkg.context:a"
+    requires = [Request]
+    produces = ChildContext
+
+datasource ChildContextSourceB:
+    python = "pkg.context:b"
+    requires = [Request]
+    produces = ChildContext
+
+agent Parent(request: Request) -> Result:
+    use datasource ChildContextSourceA from ./context
+    use datasource ChildContextSourceB from ./context
+    use agent Child from ./child
+    goal = "parent"
+
+agent Child(context: ChildContext) -> Result:
+    goal = "child"
+""".strip()
+    )
+
+    result = analyze_project(parse_project(tmp_path))
+
+    assert not result.ok
+    assert {item.code for item in result.diagnostics} >= {"SEM022", "SEM073"}
+
+
+def test_semantic_analyzer_rejects_child_context_datasource_cycle(tmp_path: Path) -> None:
+    (tmp_path / "bad.contract").write_text(
+        """
+type ChildContext:
+    value: str
+
+type OtherContext:
+    value: str
+
+type Result:
+    ok: bool
+
+datasource ChildContextSource:
+    python = "pkg.context:child"
+    requires = [OtherContext]
+    produces = ChildContext
+
+datasource OtherContextSource:
+    python = "pkg.context:other"
+    requires = [ChildContext]
+    produces = OtherContext
+
+agent Parent() -> Result:
+    use datasource ChildContextSource from ./context
+    use datasource OtherContextSource from ./context
+    use agent Child from ./child
+    goal = "parent"
+
+agent Child(context: ChildContext) -> Result:
+    goal = "child"
+""".strip()
+    )
+
+    result = analyze_project(parse_project(tmp_path))
+
+    assert not result.ok
+    diagnostic = next(item for item in result.diagnostics if item.code == "SEM074")
+    assert "ChildContext -> OtherContext -> ChildContext" in str(diagnostic.hint)
+
+
+def test_semantic_analyzer_accepts_explicit_host_context(tmp_path: Path) -> None:
+    (tmp_path / "good.contract").write_text(
+        """
+type Request:
+    value: str
+
+type ChildContext:
+    value: str
+
+type Result:
+    ok: bool
+
+agent Parent(request: Request) -> Result:
+    use agent Child from ./child
+    host_context = [ChildContext]
+    goal = "parent"
+
+agent Child(context: ChildContext) -> Result:
+    goal = "child"
+""".strip()
+    )
+
+    result = analyze_project(parse_project(tmp_path))
+
+    assert result.ok, [diagnostic.format() for diagnostic in result.diagnostics]
+
+
+def test_semantic_analyzer_rejects_unknown_host_context_type(tmp_path: Path) -> None:
+    (tmp_path / "bad.contract").write_text(
+        """
+type Result:
+    ok: bool
+
+agent Parent() -> Result:
+    host_context = [MissingContext]
+    goal = "parent"
+""".strip()
+    )
+
+    result = analyze_project(parse_project(tmp_path))
+
+    assert not result.ok
+    assert any(item.code == "SEM002" and "MissingContext" in item.message for item in result.diagnostics)
+
+
 def test_semantic_analyzer_rejects_duplicate_top_level_declarations(tmp_path: Path) -> None:
     (tmp_path / "a.contract").write_text(
         """
@@ -528,6 +802,9 @@ def test_compile_project_artifacts(tmp_path: Path) -> None:
 
     assert "IncidentCommander" in artifacts["manifests"]
     assert artifacts["manifests"]["IncidentCommander"]["source_path"].endswith("agents/incident_commander.contract")
+    assert artifacts["manifests"]["IncidentCommander"]["host_context"] == [
+        {"type": "IncidentBrief", "python_ref": None}
+    ]
     assert (tmp_path / "build" / "schemas" / "IncidentBrief.json").exists()
     assert (tmp_path / "build" / "instructions" / "IncidentCommander.md").exists()
     assert (tmp_path / "build" / "docs" / "agents" / "IncidentCommander.md").exists()
@@ -649,6 +926,7 @@ def test_build_artifacts_generates_docs() -> None:
     agent_doc = artifacts["docs"]["agents/IncidentCommander.md"]
     assert "| Name | Source | Permission |" in agent_doc
     assert "| status_page.draft_update | tools.status_page | requires_approval |" in agent_doc
+    assert "| IncidentBrief |  |" in agent_doc
     assert "- `discovers_checkout_cause`" in agent_doc
     assert "Output schema: `schemas/IncidentBrief.json`" in agent_doc
 

@@ -67,7 +67,9 @@ old internal documents as current truth.
 `ReportWriter` combines those specialist outputs into a
 `MarketOpportunityReport` with citations and freshness notes.
 
-`MarketResearchLead` coordinates the team and owns the final report.
+`MarketResearchLead` coordinates the team and owns the final report. Its
+`host_context` declaration names the intermediate evidence, competitor, and
+customer-signal values that the host passes between child agents.
 `CurrentTruthScout` also declares `use hosted_tool openai.web_search
 context_size "medium"` to show how provider-native hosted tools appear
 separately from host Python tools in manifests and visualization artifacts.

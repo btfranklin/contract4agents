@@ -51,7 +51,9 @@ refer to those names instead of repeating object structures.
 
 `agents/incident_commander.contract` is the top-level contract. It composes four
 specialists and declares the only tool that needs human approval:
-`status_page.draft_update`.
+`status_page.draft_update`. It also declares `host_context = [IncidentBrief]`
+because the deterministic host harness passes a draft brief into
+`CustomerImpactWriter` as an intermediate value.
 
 `agents/log_investigator.contract`, `agents/deploy_analyst.contract`, and
 `agents/metrics_analyst.contract` each declare one preapproved tool. Their job is

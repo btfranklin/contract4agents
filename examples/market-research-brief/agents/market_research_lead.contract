@@ -8,6 +8,8 @@ agent MarketResearchLead(
     use agent CustomerSignalAnalyst from ./customer_signal_analyst
     use agent ReportWriter from ./report_writer
 
+    host_context = [DocumentEvidence, CurrentFactEvidence, CompetitorSnapshot, CustomerSignalSummary]
+
     goal = "Coordinate a document-driven market research report grounded in current external facts."
 
     description = "Splits market research into internal document review, current-fact checking, competitor analysis, customer-signal analysis, and report writing."

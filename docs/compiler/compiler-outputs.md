@@ -48,6 +48,9 @@ Example shape:
     {"name": "customer_profile", "type": "CustomerProfile", "required": true, "python_ref": null}
   ],
   "output": {"type": "GreetingResult", "schema_ref": "schemas/GreetingResult.json", "python_ref": null},
+  "host_context": [
+    {"type": "AccountRejectionStatus", "python_ref": null}
+  ],
   "tools": [
     {"name": "calculate", "module": "mathlib", "permission": "preapproved"}
   ],
@@ -83,7 +86,7 @@ stay in `hosted_tools` so adapters and capability reports can distinguish what
 the host must wire from what a provider SDK may supply.
 
 When a type is imported from a Pydantic model, the manifest preserves the import
-path on matching input and output references as `python_ref`.
+path on matching input, output, and host-context references as `python_ref`.
 
 ### Type Bindings
 
@@ -190,8 +193,8 @@ They include:
 Generated docs should help humans review what will run:
 
 - `docs/summary.md`: project-level index of agents, types, evals, monitors, and hosted tools.
-- `docs/agents/*.md`: per-agent pages with signature, intent, inputs, output, capabilities,
-  checks, evals, monitors, and artifact links.
+- `docs/agents/*.md`: per-agent pages with signature, intent, inputs, output,
+  host context, capabilities, checks, evals, monitors, and artifact links.
 - Capability tables.
 - Eval coverage summaries.
 - Guard and assertion matrices.
@@ -223,12 +226,14 @@ The compiler currently fails on:
 - Malformed agent attributes.
 - Invalid hosted-tool provider metadata for bundled descriptors.
 - Ambiguous datasource declarations for the same agent and produced type.
+- Child-agent parameters that cannot be satisfied from parent required inputs,
+  declared host context, or deterministic parent datasource chains.
+- Datasource requirement cycles while proving child-agent context.
 - Guards and assertions that reference unavailable local tools, hosted tools, output fields, or types.
 - Eval and monitor references to unavailable output fields, types, or trace targets outside the scoped agent's declared `use agent` dependency closure.
 
 The active roadmap covers checks that require more host or flow knowledge:
 
-- Full child-agent context satisfiability across parent inputs and datasource chains.
 - Missing datasource implementation imports and broader host-code drift checks.
 - Tool permission drift against an explicit host capability registry.
 - Prompt, output-type, and adapter registry drift checks.
@@ -255,12 +260,13 @@ Diagnostics should be useful to coding agents. A diagnostic should include:
 Example:
 
 ```text
-CONTEXT001 Missing context resolver
-SupportAgent requires AccountRejectionStatus, but CustomerGreeter does not pass it
-and no allowed datasource can produce it from available context.
+SEM072 Missing child context
+CustomerGreeter cannot supply required context AccountRejectionStatus for child
+agent SupportAgent.
 
-Fix: add `use datasource AccountRejectionStatus from ...` to CustomerGreeter or
-pass `problem_summary` explicitly when calling SupportAgent.
+Fix: add `AccountRejectionStatus` as a required parent parameter, declare
+`host_context = [AccountRejectionStatus]`, or add a datasource chain on
+`CustomerGreeter` that can produce it.
 ```
 
 ## Freshness

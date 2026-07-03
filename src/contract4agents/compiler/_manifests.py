@@ -64,6 +64,13 @@ def agent_manifest(agent: AgentDef, project: ContractProject) -> AgentManifest:
             "schema_ref": f"schemas/{agent.return_type}.json",
             "python_ref": _python_ref_for_type(agent.return_type, types),
         },
+        "host_context": [
+            {
+                "type": type_name,
+                "python_ref": _python_ref_for_type(type_name, types),
+            }
+            for type_name in agent.list_attr("host_context")
+        ],
         "tools": tools,
         "hosted_tools": hosted_tools,
         "agents": agents,

@@ -467,6 +467,13 @@
               "expect(output conforms OpsDeskResult)",
               "expect(output.reply excludes hidden_truth)"
             ],
+            "composition": [
+              "agent_as_tool(BillingSpecialist)",
+              "agent_as_tool(SecuritySpecialist)",
+              "agent_as_tool(AccessSpecialist)",
+              "agent_as_tool(KnowledgeSpecialist)",
+              "agent_as_tool(CustomerReplyWriter)"
+            ],
             "description": "\"Coordinator for the isolated Ops Desk Lab multi-agent fixture.\"",
             "goal": "\"Route an Ops Desk request to the right specialist and return a concise, evidence-backed response.\"",
             "guards": [
@@ -475,12 +482,8 @@
               "forbid(tool.security.lock_account unless approved_by_human)",
               "forbid(tool.access.grant_access unless approved_by_human)"
             ],
-            "composition": [
-              "agent_as_tool(BillingSpecialist)",
-              "agent_as_tool(SecuritySpecialist)",
-              "agent_as_tool(AccessSpecialist)",
-              "agent_as_tool(KnowledgeSpecialist)",
-              "agent_as_tool(CustomerReplyWriter)"
+            "host_context": [
+              "OpsDeskResult"
             ],
             "policy": [
               "use the request intent and account context before choosing a specialist",

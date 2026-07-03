@@ -226,16 +226,19 @@
               "expect(output conforms IncidentBrief)",
               "expect(output.likely_cause excludes unsupported_customer_fact)"
             ],
+            "composition": [
+              "isolated_subagent(LogInvestigator)",
+              "isolated_subagent(DeployAnalyst)",
+              "isolated_subagent(MetricsAnalyst)"
+            ],
             "description": "\"Coordinates incident investigation and produces the final operational brief.\"",
             "goal": "\"Produce an evidence-backed incident brief for an active production incident.\"",
             "guards": [
               "require(output conforms IncidentBrief)",
               "forbid(tool.status_page.draft_update unless approved_by_human)"
             ],
-            "composition": [
-              "isolated_subagent(LogInvestigator)",
-              "isolated_subagent(DeployAnalyst)",
-              "isolated_subagent(MetricsAnalyst)"
+            "host_context": [
+              "IncidentBrief"
             ],
             "policy": [
               "prefer evidence over speculation",

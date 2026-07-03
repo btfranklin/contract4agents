@@ -99,6 +99,7 @@ Agent bodies accept capability declarations plus these assignment attributes:
 - `success`: list of text or contract expressions.
 - `routes`: list of routing declarations.
 - `composition`: list of composition declarations.
+- `host_context`: list of typed context slots supplied by host orchestration.
 - `guards`: list of guard expressions.
 - `assertions`: list of assertion expressions.
 
@@ -123,13 +124,29 @@ Host integrations and runtime primitives supply parameters from:
 
 - The direct invocation.
 - The parent agent context.
+- Host-orchestrated intermediate context declared with `host_context`.
 - Datasources allowed by the contract.
 
 If a required context slot cannot be supplied or resolved at runtime,
-invocation fails with a deterministic error. Full compiler proof that every
-child-agent context slot is satisfiable from parent context or datasource chains
-is roadmap work; current static checks validate declared types, known
-datasources, and expression references.
+invocation fails with a deterministic error. The compiler also checks
+child-agent dependencies statically: every required child parameter must be
+satisfiable from the parent agent's required parameters, the parent's declared
+`host_context`, or a deterministic datasource chain declared on the parent.
+Nullable parent parameters do not satisfy required child parameters.
+
+Host-orchestrated intermediate values are explicit metadata:
+
+```contract
+agent ResearchDirector(question: ResearchQuestion) -> ResearchBrief:
+    use agent EvidenceMapper from ./evidence_mapper
+    use agent SynthesisWriter from ./synthesis_writer
+
+    host_context = [EvidenceMap]
+```
+
+`host_context` means the host application is expected to supply that typed value
+when wiring child calls. It does not define ordering, branching, retries, or any
+other executable workflow behavior.
 
 ## Capability Declarations
 
@@ -288,11 +305,13 @@ The compiler currently rejects:
 - Unknown agents, tools, or datasources.
 - Duplicate names in the same module scope.
 - Ambiguous datasource resolution.
+- Child-agent parameters that cannot be satisfied from parent context,
+  `host_context`, or parent datasource chains.
+- Datasource requirement cycles while proving child-agent context.
 - Guards that reference unavailable tools.
 - Assertions that reference unavailable trace events.
 - Eval cases and monitors that reference missing fields or capabilities outside
   the scoped agent's declared dependency closure.
 - Return types that cannot produce an output schema.
 
-Roadmap checks will add full child-context satisfiability analysis and
-host-code or capability-registry drift validation.
+Roadmap checks will add host-code or capability-registry drift validation.

@@ -7,6 +7,8 @@ All contract parse, semantic, and compile failures are printed as Contract4Agent
 ## `check [ROOT]`
 
 Parses `.contract` and `.eval` files under `ROOT` and runs semantic validation.
+This includes static child-agent context satisfiability across required parent
+parameters, declared `host_context`, and parent datasource chains.
 
 - Default root: `.`
 - Options: `--allow-python-imports`

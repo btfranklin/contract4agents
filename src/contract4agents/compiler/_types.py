@@ -51,6 +51,11 @@ class ManifestInput(TypedDict):
     python_ref: str | None
 
 
+class ManifestHostContext(TypedDict):
+    type: str
+    python_ref: str | None
+
+
 class ManifestOutput(TypedDict):
     type: str
     schema_ref: str
@@ -64,6 +69,7 @@ class AgentManifest(TypedDict):
     goal: str
     inputs: list[ManifestInput]
     output: ManifestOutput
+    host_context: list[ManifestHostContext]
     tools: list[ManifestUse]
     hosted_tools: list[ManifestHostedTool]
     agents: list[ManifestUse]
@@ -132,6 +138,7 @@ __all__ = [
     "MANAGED_ARTIFACT_DIRS",
     "ManifestDatasource",
     "ManifestHostedTool",
+    "ManifestHostContext",
     "ManifestInput",
     "ManifestOutput",
     "ManifestUse",
