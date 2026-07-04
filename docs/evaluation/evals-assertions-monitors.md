@@ -6,7 +6,7 @@ Contract4Agents treats agent behavior as output plus trace. Evals and monitors m
 
 - `guard`: safety intent and enforcement metadata available to adapters and host runtimes.
 - `assertion`: invariant checked during or after one run.
-- `run_contract`: stage-output and trace expectations for a host-owned multi-agent run.
+- `run_spec`: stage-output and trace expectations for a host-owned multi-agent run.
 - `.eval`: offline fixture-based test case.
 - `monitor`: trace rule that can be run against recorded execution.
 
@@ -140,18 +140,18 @@ OpenAI adapter runs that use `run_openai_agent_with_contract(...)` call the same
 assertion API after the SDK run completes and record one `assertion.evaluated`
 trace event for each assertion check.
 
-## Run Contracts
+## Run Specs
 
-Run contracts are project-level expectations for a host-owned sequence of agent
+Run specs are project-level expectations for a host-owned sequence of agent
 stages. They are evaluated after the host application has collected stage
 outputs and emitted a normalized trace:
 
 ```python
-from contract4agents.assertions import evaluate_run_contract
+from contract4agents.assertions import evaluate_run_spec
 
-result = evaluate_run_contract(
+result = evaluate_run_spec(
     contract=artifacts,
-    run_contract="CompendiumResearch",
+    run_spec="CompendiumResearch",
     trace=trace,
     stage_outputs={"plan": plan, "section_research": sections, "synthesis": synthesis},
     run_id="run-123",
@@ -159,7 +159,7 @@ result = evaluate_run_contract(
 ```
 
 Stage outputs are validated against declared output schemas and cardinality.
-Run-contract assertions use trace expressions such as
+Run spec assertions use trace expressions such as
 `trace.called_before(...)`, `trace.max_calls(...)`, and
 `trace.not_tool_called_by(...)`. They do not define execution order, branching,
 or retries; they verify what the host-run trace shows.

@@ -1,40 +1,8 @@
 {
-  "root": "tests/fixtures/contract_projects/parser-golden/large-team-lab",
   "modules": [
     {
-      "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/intake.contract",
-      "types": [],
-      "datasources": [],
       "agents": [
         {
-          "name": "IntakeRouter",
-          "parameters": [
-            {
-              "name": "request",
-              "type_name": "WorkRequest",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/intake.contract",
-                "line": 1,
-                "column": 20
-              }
-            }
-          ],
-          "return_type": "WorkResult",
-          "uses": [
-            {
-              "kind": "tool",
-              "name": "tools.ticket.read",
-              "source": "./tools/ticket",
-              "permission": "preapproved",
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/intake.contract",
-                "line": 2,
-                "column": 14
-              }
-            }
-          ],
           "attributes": {
             "goal": "\"Classify the incoming ticket and route work.\"",
             "policy": [
@@ -42,87 +10,103 @@
               "do not modify state"
             ]
           },
-          "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/intake.contract",
-            "line": 1,
-            "column": 7
-          }
-        },
-        {
-          "name": "ProfileResearcher",
+          "name": "IntakeRouter",
           "parameters": [
             {
-              "name": "request",
-              "type_name": "WorkRequest",
-              "nullable": false,
               "default": null,
+              "name": "request",
+              "nullable": false,
               "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/intake.contract",
-                "line": 6,
-                "column": 25
-              }
+                "column": 20,
+                "line": 1,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/intake.contract"
+              },
+              "type_name": "WorkRequest"
             }
           ],
           "return_type": "WorkResult",
+          "span": {
+            "column": 7,
+            "line": 1,
+            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/intake.contract"
+          },
           "uses": [
             {
-              "kind": "datasource",
-              "name": "CustomerProfileSource",
-              "source": "./datasources/context",
-              "permission": "available",
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/intake.contract",
-                "line": 7,
-                "column": 20
-              }
-            },
-            {
+              "config": {},
               "kind": "tool",
-              "name": "tools.crm.lookup",
-              "source": "./tools/crm",
-              "permission": "sandboxed",
+              "name": "tools.ticket.read",
+              "permission": "preapproved",
+              "source": "./tools/ticket",
               "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/intake.contract",
-                "line": 8,
-                "column": 14
+                "column": 14,
+                "line": 2,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/intake.contract"
               }
             }
-          ],
+          ]
+        },
+        {
           "attributes": {
             "goal": "\"Gather customer profile context.\""
           },
-          "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/intake.contract",
-            "line": 6,
-            "column": 7
-          }
-        }
-      ],
-      "evals": [],
-      "monitors": []
-    },
-    {
-      "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-      "types": [],
-      "datasources": [],
-      "agents": [
-        {
-          "name": "ResolutionWriter",
+          "name": "ProfileResearcher",
           "parameters": [
             {
-              "name": "request",
-              "type_name": "WorkRequest",
-              "nullable": false,
               "default": null,
+              "name": "request",
+              "nullable": false,
               "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-                "line": 1,
-                "column": 24
-              }
+                "column": 25,
+                "line": 6,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/intake.contract"
+              },
+              "type_name": "WorkRequest"
             }
           ],
           "return_type": "WorkResult",
-          "uses": [],
+          "span": {
+            "column": 7,
+            "line": 6,
+            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/intake.contract"
+          },
+          "uses": [
+            {
+              "config": {},
+              "kind": "datasource",
+              "name": "CustomerProfileSource",
+              "permission": "available",
+              "source": "./datasources/context",
+              "span": {
+                "column": 20,
+                "line": 7,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/intake.contract"
+              }
+            },
+            {
+              "config": {},
+              "kind": "tool",
+              "name": "tools.crm.lookup",
+              "permission": "sandboxed",
+              "source": "./tools/crm",
+              "span": {
+                "column": 14,
+                "line": 8,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/intake.contract"
+              }
+            }
+          ]
+        }
+      ],
+      "datasources": [],
+      "evals": [],
+      "monitors": [],
+      "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/intake.contract",
+      "run_specs": [],
+      "types": []
+    },
+    {
+      "agents": [
+        {
           "attributes": {
             "assertions": [
               "expect(output conforms WorkResult)",
@@ -130,70 +114,71 @@
             ],
             "goal": "\"Write the final response from team notes.\""
           },
-          "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-            "line": 1,
-            "column": 7
-          }
-        },
-        {
-          "name": "ApprovalCoordinator",
+          "name": "ResolutionWriter",
           "parameters": [
             {
-              "name": "request",
-              "type_name": "WorkRequest",
-              "nullable": false,
               "default": null,
+              "name": "request",
+              "nullable": false,
               "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-                "line": 8,
-                "column": 27
-              }
+                "column": 24,
+                "line": 1,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
+              },
+              "type_name": "WorkRequest"
             }
           ],
           "return_type": "WorkResult",
-          "uses": [
-            {
-              "kind": "tool",
-              "name": "tools.ticket.update",
-              "source": "./tools/ticket",
-              "permission": "requires_approval",
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-                "line": 9,
-                "column": 14
-              }
-            }
-          ],
+          "span": {
+            "column": 7,
+            "line": 1,
+            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
+          },
+          "uses": []
+        },
+        {
           "attributes": {
             "goal": "\"Coordinate approved state-changing ticket updates.\"",
             "guards": [
               "forbid(tool.tools.ticket.update unless approved_by_human)"
             ]
           },
-          "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-            "line": 8,
-            "column": 7
-          }
-        },
-        {
-          "name": "QualityReviewer",
+          "name": "ApprovalCoordinator",
           "parameters": [
             {
-              "name": "request",
-              "type_name": "WorkRequest",
-              "nullable": false,
               "default": null,
+              "name": "request",
+              "nullable": false,
               "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-                "line": 15,
-                "column": 23
-              }
+                "column": 27,
+                "line": 8,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
+              },
+              "type_name": "WorkRequest"
             }
           ],
           "return_type": "WorkResult",
-          "uses": [],
+          "span": {
+            "column": 7,
+            "line": 8,
+            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
+          },
+          "uses": [
+            {
+              "config": {},
+              "kind": "tool",
+              "name": "tools.ticket.update",
+              "permission": "requires_approval",
+              "source": "./tools/ticket",
+              "span": {
+                "column": 14,
+                "line": 9,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
+              }
+            }
+          ]
+        },
+        {
           "attributes": {
             "assertions": [
               "expect(output.ok == true)",
@@ -201,255 +186,68 @@
             ],
             "goal": "\"Review final answer quality.\""
           },
-          "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-            "line": 15,
-            "column": 7
-          }
-        },
-        {
-          "name": "AuditLogger",
+          "name": "QualityReviewer",
           "parameters": [
             {
-              "name": "request",
-              "type_name": "WorkRequest",
-              "nullable": false,
               "default": null,
+              "name": "request",
+              "nullable": false,
               "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-                "line": 22,
-                "column": 19
-              }
+                "column": 23,
+                "line": 15,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
+              },
+              "type_name": "WorkRequest"
             }
           ],
           "return_type": "WorkResult",
-          "uses": [
-            {
-              "kind": "tool",
-              "name": "tools.audit.write",
-              "source": "./tools/audit",
-              "permission": "preapproved",
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-                "line": 23,
-                "column": 14
-              }
-            }
-          ],
+          "span": {
+            "column": 7,
+            "line": 15,
+            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
+          },
+          "uses": []
+        },
+        {
           "attributes": {
             "goal": "\"Record a normalized audit summary.\""
           },
-          "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-            "line": 22,
-            "column": 7
-          }
-        },
-        {
-          "name": "TeamCoordinator",
+          "name": "AuditLogger",
           "parameters": [
             {
+              "default": null,
               "name": "request",
-              "type_name": "WorkRequest",
               "nullable": false,
-              "default": null,
               "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-                "line": 27,
-                "column": 5
-              }
-            },
-            {
-              "name": "profile",
-              "type_name": "CustomerProfile",
-              "nullable": true,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-                "line": 28,
-                "column": 5
-              }
+                "column": 19,
+                "line": 22,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
+              },
+              "type_name": "WorkRequest"
             }
           ],
           "return_type": "WorkResult",
+          "span": {
+            "column": 7,
+            "line": 22,
+            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
+          },
           "uses": [
             {
-              "kind": "datasource",
-              "name": "CustomerProfileSource",
-              "source": "./datasources/context",
-              "permission": "available",
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-                "line": 30,
-                "column": 20
-              }
-            },
-            {
-              "kind": "datasource",
-              "name": "ComplianceContextSource",
-              "source": "./datasources/context",
-              "permission": "available",
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-                "line": 31,
-                "column": 20
-              }
-            },
-            {
-              "kind": "datasource",
-              "name": "KnowledgePackSource",
-              "source": "./datasources/context",
-              "permission": "available",
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-                "line": 32,
-                "column": 20
-              }
-            },
-            {
-              "kind": "agent",
-              "name": "IntakeRouter",
-              "source": "./agents/intake",
-              "permission": "available",
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-                "line": 33,
-                "column": 15
-              }
-            },
-            {
-              "kind": "agent",
-              "name": "ProfileResearcher",
-              "source": "./agents/intake",
-              "permission": "available",
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-                "line": 34,
-                "column": 15
-              }
-            },
-            {
-              "kind": "agent",
-              "name": "KnowledgeResearcher",
-              "source": "./agents/research",
-              "permission": "available",
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-                "line": 35,
-                "column": 15
-              }
-            },
-            {
-              "kind": "agent",
-              "name": "SentimentAnalyst",
-              "source": "./agents/research",
-              "permission": "available",
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-                "line": 36,
-                "column": 15
-              }
-            },
-            {
-              "kind": "agent",
-              "name": "PolicyChecker",
-              "source": "./agents/risk",
-              "permission": "available",
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-                "line": 37,
-                "column": 15
-              }
-            },
-            {
-              "kind": "agent",
-              "name": "SecurityReviewer",
-              "source": "./agents/risk",
-              "permission": "available",
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-                "line": 38,
-                "column": 15
-              }
-            },
-            {
-              "kind": "agent",
-              "name": "BillingReviewer",
-              "source": "./agents/revenue",
-              "permission": "available",
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-                "line": 39,
-                "column": 15
-              }
-            },
-            {
-              "kind": "agent",
-              "name": "ResolutionWriter",
-              "source": "./agents/output",
-              "permission": "available",
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-                "line": 40,
-                "column": 15
-              }
-            },
-            {
-              "kind": "agent",
-              "name": "ApprovalCoordinator",
-              "source": "./agents/output",
-              "permission": "available",
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-                "line": 41,
-                "column": 15
-              }
-            },
-            {
-              "kind": "agent",
-              "name": "QualityReviewer",
-              "source": "./agents/output",
-              "permission": "available",
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-                "line": 42,
-                "column": 15
-              }
-            },
-            {
-              "kind": "agent",
-              "name": "AuditLogger",
-              "source": "./agents/output",
-              "permission": "available",
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-                "line": 43,
-                "column": 15
-              }
-            },
-            {
-              "kind": "tool",
-              "name": "tools.ticket.update",
-              "source": "./tools/ticket",
-              "permission": "requires_approval",
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-                "line": 44,
-                "column": 14
-              }
-            },
-            {
+              "config": {},
               "kind": "tool",
               "name": "tools.audit.write",
-              "source": "./tools/audit",
               "permission": "preapproved",
+              "source": "./tools/audit",
               "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-                "line": 45,
-                "column": 14
+                "column": 14,
+                "line": 23,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
               }
             }
-          ],
+          ]
+        },
+        {
           "attributes": {
             "assertions": [
               "expect(output conforms WorkResult)",
@@ -466,648 +264,892 @@
             ],
             "goal": "\"Coordinate the large parser-golden team.\""
           },
-          "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
-            "line": 26,
-            "column": 7
-          }
-        }
-      ],
-      "evals": [],
-      "monitors": []
-    },
-    {
-      "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/research.contract",
-      "types": [],
-      "datasources": [],
-      "agents": [
-        {
-          "name": "KnowledgeResearcher",
+          "name": "TeamCoordinator",
           "parameters": [
             {
-              "name": "request",
-              "type_name": "WorkRequest",
-              "nullable": false,
               "default": null,
+              "name": "request",
+              "nullable": false,
               "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/research.contract",
-                "line": 1,
-                "column": 27
-              }
+                "column": 5,
+                "line": 27,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
+              },
+              "type_name": "WorkRequest"
+            },
+            {
+              "default": null,
+              "name": "profile",
+              "nullable": true,
+              "span": {
+                "column": 5,
+                "line": 28,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
+              },
+              "type_name": "CustomerProfile"
             }
           ],
           "return_type": "WorkResult",
+          "span": {
+            "column": 7,
+            "line": 26,
+            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
+          },
           "uses": [
             {
+              "config": {},
               "kind": "datasource",
-              "name": "KnowledgePackSource",
-              "source": "./datasources/context",
+              "name": "CustomerProfileSource",
               "permission": "available",
+              "source": "./datasources/context",
               "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/research.contract",
-                "line": 2,
-                "column": 20
+                "column": 20,
+                "line": 30,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
               }
             },
             {
-              "kind": "tool",
-              "name": "tools.search.kb",
-              "source": "./tools/search",
-              "permission": "sandboxed",
+              "config": {},
+              "kind": "datasource",
+              "name": "ComplianceContextSource",
+              "permission": "available",
+              "source": "./datasources/context",
               "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/research.contract",
-                "line": 3,
-                "column": 14
+                "column": 20,
+                "line": 31,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
+              }
+            },
+            {
+              "config": {},
+              "kind": "datasource",
+              "name": "KnowledgePackSource",
+              "permission": "available",
+              "source": "./datasources/context",
+              "span": {
+                "column": 20,
+                "line": 32,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
+              }
+            },
+            {
+              "config": {},
+              "kind": "agent",
+              "name": "IntakeRouter",
+              "permission": "available",
+              "source": "./agents/intake",
+              "span": {
+                "column": 15,
+                "line": 33,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
+              }
+            },
+            {
+              "config": {},
+              "kind": "agent",
+              "name": "ProfileResearcher",
+              "permission": "available",
+              "source": "./agents/intake",
+              "span": {
+                "column": 15,
+                "line": 34,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
+              }
+            },
+            {
+              "config": {},
+              "kind": "agent",
+              "name": "KnowledgeResearcher",
+              "permission": "available",
+              "source": "./agents/research",
+              "span": {
+                "column": 15,
+                "line": 35,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
+              }
+            },
+            {
+              "config": {},
+              "kind": "agent",
+              "name": "SentimentAnalyst",
+              "permission": "available",
+              "source": "./agents/research",
+              "span": {
+                "column": 15,
+                "line": 36,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
+              }
+            },
+            {
+              "config": {},
+              "kind": "agent",
+              "name": "PolicyChecker",
+              "permission": "available",
+              "source": "./agents/risk",
+              "span": {
+                "column": 15,
+                "line": 37,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
+              }
+            },
+            {
+              "config": {},
+              "kind": "agent",
+              "name": "SecurityReviewer",
+              "permission": "available",
+              "source": "./agents/risk",
+              "span": {
+                "column": 15,
+                "line": 38,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
+              }
+            },
+            {
+              "config": {},
+              "kind": "agent",
+              "name": "BillingReviewer",
+              "permission": "available",
+              "source": "./agents/revenue",
+              "span": {
+                "column": 15,
+                "line": 39,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
+              }
+            },
+            {
+              "config": {},
+              "kind": "agent",
+              "name": "ResolutionWriter",
+              "permission": "available",
+              "source": "./agents/output",
+              "span": {
+                "column": 15,
+                "line": 40,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
+              }
+            },
+            {
+              "config": {},
+              "kind": "agent",
+              "name": "ApprovalCoordinator",
+              "permission": "available",
+              "source": "./agents/output",
+              "span": {
+                "column": 15,
+                "line": 41,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
+              }
+            },
+            {
+              "config": {},
+              "kind": "agent",
+              "name": "QualityReviewer",
+              "permission": "available",
+              "source": "./agents/output",
+              "span": {
+                "column": 15,
+                "line": 42,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
+              }
+            },
+            {
+              "config": {},
+              "kind": "agent",
+              "name": "AuditLogger",
+              "permission": "available",
+              "source": "./agents/output",
+              "span": {
+                "column": 15,
+                "line": 43,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
+              }
+            },
+            {
+              "config": {},
+              "kind": "tool",
+              "name": "tools.ticket.update",
+              "permission": "requires_approval",
+              "source": "./tools/ticket",
+              "span": {
+                "column": 14,
+                "line": 44,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
+              }
+            },
+            {
+              "config": {},
+              "kind": "tool",
+              "name": "tools.audit.write",
+              "permission": "preapproved",
+              "source": "./tools/audit",
+              "span": {
+                "column": 14,
+                "line": 45,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract"
               }
             }
-          ],
+          ]
+        }
+      ],
+      "datasources": [],
+      "evals": [],
+      "monitors": [],
+      "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/output.contract",
+      "run_specs": [],
+      "types": []
+    },
+    {
+      "agents": [
+        {
           "attributes": {
             "goal": "\"Find relevant knowledge base support.\""
           },
-          "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/research.contract",
-            "line": 1,
-            "column": 7
-          }
-        },
-        {
-          "name": "SentimentAnalyst",
+          "name": "KnowledgeResearcher",
           "parameters": [
             {
-              "name": "request",
-              "type_name": "WorkRequest",
-              "nullable": false,
               "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/research.contract",
-                "line": 6,
-                "column": 24
-              }
-            }
-          ],
-          "return_type": "WorkResult",
-          "uses": [
-            {
-              "kind": "tool",
-              "name": "tools.text.sentiment",
-              "source": "./tools/text",
-              "permission": "preapproved",
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/research.contract",
-                "line": 7,
-                "column": 14
-              }
-            }
-          ],
-          "attributes": {
-            "goal": "\"Assess customer tone and urgency.\""
-          },
-          "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/research.contract",
-            "line": 6,
-            "column": 7
-          }
-        }
-      ],
-      "evals": [],
-      "monitors": []
-    },
-    {
-      "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/revenue.contract",
-      "types": [],
-      "datasources": [],
-      "agents": [
-        {
-          "name": "BillingReviewer",
-          "parameters": [
-            {
               "name": "request",
-              "type_name": "WorkRequest",
               "nullable": false,
-              "default": null,
               "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/revenue.contract",
+                "column": 27,
                 "line": 1,
-                "column": 23
-              }
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/research.contract"
+              },
+              "type_name": "WorkRequest"
             }
           ],
           "return_type": "WorkResult",
+          "span": {
+            "column": 7,
+            "line": 1,
+            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/research.contract"
+          },
           "uses": [
             {
-              "kind": "tool",
-              "name": "tools.billing.lookup",
-              "source": "./tools/billing",
-              "permission": "preapproved",
+              "config": {},
+              "kind": "datasource",
+              "name": "KnowledgePackSource",
+              "permission": "available",
+              "source": "./datasources/context",
               "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/revenue.contract",
+                "column": 20,
                 "line": 2,
-                "column": 14
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/research.contract"
               }
             },
             {
+              "config": {},
               "kind": "tool",
-              "name": "tools.billing.credit",
-              "source": "./tools/billing",
-              "permission": "requires_approval",
+              "name": "tools.search.kb",
+              "permission": "sandboxed",
+              "source": "./tools/search",
               "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/revenue.contract",
+                "column": 14,
                 "line": 3,
-                "column": 14
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/research.contract"
               }
             }
+          ]
+        },
+        {
+          "attributes": {
+            "goal": "\"Assess customer tone and urgency.\""
+          },
+          "name": "SentimentAnalyst",
+          "parameters": [
+            {
+              "default": null,
+              "name": "request",
+              "nullable": false,
+              "span": {
+                "column": 24,
+                "line": 6,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/research.contract"
+              },
+              "type_name": "WorkRequest"
+            }
           ],
+          "return_type": "WorkResult",
+          "span": {
+            "column": 7,
+            "line": 6,
+            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/research.contract"
+          },
+          "uses": [
+            {
+              "config": {},
+              "kind": "tool",
+              "name": "tools.text.sentiment",
+              "permission": "preapproved",
+              "source": "./tools/text",
+              "span": {
+                "column": 14,
+                "line": 7,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/research.contract"
+              }
+            }
+          ]
+        }
+      ],
+      "datasources": [],
+      "evals": [],
+      "monitors": [],
+      "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/research.contract",
+      "run_specs": [],
+      "types": []
+    },
+    {
+      "agents": [
+        {
           "attributes": {
             "goal": "\"Review billing evidence before any credit action.\"",
             "guards": [
               "forbid(tool.tools.billing.credit unless approved_by_human)"
             ]
           },
-          "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/revenue.contract",
-            "line": 1,
-            "column": 7
-          }
-        }
-      ],
-      "evals": [],
-      "monitors": []
-    },
-    {
-      "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/risk.contract",
-      "types": [],
-      "datasources": [],
-      "agents": [
-        {
-          "name": "PolicyChecker",
+          "name": "BillingReviewer",
           "parameters": [
             {
-              "name": "request",
-              "type_name": "WorkRequest",
-              "nullable": false,
               "default": null,
+              "name": "request",
+              "nullable": false,
               "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/risk.contract",
+                "column": 23,
                 "line": 1,
-                "column": 21
-              }
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/revenue.contract"
+              },
+              "type_name": "WorkRequest"
             }
           ],
           "return_type": "WorkResult",
+          "span": {
+            "column": 7,
+            "line": 1,
+            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/revenue.contract"
+          },
           "uses": [
             {
-              "kind": "datasource",
-              "name": "ComplianceContextSource",
-              "source": "./datasources/context",
-              "permission": "available",
+              "config": {},
+              "kind": "tool",
+              "name": "tools.billing.lookup",
+              "permission": "preapproved",
+              "source": "./tools/billing",
               "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/risk.contract",
+                "column": 14,
                 "line": 2,
-                "column": 20
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/revenue.contract"
               }
             },
             {
+              "config": {},
               "kind": "tool",
-              "name": "tools.policy.check",
-              "source": "./tools/policy",
-              "permission": "preapproved",
+              "name": "tools.billing.credit",
+              "permission": "requires_approval",
+              "source": "./tools/billing",
               "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/risk.contract",
+                "column": 14,
                 "line": 3,
-                "column": 14
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/revenue.contract"
               }
             }
-          ],
+          ]
+        }
+      ],
+      "datasources": [],
+      "evals": [],
+      "monitors": [],
+      "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/revenue.contract",
+      "run_specs": [],
+      "types": []
+    },
+    {
+      "agents": [
+        {
           "attributes": {
             "goal": "\"Check whether the proposed action is allowed.\""
           },
-          "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/risk.contract",
-            "line": 1,
-            "column": 7
-          }
-        },
-        {
-          "name": "SecurityReviewer",
+          "name": "PolicyChecker",
           "parameters": [
             {
-              "name": "request",
-              "type_name": "WorkRequest",
-              "nullable": false,
               "default": null,
+              "name": "request",
+              "nullable": false,
               "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/risk.contract",
-                "line": 6,
-                "column": 24
-              }
+                "column": 21,
+                "line": 1,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/risk.contract"
+              },
+              "type_name": "WorkRequest"
             }
           ],
           "return_type": "WorkResult",
+          "span": {
+            "column": 7,
+            "line": 1,
+            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/risk.contract"
+          },
           "uses": [
             {
-              "kind": "tool",
-              "name": "tools.security.review",
-              "source": "./tools/security",
-              "permission": "sandboxed",
+              "config": {},
+              "kind": "datasource",
+              "name": "ComplianceContextSource",
+              "permission": "available",
+              "source": "./datasources/context",
               "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/risk.contract",
-                "line": 7,
-                "column": 14
+                "column": 20,
+                "line": 2,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/risk.contract"
               }
             },
             {
+              "config": {},
               "kind": "tool",
-              "name": "tools.security.lock",
-              "source": "./tools/security",
-              "permission": "denied",
+              "name": "tools.policy.check",
+              "permission": "preapproved",
+              "source": "./tools/policy",
               "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/risk.contract",
-                "line": 8,
-                "column": 14
+                "column": 14,
+                "line": 3,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/risk.contract"
               }
             }
-          ],
+          ]
+        },
+        {
           "attributes": {
             "goal": "\"Review account security posture without taking lock action.\""
           },
+          "name": "SecurityReviewer",
+          "parameters": [
+            {
+              "default": null,
+              "name": "request",
+              "nullable": false,
+              "span": {
+                "column": 24,
+                "line": 6,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/risk.contract"
+              },
+              "type_name": "WorkRequest"
+            }
+          ],
+          "return_type": "WorkResult",
           "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/risk.contract",
+            "column": 7,
             "line": 6,
-            "column": 7
-          }
+            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/risk.contract"
+          },
+          "uses": [
+            {
+              "config": {},
+              "kind": "tool",
+              "name": "tools.security.review",
+              "permission": "sandboxed",
+              "source": "./tools/security",
+              "span": {
+                "column": 14,
+                "line": 7,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/risk.contract"
+              }
+            },
+            {
+              "config": {},
+              "kind": "tool",
+              "name": "tools.security.lock",
+              "permission": "denied",
+              "source": "./tools/security",
+              "span": {
+                "column": 14,
+                "line": 8,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/risk.contract"
+              }
+            }
+          ]
         }
       ],
+      "datasources": [],
       "evals": [],
-      "monitors": []
+      "monitors": [],
+      "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/agents/risk.contract",
+      "run_specs": [],
+      "types": []
     },
     {
-      "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/datasources/context.contract",
-      "types": [],
+      "agents": [],
       "datasources": [
         {
+          "cache": "run",
           "name": "CustomerProfileSource",
+          "produces": "CustomerProfile",
           "python": "tests.fixtures.parser_golden:customer_profile",
+          "render": "markdown",
           "requires": [
             "WorkRequest"
           ],
-          "produces": "CustomerProfile",
-          "render": "markdown",
-          "cache": "run",
           "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/datasources/context.contract",
+            "column": 12,
             "line": 1,
-            "column": 12
+            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/datasources/context.contract"
           }
         },
         {
+          "cache": "thread",
           "name": "ComplianceContextSource",
+          "produces": "ComplianceContext",
           "python": "tests.fixtures.parser_golden:compliance_context",
+          "render": "markdown",
           "requires": [
             "WorkRequest",
             "CustomerProfile"
           ],
-          "produces": "ComplianceContext",
-          "render": "markdown",
-          "cache": "thread",
           "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/datasources/context.contract",
+            "column": 12,
             "line": 8,
-            "column": 12
+            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/datasources/context.contract"
           }
         },
         {
+          "cache": "run",
           "name": "KnowledgePackSource",
+          "produces": "KnowledgePack",
           "python": "tests.fixtures.parser_golden:knowledge_pack",
+          "render": "markdown",
           "requires": [
             "WorkRequest"
           ],
-          "produces": "KnowledgePack",
-          "render": "markdown",
-          "cache": "run",
           "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/datasources/context.contract",
+            "column": 12,
             "line": 15,
-            "column": 12
+            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/datasources/context.contract"
           }
         }
       ],
-      "agents": [],
       "evals": [],
-      "monitors": []
+      "monitors": [],
+      "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/datasources/context.contract",
+      "run_specs": [],
+      "types": []
     },
     {
-      "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/monitors/team.monitors.contract",
-      "types": [],
-      "datasources": [],
       "agents": [],
+      "datasources": [],
       "evals": [],
       "monitors": [
         {
-          "name": "ticket_update_requires_approval",
           "agent": "TeamCoordinator",
-          "severity": "high",
           "condition": "trace.tool_called(tools.ticket.update)",
           "expectation": "trace.approval_granted(tools.ticket.update)",
+          "name": "ticket_update_requires_approval",
+          "severity": "high",
           "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/monitors/team.monitors.contract",
+            "column": 9,
             "line": 1,
-            "column": 9
+            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/monitors/team.monitors.contract"
           }
         },
         {
-          "name": "audit_written",
           "agent": "TeamCoordinator",
-          "severity": "low",
           "condition": "trace.agent_called(AuditLogger)",
           "expectation": "trace.tool_called(tools.audit.write)",
+          "name": "audit_written",
+          "severity": "low",
           "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/monitors/team.monitors.contract",
+            "column": 9,
             "line": 6,
-            "column": 9
+            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/monitors/team.monitors.contract"
+          }
+        }
+      ],
+      "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/monitors/team.monitors.contract",
+      "run_specs": [],
+      "types": []
+    },
+    {
+      "agents": [],
+      "datasources": [],
+      "evals": [],
+      "monitors": [],
+      "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract",
+      "run_specs": [],
+      "types": [
+        {
+          "fields": [
+            {
+              "default": null,
+              "name": "ticket_id",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 2,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract"
+              },
+              "type_name": "str"
+            },
+            {
+              "default": null,
+              "name": "customer_id",
+              "nullable": true,
+              "span": {
+                "column": 5,
+                "line": 3,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract"
+              },
+              "type_name": "str"
+            },
+            {
+              "default": null,
+              "name": "priority",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 4,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract"
+              },
+              "type_name": "\"low\" | \"medium\" | \"high\""
+            },
+            {
+              "default": null,
+              "name": "tags",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 5,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract"
+              },
+              "type_name": "list[str]"
+            }
+          ],
+          "name": "WorkRequest",
+          "python_ref": null,
+          "source": "native",
+          "span": {
+            "column": 6,
+            "line": 1,
+            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract"
+          }
+        },
+        {
+          "fields": [
+            {
+              "default": null,
+              "name": "customer_id",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 8,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract"
+              },
+              "type_name": "str"
+            },
+            {
+              "default": null,
+              "name": "tier",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 9,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract"
+              },
+              "type_name": "str"
+            },
+            {
+              "default": null,
+              "name": "region",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 10,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract"
+              },
+              "type_name": "str"
+            }
+          ],
+          "name": "CustomerProfile",
+          "python_ref": null,
+          "source": "native",
+          "span": {
+            "column": 6,
+            "line": 7,
+            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract"
+          }
+        },
+        {
+          "fields": [
+            {
+              "default": null,
+              "name": "allowed_action",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 13,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract"
+              },
+              "type_name": "bool"
+            },
+            {
+              "default": null,
+              "name": "reason",
+              "nullable": true,
+              "span": {
+                "column": 5,
+                "line": 14,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract"
+              },
+              "type_name": "str"
+            }
+          ],
+          "name": "ComplianceContext",
+          "python_ref": null,
+          "source": "native",
+          "span": {
+            "column": 6,
+            "line": 12,
+            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract"
+          }
+        },
+        {
+          "fields": [
+            {
+              "default": null,
+              "name": "article_ids",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 17,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract"
+              },
+              "type_name": "list[str]"
+            },
+            {
+              "default": null,
+              "name": "summary",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 18,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract"
+              },
+              "type_name": "str"
+            }
+          ],
+          "name": "KnowledgePack",
+          "python_ref": null,
+          "source": "native",
+          "span": {
+            "column": 6,
+            "line": 16,
+            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract"
+          }
+        },
+        {
+          "fields": [
+            {
+              "default": null,
+              "name": "author",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 21,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract"
+              },
+              "type_name": "str"
+            },
+            {
+              "default": null,
+              "name": "body",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 22,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract"
+              },
+              "type_name": "str"
+            }
+          ],
+          "name": "TeamNote",
+          "python_ref": null,
+          "source": "native",
+          "span": {
+            "column": 6,
+            "line": 20,
+            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract"
+          }
+        },
+        {
+          "fields": [
+            {
+              "default": null,
+              "name": "ok",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 25,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract"
+              },
+              "type_name": "bool"
+            },
+            {
+              "default": null,
+              "name": "summary",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 26,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract"
+              },
+              "type_name": "str"
+            },
+            {
+              "default": null,
+              "name": "recommendation",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 27,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract"
+              },
+              "type_name": "str"
+            },
+            {
+              "default": "false",
+              "name": "approved",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 28,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract"
+              },
+              "type_name": "bool"
+            },
+            {
+              "default": null,
+              "name": "notes",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 29,
+                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract"
+              },
+              "type_name": "TeamNote[]"
+            }
+          ],
+          "name": "WorkResult",
+          "python_ref": null,
+          "source": "native",
+          "span": {
+            "column": 6,
+            "line": 24,
+            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract"
           }
         }
       ]
     },
     {
-      "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract",
-      "types": [
-        {
-          "name": "WorkRequest",
-          "fields": [
-            {
-              "name": "ticket_id",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract",
-                "line": 2,
-                "column": 5
-              }
-            },
-            {
-              "name": "customer_id",
-              "type_name": "str",
-              "nullable": true,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract",
-                "line": 3,
-                "column": 5
-              }
-            },
-            {
-              "name": "priority",
-              "type_name": "\"low\" | \"medium\" | \"high\"",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract",
-                "line": 4,
-                "column": 5
-              }
-            },
-            {
-              "name": "tags",
-              "type_name": "list[str]",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract",
-                "line": 5,
-                "column": 5
-              }
-            }
-          ],
-          "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract",
-            "line": 1,
-            "column": 6
-          }
-        },
-        {
-          "name": "CustomerProfile",
-          "fields": [
-            {
-              "name": "customer_id",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract",
-                "line": 8,
-                "column": 5
-              }
-            },
-            {
-              "name": "tier",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract",
-                "line": 9,
-                "column": 5
-              }
-            },
-            {
-              "name": "region",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract",
-                "line": 10,
-                "column": 5
-              }
-            }
-          ],
-          "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract",
-            "line": 7,
-            "column": 6
-          }
-        },
-        {
-          "name": "ComplianceContext",
-          "fields": [
-            {
-              "name": "allowed_action",
-              "type_name": "bool",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract",
-                "line": 13,
-                "column": 5
-              }
-            },
-            {
-              "name": "reason",
-              "type_name": "str",
-              "nullable": true,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract",
-                "line": 14,
-                "column": 5
-              }
-            }
-          ],
-          "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract",
-            "line": 12,
-            "column": 6
-          }
-        },
-        {
-          "name": "KnowledgePack",
-          "fields": [
-            {
-              "name": "article_ids",
-              "type_name": "list[str]",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract",
-                "line": 17,
-                "column": 5
-              }
-            },
-            {
-              "name": "summary",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract",
-                "line": 18,
-                "column": 5
-              }
-            }
-          ],
-          "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract",
-            "line": 16,
-            "column": 6
-          }
-        },
-        {
-          "name": "TeamNote",
-          "fields": [
-            {
-              "name": "author",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract",
-                "line": 21,
-                "column": 5
-              }
-            },
-            {
-              "name": "body",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract",
-                "line": 22,
-                "column": 5
-              }
-            }
-          ],
-          "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract",
-            "line": 20,
-            "column": 6
-          }
-        },
-        {
-          "name": "WorkResult",
-          "fields": [
-            {
-              "name": "ok",
-              "type_name": "bool",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract",
-                "line": 25,
-                "column": 5
-              }
-            },
-            {
-              "name": "summary",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract",
-                "line": 26,
-                "column": 5
-              }
-            },
-            {
-              "name": "recommendation",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract",
-                "line": 27,
-                "column": 5
-              }
-            },
-            {
-              "name": "approved",
-              "type_name": "bool",
-              "nullable": false,
-              "default": "false",
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract",
-                "line": 28,
-                "column": 5
-              }
-            },
-            {
-              "name": "notes",
-              "type_name": "TeamNote[]",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract",
-                "line": 29,
-                "column": 5
-              }
-            }
-          ],
-          "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/types/work_request.contract",
-            "line": 24,
-            "column": 6
-          }
-        }
-      ],
-      "datasources": [],
       "agents": [],
-      "evals": [],
-      "monitors": []
-    },
-    {
-      "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/evals/team.eval",
-      "types": [],
       "datasources": [],
-      "agents": [],
       "evals": [
         {
-          "name": "large_team_happy_path",
           "agent": "TeamCoordinator",
-          "givens": {
-            "ticket_id": "TEAM-1",
-            "customer_id": "cust_123"
-          },
           "expects": [
             "output conforms WorkResult",
             "output.ok == true",
@@ -1120,15 +1162,24 @@
             "trace.datasource_resolved(ComplianceContext)",
             "trace.datasource_resolved(KnowledgePack)"
           ],
+          "givens": {
+            "customer_id": "cust_123",
+            "ticket_id": "TEAM-1"
+          },
+          "name": "large_team_happy_path",
           "semantic_expects": [],
           "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/evals/team.eval",
+            "column": 6,
             "line": 1,
-            "column": 6
+            "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/evals/team.eval"
           }
         }
       ],
-      "monitors": []
+      "monitors": [],
+      "path": "tests/fixtures/contract_projects/parser-golden/large-team-lab/evals/team.eval",
+      "run_specs": [],
+      "types": []
     }
-  ]
+  ],
+  "root": "tests/fixtures/contract_projects/parser-golden/large-team-lab"
 }

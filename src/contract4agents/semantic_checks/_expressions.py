@@ -11,7 +11,12 @@ from contract4agents.expressions._grammar import (
     parse_monitor_expectation,
     parse_semantic_expectation,
 )
-from contract4agents.expressions._model import ExpressionError, ParsedExpression
+from contract4agents.expressions._model import (
+    ConditionalExpression,
+    ContractExpression,
+    ExpressionError,
+    ParsedExpression,
+)
 from contract4agents.expressions._refs import referenced_output_fields, referenced_trace_targets, referenced_type
 from contract4agents.expressions._trace_ops import TRACE_OPS
 from contract4agents.semantic_checks._index import ProjectIndex
@@ -107,13 +112,18 @@ def check_expression_refs(
     contract_expression: bool,
     agent_names: set[str] | None = None,
     datasource_targets: set[str] | None = None,
+    stage_targets: set[str] | None = None,
 ) -> list[Diagnostic]:
     try:
-        parsed_items = parse_contract_expression(expression) if contract_expression else [parse_expectation(expression)]
+        parsed_items: list[ContractExpression]
+        if contract_expression:
+            parsed_items = parse_contract_expression(expression)
+        else:
+            parsed_items = [parse_expectation(expression)]
     except ExpressionError as exc:
         return [Diagnostic("SEM052", str(exc), span=span)]
     diagnostics: list[Diagnostic] = []
-    for parsed in parsed_items:
+    for parsed in _iter_parsed_expressions(parsed_items):
         diagnostics.extend(
             _check_parsed_expression(
                 parsed,
@@ -125,6 +135,7 @@ def check_expression_refs(
                 span,
                 agent_names,
                 datasource_targets,
+                stage_targets,
             )
         )
     return diagnostics
@@ -140,6 +151,7 @@ def _check_parsed_expression(
     span: SourceSpan,
     agent_names: set[str] | None,
     datasource_targets: set[str] | None,
+    stage_targets: set[str] | None,
 ) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     type_name = referenced_type(parsed)
@@ -166,6 +178,7 @@ def _check_parsed_expression(
             span,
             agent_names=agent_names,
             datasource_targets=datasource_targets,
+            stage_targets=stage_targets,
         )
     )
     return diagnostics
@@ -180,6 +193,7 @@ def check_trace_refs(
     *,
     agent_names: set[str] | None = None,
     datasource_targets: set[str] | None = None,
+    stage_targets: set[str] | None = None,
 ) -> list[Diagnostic]:
     op, targets = referenced_trace_targets(parsed)
     if not op:
@@ -188,6 +202,7 @@ def check_trace_refs(
     spec = TRACE_OPS[op]
     allowed_agent_names = agent_names if agent_names is not None else index.agent_names
     allowed_datasource_targets = datasource_targets if datasource_targets is not None else index.datasource_targets
+    allowed_stage_targets = stage_targets if stage_targets is not None else set()
     if spec.target_kind == "agent_tool":
         agent_target, tool_target = targets
         if agent_target not in allowed_agent_names:
@@ -215,12 +230,28 @@ def check_trace_refs(
                 Diagnostic("SEM054", f"Expression references unknown datasource target `{target}`", span=span)
             )
         elif spec.target_kind == "any":
-            known_targets = allowed_agent_names | tool_names | hosted_tool_names | allowed_datasource_targets
+            known_targets = (
+                allowed_agent_names
+                | tool_names
+                | hosted_tool_names
+                | allowed_datasource_targets
+                | allowed_stage_targets
+            )
             if target not in known_targets:
                 diagnostics.append(
                     Diagnostic("SEM051", f"Expression references unknown trace target `{target}`", span=span)
                 )
     return diagnostics
+
+
+def _iter_parsed_expressions(items: list[ContractExpression]) -> list[ParsedExpression]:
+    parsed: list[ParsedExpression] = []
+    for item in items:
+        if isinstance(item, ConditionalExpression):
+            parsed.extend([item.condition, item.expectation])
+        else:
+            parsed.append(item)
+    return parsed
 
 
 __all__ = ["check_eval", "check_expression_refs", "check_monitor", "check_trace_refs"]

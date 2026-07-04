@@ -20,6 +20,7 @@ from tests.fixtures.fixture_runner import (
     FixtureArtifactError,
     FixtureConfigError,
     FixtureReport,
+    FixtureRetryError,
     StartReport,
     load_fixture_metadata,
     run_fixture_project_sync,
@@ -165,7 +166,7 @@ def test_fixture_artifact_verifier_uses_declared_tool_permissions(tmp_path: Path
         "adapter_capability_matrix": {
             "openai": {
                 "trace_capture": {
-                    "status": "partial",
+                    "status": "unsupported",
                     "caveats": [],
                 }
             }
@@ -183,6 +184,24 @@ def test_fixture_artifact_verifier_uses_declared_tool_permissions(tmp_path: Path
     }
     with pytest.raises(FixtureArtifactError, match="research.publish_brief"):
         verify_fixture_artifacts(bad_metadata, artifacts, build_dir)
+
+    adapter_metadata = dict(metadata)
+    adapter_metadata["expected"] = {
+        **metadata["expected"],
+        "adapter_capabilities": {"openai": {"trace_capture": "unsupported"}},
+    }
+    assert "expected adapter capabilities present" in verify_fixture_artifacts(
+        adapter_metadata,
+        artifacts,
+        build_dir,
+    )
+    bad_adapter_metadata = dict(metadata)
+    bad_adapter_metadata["expected"] = {
+        **metadata["expected"],
+        "adapter_capabilities": {"openai": {"trace_capture": "partial"}},
+    }
+    with pytest.raises(FixtureArtifactError, match="openai.trace_capture"):
+        verify_fixture_artifacts(bad_adapter_metadata, artifacts, build_dir)
 
 
 def test_fixture_report_serializer_includes_required_sections() -> None:
@@ -235,7 +254,7 @@ def test_fixture_runner_reports_active_start_failure(tmp_path: Path, monkeypatch
 
     monkeypatch.setattr(_execution, "runner_for_mode", lambda _metadata, _mode: failing_runner)
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(FixtureRetryError):
         fixture_runner_module.run_fixture_project_sync(project_root=DEFAULT_PROJECT, run_root=run_root, mode="local")
 
     report = json.loads((run_root / "reports" / "report.json").read_text())
@@ -288,6 +307,34 @@ async def test_fixture_retry_uses_attempt_local_db_and_trace(tmp_path: Path) -> 
     assert _db_markers(seen[1][0]) == []
     assert "evt-1" in seen[0][1].read_text()
     assert "evt-2" in seen[1][1].read_text()
+
+
+@pytest.mark.asyncio
+async def test_fixture_retry_error_carries_final_attempt_history(tmp_path: Path) -> None:
+    base_db = tmp_path / "base.sqlite"
+    with sqlite3.connect(base_db) as db:
+        db.execute("create table markers (value text)")
+
+    async def failing_runner(
+        _start: Any,
+        _db_path: Path,
+        _artifacts: dict[str, Any],
+        _trace_path: Path,
+    ) -> tuple[dict[str, Any], TraceRecorder]:
+        raise RuntimeError("still failing")
+
+    with pytest.raises(FixtureRetryError) as exc:
+        await _execution.run_start_with_retry(
+            failing_runner,
+            SimpleNamespace(start_id="case"),
+            base_db,
+            {},
+            tmp_path / "traces" / "case.jsonl",
+            "openai",
+        )
+
+    assert exc.value.attempts == 2
+    assert exc.value.retry_errors == ["RuntimeError: still failing", "RuntimeError: still failing"]
 
 
 def _db_markers(path: Path) -> list[str]:

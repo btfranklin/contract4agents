@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+from contract4agents.type_refs import canonical_type_name
+
 
 @dataclass(frozen=True)
 class SourceSpan:
@@ -27,7 +29,7 @@ class FieldDef:
 
     @property
     def normalized_type(self) -> str:
-        return self.type_name.rstrip("?").strip()
+        return canonical_type_name(self.type_name)
 
 
 @dataclass(frozen=True)
@@ -41,7 +43,7 @@ class TypeDef:
 
 Permission = Literal["available", "preapproved", "requires_approval", "denied", "sandboxed"]
 UseKind = Literal["tool", "agent", "datasource", "hosted_tool"]
-RunStageCardinality = Literal["one", "optional", "many"]
+RunSpecStageCardinality = Literal["one", "optional", "many"]
 
 
 @dataclass(frozen=True)
@@ -105,7 +107,7 @@ class MonitorDef:
 
 
 @dataclass(frozen=True)
-class RunContractDef:
+class RunSpecDef:
     name: str
     stages: list[str]
     assertions: list[str]
@@ -122,7 +124,7 @@ class ContractModule:
     agents: list[AgentDef] = field(default_factory=list)
     evals: list[EvalCase] = field(default_factory=list)
     monitors: list[MonitorDef] = field(default_factory=list)
-    run_contracts: list[RunContractDef] = field(default_factory=list)
+    run_specs: list[RunSpecDef] = field(default_factory=list)
 
 
 @dataclass
@@ -151,5 +153,5 @@ class ContractProject:
         return [item for module in self.modules for item in module.monitors]
 
     @property
-    def run_contracts(self) -> dict[str, RunContractDef]:
-        return {item.name: item for module in self.modules for item in module.run_contracts}
+    def run_specs(self) -> dict[str, RunSpecDef]:
+        return {item.name: item for module in self.modules for item in module.run_specs}

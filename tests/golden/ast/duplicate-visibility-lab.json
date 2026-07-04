@@ -1,127 +1,133 @@
 {
-  "root": "tests/fixtures/contract_projects/parser-golden/duplicate-visibility-lab",
   "modules": [
     {
-      "path": "tests/fixtures/contract_projects/parser-golden/duplicate-visibility-lab/types/a.contract",
-      "types": [
-        {
-          "name": "DuplicateType",
-          "fields": [
-            {
-              "name": "value",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/duplicate-visibility-lab/types/a.contract",
-                "line": 2,
-                "column": 5
-              }
-            }
-          ],
-          "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/duplicate-visibility-lab/types/a.contract",
-            "line": 1,
-            "column": 6
-          }
-        }
-      ],
-      "datasources": [
-        {
-          "name": "DuplicateSource",
-          "python": "tests.fixtures.parser_golden:first_duplicate_source",
-          "requires": [
-            "DuplicateType"
-          ],
-          "produces": "DuplicateType",
-          "render": "markdown",
-          "cache": "run",
-          "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/duplicate-visibility-lab/types/a.contract",
-            "line": 4,
-            "column": 12
-          }
-        }
-      ],
       "agents": [
         {
-          "name": "DuplicateAgent",
-          "parameters": [],
-          "return_type": "DuplicateType",
-          "uses": [],
           "attributes": {
             "goal": "\"First duplicate agent declaration.\""
           },
+          "name": "DuplicateAgent",
+          "parameters": [],
+          "return_type": "DuplicateType",
           "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/duplicate-visibility-lab/types/a.contract",
+            "column": 7,
             "line": 11,
-            "column": 7
-          }
-        }
-      ],
-      "evals": [],
-      "monitors": []
-    },
-    {
-      "path": "tests/fixtures/contract_projects/parser-golden/duplicate-visibility-lab/types/b.contract",
-      "types": [
-        {
-          "name": "DuplicateType",
-          "fields": [
-            {
-              "name": "value",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/duplicate-visibility-lab/types/b.contract",
-                "line": 2,
-                "column": 5
-              }
-            }
-          ],
-          "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/duplicate-visibility-lab/types/b.contract",
-            "line": 1,
-            "column": 6
-          }
+            "path": "tests/fixtures/contract_projects/parser-golden/duplicate-visibility-lab/types/a.contract"
+          },
+          "uses": []
         }
       ],
       "datasources": [
         {
+          "cache": "run",
           "name": "DuplicateSource",
-          "python": "tests.fixtures.parser_golden:second_duplicate_source",
+          "produces": "DuplicateType",
+          "python": "tests.fixtures.parser_golden:first_duplicate_source",
+          "render": "markdown",
           "requires": [
             "DuplicateType"
           ],
-          "produces": "DuplicateType",
-          "render": "markdown",
-          "cache": "run",
           "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/duplicate-visibility-lab/types/b.contract",
+            "column": 12,
             "line": 4,
-            "column": 12
-          }
-        }
-      ],
-      "agents": [
-        {
-          "name": "DuplicateAgent",
-          "parameters": [],
-          "return_type": "DuplicateType",
-          "uses": [],
-          "attributes": {
-            "goal": "\"Second duplicate agent declaration.\""
-          },
-          "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/duplicate-visibility-lab/types/b.contract",
-            "line": 11,
-            "column": 7
+            "path": "tests/fixtures/contract_projects/parser-golden/duplicate-visibility-lab/types/a.contract"
           }
         }
       ],
       "evals": [],
-      "monitors": []
+      "monitors": [],
+      "path": "tests/fixtures/contract_projects/parser-golden/duplicate-visibility-lab/types/a.contract",
+      "run_specs": [],
+      "types": [
+        {
+          "fields": [
+            {
+              "default": null,
+              "name": "value",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 2,
+                "path": "tests/fixtures/contract_projects/parser-golden/duplicate-visibility-lab/types/a.contract"
+              },
+              "type_name": "str"
+            }
+          ],
+          "name": "DuplicateType",
+          "python_ref": null,
+          "source": "native",
+          "span": {
+            "column": 6,
+            "line": 1,
+            "path": "tests/fixtures/contract_projects/parser-golden/duplicate-visibility-lab/types/a.contract"
+          }
+        }
+      ]
+    },
+    {
+      "agents": [
+        {
+          "attributes": {
+            "goal": "\"Second duplicate agent declaration.\""
+          },
+          "name": "DuplicateAgent",
+          "parameters": [],
+          "return_type": "DuplicateType",
+          "span": {
+            "column": 7,
+            "line": 11,
+            "path": "tests/fixtures/contract_projects/parser-golden/duplicate-visibility-lab/types/b.contract"
+          },
+          "uses": []
+        }
+      ],
+      "datasources": [
+        {
+          "cache": "run",
+          "name": "DuplicateSource",
+          "produces": "DuplicateType",
+          "python": "tests.fixtures.parser_golden:second_duplicate_source",
+          "render": "markdown",
+          "requires": [
+            "DuplicateType"
+          ],
+          "span": {
+            "column": 12,
+            "line": 4,
+            "path": "tests/fixtures/contract_projects/parser-golden/duplicate-visibility-lab/types/b.contract"
+          }
+        }
+      ],
+      "evals": [],
+      "monitors": [],
+      "path": "tests/fixtures/contract_projects/parser-golden/duplicate-visibility-lab/types/b.contract",
+      "run_specs": [],
+      "types": [
+        {
+          "fields": [
+            {
+              "default": null,
+              "name": "value",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 2,
+                "path": "tests/fixtures/contract_projects/parser-golden/duplicate-visibility-lab/types/b.contract"
+              },
+              "type_name": "str"
+            }
+          ],
+          "name": "DuplicateType",
+          "python_ref": null,
+          "source": "native",
+          "span": {
+            "column": 6,
+            "line": 1,
+            "path": "tests/fixtures/contract_projects/parser-golden/duplicate-visibility-lab/types/b.contract"
+          }
+        }
+      ]
     }
-  ]
+  ],
+  "root": "tests/fixtures/contract_projects/parser-golden/duplicate-visibility-lab"
 }

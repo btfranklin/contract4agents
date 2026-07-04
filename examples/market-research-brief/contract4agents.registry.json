@@ -1,41 +1,4 @@
 {
-  "version": 1,
-  "tools": {
-    "citation.format": {
-      "python": "examples.market_research_brief_imports.citation:format",
-      "permission": "preapproved"
-    },
-    "competitors.lookup": {
-      "python": "examples.market_research_brief_imports.competitors:lookup",
-      "permission": "preapproved"
-    },
-    "current_facts.fetch": {
-      "python": "examples.market_research_brief_imports.current_facts:fetch",
-      "permission": "preapproved"
-    },
-    "current_facts.search": {
-      "python": "examples.market_research_brief_imports.current_facts:search",
-      "permission": "preapproved"
-    },
-    "documents.fetch": {
-      "python": "examples.market_research_brief_imports.documents:fetch",
-      "permission": "preapproved"
-    },
-    "documents.search": {
-      "python": "examples.market_research_brief_imports.documents:search",
-      "permission": "preapproved"
-    }
-  },
-  "hosted_tools": {
-    "openai.web_search": {
-      "provider": "openai",
-      "tool": "web_search",
-      "config": {
-        "context_size": "medium"
-      },
-      "permission": "available"
-    }
-  },
   "agents": {
     "CompetitorAnalyst": {
       "name": "CompetitorAnalyst"
@@ -56,8 +19,6 @@
       "name": "ReportWriter"
     }
   },
-  "output_types": {},
-  "prompts": {},
   "host_context": {
     "MarketResearchLead": [
       "DocumentEvidence",
@@ -65,5 +26,64 @@
       "CompetitorSnapshot",
       "CustomerSignalSummary"
     ]
-  }
+  },
+  "hosted_tools": {
+    "openai.web_search": {
+      "config": {
+        "context_size": "medium"
+      },
+      "permissions": {
+        "CurrentTruthScout": "available"
+      },
+      "provider": "openai",
+      "tool": "web_search"
+    }
+  },
+  "output_types": {},
+  "prompts": {},
+  "tools": {
+    "citation.format": {
+      "permissions": {
+        "CompetitorAnalyst": "preapproved",
+        "CurrentTruthScout": "preapproved",
+        "CustomerSignalAnalyst": "preapproved",
+        "DocumentAnalyst": "preapproved",
+        "ReportWriter": "preapproved"
+      },
+      "python": "examples.market_research_brief_imports.citation:format"
+    },
+    "competitors.lookup": {
+      "permissions": {
+        "CompetitorAnalyst": "preapproved"
+      },
+      "python": "examples.market_research_brief_imports.competitors:lookup"
+    },
+    "current_facts.fetch": {
+      "permissions": {
+        "CurrentTruthScout": "preapproved"
+      },
+      "python": "examples.market_research_brief_imports.current_facts:fetch"
+    },
+    "current_facts.search": {
+      "permissions": {
+        "CurrentTruthScout": "preapproved"
+      },
+      "python": "examples.market_research_brief_imports.current_facts:search"
+    },
+    "documents.fetch": {
+      "permissions": {
+        "CustomerSignalAnalyst": "preapproved",
+        "DocumentAnalyst": "preapproved"
+      },
+      "python": "examples.market_research_brief_imports.documents:fetch"
+    },
+    "documents.search": {
+      "permissions": {
+        "CustomerSignalAnalyst": "preapproved",
+        "DocumentAnalyst": "preapproved"
+      },
+      "python": "examples.market_research_brief_imports.documents:search"
+    }
+  },
+  "version": 2
 }

@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from contract4agents.assertions import evaluate_agent_assertions, evaluate_run_assertions, evaluate_run_contract
+from contract4agents.assertions import evaluate_agent_assertions, evaluate_run_assertions, evaluate_run_spec
 from contract4agents.compiler import AgentManifest, CompilerArtifacts
 from contract4agents.runtime import TraceRecorder, TraceScopeError, load_trace_jsonl
 
@@ -200,19 +200,19 @@ def test_evaluate_run_assertions_requires_run_id_for_multi_run_trace() -> None:
     assert scoped_result.failures[0].kind == "trace"
 
 
-def test_evaluate_run_contract_passes_stage_outputs_and_trace() -> None:
+def test_evaluate_run_spec_passes_stage_outputs_and_trace() -> None:
     trace = TraceRecorder()
     trace.record("agent.completed", agent="ExampleAgent")
     trace.record("agent.completed", agent="WriterAgent")
     contract = _artifacts(
         _manifest([]),
         extra_manifests=[_manifest([], agent="WriterAgent")],
-        run_contracts=[_run_contract_artifact()],
+        run_specs=[_run_spec_artifact()],
     )
 
-    result = evaluate_run_contract(
+    result = evaluate_run_spec(
         contract=contract,
-        run_contract="ExampleRun",
+        run_spec="ExampleRun",
         trace=trace,
         stage_outputs={
             "plan": {"ok": True, "summary": "plan"},
@@ -231,16 +231,16 @@ def test_evaluate_run_contract_passes_stage_outputs_and_trace() -> None:
     assert [check.status for check in result.assertions] == ["passed", "passed", "passed"]
 
 
-def test_evaluate_run_contract_reports_missing_stage_output() -> None:
+def test_evaluate_run_spec_reports_missing_stage_output() -> None:
     contract = _artifacts(
         _manifest([]),
         extra_manifests=[_manifest([], agent="WriterAgent")],
-        run_contracts=[_run_contract_artifact()],
+        run_specs=[_run_spec_artifact()],
     )
 
-    result = evaluate_run_contract(
+    result = evaluate_run_spec(
         contract=contract,
-        run_contract="ExampleRun",
+        run_spec="ExampleRun",
         trace=TraceRecorder(),
         stage_outputs={
             "plan": {"ok": True, "summary": "plan"},
@@ -252,12 +252,12 @@ def test_evaluate_run_contract_reports_missing_stage_output() -> None:
     assert result.failures[0].kind == "missing_stage_output"
 
 
-def test_evaluate_run_contract_reports_schema_and_cardinality_failures() -> None:
-    contract = _artifacts(_manifest([]), run_contracts=[_run_contract_artifact()])
+def test_evaluate_run_spec_reports_schema_and_cardinality_failures() -> None:
+    contract = _artifacts(_manifest([]), run_specs=[_run_spec_artifact()])
 
-    result = evaluate_run_contract(
+    result = evaluate_run_spec(
         contract=contract,
-        run_contract="ExampleRun",
+        run_spec="ExampleRun",
         trace=TraceRecorder(),
         stage_outputs={
             "plan": {"ok": "yes", "summary": "plan"},
@@ -270,7 +270,7 @@ def test_evaluate_run_contract_reports_schema_and_cardinality_failures() -> None
     assert {failure.kind for failure in result.failures} >= {"stage_schema", "malformed_stage_output"}
 
 
-def test_evaluate_run_contract_checks_not_tool_called_by() -> None:
+def test_evaluate_run_spec_checks_not_tool_called_by() -> None:
     trace = TraceRecorder()
     trace.record("agent.completed", agent="ExampleAgent")
     trace.record("agent.completed", agent="WriterAgent")
@@ -278,12 +278,12 @@ def test_evaluate_run_contract_checks_not_tool_called_by() -> None:
     contract = _artifacts(
         _manifest([]),
         extra_manifests=[_manifest([], agent="WriterAgent")],
-        run_contracts=[_run_contract_artifact()],
+        run_specs=[_run_spec_artifact()],
     )
 
-    result = evaluate_run_contract(
+    result = evaluate_run_spec(
         contract=contract,
-        run_contract="ExampleRun",
+        run_spec="ExampleRun",
         trace=trace,
         stage_outputs={
             "plan": {"ok": True, "summary": "plan"},
@@ -294,6 +294,95 @@ def test_evaluate_run_contract_checks_not_tool_called_by() -> None:
 
     assert not result.passed
     assert result.failures[-1].kind == "trace"
+
+
+def test_evaluate_run_spec_supports_stage_name_trace_spies() -> None:
+    trace = TraceRecorder()
+    trace.record("stage.completed", stage="plan")
+    trace.record("stage.completed", stage="synthesis")
+    run_spec = {**_run_spec_artifact(), "assertions": ["expect(trace.called(plan))"]}
+    contract = _artifacts(
+        _manifest([]),
+        extra_manifests=[_manifest([], agent="WriterAgent")],
+        run_specs=[run_spec],
+    )
+
+    result = evaluate_run_spec(
+        contract=contract,
+        run_spec="ExampleRun",
+        trace=trace,
+        stage_outputs={
+            "plan": {"ok": True, "summary": "plan"},
+            "sections": [{"ok": True, "summary": "section"}],
+            "synthesis": {"ok": True, "summary": "final"},
+        },
+    )
+
+    assert result.passed
+    assert result.assertions[0].status == "passed"
+
+
+def test_evaluate_run_spec_evaluates_structured_conditionals() -> None:
+    trace = TraceRecorder()
+    trace.record("stage.completed", stage="plan")
+    trace.record("stage.completed", stage="synthesis")
+    run_spec = {
+        **_run_spec_artifact(),
+        "assertions": [
+            "when(trace.called(plan), expect(trace.called(synthesis)))",
+            "when(trace.called(review), expect(trace.called(missing)))",
+        ],
+    }
+    contract = _artifacts(
+        _manifest([]),
+        extra_manifests=[_manifest([], agent="WriterAgent")],
+        run_specs=[run_spec],
+    )
+
+    result = evaluate_run_spec(
+        contract=contract,
+        run_spec="ExampleRun",
+        trace=trace,
+        stage_outputs={
+            "plan": {"ok": True, "summary": "plan"},
+            "sections": [{"ok": True, "summary": "section"}],
+            "synthesis": {"ok": True, "summary": "final"},
+        },
+    )
+
+    assert result.passed
+    assert [check.status for check in result.assertions] == ["passed", "skipped"]
+
+
+def test_evaluate_run_spec_scopes_multi_run_trace_by_run_id() -> None:
+    trace = TraceRecorder()
+    trace.record("stage.completed", run_id="run-a", stage="plan")
+    trace.record("stage.completed", run_id="run-b", stage="synthesis")
+    run_spec = {**_run_spec_artifact(), "assertions": ["expect(trace.called(plan))"]}
+    contract = _artifacts(
+        _manifest([]),
+        extra_manifests=[_manifest([], agent="WriterAgent")],
+        run_specs=[run_spec],
+    )
+    stage_outputs = {
+        "plan": {"ok": True, "summary": "plan"},
+        "sections": [{"ok": True, "summary": "section"}],
+        "synthesis": {"ok": True, "summary": "final"},
+    }
+
+    with pytest.raises(TraceScopeError):
+        evaluate_run_spec(contract=contract, run_spec="ExampleRun", trace=trace, stage_outputs=stage_outputs)
+
+    scoped = evaluate_run_spec(
+        contract=contract,
+        run_spec="ExampleRun",
+        trace=trace,
+        stage_outputs=stage_outputs,
+        run_id="run-b",
+    )
+
+    assert not scoped.passed
+    assert scoped.failures[0].kind == "trace"
 
 
 def test_evaluate_agent_assertions_ignore_other_agent_trace_events() -> None:
@@ -355,7 +444,7 @@ def _artifacts(
     manifest: AgentManifest,
     *,
     extra_manifests: list[AgentManifest] | None = None,
-    run_contracts: list[dict[str, Any]] | None = None,
+    run_specs: list[dict[str, Any]] | None = None,
 ) -> CompilerArtifacts:
     manifests = {manifest["agent"]: manifest}
     for extra_manifest in extra_manifests or []:
@@ -375,14 +464,14 @@ def _artifacts(
         "instructions": {"ExampleAgent": "instructions"},
         "evals": [],
         "monitors": [],
-        "run_contracts": run_contracts or [],
+        "run_specs": run_specs or [],
         "guard_plan": [],
         "adapter_capability_matrix": {},
         "docs": {},
     }
 
 
-def _run_contract_artifact() -> dict[str, Any]:
+def _run_spec_artifact() -> dict[str, Any]:
     return {
         "name": "ExampleRun",
         "source_path": "runs/example.contract",

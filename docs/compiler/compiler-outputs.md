@@ -9,8 +9,8 @@ The Contract4Agents compiler turns source files into artifacts used by humans, h
 3. Resolve modules and names.
 4. Resolve types and schemas.
 5. Build declared capability metadata and runtime context metadata.
-6. Classify guards and preserve assertions, policies, monitors, and run contracts in generated artifacts.
-7. Validate eval, monitor, and run-contract references against declared agent reachability.
+6. Classify guards and preserve assertions, policies, monitors, and run specs in generated artifacts.
+7. Validate eval, monitor, and run spec references against declared agent reachability.
 8. Generate target artifacts.
 9. Optionally check generated artifacts for freshness.
 
@@ -64,15 +64,17 @@ Example shape:
     }
   ],
   "agents": [
-    {"name": "BillingAgent", "module": "./billing"},
-    {"name": "SupportAgent", "module": "./support"}
+    {"name": "BillingAgent", "module": "./billing", "permission": "available"},
+    {"name": "SupportAgent", "module": "./support", "permission": "available"}
   ],
   "datasources": [
     {
       "name": "AccountRejectionStatus",
       "python": "contract_app.datasources.account_rejection_status:resolve",
       "produces": "AccountRejectionStatus",
-      "requires": ["CustomerProfile"]
+      "requires": ["CustomerProfile"],
+      "render": "markdown",
+      "cache": "run"
     }
   ],
   "guards": [],
@@ -96,8 +98,11 @@ generated artifact. When present, `contract4agents check` validates its shape.
 manifest declarations against explicit host surfaces:
 
 - Python tool refs import and are callable, unless marked `external: true`.
-- Tool and hosted-tool permissions match the manifest.
+- Tool and hosted-tool permissions match the manifest for every declaring
+  agent.
 - Hosted-tool provider, tool, and config match the manifest.
+- Stale tool, hosted-tool, agent, and per-agent permission registry entries are
+  rejected.
 - Registered agent names and factory imports match contract agent declarations.
 - Registered Pydantic output classes match contract output schemas.
 - Registered prompt assets exist and point at known agents.
@@ -206,18 +211,18 @@ They include:
 - Severity.
 - Suggested remediation.
 
-### Run Contracts
+### Run Specs
 
-Run contracts are generated from `run_contract` declarations. They describe
+Run specs are generated from `run_spec` declarations. They describe
 expected host-owned workflow behavior without executable orchestration.
 
-The compiler emits `run-contracts/run-contracts.json` with:
+The compiler emits `run-specs/run-specs.json` with:
 
-- Run-contract name and source path.
+- Run spec name and source path.
 - Stage name, agent, output type, cardinality, manifest ref, and schema ref.
 - Trace assertions over the normalized run trace.
 
-Host applications evaluate the artifact with `evaluate_run_contract(...)` after
+Host applications evaluate the artifact with `evaluate_run_spec(...)` after
 they have emitted normalized trace events and collected stage outputs. Required
 and optional single stages validate one output object; repeated `+` stages
 validate a non-empty sequence of output objects.
@@ -226,7 +231,7 @@ validate a non-empty sequence of output objects.
 
 Generated docs should help humans review what will run:
 
-- `docs/summary.md`: project-level index of agents, types, evals, monitors, run contracts, and hosted tools.
+- `docs/summary.md`: project-level index of agents, types, evals, monitors, run specs, and hosted tools.
 - `docs/agents/*.md`: per-agent pages with signature, intent, inputs, output,
   host context, capabilities, checks, evals, monitors, and artifact links.
 - Capability tables.
@@ -318,6 +323,8 @@ pdm run contract4agents compile --check
 
 `pdm run contract4agents compile --check` should fail when generated artifacts are stale.
 Compiler output paths are guarded before any managed artifact directory is
-removed. Writing directly to the project root or to obvious source-owned
-top-level directories such as `docs` fails with `COMPILE002`; use a generated
-artifact directory such as `.contract/build`.
+removed. Relative output paths are current-working-directory-relative. Writing
+directly to the project root, the current working directory, or paths inside
+obvious source-owned top-level directories such as `docs`, `src`, `tests`,
+`examples`, `agents`, `types`, `evals`, `monitors`, or `datasources` fails with
+`COMPILE002`; use a generated artifact directory such as `.contract/build`.

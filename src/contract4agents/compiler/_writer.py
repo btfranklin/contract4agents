@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +23,7 @@ def write_artifacts(artifacts: CompilerArtifacts, output_dir: Path, check: bool 
         files[output_dir / "instructions" / f"{name}.md"] = instructions
     files[output_dir / "evals" / "evals.json"] = _json(artifacts["evals"])
     files[output_dir / "monitors" / "monitors.json"] = _json(artifacts["monitors"])
-    files[output_dir / "run-contracts" / "run-contracts.json"] = _json(artifacts["run_contracts"])
+    files[output_dir / "run-specs" / "run-specs.json"] = _json(artifacts["run_specs"])
     files[output_dir / "guards" / "guard-plan.json"] = _json(artifacts["guard_plan"])
     files[output_dir / "adapters" / "capability-matrix.json"] = _json(artifacts["adapter_capability_matrix"])
     for name, text in artifacts["docs"].items():
@@ -50,13 +51,22 @@ def write_artifacts(artifacts: CompilerArtifacts, output_dir: Path, check: bool 
                 ]
             )
         return
-    for dirname in MANAGED_ARTIFACT_DIRS:
-        managed_dir = output_dir / dirname
-        if managed_dir.exists():
-            shutil.rmtree(managed_dir)
-    for path, content in files.items():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    temp_root = Path(tempfile.mkdtemp(prefix=".contract4agents-tmp-", dir=output_dir))
+    try:
+        for path, content in files.items():
+            temp_path = temp_root / path.relative_to(output_dir)
+            temp_path.parent.mkdir(parents=True, exist_ok=True)
+            temp_path.write_text(content)
+        for dirname in MANAGED_ARTIFACT_DIRS:
+            managed_dir = output_dir / dirname
+            temp_managed_dir = temp_root / dirname
+            if managed_dir.exists():
+                shutil.rmtree(managed_dir)
+            if temp_managed_dir.exists():
+                shutil.move(str(temp_managed_dir), str(managed_dir))
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
 
 
 def _json(value: Any) -> str:

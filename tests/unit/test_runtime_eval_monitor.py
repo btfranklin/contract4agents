@@ -8,6 +8,7 @@ import pytest
 from contract4agents.compiler import compile_project
 from contract4agents.evaluation import EvalRunner
 from contract4agents.expressions import (
+    ConditionalExpression,
     ExpressionError,
     parse_contract_expression,
     parse_expectation,
@@ -20,6 +21,7 @@ from contract4agents.runtime import (
     AmbiguousDatasource,
     ContextValue,
     DatasourceContext,
+    DatasourceExecutionFailed,
     DatasourceRegistry,
     DatasourceSpec,
     FakeToolRegistry,
@@ -150,6 +152,39 @@ async def test_runtime_reuses_run_datasource_cache_within_context() -> None:
 
 
 @pytest.mark.asyncio
+async def test_runtime_run_datasource_cache_isolated_by_requirement_values() -> None:
+    calls = 0
+    runtime = RuntimeContext({"Seed": ContextValue("Seed", "one", "one", "test")})
+
+    def resolve(ctx: DatasourceContext) -> ContextValue:
+        nonlocal calls
+        calls += 1
+        seed = ctx.get("Seed")
+        return ctx.value(
+            type_name="Thing",
+            value=f"thing:{seed.value}",
+            rendered=f"thing:{seed.rendered}",
+            source="ThingSource",
+        )
+
+    registry = DatasourceRegistry()
+    registry.register("ThingSource", DatasourceSpec("ThingSource", "Thing", ["Seed"], resolve, cache="run"))
+
+    first = await runtime.resolve_one("Thing", registry)
+    runtime.values["Seed"] = ContextValue("Seed", "two", "two", "test")
+    runtime.values.pop("Thing")
+    second = await runtime.resolve_one("Thing", registry)
+    runtime.values.pop("Thing")
+    third = await runtime.resolve_one("Thing", registry)
+
+    assert calls == 2
+    assert first.value == "thing:one"
+    assert second.value == "thing:two"
+    assert third is second
+    assert len(runtime.datasource_cache) == 2
+
+
+@pytest.mark.asyncio
 async def test_runtime_thread_cache_requires_shared_host_mapping() -> None:
     calls = 0
     thread_cache: dict[str, ContextValue] = {}
@@ -173,6 +208,57 @@ async def test_runtime_thread_cache_requires_shared_host_mapping() -> None:
     assert first is second
     assert seen_cache[0] is thread_cache
     assert second_runtime.trace.events[-1].data["cache"] == "hit"
+
+
+@pytest.mark.asyncio
+async def test_runtime_thread_cache_isolated_by_requirement_values() -> None:
+    calls = 0
+    thread_cache: dict[str, ContextValue] = {}
+
+    def resolve(ctx: DatasourceContext) -> ContextValue:
+        nonlocal calls
+        calls += 1
+        seed = ctx.get("Seed")
+        return ctx.value(
+            type_name="Thing",
+            value=f"thing:{seed.value}",
+            rendered=f"thing:{seed.rendered}",
+            source="ThingSource",
+        )
+
+    registry = DatasourceRegistry()
+    registry.register("ThingSource", DatasourceSpec("ThingSource", "Thing", ["Seed"], resolve, cache="thread"))
+
+    first_runtime = RuntimeContext({"Seed": ContextValue("Seed", "one", "one", "test")}, thread_cache=thread_cache)
+    second_runtime = RuntimeContext({"Seed": ContextValue("Seed", "two", "two", "test")}, thread_cache=thread_cache)
+    third_runtime = RuntimeContext({"Seed": ContextValue("Seed", "two", "two", "test")}, thread_cache=thread_cache)
+
+    first = await first_runtime.resolve_one("Thing", registry)
+    second = await second_runtime.resolve_one("Thing", registry)
+    third = await third_runtime.resolve_one("Thing", registry)
+
+    assert calls == 2
+    assert first.value == "thing:one"
+    assert second.value == "thing:two"
+    assert third is second
+    assert len(thread_cache) == 2
+
+
+@pytest.mark.asyncio
+async def test_runtime_rejects_datasource_context_value_type_mismatch() -> None:
+    registry = DatasourceRegistry()
+    registry.register(
+        "ThingSource",
+        DatasourceSpec(
+            "ThingSource",
+            "Thing",
+            [],
+            lambda _ctx: ContextValue("WrongThing", "value", "value", "ThingSource"),
+        ),
+    )
+
+    with pytest.raises(DatasourceExecutionFailed, match="WrongThing"):
+        await RuntimeContext().resolve_one("Thing", registry)
 
 
 def test_datasource_decorator_registration() -> None:
@@ -323,7 +409,10 @@ def test_lark_expression_parser_characterizes_supported_surface() -> None:
     assert parse_monitor_condition('trace.contains("payment, timeout")').args == ("payment, timeout",)
 
     wrapped = parse_contract_expression("when(trace.tool_called(logs.search), expect(output.ok == true))")
-    assert [item.kind for item in wrapped] == ["trace", "output_compare"]
+    assert len(wrapped) == 1
+    assert isinstance(wrapped[0], ConditionalExpression)
+    assert wrapped[0].condition.kind == "trace"
+    assert wrapped[0].expectation.kind == "output_compare"
     assert parse_contract_expression("forbid(tool.status_page.draft_update unless approved_by_human)")[0].args == (
         "status_page.draft_update",
     )

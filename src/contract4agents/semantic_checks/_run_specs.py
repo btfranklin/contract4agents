@@ -1,40 +1,40 @@
-"""Run-contract semantic checks."""
+"""Run spec semantic checks."""
 
 from __future__ import annotations
 
-from contract4agents.ast import RunContractDef
+from contract4agents.ast import RunSpecDef
 from contract4agents.diagnostics import Diagnostic
 from contract4agents.expressions._grammar import parse_contract_expression
-from contract4agents.expressions._model import ExpressionError
-from contract4agents.run_contracts import RunStageDeclaration, parse_run_stage_declaration
+from contract4agents.expressions._model import ConditionalExpression, ExpressionError, ParsedExpression
+from contract4agents.run_specs import RunSpecStageDeclaration, parse_run_spec_stage_declaration
 from contract4agents.semantic_checks._expressions import check_trace_refs
 from contract4agents.semantic_checks._index import ProjectIndex
 
-RUN_CONTRACT_ATTRIBUTES = {"stages", "assertions"}
+RUN_SPEC_ATTRIBUTES = {"stages", "assertions"}
 WORKFLOW_LIKE_ATTRIBUTES = {"branch", "branches", "loop", "loops", "retry", "retries", "checkpoint", "recovery"}
 
 
-def check_run_contract(run_contract: RunContractDef, index: ProjectIndex) -> list[Diagnostic]:
+def check_run_spec(run_spec: RunSpecDef, index: ProjectIndex) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
-    diagnostics.extend(_check_attributes(run_contract))
-    stages = _parse_stages(run_contract, diagnostics)
-    diagnostics.extend(_check_stage_refs(run_contract, stages, index))
-    diagnostics.extend(_check_run_assertions(run_contract, stages, index))
+    diagnostics.extend(_check_attributes(run_spec))
+    stages = _parse_stages(run_spec, diagnostics)
+    diagnostics.extend(_check_stage_refs(run_spec, stages, index))
+    diagnostics.extend(_check_run_assertions(run_spec, stages, index))
     return diagnostics
 
 
-def _check_attributes(run_contract: RunContractDef) -> list[Diagnostic]:
+def _check_attributes(run_spec: RunSpecDef) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
-    for key, value in run_contract.attributes.items():
-        span = run_contract.attribute_spans.get(key, run_contract.span)
-        if key not in RUN_CONTRACT_ATTRIBUTES:
-            hint = "Run contracts verify host-owned workflow behavior; executable workflow control belongs in Python."
+    for key, value in run_spec.attributes.items():
+        span = run_spec.attribute_spans.get(key, run_spec.span)
+        if key not in RUN_SPEC_ATTRIBUTES:
+            hint = "Run specs verify host-owned workflow behavior; executable workflow control belongs in Python."
             if key not in WORKFLOW_LIKE_ATTRIBUTES:
-                hint = "Accepted run_contract attributes are: `assertions`, `stages`."
+                hint = "Accepted run spec attributes are: `assertions`, `stages`."
             diagnostics.append(
                 Diagnostic(
                     "SEM080",
-                    f"Unknown run_contract attribute `{key}` on `{run_contract.name}`",
+                    f"Unknown run spec attribute `{key}` on `{run_spec.name}`",
                     span=span,
                     hint=hint,
                 )
@@ -44,32 +44,32 @@ def _check_attributes(run_contract: RunContractDef) -> list[Diagnostic]:
             diagnostics.append(
                 Diagnostic(
                     "SEM081",
-                    f"Run contract attribute `{key}` on `{run_contract.name}` must be a list",
+                    f"Run spec attribute `{key}` on `{run_spec.name}` must be a list",
                     span=span,
                 )
             )
-    if "stages" not in run_contract.attributes:
+    if "stages" not in run_spec.attributes:
         diagnostics.append(
             Diagnostic(
                 "SEM082",
-                f"Run contract `{run_contract.name}` must declare stages",
-                span=run_contract.span,
+                f"Run spec `{run_spec.name}` must declare stages",
+                span=run_spec.span,
             )
         )
     return diagnostics
 
 
-def _parse_stages(run_contract: RunContractDef, diagnostics: list[Diagnostic]) -> list[RunStageDeclaration]:
-    stages: list[RunStageDeclaration] = []
+def _parse_stages(run_spec: RunSpecDef, diagnostics: list[Diagnostic]) -> list[RunSpecStageDeclaration]:
+    stages: list[RunSpecStageDeclaration] = []
     seen: set[str] = set()
-    span = run_contract.attribute_spans.get("stages", run_contract.span)
-    for raw_stage in run_contract.stages:
-        stage = parse_run_stage_declaration(raw_stage)
+    span = run_spec.attribute_spans.get("stages", run_spec.span)
+    for raw_stage in run_spec.stages:
+        stage = parse_run_spec_stage_declaration(raw_stage)
         if stage is None:
             diagnostics.append(
                 Diagnostic(
                     "SEM083",
-                    f"Malformed run_contract stage declaration `{raw_stage}` on `{run_contract.name}`",
+                    f"Malformed run spec stage declaration `{raw_stage}` on `{run_spec.name}`",
                     span=span,
                     hint=(
                         "Expected `stage_name: AgentName -> OutputType`, with optional `?` or `+` "
@@ -82,7 +82,7 @@ def _parse_stages(run_contract: RunContractDef, diagnostics: list[Diagnostic]) -
             diagnostics.append(
                 Diagnostic(
                     "SEM086",
-                    f"Run contract `{run_contract.name}` declares stage `{stage.name}` more than once",
+                    f"Run spec `{run_spec.name}` declares stage `{stage.name}` more than once",
                     span=span,
                 )
             )
@@ -92,18 +92,18 @@ def _parse_stages(run_contract: RunContractDef, diagnostics: list[Diagnostic]) -
 
 
 def _check_stage_refs(
-    run_contract: RunContractDef,
-    stages: list[RunStageDeclaration],
+    run_spec: RunSpecDef,
+    stages: list[RunSpecStageDeclaration],
     index: ProjectIndex,
 ) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
-    span = run_contract.attribute_spans.get("stages", run_contract.span)
+    span = run_spec.attribute_spans.get("stages", run_spec.span)
     for stage in stages:
         if stage.agent not in index.agent_defs:
             diagnostics.append(
                 Diagnostic(
                     "SEM084",
-                    f"Run contract `{run_contract.name}` stage `{stage.name}` references unknown agent `{stage.agent}`",
+                    f"Run spec `{run_spec.name}` stage `{stage.name}` references unknown agent `{stage.agent}`",
                     span=span,
                 )
             )
@@ -111,7 +111,7 @@ def _check_stage_refs(
             diagnostics.append(
                 Diagnostic(
                     "SEM085",
-                    f"Run contract `{run_contract.name}` stage `{stage.name}` references unknown output type "
+                    f"Run spec `{run_spec.name}` stage `{stage.name}` references unknown output type "
                     f"`{stage.output_type}`",
                     span=span,
                 )
@@ -120,30 +120,31 @@ def _check_stage_refs(
 
 
 def _check_run_assertions(
-    run_contract: RunContractDef,
-    stages: list[RunStageDeclaration],
+    run_spec: RunSpecDef,
+    stages: list[RunSpecStageDeclaration],
     index: ProjectIndex,
 ) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     staged_agents = {stage.agent for stage in stages}
+    stage_names = {stage.name for stage in stages}
     reachable_tools: set[str] = set()
     reachable_hosted_tools: set[str] = set()
     for agent in staged_agents:
         reachable_tools.update(index.reachable_tools(agent))
         reachable_hosted_tools.update(index.reachable_hosted_tools(agent))
-    span = run_contract.attribute_spans.get("assertions", run_contract.span)
-    for expression in run_contract.assertions:
+    span = run_spec.attribute_spans.get("assertions", run_spec.span)
+    for expression in run_spec.assertions:
         try:
             parsed_items = parse_contract_expression(expression)
         except ExpressionError as exc:
             diagnostics.append(Diagnostic("SEM052", str(exc), span=span))
             continue
-        for parsed in parsed_items:
+        for parsed in _iter_run_spec_assertion_items(parsed_items):
             if parsed.kind != "trace":
                 diagnostics.append(
                     Diagnostic(
                         "SEM087",
-                        f"Run contract `{run_contract.name}` assertion must be a trace expression",
+                        f"Run spec `{run_spec.name}` assertion must be a trace expression",
                         span=span,
                     )
                 )
@@ -157,9 +158,20 @@ def _check_run_assertions(
                     span,
                     agent_names=staged_agents,
                     datasource_targets=set(),
+                    stage_targets=stage_names,
                 )
             )
     return diagnostics
 
 
-__all__ = ["check_run_contract"]
+def _iter_run_spec_assertion_items(items: list[ParsedExpression | ConditionalExpression]) -> list[ParsedExpression]:
+    parsed: list[ParsedExpression] = []
+    for item in items:
+        if isinstance(item, ConditionalExpression):
+            parsed.extend([item.condition, item.expectation])
+        else:
+            parsed.append(item)
+    return parsed
+
+
+__all__ = ["check_run_spec"]

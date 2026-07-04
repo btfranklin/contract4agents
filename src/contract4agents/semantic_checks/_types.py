@@ -6,8 +6,7 @@ from contract4agents.ast import DatasourceDef, TypeDef
 from contract4agents.diagnostics import Diagnostic
 from contract4agents.pydantic_interop import python_type_ref_diagnostics
 from contract4agents.semantic_checks._index import ProjectIndex
-
-BUILTIN_TYPES = {"str", "int", "float", "bool", "AgentRef"}
+from contract4agents.type_refs import BUILTIN_TYPES, canonical_type_name, is_literal_union
 
 
 def check_type(type_def: TypeDef, index: ProjectIndex) -> list[Diagnostic]:
@@ -52,25 +51,10 @@ def check_type_ref(
     span: object,
     context: str,
 ) -> list[Diagnostic]:
-    normalized = _normalize_type(raw_type)
-    if not normalized or normalized in BUILTIN_TYPES or normalized in index.type_defs or _is_literal_union(raw_type):
+    normalized = canonical_type_name(raw_type)
+    if not normalized or normalized in BUILTIN_TYPES or normalized in index.type_defs or is_literal_union(raw_type):
         return []
     return [Diagnostic("SEM002", f"Unknown type `{normalized}` in {context}", span=span)]  # type: ignore[arg-type]
-
-
-def _normalize_type(raw_type: str) -> str:
-    value = raw_type.strip().rstrip("?")
-    if value.endswith("[]"):
-        value = value[:-2]
-    if value.startswith("list[") and value.endswith("]"):
-        value = value[5:-1]
-    if " between " in value:
-        value = value.split(" ", 1)[0]
-    return value
-
-
-def _is_literal_union(raw_type: str) -> bool:
-    return '"' in raw_type and "|" in raw_type
 
 
 __all__ = ["check_datasource", "check_type", "check_type_ref"]

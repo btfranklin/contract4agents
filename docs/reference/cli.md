@@ -8,7 +8,7 @@ All contract parse, semantic, and compile failures are printed as Contract4Agent
 
 Parses `.contract` and `.eval` files under `ROOT` and runs semantic validation.
 This includes static child-agent context satisfiability across required parent
-parameters, declared `host_context`, parent datasource chains, and run-contract
+parameters, declared `host_context`, parent datasource chains, and run spec
 stage and trace references.
 
 - Default root: `.`
@@ -42,16 +42,19 @@ Generates provider-neutral artifacts from a valid project.
 - Default root: `.`
 - Default output: `.contract/build`
 - Options: `--out PATH`, `--check`, `--allow-python-imports`
-- Writes without `--check`: schemas, type bindings, manifests, instructions, eval packs, monitor packs, run contracts, guard plan, adapter capability matrix, and generated docs under `PATH`
+- Writes without `--check`: schemas, type bindings, manifests, instructions, eval packs, monitor packs, run specs, guard plan, adapter capability matrix, and generated docs under `PATH`
 - Writes with `--check`: nothing
 - Success message: `Contract4Agents compile passed`
 - Failure shape: diagnostics; stale generated files use `COMPILE001`, unsafe output paths use `COMPILE002`
 - Side effects: creates parent directories for generated files unless `--check` is used
 
 When `--check` fails with `COMPILE001`, rerun the same compile command without `--check` to refresh generated artifacts.
-The compiler refuses output paths that are the project root or obvious
-source-owned top-level directories such as `docs`; choose a generated directory
-such as `.contract/build`.
+Relative `--out` paths are resolved from the current working directory, not
+from `ROOT`. The compiler refuses output paths that are the project root, the
+current working directory, or paths inside obvious source-owned top-level
+directories under either location, including `docs`, `src`, `tests`,
+`examples`, `agents`, `types`, `evals`, `monitors`, and `datasources`. Prefer a
+generated directory such as `.contract/build`.
 
 Projects that declare `type Name from python "module:Model"` require
 `--allow-python-imports` for compile, because schema generation imports host
@@ -67,8 +70,12 @@ Builds a static review graph from parsed contracts and compiler artifacts.
 - Options: `--out PATH`, `--allow-python-imports`
 - Writes: `graph.json`, `graph.mmd`, and `index.html`
 - Success message: `Contract4Agents visualization written to PATH`
-- Failure shape: diagnostics from parsing or semantic analysis
+- Failure shape: diagnostics from parsing, semantic analysis, or unsafe output path validation
 - Side effects: creates the output directory
+
+Relative `--out` paths are resolved from the current working directory. The
+same source-owned output guard used by `compile` applies here; prefer
+`.contract/build/visualization`.
 
 Use `--allow-python-imports` for projects with Pydantic-backed contract types.
 

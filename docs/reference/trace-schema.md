@@ -118,7 +118,7 @@ Unknown `event_type` values are warnings in diagnostic loading, not fatal
 errors. This lets future provider events be inspected while still rejecting
 malformed trace envelopes.
 
-Run contracts evaluate trace assertions against these normalized events and
+Run specs evaluate trace assertions against these normalized events and
 validate host-supplied stage outputs separately. Tool-by-agent checks such as
 `trace.not_tool_called_by(AgentName, tool.name)` use the event `agent` and
 `tool` index fields on `tool.completed` and `hosted_tool.completed` events.

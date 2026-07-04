@@ -8,7 +8,12 @@ from typing import Any, Literal, cast
 from lark import Lark, Transformer, UnexpectedInput
 from lark.exceptions import VisitError
 
-from contract4agents.expressions._model import ExpressionError, ParsedExpression
+from contract4agents.expressions._model import (
+    ConditionalExpression,
+    ContractExpression,
+    ExpressionError,
+    ParsedExpression,
+)
 from contract4agents.expressions._trace_ops import TRACE_OPS, is_trace_op
 
 EXPRESSION_GRAMMAR = r"""
@@ -95,7 +100,7 @@ def parse_monitor_expectation(expression: str) -> ParsedExpression | None:
     return parsed
 
 
-def parse_contract_expression(expression: str) -> list[ParsedExpression]:
+def parse_contract_expression(expression: str) -> list[ContractExpression]:
     """Parse guard/assertion forms enough for static validation."""
     value = expression.strip()
     parsed = _parse_lark_contract_expression(value)
@@ -180,8 +185,12 @@ class _ExpressionTransformer(Transformer[Any, Any]):
     def forbid_approval(self, _items: list[Any]) -> str:
         return "approved_by_human"
 
-    def when_wrapper(self, items: list[Any]) -> list[ParsedExpression]:
-        return [cast(ParsedExpression, item) for item in items]
+    def when_wrapper(self, items: list[Any]) -> ConditionalExpression:
+        return ConditionalExpression(
+            self.expression,
+            cast(ParsedExpression, items[0]),
+            cast(ParsedExpression, items[1]),
+        )
 
 
 def _parse_lark_expression(
@@ -194,10 +203,10 @@ def _parse_lark_expression(
     return parsed
 
 
-def _parse_lark_contract_expression(expression: str) -> ParsedExpression | list[ParsedExpression]:
+def _parse_lark_contract_expression(expression: str) -> ContractExpression:
     parsed = _parse_with_lark(expression, "contract_expr")
-    if isinstance(parsed, ParsedExpression | list):
-        return cast(ParsedExpression | list[ParsedExpression], parsed)
+    if isinstance(parsed, ParsedExpression | ConditionalExpression):
+        return parsed
     raise ExpressionError(f"Unsupported expression: {expression}")
 
 

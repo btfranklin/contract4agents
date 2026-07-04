@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from contract4agents.compiler import CompilerArtifacts
-from contract4agents.fixtures._models import FixtureConfigError, RunnerFunc
+from contract4agents.fixtures._models import FixtureConfigError, FixtureRetryError, RunnerFunc
 from contract4agents.runtime._trace import TraceRecorder
 from contract4agents.runtime._utils import load_python_ref
 
@@ -65,9 +65,10 @@ async def run_start_with_retry(
             output, trace = await runner(start, attempt_db, artifacts, attempt_trace)
             return output, trace, attempt, retry_errors, attempt_db
         except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"
             if attempt >= max_attempts:
-                raise
-            retry_errors.append(f"{type(exc).__name__}: {exc}")
+                raise FixtureRetryError(error, attempts=attempt, retry_errors=[*retry_errors, error]) from exc
+            retry_errors.append(error)
     raise RuntimeError("unreachable fixture retry state")
 
 

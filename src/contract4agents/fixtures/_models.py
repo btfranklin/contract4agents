@@ -21,6 +21,13 @@ class FixtureArtifactError(AssertionError):
     pass
 
 
+class FixtureRetryError(RuntimeError):
+    def __init__(self, message: str, *, attempts: int, retry_errors: list[str]) -> None:
+        super().__init__(message)
+        self.attempts = attempts
+        self.retry_errors = retry_errors
+
+
 @dataclass
 class StartReport:
     start_id: str
@@ -70,6 +77,7 @@ RunnerFunc = Callable[[Any, Path, CompilerArtifacts, Path], Awaitable[tuple[dict
 __all__ = [
     "FixtureArtifactError",
     "FixtureConfigError",
+    "FixtureRetryError",
     "FixtureReport",
     "GENERATED_ARTIFACT_DIRS",
     "RunnerFunc",

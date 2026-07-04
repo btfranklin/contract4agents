@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from typing import Any, Literal, TypedDict
 
 from contract4agents.expressions._grammar import parse_contract_expression
-from contract4agents.expressions._model import ExpressionError
+from contract4agents.expressions._model import ConditionalExpression, ExpressionError
 
 GuardKind = Literal["output_conformance", "approval_required_tool", "denied_tool", "unsupported"]
 GuardStatus = Literal["supported", "unsupported"]
@@ -47,6 +47,8 @@ def _classify_guard(agent: str, expression: str, tool_permissions: Mapping[str, 
     if len(parsed_items) != 1:
         return _unsupported(agent, expression, "Compound guard expressions are not supported")
     parsed = parsed_items[0]
+    if isinstance(parsed, ConditionalExpression):
+        return _unsupported(agent, expression, "Conditional guard expressions are not supported")
     if parsed.wrapper == "require" and parsed.kind == "output_conforms" and parsed.type_name:
         return _item(
             agent,

@@ -75,7 +75,7 @@ A Contract4Agents project produces multiple artifacts from one source of truth:
 - Adapter mappings, starting with explicit OpenAI support.
 - Eval packs that check output, trace behavior, hidden-truth discovery, and qualitative expectations.
 - Monitor packs that inspect normalized traces for contract violations.
-- Run contracts that verify host-owned workflow stage outputs and trace behavior.
+- Run specs that verify host-owned workflow stage outputs and trace behavior.
 - Static visualization artifacts for review and onboarding.
 - Human-readable generated docs.
 
@@ -156,7 +156,7 @@ Contract4Agents succeeds when it makes agent systems more reliable and easier to
 - A model can read the same source and understand the job quickly.
 - A compiler can reject missing tools, unsatisfied context dependencies, ambiguous datasources, invalid output schemas, and impossible eval references.
 - Host applications and SDK adapters can consume the same manifest, schema, instruction, eval, monitor, and visualization artifacts.
-- Host applications can evaluate run contracts against normalized traces and stage outputs without moving workflow ownership out of Python.
+- Host applications can evaluate run specs against normalized traces and stage outputs without moving workflow ownership out of Python.
 - Eval runners can inspect traces as first-class behavior.
 - Monitor rules can reuse the same source of truth as development evals.
 

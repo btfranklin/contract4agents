@@ -1,95 +1,8 @@
 {
-  "root": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab",
   "modules": [
     {
-      "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/agents/expression_coordinator.contract",
-      "types": [],
-      "datasources": [],
       "agents": [
         {
-          "name": "ExpressionCoordinator",
-          "parameters": [
-            {
-              "name": "input",
-              "type_name": "ExpressionInput",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/agents/expression_coordinator.contract",
-                "line": 2,
-                "column": 5
-              }
-            }
-          ],
-          "return_type": "ExpressionOutput",
-          "uses": [
-            {
-              "kind": "datasource",
-              "name": "KnownContextSource",
-              "source": "./datasources/context",
-              "permission": "available",
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/agents/expression_coordinator.contract",
-                "line": 4,
-                "column": 20
-              }
-            },
-            {
-              "kind": "agent",
-              "name": "AgentA",
-              "source": "./agents/supporting_agents",
-              "permission": "available",
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/agents/expression_coordinator.contract",
-                "line": 5,
-                "column": 15
-              }
-            },
-            {
-              "kind": "agent",
-              "name": "AgentB",
-              "source": "./agents/supporting_agents",
-              "permission": "available",
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/agents/expression_coordinator.contract",
-                "line": 6,
-                "column": 15
-              }
-            },
-            {
-              "kind": "tool",
-              "name": "tools.lookup",
-              "source": "./tools/lookup",
-              "permission": "preapproved",
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/agents/expression_coordinator.contract",
-                "line": 7,
-                "column": 14
-              }
-            },
-            {
-              "kind": "tool",
-              "name": "tools.publish",
-              "source": "./tools/publish",
-              "permission": "requires_approval",
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/agents/expression_coordinator.contract",
-                "line": 8,
-                "column": 14
-              }
-            },
-            {
-              "kind": "tool",
-              "name": "tools.audit",
-              "source": "./tools/audit",
-              "permission": "sandboxed",
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/agents/expression_coordinator.contract",
-                "line": 9,
-                "column": 14
-              }
-            }
-          ],
           "attributes": {
             "assertions": [
               "expect(output.ok == true)",
@@ -105,260 +18,357 @@
               "forbid(tool.tools.publish unless approved_by_human)"
             ]
           },
+          "name": "ExpressionCoordinator",
+          "parameters": [
+            {
+              "default": null,
+              "name": "input",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 2,
+                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/agents/expression_coordinator.contract"
+              },
+              "type_name": "ExpressionInput"
+            }
+          ],
+          "return_type": "ExpressionOutput",
           "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/agents/expression_coordinator.contract",
+            "column": 7,
             "line": 1,
-            "column": 7
-          }
+            "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/agents/expression_coordinator.contract"
+          },
+          "uses": [
+            {
+              "config": {},
+              "kind": "datasource",
+              "name": "KnownContextSource",
+              "permission": "available",
+              "source": "./datasources/context",
+              "span": {
+                "column": 20,
+                "line": 4,
+                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/agents/expression_coordinator.contract"
+              }
+            },
+            {
+              "config": {},
+              "kind": "agent",
+              "name": "AgentA",
+              "permission": "available",
+              "source": "./agents/supporting_agents",
+              "span": {
+                "column": 15,
+                "line": 5,
+                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/agents/expression_coordinator.contract"
+              }
+            },
+            {
+              "config": {},
+              "kind": "agent",
+              "name": "AgentB",
+              "permission": "available",
+              "source": "./agents/supporting_agents",
+              "span": {
+                "column": 15,
+                "line": 6,
+                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/agents/expression_coordinator.contract"
+              }
+            },
+            {
+              "config": {},
+              "kind": "tool",
+              "name": "tools.lookup",
+              "permission": "preapproved",
+              "source": "./tools/lookup",
+              "span": {
+                "column": 14,
+                "line": 7,
+                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/agents/expression_coordinator.contract"
+              }
+            },
+            {
+              "config": {},
+              "kind": "tool",
+              "name": "tools.publish",
+              "permission": "requires_approval",
+              "source": "./tools/publish",
+              "span": {
+                "column": 14,
+                "line": 8,
+                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/agents/expression_coordinator.contract"
+              }
+            },
+            {
+              "config": {},
+              "kind": "tool",
+              "name": "tools.audit",
+              "permission": "sandboxed",
+              "source": "./tools/audit",
+              "span": {
+                "column": 14,
+                "line": 9,
+                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/agents/expression_coordinator.contract"
+              }
+            }
+          ]
         }
       ],
+      "datasources": [],
       "evals": [],
-      "monitors": []
+      "monitors": [],
+      "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/agents/expression_coordinator.contract",
+      "run_specs": [],
+      "types": []
     },
     {
-      "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/agents/supporting_agents.contract",
-      "types": [],
-      "datasources": [],
       "agents": [
         {
-          "name": "AgentA",
-          "parameters": [],
-          "return_type": "ExpressionOutput",
-          "uses": [],
           "attributes": {
             "goal": "\"Known trace target A.\""
           },
-          "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/agents/supporting_agents.contract",
-            "line": 1,
-            "column": 7
-          }
-        },
-        {
-          "name": "AgentB",
+          "name": "AgentA",
           "parameters": [],
           "return_type": "ExpressionOutput",
-          "uses": [],
+          "span": {
+            "column": 7,
+            "line": 1,
+            "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/agents/supporting_agents.contract"
+          },
+          "uses": []
+        },
+        {
           "attributes": {
             "goal": "\"Known trace target B.\""
           },
+          "name": "AgentB",
+          "parameters": [],
+          "return_type": "ExpressionOutput",
           "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/agents/supporting_agents.contract",
+            "column": 7,
             "line": 4,
-            "column": 7
-          }
+            "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/agents/supporting_agents.contract"
+          },
+          "uses": []
         }
       ],
+      "datasources": [],
       "evals": [],
-      "monitors": []
+      "monitors": [],
+      "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/agents/supporting_agents.contract",
+      "run_specs": [],
+      "types": []
     },
     {
-      "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/datasources/context.contract",
-      "types": [],
+      "agents": [],
       "datasources": [
         {
+          "cache": "run",
           "name": "KnownContextSource",
+          "produces": "KnownContext",
           "python": "tests.fixtures.parser_golden:known_context",
+          "render": "markdown",
           "requires": [
             "ExpressionInput"
           ],
-          "produces": "KnownContext",
-          "render": "markdown",
-          "cache": "run",
           "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/datasources/context.contract",
+            "column": 12,
             "line": 1,
-            "column": 12
+            "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/datasources/context.contract"
           }
         }
       ],
-      "agents": [],
       "evals": [],
-      "monitors": []
+      "monitors": [],
+      "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/datasources/context.contract",
+      "run_specs": [],
+      "types": []
     },
     {
-      "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/monitors/expression.monitors.contract",
-      "types": [],
-      "datasources": [],
       "agents": [],
+      "datasources": [],
       "evals": [],
       "monitors": [
         {
-          "name": "publish_requires_approval",
           "agent": "ExpressionCoordinator",
-          "severity": "critical",
           "condition": "trace.tool_called(tools.publish)",
           "expectation": "trace.approval_granted(tools.publish)",
+          "name": "publish_requires_approval",
+          "severity": "critical",
           "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/monitors/expression.monitors.contract",
+            "column": 9,
             "line": 1,
-            "column": 9
+            "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/monitors/expression.monitors.contract"
           }
         },
         {
-          "name": "guardrail_visible",
           "agent": "ExpressionCoordinator",
-          "severity": "medium",
           "condition": "trace.guardrail_rejected(prompt_injection)",
           "expectation": "trace.contains(\"prompt_injection\")",
+          "name": "guardrail_visible",
+          "severity": "medium",
           "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/monitors/expression.monitors.contract",
+            "column": 9,
             "line": 6,
-            "column": 9
+            "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/monitors/expression.monitors.contract"
+          }
+        }
+      ],
+      "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/monitors/expression.monitors.contract",
+      "run_specs": [],
+      "types": []
+    },
+    {
+      "agents": [],
+      "datasources": [],
+      "evals": [],
+      "monitors": [],
+      "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/types/expression.contract",
+      "run_specs": [],
+      "types": [
+        {
+          "fields": [
+            {
+              "default": null,
+              "name": "request_id",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 2,
+                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/types/expression.contract"
+              },
+              "type_name": "str"
+            },
+            {
+              "default": null,
+              "name": "topic",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 3,
+                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/types/expression.contract"
+              },
+              "type_name": "str"
+            }
+          ],
+          "name": "ExpressionInput",
+          "python_ref": null,
+          "source": "native",
+          "span": {
+            "column": 6,
+            "line": 1,
+            "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/types/expression.contract"
+          }
+        },
+        {
+          "fields": [
+            {
+              "default": null,
+              "name": "summary",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 6,
+                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/types/expression.contract"
+              },
+              "type_name": "str"
+            }
+          ],
+          "name": "KnownContext",
+          "python_ref": null,
+          "source": "native",
+          "span": {
+            "column": 6,
+            "line": 5,
+            "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/types/expression.contract"
+          }
+        },
+        {
+          "fields": [
+            {
+              "default": null,
+              "name": "ok",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 9,
+                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/types/expression.contract"
+              },
+              "type_name": "bool"
+            },
+            {
+              "default": null,
+              "name": "count",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 10,
+                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/types/expression.contract"
+              },
+              "type_name": "int"
+            },
+            {
+              "default": null,
+              "name": "status",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 11,
+                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/types/expression.contract"
+              },
+              "type_name": "str"
+            },
+            {
+              "default": null,
+              "name": "summary",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 12,
+                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/types/expression.contract"
+              },
+              "type_name": "str"
+            },
+            {
+              "default": null,
+              "name": "details",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 13,
+                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/types/expression.contract"
+              },
+              "type_name": "str"
+            },
+            {
+              "default": null,
+              "name": "discovery",
+              "nullable": true,
+              "span": {
+                "column": 5,
+                "line": 14,
+                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/types/expression.contract"
+              },
+              "type_name": "str"
+            }
+          ],
+          "name": "ExpressionOutput",
+          "python_ref": null,
+          "source": "native",
+          "span": {
+            "column": 6,
+            "line": 8,
+            "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/types/expression.contract"
           }
         }
       ]
     },
     {
-      "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/types/expression.contract",
-      "types": [
-        {
-          "name": "ExpressionInput",
-          "fields": [
-            {
-              "name": "request_id",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/types/expression.contract",
-                "line": 2,
-                "column": 5
-              }
-            },
-            {
-              "name": "topic",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/types/expression.contract",
-                "line": 3,
-                "column": 5
-              }
-            }
-          ],
-          "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/types/expression.contract",
-            "line": 1,
-            "column": 6
-          }
-        },
-        {
-          "name": "KnownContext",
-          "fields": [
-            {
-              "name": "summary",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/types/expression.contract",
-                "line": 6,
-                "column": 5
-              }
-            }
-          ],
-          "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/types/expression.contract",
-            "line": 5,
-            "column": 6
-          }
-        },
-        {
-          "name": "ExpressionOutput",
-          "fields": [
-            {
-              "name": "ok",
-              "type_name": "bool",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/types/expression.contract",
-                "line": 9,
-                "column": 5
-              }
-            },
-            {
-              "name": "count",
-              "type_name": "int",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/types/expression.contract",
-                "line": 10,
-                "column": 5
-              }
-            },
-            {
-              "name": "status",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/types/expression.contract",
-                "line": 11,
-                "column": 5
-              }
-            },
-            {
-              "name": "summary",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/types/expression.contract",
-                "line": 12,
-                "column": 5
-              }
-            },
-            {
-              "name": "details",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/types/expression.contract",
-                "line": 13,
-                "column": 5
-              }
-            },
-            {
-              "name": "discovery",
-              "type_name": "str",
-              "nullable": true,
-              "default": null,
-              "span": {
-                "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/types/expression.contract",
-                "line": 14,
-                "column": 5
-              }
-            }
-          ],
-          "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/types/expression.contract",
-            "line": 8,
-            "column": 6
-          }
-        }
-      ],
-      "datasources": [],
       "agents": [],
-      "evals": [],
-      "monitors": []
-    },
-    {
-      "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/evals/expression.eval",
-      "types": [],
       "datasources": [],
-      "agents": [],
       "evals": [
         {
-          "name": "all_documented_expectations",
           "agent": "ExpressionCoordinator",
-          "givens": {
-            "request_id": "EXPR-1"
-          },
           "expects": [
             "output conforms ExpressionOutput",
             "output.ok == true",
@@ -382,15 +392,23 @@
             "trace.guardrail_rejected(prompt_injection)",
             "trace.contains(\"alpha, beta\")"
           ],
+          "givens": {
+            "request_id": "EXPR-1"
+          },
+          "name": "all_documented_expectations",
           "semantic_expects": [],
           "span": {
-            "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/evals/expression.eval",
+            "column": 6,
             "line": 1,
-            "column": 6
+            "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/evals/expression.eval"
           }
         }
       ],
-      "monitors": []
+      "monitors": [],
+      "path": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab/evals/expression.eval",
+      "run_specs": [],
+      "types": []
     }
-  ]
+  ],
+  "root": "tests/fixtures/contract_projects/parser-golden/expression-surface-lab"
 }

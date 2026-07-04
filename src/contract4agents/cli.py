@@ -13,6 +13,7 @@ from contract4agents.diagnostics import ContractError, Diagnostic, raise_if_erro
 from contract4agents.docscheck import check_docs
 from contract4agents.fixtures import FixtureReport, run_fixture_project_sync
 from contract4agents.monitor import MonitorRule, run_monitors
+from contract4agents.output_paths import validate_output_dir
 from contract4agents.parser import parse_project
 from contract4agents.runtime import TraceFileError, TraceScopeError, load_trace_jsonl
 from contract4agents.semantics import analyze_project
@@ -66,7 +67,13 @@ def check(root: Path, allow_python_imports: bool, strict_drift: bool, registry_p
 
 @main.command("compile")
 @click.argument("root", type=click.Path(path_type=Path), default=".", required=False)
-@click.option("--out", "output_dir", type=click.Path(path_type=Path), default=".contract/build")
+@click.option(
+    "--out",
+    "output_dir",
+    type=click.Path(path_type=Path),
+    default=".contract/build",
+    help="Generated artifact directory. Relative paths are resolved from the current working directory.",
+)
 @click.option("--check", "check_mode", is_flag=True, help="Fail if generated artifacts are stale.")
 @click.option("--allow-python-imports", is_flag=True, help="Import configured Python model types during compile.")
 def compile_cmd(root: Path, output_dir: Path, check_mode: bool, allow_python_imports: bool) -> None:
@@ -80,7 +87,13 @@ def compile_cmd(root: Path, output_dir: Path, check_mode: bool, allow_python_imp
 
 @main.command("visualize")
 @click.argument("root", type=click.Path(path_type=Path), default=".", required=False)
-@click.option("--out", "output_dir", type=click.Path(path_type=Path), default=".contract/build/visualization")
+@click.option(
+    "--out",
+    "output_dir",
+    type=click.Path(path_type=Path),
+    default=".contract/build/visualization",
+    help="Generated visualization directory. Relative paths are resolved from the current working directory.",
+)
 @click.option("--allow-python-imports", is_flag=True, help="Import configured Python model types during visualization.")
 def visualize_cmd(root: Path, output_dir: Path, allow_python_imports: bool) -> None:
     """Generate static HTML visualization artifacts.
@@ -93,8 +106,9 @@ def visualize_cmd(root: Path, output_dir: Path, allow_python_imports: bool) -> N
         raise_if_errors(analyze_project(project).diagnostics)
         artifacts = build_artifacts(project, allow_python_imports=allow_python_imports)
         graph = build_visualization_graph(project, artifacts)
-        write_visualization_artifacts(graph, output_dir)
-        click.echo(f"Contract4Agents visualization written to {output_dir}")
+        output_path = validate_output_dir(project.root, output_dir, artifact_label="visualization artifacts")
+        write_visualization_artifacts(graph, output_path)
+        click.echo(f"Contract4Agents visualization written to {output_path}")
     except ContractError as exc:
         _print_contract_error(exc)
 

@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
 
+from contract4agents._datasource_resolution import (
+    DatasourceCandidate,
+    DatasourceResolution,
+    resolve_datasource_type,
+)
 from contract4agents.ast import AgentDef, DatasourceDef, SourceSpan
 from contract4agents.composition import parse_composition_declaration
 from contract4agents.diagnostics import Diagnostic
 from contract4agents.semantic_checks._index import ProjectIndex
-
-_Status = Literal["ok", "missing", "ambiguous", "cycle"]
+from contract4agents.type_refs import canonical_type_name
 
 
 @dataclass(frozen=True)
@@ -18,19 +21,6 @@ class _ChildRelation:
     parent: AgentDef
     child: AgentDef
     span: SourceSpan | None
-
-
-@dataclass(frozen=True)
-class _Resolution:
-    status: _Status
-    type_name: str
-    path: tuple[str, ...]
-    candidates: tuple[str, ...] = ()
-    cycle: tuple[str, ...] = ()
-
-    @classmethod
-    def ok(cls, type_name: str, path: tuple[str, ...]) -> _Resolution:
-        return cls("ok", type_name, path)
 
 
 def check_context_dependencies(index: ProjectIndex) -> list[Diagnostic]:
@@ -81,7 +71,11 @@ def _check_relation(relation: _ChildRelation, index: ProjectIndex) -> list[Diagn
         if parameter.nullable or parameter.default is not None:
             continue
         type_name = parameter.normalized_type
-        resolution = _resolve_type(type_name, available, datasources, resolving=(), path=())
+        resolution = resolve_datasource_type(
+            type_name,
+            available=available,
+            datasources=_datasource_candidates(datasources),
+        )
         if resolution.status != "ok":
             diagnostics.append(_diagnostic_for_resolution(relation, resolution))
     return diagnostics
@@ -92,7 +86,7 @@ def _available_context(agent: AgentDef) -> set[str]:
         parameter.normalized_type
         for parameter in agent.parameters
         if not parameter.nullable and parameter.default is None
-    } | {_normalize_type(type_name) for type_name in agent.list_attr("host_context")}
+    } | {canonical_type_name(type_name) for type_name in agent.list_attr("host_context")}
 
 
 def _agent_datasources(agent: AgentDef, index: ProjectIndex) -> list[DatasourceDef]:
@@ -106,62 +100,14 @@ def _agent_datasources(agent: AgentDef, index: ProjectIndex) -> list[DatasourceD
     return datasources
 
 
-def _resolve_type(
-    type_name: str,
-    available: set[str],
-    datasources: list[DatasourceDef],
-    resolving: tuple[str, ...],
-    path: tuple[str, ...],
-) -> _Resolution:
-    normalized = _normalize_type(type_name)
-    if normalized in available:
-        return _Resolution.ok(normalized, (*path, normalized))
-    if normalized in resolving:
-        cycle_start = resolving.index(normalized)
-        return _Resolution("cycle", normalized, path, cycle=(*resolving[cycle_start:], normalized))
-
-    candidates = [datasource for datasource in datasources if _normalize_type(datasource.produces) == normalized]
-    if not candidates:
-        return _Resolution("missing", normalized, path)
-
-    valid: list[DatasourceDef] = []
-    first_failure: _Resolution | None = None
-    for candidate in candidates:
-        proof = _resolve_datasource(candidate, available, datasources, (*resolving, normalized), path)
-        if proof.status == "ok":
-            valid.append(candidate)
-            continue
-        if first_failure is None or (first_failure.status != "cycle" and proof.status == "cycle"):
-            first_failure = proof
-
-    if len(valid) > 1:
-        return _Resolution(
-            "ambiguous",
-            normalized,
-            path,
-            candidates=tuple(sorted(datasource.name for datasource in valid)),
-        )
-    if len(valid) == 1:
-        return _Resolution.ok(normalized, (*path, f"{valid[0].name}:{normalized}"))
-    return first_failure or _Resolution("missing", normalized, path)
+def _datasource_candidates(datasources: list[DatasourceDef]) -> list[DatasourceCandidate]:
+    return [
+        DatasourceCandidate(datasource.name, datasource.produces, tuple(datasource.requires))
+        for datasource in datasources
+    ]
 
 
-def _resolve_datasource(
-    datasource: DatasourceDef,
-    available: set[str],
-    datasources: list[DatasourceDef],
-    resolving: tuple[str, ...],
-    path: tuple[str, ...],
-) -> _Resolution:
-    datasource_path = (*path, datasource.name)
-    for required in datasource.requires:
-        proof = _resolve_type(required, available, datasources, resolving, datasource_path)
-        if proof.status != "ok":
-            return proof
-    return _Resolution.ok(datasource.produces, datasource_path)
-
-
-def _diagnostic_for_resolution(relation: _ChildRelation, resolution: _Resolution) -> Diagnostic:
+def _diagnostic_for_resolution(relation: _ChildRelation, resolution: DatasourceResolution) -> Diagnostic:
     parent = relation.parent.name
     child = relation.child.name
     if resolution.status == "ambiguous":
@@ -197,15 +143,6 @@ def _diagnostic_for_resolution(relation: _ChildRelation, resolution: _Resolution
 
 def _format_path(path: tuple[str, ...]) -> str:
     return " -> ".join(path) if path else "(parent context)"
-
-
-def _normalize_type(raw_type: str) -> str:
-    value = raw_type.strip().rstrip("?")
-    if value.endswith("[]"):
-        value = value[:-2]
-    if value.startswith("list[") and value.endswith("]"):
-        value = value[5:-1]
-    return value
 
 
 __all__ = ["check_context_dependencies"]

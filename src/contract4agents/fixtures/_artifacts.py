@@ -48,9 +48,9 @@ def verify_fixture_artifacts(metadata: dict[str, Any], artifacts: CompilerArtifa
     datasource_artifacts = {item["name"]: item for item in coordinator["datasources"]}
     _expect_set("datasources", expected.get("datasources", []), datasource_artifacts)
     checks.append("expected coordinator datasources present")
-    if artifacts["adapter_capability_matrix"]["openai"]["trace_capture"]["status"] != "partial":
-        raise FixtureArtifactError("OpenAI trace capture capability must be marked partial")
-    checks.append("OpenAI adapter capability matrix present")
+    _expect_adapter_capabilities(expected.get("adapter_capabilities", {}), artifacts["adapter_capability_matrix"])
+    if expected.get("adapter_capabilities"):
+        checks.append("expected adapter capabilities present")
     return checks
 
 
@@ -68,6 +68,18 @@ def _expect_permissions(label: str, expected: dict[str, str], actual: dict[str, 
     }
     if mismatches:
         raise FixtureArtifactError(f"unexpected {label}: {mismatches}")
+
+
+def _expect_adapter_capabilities(expected: dict[str, dict[str, str]], actual: dict[str, Any]) -> None:
+    for adapter_name, capabilities in expected.items():
+        adapter = actual.get(adapter_name, {})
+        for capability_name, status in capabilities.items():
+            actual_status = adapter.get(capability_name, {}).get("status")
+            if actual_status != status:
+                raise FixtureArtifactError(
+                    f"unexpected adapter capability {adapter_name}.{capability_name}: "
+                    f"expected {status}, got {actual_status}"
+                )
 
 
 __all__ = ["verify_fixture_artifacts"]

@@ -15,10 +15,10 @@ from contract4agents.assertions import (
     AssertionFailure,
     evaluate_agent_assertions,
     evaluate_run_assertions,
-    evaluate_run_contract,
+    evaluate_run_spec,
 )
 from contract4agents.compiler import AgentManifest, CompilerArtifacts, compile_project
-from contract4agents.expressions import ExpressionError, ParsedExpression
+from contract4agents.expressions import ConditionalExpression, ExpressionError, ParsedExpression
 from contract4agents.guards import build_guard_plan
 from contract4agents.pydantic_interop import PydanticSchemaError, schema_from_pydantic_type
 from contract4agents.runtime import (
@@ -34,6 +34,7 @@ from contract4agents.runtime import (
 def test_expression_facade_exports_canonical_public_surface() -> None:
     assert expressions.ExpressionError is ExpressionError
     assert expressions.ParsedExpression is ParsedExpression
+    assert expressions.ConditionalExpression is ConditionalExpression
     assert callable(expressions.parse_expectation)
     assert callable(expressions.evaluate_output)
     assert callable(expressions.referenced_trace_targets)
@@ -65,10 +66,10 @@ def test_assertion_facade_exports_canonical_public_surface() -> None:
     assert AssertionFailure("kind", "assertion", "message").kind == "kind"
     assert callable(evaluate_agent_assertions)
     assert callable(evaluate_run_assertions)
-    assert callable(evaluate_run_contract)
+    assert callable(evaluate_run_spec)
     assert contract4agents.evaluate_agent_assertions is evaluate_agent_assertions
     assert contract4agents.evaluate_run_assertions is evaluate_run_assertions
-    assert contract4agents.evaluate_run_contract is evaluate_run_contract
+    assert contract4agents.evaluate_run_spec is evaluate_run_spec
 
 
 def test_guard_facade_exports_canonical_public_surface() -> None:

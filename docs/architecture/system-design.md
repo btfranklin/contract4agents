@@ -14,7 +14,7 @@ graph TD
     Compiler --> Manifest["Provider-neutral manifest"]
     Compiler --> EvalPack["Eval suite"]
     Compiler --> MonitorPack["Monitor rules"]
-    Compiler --> RunContractPack["Run contracts"]
+    Compiler --> RunSpecPack["Run specs"]
     Manifest --> Host["Host app or SDK adapter"]
     Instructions --> Host
     Host --> Trace["Normalized trace"]
@@ -22,7 +22,7 @@ graph TD
     Trace --> EvalRunner
     MonitorPack --> MonitorRunner["Monitor runner"]
     Trace --> MonitorRunner
-    RunContractPack --> Host
+    RunSpecPack --> Host
     Trace --> Host
 ```
 
@@ -30,7 +30,7 @@ graph TD
 
 Contract4Agents projects have four primary source inputs:
 
-- `.contract` files define agents, shared types, datasource declarations, guards, assertions, monitor declarations, and run contracts.
+- `.contract` files define agents, shared types, datasource declarations, guards, assertions, monitor declarations, and run specs.
 - `.eval` files define offline test and eval cases against agents.
 - Python modules implement tools, datasources, adapters, and application-specific runtime code.
 - Project configuration declares artifact destinations and host integration policy.
@@ -79,7 +79,7 @@ The compiler turns source contracts into artifacts:
 - Adapter capability metadata.
 - Eval packs.
 - Monitor packs.
-- Run-contract artifacts for host-owned workflow trace and stage-output expectations.
+- Run spec artifacts for host-owned workflow trace and stage-output expectations.
 - Generated human docs.
 
 The compiler should be deterministic. If source files and configuration do not change, generated artifacts should be stable.
@@ -95,7 +95,7 @@ Runtime primitives and host integration code consume compiled manifests. Togethe
 - Preserving structured output metadata.
 - Capturing trace events.
 - Checking run assertions where execution traces and outputs are available.
-- Checking run contracts where execution traces and stage outputs are available.
+- Checking run specs where execution traces and stage outputs are available.
 
 `contract4agents.runtime` is the canonical public runtime import surface. Runtime implementation details are split into private modules for trace recording, trace JSONL loading, datasource resolution, fake tools, runtime errors, and small import/async utilities. Applications and examples should continue to import runtime primitives from `contract4agents.runtime`.
 
@@ -125,7 +125,7 @@ The monitor runner applies monitor rules to recorded traces. It reports contract
 8. Tool and subagent results are recorded as typed trace events.
 9. The final output is validated against the return type.
 10. Assertions are checked where their required trace and output data is available.
-11. Run contracts are checked where their required trace and stage output data is available.
+11. Run specs are checked where their required trace and stage output data is available.
 12. The trace can be used for evals, monitors, debugging, and audit.
 
 ## Boundaries
@@ -138,7 +138,7 @@ Contract4Agents should own:
 - Provider-neutral manifests.
 - Context resolution rules.
 - Eval and trace assertion semantics.
-- Run-contract stage-output and trace verification.
+- Run spec stage-output and trace verification.
 - Trace event schema.
 
 Contract4Agents should not own:

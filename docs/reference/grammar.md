@@ -12,14 +12,14 @@ Contract4Agents V1 supports:
 - Inline capability declarations: `use tool|agent|datasource Name from source [permission]`.
 - Hosted provider tool declarations: `use hosted_tool openai.web_search context_size "medium" [permission]`.
 - Structured assignments for `goal`, `description`, `policy`, `success`, `routes`, `composition`, `guards`, and `assertions`.
-- `run_contract Name:` declarations with `stages` and trace `assertions`.
+- `run_spec Name:` declarations with `stages` and trace `assertions`.
 - `.eval` files with `given` and `expect` statements.
 - `monitor Name for Agent:` declarations.
 
 Semantic analysis rejects unknown agent assignment attributes and known
 attribute type mismatches. Text attributes (`goal`, `description`) must be
 strings. List attributes (`policy`, `success`, `routes`, `composition`,
-`guards`, `assertions`) must be list values. Run-contract attributes are also
+`guards`, `assertions`) must be list values. Run spec attributes are also
 checked semantically; `stages` and `assertions` must be lists.
 
 General-purpose loops, executable expression blocks, branching, retries, and

@@ -14,7 +14,7 @@ from contract4agents.semantics import analyze_project
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = ROOT / "examples" / "incident-command"
 PYDANTIC_FIXTURE = ROOT / "tests" / "fixtures" / "contract_projects" / "pydantic-model-interop"
-RUN_CONTRACT_FIXTURE = ROOT / "tests" / "fixtures" / "contract_projects" / "run-contracts"
+RUN_SPEC_FIXTURE = ROOT / "tests" / "fixtures" / "contract_projects" / "run-specs"
 
 
 def test_parse_incident_project() -> None:
@@ -48,23 +48,47 @@ def test_parse_python_type_binding() -> None:
     assert module.types[0].fields == []
 
 
-def test_parse_run_contract_declaration() -> None:
-    module = parse_file(RUN_CONTRACT_FIXTURE / "agents" / "research.contract")
+def test_parse_run_spec_declaration() -> None:
+    module = parse_file(RUN_SPEC_FIXTURE / "agents" / "research.contract")
 
-    run_contract = module.run_contracts[0]
+    run_spec = module.run_specs[0]
 
-    assert run_contract.name == "CompendiumResearch"
-    assert run_contract.stages == [
+    assert run_spec.name == "CompendiumResearch"
+    assert run_spec.stages == [
         "plan: PlannerAgent -> ResearchPlan",
         "section_research+: SectionResearchAgent -> SectionResearchBrief",
         "verification?: VerifierAgent -> VerificationReport",
         "synthesis: SynthesisAgent -> CompendiumPayload",
     ]
-    assert run_contract.assertions[-1] == "expect(trace.not_tool_called_by(SynthesisAgent, openai.web_search))"
+    assert run_spec.assertions[-1] == "expect(trace.not_tool_called_by(SynthesisAgent, openai.web_search))"
 
 
-def test_run_contract_fixture_is_semantically_valid() -> None:
-    result = analyze_project(parse_project(RUN_CONTRACT_FIXTURE))
+def test_run_spec_fixture_is_semantically_valid() -> None:
+    result = analyze_project(parse_project(RUN_SPEC_FIXTURE))
+
+    assert result.ok, [diagnostic.format() for diagnostic in result.diagnostics]
+
+
+def test_run_spec_trace_assertions_allow_declared_stage_names(tmp_path: Path) -> None:
+    (tmp_path / "good.contract").write_text(
+        """
+type Result:
+    ok: bool
+
+agent KnownAgent() -> Result:
+    goal = "known"
+
+run_spec GoodRun:
+    stages = [
+        plan: KnownAgent -> Result,
+    ]
+    assertions = [
+        expect(trace.called(plan)),
+    ]
+""".strip()
+    )
+
+    result = analyze_project(parse_project(tmp_path))
 
     assert result.ok, [diagnostic.format() for diagnostic in result.diagnostics]
 
@@ -74,7 +98,7 @@ def test_run_contract_fixture_is_semantically_valid() -> None:
     [
         (
             """
-run_contract BadRun:
+run_spec BadRun:
     stages = [
         missing: MissingAgent -> MissingType,
     ]
@@ -83,7 +107,7 @@ run_contract BadRun:
         ),
         (
             """
-run_contract BadRun:
+run_spec BadRun:
     stages = [
         duplicate: KnownAgent -> Result,
         duplicate: KnownAgent -> Result,
@@ -94,7 +118,7 @@ run_contract BadRun:
         ),
         (
             """
-run_contract BadRun:
+run_spec BadRun:
     stages = [
         known: KnownAgent -> Result,
     ]
@@ -107,7 +131,7 @@ run_contract BadRun:
         ),
         (
             """
-run_contract BadRun:
+run_spec BadRun:
     stages = [
         known: KnownAgent -> Result,
     ]
@@ -118,9 +142,21 @@ run_contract BadRun:
 """,
             {"SEM051", "SEM053"},
         ),
+        (
+            """
+run_spec BadRun:
+    stages = [
+        known: KnownAgent -> Result,
+    ]
+    assertions = [
+        expect(trace.called(missing_stage)),
+    ]
+""",
+            {"SEM051"},
+        ),
     ],
 )
-def test_run_contract_semantic_diagnostics(
+def test_run_spec_semantic_diagnostics(
     tmp_path: Path,
     body: str,
     expected_codes: set[str],
@@ -805,6 +841,27 @@ def test_json_schema_generation() -> None:
     assert "summary" in schema["required"]
 
 
+def test_json_schema_generation_supports_nullable_collection_members(tmp_path: Path) -> None:
+    (tmp_path / "types.contract").write_text(
+        """
+type Child:
+    name: str
+
+type Parent:
+    children: list[Child?]
+""".strip()
+    )
+    project = parse_project(tmp_path)
+
+    schema = type_to_schema(project.types["Parent"], project.types)
+
+    assert schema["properties"]["children"] == {
+        "type": "array",
+        "items": {"anyOf": [{"$ref": "#/$defs/Child"}, {"type": "null"}]},
+    }
+    assert schema["$defs"]["Child"]["properties"]["name"]["type"] == "string"
+
+
 def test_pydantic_schema_generation_requires_explicit_imports(tmp_path: Path) -> None:
     with pytest.raises(ContractError) as exc:
         compile_project(PYDANTIC_FIXTURE, tmp_path / "build")
@@ -868,6 +925,39 @@ agent RootAgent() -> Result:
     assert source_doc.read_text() == "source docs\n"
 
 
+def test_compile_project_resolves_relative_out_from_cwd_and_rejects_cwd_sources(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_root = tmp_path / "examples" / "incident-command"
+    project_root.mkdir(parents=True)
+    (project_root / "project.contract").write_text(
+        """
+type Result:
+    ok: bool
+
+agent RootAgent() -> Result:
+    goal = "ok"
+""".strip()
+    )
+    cwd_doc_dir = tmp_path / "docs"
+    cwd_doc_dir.mkdir()
+    source_doc = cwd_doc_dir / "source.md"
+    source_doc.write_text("source docs\n")
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ContractError) as docs_exc:
+        compile_project(project_root, Path("docs"))
+
+    assert docs_exc.value.diagnostics[0].code == "COMPILE002"
+    assert source_doc.read_text() == "source docs\n"
+
+    compile_project(project_root, Path(".contract/build"))
+
+    assert (tmp_path / ".contract" / "build" / "schemas" / "Result.json").exists()
+    assert not (project_root / ".contract").exists()
+
+
 @pytest.mark.parametrize(
     ("python_ref", "code"),
     [
@@ -911,13 +1001,13 @@ def test_compile_project_artifacts(tmp_path: Path) -> None:
     assert artifacts["type_bindings"][0]["source"] == "native"
 
 
-def test_compile_project_artifacts_include_run_contracts(tmp_path: Path) -> None:
-    artifacts = compile_project(RUN_CONTRACT_FIXTURE, tmp_path / "build")
+def test_compile_project_artifacts_include_run_specs(tmp_path: Path) -> None:
+    artifacts = compile_project(RUN_SPEC_FIXTURE, tmp_path / "build")
 
-    run_contract = artifacts["run_contracts"][0]
+    run_spec = artifacts["run_specs"][0]
 
-    assert run_contract["name"] == "CompendiumResearch"
-    assert run_contract["stages"][1] == {
+    assert run_spec["name"] == "CompendiumResearch"
+    assert run_spec["stages"][1] == {
         "name": "section_research",
         "agent": "SectionResearchAgent",
         "output_type": "SectionResearchBrief",
@@ -925,20 +1015,20 @@ def test_compile_project_artifacts_include_run_contracts(tmp_path: Path) -> None
         "manifest_ref": "manifests/SectionResearchAgent.json",
         "schema_ref": "schemas/SectionResearchBrief.json",
     }
-    assert (tmp_path / "build" / "run-contracts" / "run-contracts.json").exists()
+    assert (tmp_path / "build" / "run-specs" / "run-specs.json").exists()
     assert "`CompendiumResearch`" in artifacts["docs"]["summary.md"]
 
 
-def test_compile_check_detects_stale_run_contract_artifact(tmp_path: Path) -> None:
+def test_compile_check_detects_stale_run_spec_artifact(tmp_path: Path) -> None:
     build_dir = tmp_path / "build"
-    compile_project(RUN_CONTRACT_FIXTURE, build_dir)
-    run_contracts = build_dir / "run-contracts" / "run-contracts.json"
-    run_contracts.write_text("[]\n")
+    compile_project(RUN_SPEC_FIXTURE, build_dir)
+    run_specs = build_dir / "run-specs" / "run-specs.json"
+    run_specs.write_text("[]\n")
 
     with pytest.raises(ContractError) as exc:
-        compile_project(RUN_CONTRACT_FIXTURE, build_dir, check=True)
+        compile_project(RUN_SPEC_FIXTURE, build_dir, check=True)
 
-    assert "run-contracts.json" in str(exc.value.diagnostics[0].hint)
+    assert "run-specs.json" in str(exc.value.diagnostics[0].hint)
 
 
 def test_compile_project_artifacts_include_hosted_tools(tmp_path: Path) -> None:

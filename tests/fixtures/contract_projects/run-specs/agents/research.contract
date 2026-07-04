@@ -12,7 +12,7 @@ agent SynthesisAgent(plan: ResearchPlan, verification: VerificationReport?) -> C
     use hosted_tool openai.web_search context_size "medium"
     goal = "Synthesize the final payload."
 
-run_contract CompendiumResearch:
+run_spec CompendiumResearch:
     stages = [
         plan: PlannerAgent -> ResearchPlan,
         section_research+: SectionResearchAgent -> SectionResearchBrief,

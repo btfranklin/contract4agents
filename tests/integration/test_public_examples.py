@@ -44,6 +44,9 @@ def test_public_example_check_compile_visualize_smoke(example_root: Path, tmp_pa
     check_result = runner.invoke(main, ["check", str(example_root)])
     assert check_result.exit_code == 0, check_result.output
 
+    strict_drift_result = runner.invoke(main, ["check", str(example_root), "--strict-drift"])
+    assert strict_drift_result.exit_code == 0, strict_drift_result.output
+
     compile_result = runner.invoke(main, ["compile", str(example_root), "--out", str(build_dir)])
     assert compile_result.exit_code == 0, compile_result.output
     assert (build_dir / "docs" / "summary.md").exists()

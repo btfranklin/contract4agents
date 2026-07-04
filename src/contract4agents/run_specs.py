@@ -1,11 +1,11 @@
-"""Shared helpers for run-contract declarations."""
+"""Shared helpers for run spec declarations."""
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
 
-from contract4agents.ast import RunStageCardinality
+from contract4agents.ast import RunSpecStageCardinality
 
 _RUN_STAGE_RE = re.compile(
     r"\s*(?P<name>[A-Za-z_][A-Za-z0-9_]*)(?P<suffix>[?+])?\s*:\s*"
@@ -15,27 +15,27 @@ _RUN_STAGE_RE = re.compile(
 
 
 @dataclass(frozen=True)
-class RunStageDeclaration:
+class RunSpecStageDeclaration:
     name: str
     agent: str
     output_type: str
-    cardinality: RunStageCardinality
+    cardinality: RunSpecStageCardinality
     raw: str
 
 
-def parse_run_stage_declaration(value: str) -> RunStageDeclaration | None:
+def parse_run_spec_stage_declaration(value: str) -> RunSpecStageDeclaration | None:
     match = _RUN_STAGE_RE.fullmatch(value)
     if match is None:
         return None
     suffix = match.group("suffix")
-    cardinality: RunStageCardinality
+    cardinality: RunSpecStageCardinality
     if suffix == "?":
         cardinality = "optional"
     elif suffix == "+":
         cardinality = "many"
     else:
         cardinality = "one"
-    return RunStageDeclaration(
+    return RunSpecStageDeclaration(
         name=match.group("name"),
         agent=match.group("agent"),
         output_type=match.group("output"),
@@ -44,4 +44,4 @@ def parse_run_stage_declaration(value: str) -> RunStageDeclaration | None:
     )
 
 
-__all__ = ["RunStageDeclaration", "parse_run_stage_declaration"]
+__all__ = ["RunSpecStageDeclaration", "parse_run_spec_stage_declaration"]

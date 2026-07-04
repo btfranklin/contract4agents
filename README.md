@@ -35,7 +35,7 @@ Start here:
 - semantic analyzer
 - static child-agent context dependency checks
 - source-owned capability registry and strict host-code drift checks
-- run contracts for host-owned workflow trace and stage-output expectations
+- run specs for host-owned workflow trace and stage-output expectations
 - JSON Schema and provider-neutral manifest compiler
 - local fake-tool and datasource runtime primitives
 - eval and monitor runners

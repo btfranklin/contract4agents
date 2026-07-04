@@ -29,4 +29,21 @@ class ParsedExpression:
     approval_required: bool = False
 
 
-__all__ = ["ExpressionError", "ExpressionKind", "ExpressionWrapper", "ParsedExpression"]
+@dataclass(frozen=True)
+class ConditionalExpression:
+    expression: str
+    condition: ParsedExpression
+    expectation: ParsedExpression
+
+
+ContractExpression = ParsedExpression | ConditionalExpression
+
+
+__all__ = [
+    "ConditionalExpression",
+    "ContractExpression",
+    "ExpressionError",
+    "ExpressionKind",
+    "ExpressionWrapper",
+    "ParsedExpression",
+]

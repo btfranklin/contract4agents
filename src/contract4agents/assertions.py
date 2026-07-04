@@ -7,10 +7,10 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from contract4agents.compiler import AgentManifest, CompilerArtifacts
-from contract4agents.compiler._types import RunContractArtifact, RunContractStage
+from contract4agents.compiler._types import RunSpecArtifact, RunSpecStage
 from contract4agents.expressions._eval import evaluate_parsed_expression, evaluate_trace
 from contract4agents.expressions._grammar import parse_contract_expression
-from contract4agents.expressions._model import ExpressionError, ParsedExpression
+from contract4agents.expressions._model import ConditionalExpression, ExpressionError, ParsedExpression
 from contract4agents.runtime import TraceRecorder, scope_trace
 
 AssertionStatus = Literal["passed", "failed", "skipped"]
@@ -46,17 +46,17 @@ class RunEvaluationResult:
 
 
 @dataclass(frozen=True)
-class RunContractStageCheck:
+class RunSpecStageCheck:
     stage: str
     status: AssertionStatus
     failures: list[AssertionFailure] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
-class RunContractEvaluationResult:
-    run_contract: str
+class RunSpecEvaluationResult:
+    run_spec: str
     passed: bool
-    stages: list[RunContractStageCheck] = field(default_factory=list)
+    stages: list[RunSpecStageCheck] = field(default_factory=list)
     assertions: list[AssertionCheck] = field(default_factory=list)
     failures: list[AssertionFailure] = field(default_factory=list)
 
@@ -102,7 +102,7 @@ def evaluate_run_assertions(
     """Evaluate compiled agent assertions for host-provided outputs and trace events.
 
     The `context` parameter is reserved for host-provided assertion context.
-    Use `evaluate_run_contract(...)` for stage-output and trace expectations
+    Use `evaluate_run_spec(...)` for stage-output and trace expectations
     across a host-owned multi-agent run.
     """
     _ = context
@@ -153,30 +153,30 @@ def evaluate_run_assertions(
     )
 
 
-def evaluate_run_contract(
+def evaluate_run_spec(
     *,
     contract: CompilerArtifacts,
-    run_contract: str,
+    run_spec: str,
     trace: TraceRecorder,
     stage_outputs: Mapping[str, Any],
     run_id: str | None = None,
-) -> RunContractEvaluationResult:
-    """Evaluate a compiled run contract against host-emitted trace and stage outputs."""
-    artifact = _run_contract_artifact(contract, run_contract)
+) -> RunSpecEvaluationResult:
+    """Evaluate a compiled run spec against host-emitted trace and stage outputs."""
+    artifact = _run_spec_artifact(contract, run_spec)
     if artifact is None:
         failure = AssertionFailure(
             "contract",
-            "__run_contract__",
-            f"Compiled contract does not contain run_contract `{run_contract}`",
+            "__run_spec__",
+            f"Compiled contract does not contain run spec `{run_spec}`",
         )
-        return RunContractEvaluationResult(run_contract, False, failures=[failure])
+        return RunSpecEvaluationResult(run_spec, False, failures=[failure])
 
     scoped_trace = scope_trace(trace, run_id=run_id)
     stage_checks = [
-        _evaluate_run_contract_stage(stage, stage_outputs, contract["schemas"]) for stage in artifact["stages"]
+        _evaluate_run_spec_stage(stage, stage_outputs, contract["schemas"]) for stage in artifact["stages"]
     ]
     assertion_checks = [
-        _evaluate_run_contract_assertion(assertion, scoped_trace) for assertion in artifact["assertions"]
+        _evaluate_run_spec_assertion(assertion, scoped_trace) for assertion in artifact["assertions"]
     ]
     failures = [
         failure
@@ -184,8 +184,8 @@ def evaluate_run_contract(
         for failure in stage.failures
     ]
     failures.extend(check.failure for check in assertion_checks if check.failure is not None)
-    return RunContractEvaluationResult(
-        run_contract,
+    return RunSpecEvaluationResult(
+        run_spec,
         not failures,
         stage_checks,
         assertion_checks,
@@ -206,17 +206,15 @@ def _evaluate_assertion(
     except ExpressionError as exc:
         return _failed(agent, assertion, "unsupported", str(exc))
 
-    if assertion.strip().startswith("when"):
-        if len(parsed_items) != 2 or parsed_items[0].kind != "trace":
-            return _failed(agent, assertion, "unsupported", f"Unsupported conditional assertion: {assertion}")
-        condition_failure = evaluate_trace(parsed_items[0], trace)
-        if condition_failure:
-            return AssertionCheck(assertion, "skipped")
-        return _evaluate_parsed(agent, assertion, parsed_items[1], output, trace, schemas, hidden_truth)
-
     failures: list[AssertionFailure] = []
     for parsed in parsed_items:
-        check = _evaluate_parsed(agent, assertion, parsed, output, trace, schemas, hidden_truth)
+        check = (
+            _evaluate_conditional(agent, assertion, parsed, output, trace, schemas, hidden_truth)
+            if isinstance(parsed, ConditionalExpression)
+            else _evaluate_parsed(agent, assertion, parsed, output, trace, schemas, hidden_truth)
+        )
+        if check.status == "skipped":
+            return check
         if check.failure is not None:
             failures.append(check.failure)
     if failures:
@@ -224,21 +222,21 @@ def _evaluate_assertion(
     return AssertionCheck(assertion, "passed")
 
 
-def _evaluate_run_contract_stage(
-    stage: RunContractStage,
+def _evaluate_run_spec_stage(
+    stage: RunSpecStage,
     stage_outputs: Mapping[str, Any],
     schemas: Mapping[str, dict[str, Any]],
-) -> RunContractStageCheck:
+) -> RunSpecStageCheck:
     stage_name = stage["name"]
     if stage_name not in stage_outputs:
         if stage["cardinality"] == "optional":
-            return RunContractStageCheck(stage_name, "skipped")
+            return RunSpecStageCheck(stage_name, "skipped")
         failure = AssertionFailure(
             "missing_stage_output",
             "__stage_output__",
-            f"No output supplied for run_contract stage `{stage_name}`",
+            f"No output supplied for run spec stage `{stage_name}`",
         )
-        return RunContractStageCheck(stage_name, "failed", [failure])
+        return RunSpecStageCheck(stage_name, "failed", [failure])
 
     value = stage_outputs[stage_name]
     if stage["cardinality"] == "many":
@@ -248,45 +246,40 @@ def _evaluate_run_contract_stage(
                 "__stage_output__",
                 f"Stage `{stage_name}` expects one or more outputs",
             )
-            return RunContractStageCheck(stage_name, "failed", [cardinality_failure])
+            return RunSpecStageCheck(stage_name, "failed", [cardinality_failure])
         schema_failures: list[AssertionFailure] = []
         for item in value:
             schema_failure = _stage_schema_failure(stage_name, stage["output_type"], item, schemas)
             if schema_failure is not None:
                 schema_failures.append(schema_failure)
-        return RunContractStageCheck(stage_name, "failed" if schema_failures else "passed", schema_failures)
+        return RunSpecStageCheck(stage_name, "failed" if schema_failures else "passed", schema_failures)
 
     schema_failure = _stage_schema_failure(stage_name, stage["output_type"], value, schemas)
-    return RunContractStageCheck(
+    return RunSpecStageCheck(
         stage_name,
         "failed" if schema_failure else "passed",
         [schema_failure] if schema_failure else [],
     )
 
 
-def _evaluate_run_contract_assertion(assertion: str, trace: TraceRecorder) -> AssertionCheck:
+def _evaluate_run_spec_assertion(assertion: str, trace: TraceRecorder) -> AssertionCheck:
     try:
         parsed_items = parse_contract_expression(assertion)
     except ExpressionError as exc:
         return AssertionCheck(assertion, "failed", AssertionFailure("unsupported", assertion, str(exc)))
 
-    if assertion.strip().startswith("when"):
-        if len(parsed_items) != 2 or any(parsed.kind != "trace" for parsed in parsed_items):
-            failure = AssertionFailure("unsupported", assertion, f"Unsupported run_contract assertion: {assertion}")
-            return AssertionCheck(assertion, "failed", failure)
-        condition_failure = evaluate_trace(parsed_items[0], trace)
-        if condition_failure:
-            return AssertionCheck(assertion, "skipped")
-        trace_failure = evaluate_trace(parsed_items[1], trace)
-        if trace_failure:
-            return AssertionCheck(assertion, "failed", AssertionFailure("trace", assertion, trace_failure))
-        return AssertionCheck(assertion, "passed")
-
     failures: list[AssertionFailure] = []
     for parsed in parsed_items:
+        if isinstance(parsed, ConditionalExpression):
+            check = _evaluate_run_spec_conditional(assertion, parsed, trace)
+            if check.status == "skipped":
+                return check
+            if check.failure is not None:
+                failures.append(check.failure)
+            continue
         if parsed.kind != "trace":
             failures.append(
-                AssertionFailure("unsupported", assertion, f"Unsupported run_contract assertion: {assertion}")
+                AssertionFailure("unsupported", assertion, f"Unsupported run spec assertion: {assertion}")
             )
             continue
         trace_failure = evaluate_trace(parsed, trace)
@@ -294,6 +287,40 @@ def _evaluate_run_contract_assertion(assertion: str, trace: TraceRecorder) -> As
             failures.append(AssertionFailure("trace", assertion, trace_failure))
     if failures:
         return AssertionCheck(assertion, "failed", failures[0])
+    return AssertionCheck(assertion, "passed")
+
+
+def _evaluate_conditional(
+    agent: str,
+    assertion: str,
+    parsed: ConditionalExpression,
+    output: dict[str, Any],
+    trace: TraceRecorder,
+    schemas: Mapping[str, dict[str, Any]],
+    hidden_truth: Mapping[str, Any],
+) -> AssertionCheck:
+    if parsed.condition.kind != "trace":
+        return _failed(agent, assertion, "unsupported", f"Unsupported conditional assertion: {assertion}")
+    condition_failure = evaluate_trace(parsed.condition, trace)
+    if condition_failure:
+        return AssertionCheck(assertion, "skipped")
+    return _evaluate_parsed(agent, assertion, parsed.expectation, output, trace, schemas, hidden_truth)
+
+
+def _evaluate_run_spec_conditional(
+    assertion: str,
+    parsed: ConditionalExpression,
+    trace: TraceRecorder,
+) -> AssertionCheck:
+    if parsed.condition.kind != "trace" or parsed.expectation.kind != "trace":
+        failure = AssertionFailure("unsupported", assertion, f"Unsupported run spec assertion: {assertion}")
+        return AssertionCheck(assertion, "failed", failure)
+    condition_failure = evaluate_trace(parsed.condition, trace)
+    if condition_failure:
+        return AssertionCheck(assertion, "skipped")
+    trace_failure = evaluate_trace(parsed.expectation, trace)
+    if trace_failure:
+        return AssertionCheck(assertion, "failed", AssertionFailure("trace", assertion, trace_failure))
     return AssertionCheck(assertion, "passed")
 
 
@@ -323,11 +350,11 @@ def _is_output_sequence(value: Any) -> bool:
     return isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray)
 
 
-def _run_contract_artifact(
+def _run_spec_artifact(
     contract: CompilerArtifacts,
-    run_contract: str,
-) -> RunContractArtifact | None:
-    return next((item for item in contract["run_contracts"] if item["name"] == run_contract), None)
+    run_spec: str,
+) -> RunSpecArtifact | None:
+    return next((item for item in contract["run_specs"] if item["name"] == run_spec), None)
 
 
 def _evaluate_parsed(
@@ -358,10 +385,10 @@ __all__ = [
     "AssertionCheck",
     "AssertionFailure",
     "AssertionStatus",
-    "RunContractEvaluationResult",
-    "RunContractStageCheck",
+    "RunSpecEvaluationResult",
+    "RunSpecStageCheck",
     "RunEvaluationResult",
     "evaluate_agent_assertions",
-    "evaluate_run_contract",
+    "evaluate_run_spec",
     "evaluate_run_assertions",
 ]

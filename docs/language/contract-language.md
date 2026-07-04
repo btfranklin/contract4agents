@@ -6,7 +6,7 @@ It is intentionally Python-adjacent without being Python. The language should be
 
 ## Files
 
-- `.contract`: agents, types, datasources, guards, assertions, monitors, and run contracts.
+- `.contract`: agents, types, datasources, guards, assertions, monitors, and run specs.
 - `.eval`: offline eval cases against agents.
 
 Eval files are separate because evals are tests, not agent implementation.
@@ -241,14 +241,14 @@ assertions = [
 
 Assertions should not contain one-off fixtures. A condition like `when user_message == "Hi"` belongs in a `.eval` file.
 
-## Run Contracts
+## Run Specs
 
-Run contracts declare expectations for a host-owned multi-agent run. They verify
+Run specs declare expectations for a host-owned multi-agent run. They verify
 the observable sequence of stage outputs and trace events without deciding what
 happens next.
 
 ```contract
-run_contract CompendiumResearch:
+run_spec CompendiumResearch:
     stages = [
         plan: PlannerAgent -> ResearchPlan,
         section_research+: SectionResearchAgent -> SectionResearchBrief,
@@ -265,7 +265,7 @@ run_contract CompendiumResearch:
 
 Stage suffixes define expected host-provided output cardinality: no suffix means
 exactly one output, `?` means zero or one output, and `+` means one or more
-outputs. Run-contract assertions are trace expressions over the normalized
+outputs. Run spec assertions are trace expressions over the normalized
 trace. Branching, loops, retries, checkpointing, recovery, and stage execution
 belong in host Python code, not in `.contract` files.
 
@@ -338,7 +338,7 @@ The compiler currently rejects:
 - Datasource requirement cycles while proving child-agent context.
 - Guards that reference unavailable tools.
 - Assertions that reference unavailable trace events.
-- Run contracts that reference unknown agents, output types, stage names, tools,
+- Run specs that reference unknown agents, output types, stage names, tools,
   or executable workflow semantics.
 - Eval cases and monitors that reference missing fields or capabilities outside
   the scoped agent's declared dependency closure.

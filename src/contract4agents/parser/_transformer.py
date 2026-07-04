@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, NoReturn, cast
+from typing import Any, Literal, NoReturn, cast
 
 from lark import Token, Transformer
 
@@ -16,7 +16,7 @@ from contract4agents.ast import (
     FieldDef,
     MonitorDef,
     Permission,
-    RunContractDef,
+    RunSpecDef,
     SourceSpan,
     TypeDef,
     UseDecl,
@@ -44,8 +44,8 @@ class _ModuleTransformer(Transformer[Any, Any]):
                 module.evals.append(item)
             elif isinstance(item, MonitorDef):
                 module.monitors.append(item)
-            elif isinstance(item, RunContractDef):
-                module.run_contracts.append(item)
+            elif isinstance(item, RunSpecDef):
+                module.run_specs.append(item)
         return module
 
     def type_def(self, items: list[Any]) -> TypeDef:
@@ -195,25 +195,22 @@ class _ModuleTransformer(Transformer[Any, Any]):
         expects: list[str] = []
         semantic: list[str] = []
         for item in _eval_statements(items[2:]):
-            if not isinstance(item, tuple):
-                continue
-            kind, key, value = _eval_tuple(item)
-            if kind == "given" and key:
-                givens[key] = value
-            elif value.startswith("semantic("):
-                semantic.append(value)
+            if item.kind == "given" and item.key:
+                givens[item.key] = item.value
+            elif item.value.startswith("semantic("):
+                semantic.append(item.value)
             else:
-                expects.append(value)
+                expects.append(item.value)
         return EvalCase(str(name), agent, givens, expects, semantic, _span(self.path, name))
 
     def eval_block(self, items: list[Any]) -> list[Any]:
         return items
 
-    def given_stmt(self, items: list[Any]) -> tuple[str, str, str]:
-        return "given", str(items[0]), str(items[1]).strip()
+    def given_stmt(self, items: list[Any]) -> _EvalStatement:
+        return _EvalStatement("given", str(items[0]), str(items[1]).strip())
 
-    def expect_stmt(self, items: list[Any]) -> tuple[str, str, str]:
-        return "expect", "", str(items[0]).strip()
+    def expect_stmt(self, items: list[Any]) -> _EvalStatement:
+        return _EvalStatement("expect", "", str(items[0]).strip())
 
     def monitor_def(self, items: list[Any]) -> MonitorDef:
         name = _token(items[0])
@@ -222,34 +219,31 @@ class _ModuleTransformer(Transformer[Any, Any]):
         condition = ""
         expectation = ""
         for item in _monitor_statements(items[2:]):
-            if not isinstance(item, tuple):
-                continue
-            key, value = cast(tuple[str, str], item)
-            if key == "severity":
-                severity = unquote(value)
-            elif key == "when":
-                condition = value
-            elif key == "expect":
-                expectation = value
+            if item.kind == "severity":
+                severity = unquote(item.value)
+            elif item.kind == "when":
+                condition = item.value
+            elif item.kind == "expect":
+                expectation = item.value
         return MonitorDef(str(name), agent, severity, condition, expectation, _span(self.path, name))
 
     def monitor_block(self, items: list[Any]) -> list[Any]:
         return items
 
-    def severity_stmt(self, items: list[Any]) -> tuple[str, str]:
-        return "severity", str(items[0]).strip()
+    def severity_stmt(self, items: list[Any]) -> _MonitorStatement:
+        return _MonitorStatement("severity", str(items[0]).strip())
 
-    def when_stmt(self, items: list[Any]) -> tuple[str, str]:
-        return "when", str(items[0]).strip()
+    def when_stmt(self, items: list[Any]) -> _MonitorStatement:
+        return _MonitorStatement("when", str(items[0]).strip())
 
-    def monitor_expect_stmt(self, items: list[Any]) -> tuple[str, str]:
-        return "expect", str(items[0]).strip()
+    def monitor_expect_stmt(self, items: list[Any]) -> _MonitorStatement:
+        return _MonitorStatement("expect", str(items[0]).strip())
 
-    def run_contract_def(self, items: list[Any]) -> RunContractDef:
+    def run_spec_def(self, items: list[Any]) -> RunSpecDef:
         name = _token(items[0])
         attributes = _assignment_attrs(items[1:])
         attribute_spans = _assignment_spans(items[1:])
-        return RunContractDef(
+        return RunSpecDef(
             str(name),
             _list_attr(attributes, "stages"),
             _list_attr(attributes, "assertions"),
@@ -258,7 +252,7 @@ class _ModuleTransformer(Transformer[Any, Any]):
             attribute_spans,
         )
 
-    def run_contract_block(self, items: list[Any]) -> list[Any]:
+    def run_spec_block(self, items: list[Any]) -> list[Any]:
         return items
 
 
@@ -275,6 +269,19 @@ class _Assignment:
     key: str
     value: Any
     span: SourceSpan
+
+
+@dataclass(frozen=True)
+class _EvalStatement:
+    kind: Literal["given", "expect"]
+    key: str
+    value: str
+
+
+@dataclass(frozen=True)
+class _MonitorStatement:
+    kind: Literal["severity", "when", "expect"]
+    value: str
 
 
 def _agent_parts(items: list[Any]) -> _AgentParts:
@@ -329,34 +336,28 @@ def _agent_payload_items(items: list[Any]) -> list[Any]:
     return result
 
 
-def _eval_statements(items: list[Any]) -> list[tuple[Any, ...]]:
-    statements: list[tuple[Any, ...]] = []
+def _eval_statements(items: list[Any]) -> list[_EvalStatement]:
+    statements: list[_EvalStatement] = []
     for item in items:
         if isinstance(item, list):
             statements.extend(_eval_statements(item))
-        elif isinstance(item, tuple):
+        elif isinstance(item, _EvalStatement):
             statements.append(item)
     return statements
 
 
-def _monitor_statements(items: list[Any]) -> list[tuple[Any, ...]]:
-    statements: list[tuple[Any, ...]] = []
+def _monitor_statements(items: list[Any]) -> list[_MonitorStatement]:
+    statements: list[_MonitorStatement] = []
     for item in items:
         if isinstance(item, list):
             statements.extend(_monitor_statements(item))
-        elif isinstance(item, tuple):
+        elif isinstance(item, _MonitorStatement):
             statements.append(item)
     return statements
 
 
 def _is_field_list(value: Any) -> bool:
     return isinstance(value, list) and all(isinstance(item, FieldDef) for item in value)
-
-
-def _eval_tuple(value: tuple[Any, ...]) -> tuple[str, str, str]:
-    if len(value) == 3:
-        return str(value[0]), str(value[1]), str(value[2])
-    return str(value[0]), "", str(value[-1])
 
 
 def _list_attr(attributes: dict[str, Any], key: str) -> list[str]:

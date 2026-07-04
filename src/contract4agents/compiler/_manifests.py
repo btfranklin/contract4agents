@@ -14,6 +14,7 @@ from contract4agents.compiler._types import (
     MonitorPack,
 )
 from contract4agents.hosted_tools import split_hosted_tool_name
+from contract4agents.type_refs import canonical_type_name
 
 
 def agent_manifest(agent: AgentDef, project: ContractProject) -> AgentManifest:
@@ -105,11 +106,7 @@ def monitor_pack(monitor: MonitorDef) -> MonitorPack:
 
 
 def _python_ref_for_type(type_name: str, types: dict[str, Any]) -> str | None:
-    normalized = type_name.rstrip("?")
-    if normalized.endswith("[]"):
-        normalized = normalized[:-2]
-    if normalized.startswith("list[") and normalized.endswith("]"):
-        normalized = normalized[5:-1]
+    normalized = canonical_type_name(type_name)
     type_def = types.get(normalized)
     return type_def.python_ref if type_def and type_def.source == "python" else None
 

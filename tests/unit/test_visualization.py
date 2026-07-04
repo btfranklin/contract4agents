@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 
 import contract4agents.visualization as visualization
@@ -157,3 +158,29 @@ def test_cli_visualize_writes_artifacts(tmp_path: Path) -> None:
     graph = json.loads(graph_path.read_text())
     assert graph["version"] == "1"
     assert "OpsDeskCoordinator" in graph["agents"]
+
+
+def test_cli_visualize_rejects_cwd_source_owned_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_root = tmp_path / "examples" / "incident-command"
+    project_root.mkdir(parents=True)
+    (project_root / "project.contract").write_text(
+        """
+type Result:
+    ok: bool
+
+agent RootAgent() -> Result:
+    goal = "ok"
+""".strip()
+    )
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    result = CliRunner().invoke(main, ["visualize", str(project_root), "--out", "docs"])
+
+    assert result.exit_code != 0
+    assert "COMPILE002" in result.output
+    assert not (docs_dir / "index.html").exists()

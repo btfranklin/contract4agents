@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import inspect
+import json
 from collections.abc import Awaitable, Callable, Collection
 from dataclasses import dataclass, field
 from typing import Any, Literal, cast
 
+from contract4agents._datasource_resolution import DatasourceCandidate, resolve_datasource_type
 from contract4agents.runtime._errors import (
     AmbiguousDatasource,
     ContractRuntimeError,
@@ -16,6 +19,7 @@ from contract4agents.runtime._errors import (
     MissingContextSlot,
 )
 from contract4agents.runtime._trace import TraceRecorder
+from contract4agents.type_refs import canonical_type_name
 
 
 @dataclass(frozen=True)
@@ -85,12 +89,6 @@ class DatasourceSpec:
     cache: Literal["none", "run", "thread"] = "run"
 
 
-@dataclass(frozen=True)
-class _DatasourceProof:
-    satisfiable: bool
-    cycle: tuple[str, ...] | None = None
-
-
 def datasource(
     *,
     produces: str,
@@ -128,7 +126,14 @@ class DatasourceRegistry:
         )
 
     def by_output(self, type_name: str) -> list[DatasourceSpec]:
-        return [item for item in self._items.values() if item.produces == type_name]
+        normalized = canonical_type_name(type_name)
+        return [item for item in self._items.values() if canonical_type_name(item.produces) == normalized]
+
+    def candidates(self) -> list[DatasourceCandidate]:
+        return [
+            DatasourceCandidate(item.name, item.produces, tuple(item.requires))
+            for item in self._items.values()
+        ]
 
 
 class RuntimeContext:
@@ -199,79 +204,23 @@ class RuntimeContext:
         registry: DatasourceRegistry,
         allowed_datasources: Collection[str] | None,
     ) -> DatasourceSpec:
-        all_candidates = registry.by_output(type_name)
-        candidates = _allowed_datasources(all_candidates, allowed_datasources)
-        if all_candidates and not candidates:
+        resolution = resolve_datasource_type(
+            type_name,
+            available=self.values,
+            datasources=registry.candidates(),
+            allowed_datasources=allowed_datasources,
+        )
+        if resolution.status == "denied":
             raise DatasourcePermissionDenied(type_name)
-        proofs = [
-            (
-                candidate,
-                self._requirements_are_resolvable(
-                    candidate,
-                    registry,
-                    allowed_datasources,
-                    resolving=(type_name,),
-                ),
-            )
-            for candidate in candidates
-        ]
-        candidates = [candidate for candidate, proof in proofs if proof.satisfiable]
-        if not candidates:
-            for candidate, proof in proofs:
-                if proof.cycle:
-                    return candidate
+        if resolution.status == "cycle":
+            raise DatasourceResolutionCycle(resolution.cycle)
+        if resolution.status == "ambiguous":
+            raise AmbiguousDatasource(type_name, list(resolution.candidates))
+        if resolution.status == "ok" and resolution.selected is not None:
+            return registry._items[resolution.selected]
+        if resolution.status == "missing":
             raise MissingContextSlot(type_name)
-        if len(candidates) > 1:
-            raise AmbiguousDatasource(type_name, [candidate.name for candidate in candidates])
-        return candidates[0]
-
-    def _requirements_are_resolvable(
-        self,
-        candidate: DatasourceSpec,
-        registry: DatasourceRegistry,
-        allowed_datasources: Collection[str] | None,
-        resolving: tuple[str, ...],
-    ) -> _DatasourceProof:
-        cycle: tuple[str, ...] | None = None
-        for required in candidate.requires:
-            proof = self._type_is_resolvable(required, registry, allowed_datasources, resolving)
-            if proof.satisfiable:
-                continue
-            if proof.cycle and cycle is None:
-                cycle = proof.cycle
-            return _DatasourceProof(False, cycle)
-        return _DatasourceProof(True)
-
-    def _type_is_resolvable(
-        self,
-        type_name: str,
-        registry: DatasourceRegistry,
-        allowed_datasources: Collection[str] | None,
-        resolving: tuple[str, ...],
-    ) -> _DatasourceProof:
-        if type_name in self.values:
-            return _DatasourceProof(True)
-        if type_name in resolving:
-            return _DatasourceProof(False, (*resolving, type_name))
-
-        all_candidates = registry.by_output(type_name)
-        candidates = _allowed_datasources(all_candidates, allowed_datasources)
-        if not candidates:
-            return _DatasourceProof(False)
-
-        cycle: tuple[str, ...] | None = None
-        for candidate in candidates:
-            proof = self._requirements_are_resolvable(
-                candidate,
-                registry,
-                allowed_datasources,
-                resolving=(*resolving, type_name),
-            )
-            if proof.satisfiable:
-                return proof
-            if proof.cycle and cycle is None:
-                cycle = proof.cycle
-        return _DatasourceProof(False, cycle)
+        raise MissingContextSlot(type_name)
 
     async def _resolve_datasource(
         self,
@@ -288,10 +237,11 @@ class RuntimeContext:
             allowed_datasources,
             resolving,
         )
-        cached = self._cached_datasource_value(type_name, datasource_spec)
+        cache_key = self._datasource_cache_key(datasource_spec)
+        cached = self._cached_datasource_value(type_name, datasource_spec, cache_key)
         if cached:
             return cached
-        return await self._execute_datasource(type_name, datasource_spec)
+        return await self._execute_datasource(type_name, datasource_spec, cache_key)
 
     async def _resolve_datasource_requirements(
         self,
@@ -309,16 +259,27 @@ class RuntimeContext:
                 _resolving=(*resolving, type_name),
             )
 
-    def _cached_datasource_value(self, type_name: str, datasource_spec: DatasourceSpec) -> ContextValue | None:
+    def _cached_datasource_value(
+        self,
+        type_name: str,
+        datasource_spec: DatasourceSpec,
+        cache_key: str,
+    ) -> ContextValue | None:
         cache = self._cache_for(datasource_spec)
-        if cache is None or datasource_spec.name not in cache:
+        if cache is None or cache_key not in cache:
             return None
         self.trace.record("datasource.resolved", datasource=datasource_spec.name, produces=type_name, cache="hit")
-        value = cache[datasource_spec.name]
+        value = cache[cache_key]
+        _validate_context_value_type(datasource_spec, value)
         self.values[type_name] = value
         return value
 
-    async def _execute_datasource(self, type_name: str, datasource_spec: DatasourceSpec) -> ContextValue:
+    async def _execute_datasource(
+        self,
+        type_name: str,
+        datasource_spec: DatasourceSpec,
+        cache_key: str,
+    ) -> ContextValue:
         self.trace.record("datasource.started", datasource=datasource_spec.name, produces=type_name)
         ds_context = DatasourceContext(self.values, self.trace, self._cache_for(datasource_spec))
         result = datasource_spec.func(ds_context)
@@ -328,9 +289,37 @@ class RuntimeContext:
         self.values[type_name] = context_value
         cache = self._cache_for(datasource_spec)
         if cache is not None:
-            cache[datasource_spec.name] = context_value
+            cache[cache_key] = context_value
         self.trace.record("datasource.resolved", datasource=datasource_spec.name, produces=type_name, cache="miss")
         return context_value
+
+    def _datasource_cache_key(self, datasource_spec: DatasourceSpec) -> str:
+        requirements: list[dict[str, Any]] = []
+        for required in datasource_spec.requires:
+            value = self._context_value_for(required)
+            requirements.append(
+                {
+                    "name": canonical_type_name(required),
+                    "type_name": canonical_type_name(value.type_name),
+                    "value": value.value,
+                    "rendered": value.rendered,
+                    "source": value.source,
+                    "provenance": value.provenance,
+                    "sensitive": value.sensitive,
+                }
+            )
+        payload = {"datasource": datasource_spec.name, "requires": requirements}
+        serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=repr)
+        digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+        return f"ds:{digest}"
+
+    def _context_value_for(self, type_name: str) -> ContextValue:
+        if type_name in self.values:
+            return self.values[type_name]
+        normalized = canonical_type_name(type_name)
+        if normalized in self.values:
+            return self.values[normalized]
+        raise MissingContextSlot(type_name)
 
     def _cache_for(self, datasource_spec: DatasourceSpec) -> dict[str, ContextValue] | None:
         if datasource_spec.cache == "none":
@@ -342,6 +331,7 @@ class RuntimeContext:
 
 def _coerce_context_value(spec: DatasourceSpec, result: Any) -> ContextValue:
     if isinstance(result, ContextValue):
+        _validate_context_value_type(spec, result)
         return result
     if spec.render:
         rendered = spec.render(result)
@@ -350,13 +340,14 @@ def _coerce_context_value(spec: DatasourceSpec, result: Any) -> ContextValue:
     return ContextValue(spec.produces, result, rendered, spec.name, {})
 
 
-def _allowed_datasources(
-    candidates: list[DatasourceSpec], allowed_datasources: Collection[str] | None
-) -> list[DatasourceSpec]:
-    if allowed_datasources is None:
-        return candidates
-    allowed = set(allowed_datasources)
-    return [candidate for candidate in candidates if candidate.name in allowed]
+def _validate_context_value_type(spec: DatasourceSpec, value: ContextValue) -> None:
+    expected = canonical_type_name(spec.produces)
+    actual = canonical_type_name(value.type_name)
+    if actual != expected:
+        raise DatasourceExecutionFailed(
+            spec.name,
+            f"datasource returned `{value.type_name}` but declares `{spec.produces}`",
+        )
 
 
 __all__ = [

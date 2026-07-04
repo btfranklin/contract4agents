@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import Any
 
 from contract4agents.assertions import evaluate_run_assertions
-from contract4agents.compiler import compile_project
+from contract4agents.compiler import build_artifacts, write_artifacts
+from contract4agents.diagnostics import raise_if_errors
 from contract4agents.evaluation import EvalRunner
 from contract4agents.fixtures import _execution, _reports
 from contract4agents.fixtures._artifacts import verify_fixture_artifacts
@@ -17,10 +18,13 @@ from contract4agents.fixtures._models import (
     FixtureArtifactError,
     FixtureConfigError,
     FixtureReport,
+    FixtureRetryError,
     StartReport,
 )
 from contract4agents.monitor import MonitorRule, run_monitors
+from contract4agents.parser import parse_project
 from contract4agents.runtime._utils import load_python_ref
+from contract4agents.semantics import analyze_project
 
 
 async def run_fixture_project(
@@ -44,8 +48,11 @@ async def run_fixture_project(
         run_root.mkdir(parents=True, exist_ok=True)
         build_dir = run_root / "build"
         db_path = load_python_ref(metadata["seed"])(run_root / "data" / "fixture.sqlite")
-        artifacts = compile_project(project_root, build_dir, allow_python_imports=allow_python_imports)
-        compile_project(project_root, build_dir, check=True, allow_python_imports=allow_python_imports)
+        project = parse_project(project_root)
+        raise_if_errors(analyze_project(project).diagnostics)
+        artifacts = build_artifacts(project, allow_python_imports=allow_python_imports)
+        write_artifacts(artifacts, build_dir)
+        write_artifacts(artifacts, build_dir, check=True)
         artifact_checks = verify_fixture_artifacts(metadata, artifacts, build_dir)
         starts = load_python_ref(metadata["starts"])()
         runner = _execution.runner_for_mode(metadata, mode)
@@ -97,6 +104,20 @@ async def run_fixture_project(
             )
             active_start_id = None
         report = FixtureReport(str(project_root), mode, artifact_checks, start_reports, False, str(run_root))
+    except FixtureRetryError as exc:
+        pending_error = exc
+        failed_start_id = active_start_id or "__fixture__"
+        if not any(item.start_id == failed_start_id for item in start_reports):
+            start_reports.append(
+                StartReport(
+                    start_id=failed_start_id,
+                    passed=False,
+                    failures=[str(exc)],
+                    attempts=exc.attempts,
+                    retry_errors=exc.retry_errors,
+                )
+            )
+        report = FixtureReport(str(project_root), mode, artifact_checks, start_reports, False, str(run_root))
     except Exception as exc:
         pending_error = exc
         failed_start_id = active_start_id or "__fixture__"
@@ -127,6 +148,7 @@ def run_fixture_project_sync(**kwargs: Any) -> FixtureReport:
 __all__ = [
     "FixtureArtifactError",
     "FixtureConfigError",
+    "FixtureRetryError",
     "FixtureReport",
     "StartReport",
     "load_fixture_metadata",

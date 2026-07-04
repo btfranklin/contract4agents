@@ -17,15 +17,20 @@ from `ROOT`.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "tools": {
     "crm.create_note": {
       "python": "app.tools.crm:create_note",
-      "permission": "requires_approval"
+      "permissions": {
+        "SupportCoordinator": "requires_approval"
+      }
     },
     "billing.external_adjustment": {
       "external": true,
-      "permission": "requires_approval"
+      "permissions": {
+        "BillingAgent": "requires_approval",
+        "SupportCoordinator": "requires_approval"
+      }
     }
   },
   "hosted_tools": {
@@ -33,7 +38,9 @@ from `ROOT`.
       "provider": "openai",
       "tool": "web_search",
       "config": {"context_size": "medium"},
-      "permission": "available"
+      "permissions": {
+        "SupportCoordinator": "available"
+      }
     }
   },
   "agents": {
@@ -58,7 +65,9 @@ from `ROOT`.
 }
 ```
 
-Every section is a map. Empty maps are valid.
+Every section is a map. Empty section maps are valid. Tool and hosted-tool
+entries use agent-scoped `permissions` maps because the same capability can be
+declared by different agents with different permission states.
 
 ## Strict Drift Checks
 
@@ -67,8 +76,9 @@ Every section is a map. Empty maps are valid.
 - every declared host Python tool has a registry entry;
 - local tool refs import and point at callables;
 - explicitly host-owned tools use `external: true`;
-- registry permissions match contract permissions;
-- hosted-tool provider, tool, config, and permission match the contract;
+- every declared agent/tool permission pair has a matching registry permission;
+- stale tool, hosted-tool, agent, and per-agent permission entries are rejected;
+- hosted-tool provider, tool, config, and permissions match the contract;
 - registered agent names match contract agent names, and factory refs import;
 - registered output types import Pydantic v2 `BaseModel` classes whose required
   fields and property schemas match the contract schema;
@@ -92,4 +102,5 @@ Capability registry diagnostics use the `CAP###` range:
 - `CAP050`: output-type drift;
 - `CAP060`: hosted-tool drift;
 - `CAP070`: prompt asset drift;
-- `CAP080`: host-context marker drift.
+- `CAP080`: host-context marker drift;
+- `CAP090`: stale registry entry that no contract declaration uses.

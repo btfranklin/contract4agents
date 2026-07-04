@@ -26,7 +26,7 @@ For runtime implementation:
 
 - Read `runtime/context-and-datasources.md`.
 - Then read `evaluation/evals-assertions-monitors.md`.
-- Use `reference/run-contracts.md` for host-owned workflow expectation checks.
+- Use `reference/run-specs.md` for host-owned workflow expectation checks.
 
 For validation and release readiness:
 
@@ -54,7 +54,7 @@ For project planning:
 - `reference/capability-registry.md`: source-owned capability registry and strict drift checks.
 - `reference/visualization.md`: static project visualization command and artifact reference.
 - `reference/trace-schema.md`: normalized trace event reference.
-- `reference/run-contracts.md`: run-contract source syntax, artifacts, and runtime evaluation API.
+- `reference/run-specs.md`: run spec source syntax, artifacts, and runtime evaluation API.
 - `reference/eval-language.md`: deterministic, trace-spy, hidden-truth, and semantic eval syntax.
 - `reference/cli.md`: CLI command reference.
 - `reference/openai-adapter.md`: OpenAI execution adapter notes.

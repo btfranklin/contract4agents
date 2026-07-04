@@ -14,6 +14,7 @@ from contract4agents.ast import (
     EvalCase,
     FieldDef,
     MonitorDef,
+    RunSpecDef,
     SourceSpan,
     TypeDef,
     UseDecl,
@@ -123,12 +124,15 @@ def _module_snapshot(module: ContractModule) -> dict[str, Any]:
         "agents": [_agent_snapshot(item) for item in module.agents],
         "evals": [_eval_snapshot(item) for item in module.evals],
         "monitors": [_monitor_snapshot(item) for item in module.monitors],
+        "run_specs": [_run_spec_snapshot(item) for item in module.run_specs],
     }
 
 
 def _type_snapshot(type_def: TypeDef) -> dict[str, Any]:
     return {
         "name": type_def.name,
+        "source": type_def.source,
+        "python_ref": type_def.python_ref,
         "fields": [_field_snapshot(field) for field in type_def.fields],
         "span": _span_snapshot(type_def.span),
     }
@@ -173,6 +177,7 @@ def _use_snapshot(use: UseDecl) -> dict[str, Any]:
         "name": use.name,
         "source": use.source,
         "permission": use.permission,
+        "config": _json_value(use.config),
         "span": _span_snapshot(use.span),
     }
 
@@ -196,6 +201,16 @@ def _monitor_snapshot(monitor: MonitorDef) -> dict[str, Any]:
         "condition": monitor.condition,
         "expectation": monitor.expectation,
         "span": _span_snapshot(monitor.span),
+    }
+
+
+def _run_spec_snapshot(run_spec: RunSpecDef) -> dict[str, Any]:
+    return {
+        "name": run_spec.name,
+        "stages": run_spec.stages,
+        "assertions": run_spec.assertions,
+        "attributes": _json_value(run_spec.attributes),
+        "span": _span_snapshot(run_spec.span),
     }
 
 

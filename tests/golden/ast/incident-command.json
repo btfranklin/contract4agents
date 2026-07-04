@@ -1,28 +1,8 @@
 {
-  "root": "examples/incident-command",
   "modules": [
     {
-      "path": "examples/incident-command/agents/customer_impact_writer.contract",
-      "types": [],
-      "datasources": [],
       "agents": [
         {
-          "name": "CustomerImpactWriter",
-          "parameters": [
-            {
-              "name": "brief",
-              "type_name": "IncidentBrief",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "examples/incident-command/agents/customer_impact_writer.contract",
-                "line": 2,
-                "column": 5
-              }
-            }
-          ],
-          "return_type": "IncidentBrief",
-          "uses": [],
           "attributes": {
             "description": "\"Preserves evidence while improving customer-facing clarity.\"",
             "goal": "\"Rewrite the incident brief so customer impact is clear and non-technical.\"",
@@ -34,72 +14,39 @@
               "keep customer-facing impact concise"
             ]
           },
-          "span": {
-            "path": "examples/incident-command/agents/customer_impact_writer.contract",
-            "line": 1,
-            "column": 7
-          }
-        }
-      ],
-      "evals": [],
-      "monitors": []
-    },
-    {
-      "path": "examples/incident-command/agents/deploy_analyst.contract",
-      "types": [],
-      "datasources": [],
-      "agents": [
-        {
-          "name": "DeployAnalyst",
+          "name": "CustomerImpactWriter",
           "parameters": [
             {
-              "name": "request",
-              "type_name": "IncidentReportRequest",
-              "nullable": false,
               "default": null,
+              "name": "brief",
+              "nullable": false,
               "span": {
-                "path": "examples/incident-command/agents/deploy_analyst.contract",
+                "column": 5,
                 "line": 2,
-                "column": 5
-              }
-            },
-            {
-              "name": "service",
-              "type_name": "ServiceCatalogEntry",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "examples/incident-command/agents/deploy_analyst.contract",
-                "line": 3,
-                "column": 5
-              }
-            },
-            {
-              "name": "window",
-              "type_name": "TimeWindow",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "examples/incident-command/agents/deploy_analyst.contract",
-                "line": 4,
-                "column": 5
-              }
+                "path": "examples/incident-command/agents/customer_impact_writer.contract"
+              },
+              "type_name": "IncidentBrief"
             }
           ],
-          "return_type": "RecentDeploys",
-          "uses": [
-            {
-              "kind": "tool",
-              "name": "deploys.list",
-              "source": "tools.deploys",
-              "permission": "preapproved",
-              "span": {
-                "path": "examples/incident-command/agents/deploy_analyst.contract",
-                "line": 7,
-                "column": 14
-              }
-            }
-          ],
+          "return_type": "IncidentBrief",
+          "span": {
+            "column": 7,
+            "line": 1,
+            "path": "examples/incident-command/agents/customer_impact_writer.contract"
+          },
+          "uses": []
+        }
+      ],
+      "datasources": [],
+      "evals": [],
+      "monitors": [],
+      "path": "examples/incident-command/agents/customer_impact_writer.contract",
+      "run_specs": [],
+      "types": []
+    },
+    {
+      "agents": [
+        {
           "attributes": {
             "description": "\"Inspects seeded deploy records for likely change correlation.\"",
             "goal": "\"Find deploys near the incident window that may explain the symptom.\"",
@@ -111,116 +58,74 @@
               "do not claim causality without corroborating evidence"
             ]
           },
-          "span": {
-            "path": "examples/incident-command/agents/deploy_analyst.contract",
-            "line": 1,
-            "column": 7
-          }
-        }
-      ],
-      "evals": [],
-      "monitors": []
-    },
-    {
-      "path": "examples/incident-command/agents/incident_commander.contract",
-      "types": [],
-      "datasources": [],
-      "agents": [
-        {
-          "name": "IncidentCommander",
+          "name": "DeployAnalyst",
           "parameters": [
             {
+              "default": null,
               "name": "request",
-              "type_name": "IncidentReportRequest",
               "nullable": false,
-              "default": null,
               "span": {
-                "path": "examples/incident-command/agents/incident_commander.contract",
+                "column": 5,
                 "line": 2,
-                "column": 5
-              }
+                "path": "examples/incident-command/agents/deploy_analyst.contract"
+              },
+              "type_name": "IncidentReportRequest"
             },
             {
+              "default": null,
               "name": "service",
-              "type_name": "ServiceCatalogEntry",
               "nullable": false,
-              "default": null,
               "span": {
-                "path": "examples/incident-command/agents/incident_commander.contract",
+                "column": 5,
                 "line": 3,
-                "column": 5
-              }
+                "path": "examples/incident-command/agents/deploy_analyst.contract"
+              },
+              "type_name": "ServiceCatalogEntry"
             },
             {
-              "name": "window",
-              "type_name": "TimeWindow",
-              "nullable": false,
               "default": null,
+              "name": "window",
+              "nullable": false,
               "span": {
-                "path": "examples/incident-command/agents/incident_commander.contract",
+                "column": 5,
                 "line": 4,
-                "column": 5
-              }
+                "path": "examples/incident-command/agents/deploy_analyst.contract"
+              },
+              "type_name": "TimeWindow"
             }
           ],
-          "return_type": "IncidentBrief",
+          "return_type": "RecentDeploys",
+          "span": {
+            "column": 7,
+            "line": 1,
+            "path": "examples/incident-command/agents/deploy_analyst.contract"
+          },
           "uses": [
             {
-              "kind": "agent",
-              "name": "LogInvestigator",
-              "source": "./log_investigator",
-              "permission": "available",
-              "span": {
-                "path": "examples/incident-command/agents/incident_commander.contract",
-                "line": 7,
-                "column": 15
-              }
-            },
-            {
-              "kind": "agent",
-              "name": "DeployAnalyst",
-              "source": "./deploy_analyst",
-              "permission": "available",
-              "span": {
-                "path": "examples/incident-command/agents/incident_commander.contract",
-                "line": 8,
-                "column": 15
-              }
-            },
-            {
-              "kind": "agent",
-              "name": "MetricsAnalyst",
-              "source": "./metrics_analyst",
-              "permission": "available",
-              "span": {
-                "path": "examples/incident-command/agents/incident_commander.contract",
-                "line": 9,
-                "column": 15
-              }
-            },
-            {
-              "kind": "agent",
-              "name": "CustomerImpactWriter",
-              "source": "./customer_impact_writer",
-              "permission": "available",
-              "span": {
-                "path": "examples/incident-command/agents/incident_commander.contract",
-                "line": 10,
-                "column": 15
-              }
-            },
-            {
+              "config": {},
               "kind": "tool",
-              "name": "status_page.draft_update",
-              "source": "tools.status_page",
-              "permission": "requires_approval",
+              "name": "deploys.list",
+              "permission": "preapproved",
+              "source": "tools.deploys",
               "span": {
-                "path": "examples/incident-command/agents/incident_commander.contract",
-                "line": 11,
-                "column": 14
+                "column": 14,
+                "line": 7,
+                "path": "examples/incident-command/agents/deploy_analyst.contract"
               }
             }
-          ],
+          ]
+        }
+      ],
+      "datasources": [],
+      "evals": [],
+      "monitors": [],
+      "path": "examples/incident-command/agents/deploy_analyst.contract",
+      "run_specs": [],
+      "types": []
+    },
+    {
+      "agents": [
+        {
           "attributes": {
             "assertions": [
               "expect(output conforms IncidentBrief)",
@@ -251,72 +156,122 @@
               "next_actions are concrete and operational"
             ]
           },
-          "span": {
-            "path": "examples/incident-command/agents/incident_commander.contract",
-            "line": 1,
-            "column": 7
-          }
-        }
-      ],
-      "evals": [],
-      "monitors": []
-    },
-    {
-      "path": "examples/incident-command/agents/log_investigator.contract",
-      "types": [],
-      "datasources": [],
-      "agents": [
-        {
-          "name": "LogInvestigator",
+          "name": "IncidentCommander",
           "parameters": [
             {
+              "default": null,
               "name": "request",
-              "type_name": "IncidentReportRequest",
               "nullable": false,
-              "default": null,
               "span": {
-                "path": "examples/incident-command/agents/log_investigator.contract",
+                "column": 5,
                 "line": 2,
-                "column": 5
-              }
+                "path": "examples/incident-command/agents/incident_commander.contract"
+              },
+              "type_name": "IncidentReportRequest"
             },
             {
+              "default": null,
               "name": "service",
-              "type_name": "ServiceCatalogEntry",
               "nullable": false,
-              "default": null,
               "span": {
-                "path": "examples/incident-command/agents/log_investigator.contract",
+                "column": 5,
                 "line": 3,
-                "column": 5
-              }
+                "path": "examples/incident-command/agents/incident_commander.contract"
+              },
+              "type_name": "ServiceCatalogEntry"
             },
             {
-              "name": "window",
-              "type_name": "TimeWindow",
-              "nullable": false,
               "default": null,
+              "name": "window",
+              "nullable": false,
               "span": {
-                "path": "examples/incident-command/agents/log_investigator.contract",
+                "column": 5,
                 "line": 4,
-                "column": 5
-              }
+                "path": "examples/incident-command/agents/incident_commander.contract"
+              },
+              "type_name": "TimeWindow"
             }
           ],
-          "return_type": "LogEvidenceBundle",
+          "return_type": "IncidentBrief",
+          "span": {
+            "column": 7,
+            "line": 1,
+            "path": "examples/incident-command/agents/incident_commander.contract"
+          },
           "uses": [
             {
-              "kind": "tool",
-              "name": "logs.search",
-              "source": "tools.logs",
-              "permission": "preapproved",
+              "config": {},
+              "kind": "agent",
+              "name": "LogInvestigator",
+              "permission": "available",
+              "source": "./log_investigator",
               "span": {
-                "path": "examples/incident-command/agents/log_investigator.contract",
+                "column": 15,
                 "line": 7,
-                "column": 14
+                "path": "examples/incident-command/agents/incident_commander.contract"
+              }
+            },
+            {
+              "config": {},
+              "kind": "agent",
+              "name": "DeployAnalyst",
+              "permission": "available",
+              "source": "./deploy_analyst",
+              "span": {
+                "column": 15,
+                "line": 8,
+                "path": "examples/incident-command/agents/incident_commander.contract"
+              }
+            },
+            {
+              "config": {},
+              "kind": "agent",
+              "name": "MetricsAnalyst",
+              "permission": "available",
+              "source": "./metrics_analyst",
+              "span": {
+                "column": 15,
+                "line": 9,
+                "path": "examples/incident-command/agents/incident_commander.contract"
+              }
+            },
+            {
+              "config": {},
+              "kind": "agent",
+              "name": "CustomerImpactWriter",
+              "permission": "available",
+              "source": "./customer_impact_writer",
+              "span": {
+                "column": 15,
+                "line": 10,
+                "path": "examples/incident-command/agents/incident_commander.contract"
+              }
+            },
+            {
+              "config": {},
+              "kind": "tool",
+              "name": "status_page.draft_update",
+              "permission": "requires_approval",
+              "source": "tools.status_page",
+              "span": {
+                "column": 14,
+                "line": 11,
+                "path": "examples/incident-command/agents/incident_commander.contract"
               }
             }
-          ],
+          ]
+        }
+      ],
+      "datasources": [],
+      "evals": [],
+      "monitors": [],
+      "path": "examples/incident-command/agents/incident_commander.contract",
+      "run_specs": [],
+      "types": []
+    },
+    {
+      "agents": [
+        {
           "attributes": {
             "description": "\"Searches seeded log events for symptom-relevant errors.\"",
             "goal": "\"Find log evidence that explains the reported incident symptom.\"",
@@ -328,72 +283,74 @@
               "return concise log evidence"
             ]
           },
-          "span": {
-            "path": "examples/incident-command/agents/log_investigator.contract",
-            "line": 1,
-            "column": 7
-          }
-        }
-      ],
-      "evals": [],
-      "monitors": []
-    },
-    {
-      "path": "examples/incident-command/agents/metrics_analyst.contract",
-      "types": [],
-      "datasources": [],
-      "agents": [
-        {
-          "name": "MetricsAnalyst",
+          "name": "LogInvestigator",
           "parameters": [
             {
+              "default": null,
               "name": "request",
-              "type_name": "IncidentReportRequest",
               "nullable": false,
-              "default": null,
               "span": {
-                "path": "examples/incident-command/agents/metrics_analyst.contract",
+                "column": 5,
                 "line": 2,
-                "column": 5
-              }
+                "path": "examples/incident-command/agents/log_investigator.contract"
+              },
+              "type_name": "IncidentReportRequest"
             },
             {
+              "default": null,
               "name": "service",
-              "type_name": "ServiceCatalogEntry",
               "nullable": false,
-              "default": null,
               "span": {
-                "path": "examples/incident-command/agents/metrics_analyst.contract",
+                "column": 5,
                 "line": 3,
-                "column": 5
-              }
+                "path": "examples/incident-command/agents/log_investigator.contract"
+              },
+              "type_name": "ServiceCatalogEntry"
             },
             {
-              "name": "window",
-              "type_name": "TimeWindow",
-              "nullable": false,
               "default": null,
+              "name": "window",
+              "nullable": false,
               "span": {
-                "path": "examples/incident-command/agents/metrics_analyst.contract",
+                "column": 5,
                 "line": 4,
-                "column": 5
-              }
+                "path": "examples/incident-command/agents/log_investigator.contract"
+              },
+              "type_name": "TimeWindow"
             }
           ],
-          "return_type": "MetricSnapshot",
+          "return_type": "LogEvidenceBundle",
+          "span": {
+            "column": 7,
+            "line": 1,
+            "path": "examples/incident-command/agents/log_investigator.contract"
+          },
           "uses": [
             {
+              "config": {},
               "kind": "tool",
-              "name": "metrics.query",
-              "source": "tools.metrics",
+              "name": "logs.search",
               "permission": "preapproved",
+              "source": "tools.logs",
               "span": {
-                "path": "examples/incident-command/agents/metrics_analyst.contract",
+                "column": 14,
                 "line": 7,
-                "column": 14
+                "path": "examples/incident-command/agents/log_investigator.contract"
               }
             }
-          ],
+          ]
+        }
+      ],
+      "datasources": [],
+      "evals": [],
+      "monitors": [],
+      "path": "examples/incident-command/agents/log_investigator.contract",
+      "run_specs": [],
+      "types": []
+    },
+    {
+      "agents": [
+        {
           "attributes": {
             "description": "\"Queries latency and error-rate metrics for the incident service.\"",
             "goal": "\"Measure the incident impact using seeded metric data.\"",
@@ -405,329 +362,391 @@
               "summarize impact in operational terms"
             ]
           },
+          "name": "MetricsAnalyst",
+          "parameters": [
+            {
+              "default": null,
+              "name": "request",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 2,
+                "path": "examples/incident-command/agents/metrics_analyst.contract"
+              },
+              "type_name": "IncidentReportRequest"
+            },
+            {
+              "default": null,
+              "name": "service",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 3,
+                "path": "examples/incident-command/agents/metrics_analyst.contract"
+              },
+              "type_name": "ServiceCatalogEntry"
+            },
+            {
+              "default": null,
+              "name": "window",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 4,
+                "path": "examples/incident-command/agents/metrics_analyst.contract"
+              },
+              "type_name": "TimeWindow"
+            }
+          ],
+          "return_type": "MetricSnapshot",
           "span": {
-            "path": "examples/incident-command/agents/metrics_analyst.contract",
+            "column": 7,
             "line": 1,
-            "column": 7
-          }
+            "path": "examples/incident-command/agents/metrics_analyst.contract"
+          },
+          "uses": [
+            {
+              "config": {},
+              "kind": "tool",
+              "name": "metrics.query",
+              "permission": "preapproved",
+              "source": "tools.metrics",
+              "span": {
+                "column": 14,
+                "line": 7,
+                "path": "examples/incident-command/agents/metrics_analyst.contract"
+              }
+            }
+          ]
         }
       ],
+      "datasources": [],
       "evals": [],
-      "monitors": []
+      "monitors": [],
+      "path": "examples/incident-command/agents/metrics_analyst.contract",
+      "run_specs": [],
+      "types": []
     },
     {
-      "path": "examples/incident-command/monitors/incident.monitors.contract",
-      "types": [],
-      "datasources": [],
       "agents": [],
+      "datasources": [],
       "evals": [],
       "monitors": [
         {
-          "name": "status_update_requires_approval",
           "agent": "IncidentCommander",
-          "severity": "high",
           "condition": "trace.tool_called(status_page.draft_update)",
           "expectation": "trace.approval_granted(\"status_page.draft_update\")",
+          "name": "status_update_requires_approval",
+          "severity": "high",
           "span": {
-            "path": "examples/incident-command/monitors/incident.monitors.contract",
+            "column": 9,
             "line": 1,
-            "column": 9
+            "path": "examples/incident-command/monitors/incident.monitors.contract"
+          }
+        }
+      ],
+      "path": "examples/incident-command/monitors/incident.monitors.contract",
+      "run_specs": [],
+      "types": []
+    },
+    {
+      "agents": [],
+      "datasources": [],
+      "evals": [],
+      "monitors": [],
+      "path": "examples/incident-command/types/incident.contract",
+      "run_specs": [],
+      "types": [
+        {
+          "fields": [
+            {
+              "default": null,
+              "name": "service",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 2,
+                "path": "examples/incident-command/types/incident.contract"
+              },
+              "type_name": "str"
+            },
+            {
+              "default": null,
+              "name": "start",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 3,
+                "path": "examples/incident-command/types/incident.contract"
+              },
+              "type_name": "str"
+            },
+            {
+              "default": null,
+              "name": "end",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 4,
+                "path": "examples/incident-command/types/incident.contract"
+              },
+              "type_name": "str"
+            },
+            {
+              "default": null,
+              "name": "symptom",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 5,
+                "path": "examples/incident-command/types/incident.contract"
+              },
+              "type_name": "str"
+            }
+          ],
+          "name": "IncidentReportRequest",
+          "python_ref": null,
+          "source": "native",
+          "span": {
+            "column": 6,
+            "line": 1,
+            "path": "examples/incident-command/types/incident.contract"
+          }
+        },
+        {
+          "fields": [
+            {
+              "default": null,
+              "name": "id",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 8,
+                "path": "examples/incident-command/types/incident.contract"
+              },
+              "type_name": "str"
+            },
+            {
+              "default": null,
+              "name": "name",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 9,
+                "path": "examples/incident-command/types/incident.contract"
+              },
+              "type_name": "str"
+            },
+            {
+              "default": null,
+              "name": "owner",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 10,
+                "path": "examples/incident-command/types/incident.contract"
+              },
+              "type_name": "str"
+            }
+          ],
+          "name": "ServiceCatalogEntry",
+          "python_ref": null,
+          "source": "native",
+          "span": {
+            "column": 6,
+            "line": 7,
+            "path": "examples/incident-command/types/incident.contract"
+          }
+        },
+        {
+          "fields": [
+            {
+              "default": null,
+              "name": "start",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 13,
+                "path": "examples/incident-command/types/incident.contract"
+              },
+              "type_name": "str"
+            },
+            {
+              "default": null,
+              "name": "end",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 14,
+                "path": "examples/incident-command/types/incident.contract"
+              },
+              "type_name": "str"
+            }
+          ],
+          "name": "TimeWindow",
+          "python_ref": null,
+          "source": "native",
+          "span": {
+            "column": 6,
+            "line": 12,
+            "path": "examples/incident-command/types/incident.contract"
+          }
+        },
+        {
+          "fields": [
+            {
+              "default": null,
+              "name": "events",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 17,
+                "path": "examples/incident-command/types/incident.contract"
+              },
+              "type_name": "str[]"
+            }
+          ],
+          "name": "LogEvidenceBundle",
+          "python_ref": null,
+          "source": "native",
+          "span": {
+            "column": 6,
+            "line": 16,
+            "path": "examples/incident-command/types/incident.contract"
+          }
+        },
+        {
+          "fields": [
+            {
+              "default": null,
+              "name": "deploys",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 20,
+                "path": "examples/incident-command/types/incident.contract"
+              },
+              "type_name": "str[]"
+            }
+          ],
+          "name": "RecentDeploys",
+          "python_ref": null,
+          "source": "native",
+          "span": {
+            "column": 6,
+            "line": 19,
+            "path": "examples/incident-command/types/incident.contract"
+          }
+        },
+        {
+          "fields": [
+            {
+              "default": null,
+              "name": "metric",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 23,
+                "path": "examples/incident-command/types/incident.contract"
+              },
+              "type_name": "str"
+            },
+            {
+              "default": null,
+              "name": "max_value",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 24,
+                "path": "examples/incident-command/types/incident.contract"
+              },
+              "type_name": "float"
+            },
+            {
+              "default": null,
+              "name": "summary",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 25,
+                "path": "examples/incident-command/types/incident.contract"
+              },
+              "type_name": "str"
+            }
+          ],
+          "name": "MetricSnapshot",
+          "python_ref": null,
+          "source": "native",
+          "span": {
+            "column": 6,
+            "line": 22,
+            "path": "examples/incident-command/types/incident.contract"
+          }
+        },
+        {
+          "fields": [
+            {
+              "default": null,
+              "name": "summary",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 28,
+                "path": "examples/incident-command/types/incident.contract"
+              },
+              "type_name": "str"
+            },
+            {
+              "default": null,
+              "name": "likely_cause",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 29,
+                "path": "examples/incident-command/types/incident.contract"
+              },
+              "type_name": "str"
+            },
+            {
+              "default": null,
+              "name": "evidence",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 30,
+                "path": "examples/incident-command/types/incident.contract"
+              },
+              "type_name": "str[]"
+            },
+            {
+              "default": null,
+              "name": "next_actions",
+              "nullable": false,
+              "span": {
+                "column": 5,
+                "line": 31,
+                "path": "examples/incident-command/types/incident.contract"
+              },
+              "type_name": "str[]"
+            }
+          ],
+          "name": "IncidentBrief",
+          "python_ref": null,
+          "source": "native",
+          "span": {
+            "column": 6,
+            "line": 27,
+            "path": "examples/incident-command/types/incident.contract"
           }
         }
       ]
     },
     {
-      "path": "examples/incident-command/types/incident.contract",
-      "types": [
-        {
-          "name": "IncidentReportRequest",
-          "fields": [
-            {
-              "name": "service",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "examples/incident-command/types/incident.contract",
-                "line": 2,
-                "column": 5
-              }
-            },
-            {
-              "name": "start",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "examples/incident-command/types/incident.contract",
-                "line": 3,
-                "column": 5
-              }
-            },
-            {
-              "name": "end",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "examples/incident-command/types/incident.contract",
-                "line": 4,
-                "column": 5
-              }
-            },
-            {
-              "name": "symptom",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "examples/incident-command/types/incident.contract",
-                "line": 5,
-                "column": 5
-              }
-            }
-          ],
-          "span": {
-            "path": "examples/incident-command/types/incident.contract",
-            "line": 1,
-            "column": 6
-          }
-        },
-        {
-          "name": "ServiceCatalogEntry",
-          "fields": [
-            {
-              "name": "id",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "examples/incident-command/types/incident.contract",
-                "line": 8,
-                "column": 5
-              }
-            },
-            {
-              "name": "name",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "examples/incident-command/types/incident.contract",
-                "line": 9,
-                "column": 5
-              }
-            },
-            {
-              "name": "owner",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "examples/incident-command/types/incident.contract",
-                "line": 10,
-                "column": 5
-              }
-            }
-          ],
-          "span": {
-            "path": "examples/incident-command/types/incident.contract",
-            "line": 7,
-            "column": 6
-          }
-        },
-        {
-          "name": "TimeWindow",
-          "fields": [
-            {
-              "name": "start",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "examples/incident-command/types/incident.contract",
-                "line": 13,
-                "column": 5
-              }
-            },
-            {
-              "name": "end",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "examples/incident-command/types/incident.contract",
-                "line": 14,
-                "column": 5
-              }
-            }
-          ],
-          "span": {
-            "path": "examples/incident-command/types/incident.contract",
-            "line": 12,
-            "column": 6
-          }
-        },
-        {
-          "name": "LogEvidenceBundle",
-          "fields": [
-            {
-              "name": "events",
-              "type_name": "str[]",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "examples/incident-command/types/incident.contract",
-                "line": 17,
-                "column": 5
-              }
-            }
-          ],
-          "span": {
-            "path": "examples/incident-command/types/incident.contract",
-            "line": 16,
-            "column": 6
-          }
-        },
-        {
-          "name": "RecentDeploys",
-          "fields": [
-            {
-              "name": "deploys",
-              "type_name": "str[]",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "examples/incident-command/types/incident.contract",
-                "line": 20,
-                "column": 5
-              }
-            }
-          ],
-          "span": {
-            "path": "examples/incident-command/types/incident.contract",
-            "line": 19,
-            "column": 6
-          }
-        },
-        {
-          "name": "MetricSnapshot",
-          "fields": [
-            {
-              "name": "metric",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "examples/incident-command/types/incident.contract",
-                "line": 23,
-                "column": 5
-              }
-            },
-            {
-              "name": "max_value",
-              "type_name": "float",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "examples/incident-command/types/incident.contract",
-                "line": 24,
-                "column": 5
-              }
-            },
-            {
-              "name": "summary",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "examples/incident-command/types/incident.contract",
-                "line": 25,
-                "column": 5
-              }
-            }
-          ],
-          "span": {
-            "path": "examples/incident-command/types/incident.contract",
-            "line": 22,
-            "column": 6
-          }
-        },
-        {
-          "name": "IncidentBrief",
-          "fields": [
-            {
-              "name": "summary",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "examples/incident-command/types/incident.contract",
-                "line": 28,
-                "column": 5
-              }
-            },
-            {
-              "name": "likely_cause",
-              "type_name": "str",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "examples/incident-command/types/incident.contract",
-                "line": 29,
-                "column": 5
-              }
-            },
-            {
-              "name": "evidence",
-              "type_name": "str[]",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "examples/incident-command/types/incident.contract",
-                "line": 30,
-                "column": 5
-              }
-            },
-            {
-              "name": "next_actions",
-              "type_name": "str[]",
-              "nullable": false,
-              "default": null,
-              "span": {
-                "path": "examples/incident-command/types/incident.contract",
-                "line": 31,
-                "column": 5
-              }
-            }
-          ],
-          "span": {
-            "path": "examples/incident-command/types/incident.contract",
-            "line": 27,
-            "column": 6
-          }
-        }
-      ],
-      "datasources": [],
       "agents": [],
-      "evals": [],
-      "monitors": []
-    },
-    {
-      "path": "examples/incident-command/evals/incident_command.eval",
-      "types": [],
       "datasources": [],
-      "agents": [],
       "evals": [
         {
-          "name": "discovers_checkout_cause",
           "agent": "IncidentCommander",
-          "givens": {
-            "start": "\"discovers_checkout_cause\"",
-            "request": "IncidentReportRequest.fixture(\"checkout_latency\")",
-            "service": "ServiceCatalogEntry.fixture(\"checkout-api\")",
-            "window": "TimeWindow.fixture(\"incident_window\")"
-          },
           "expects": [
             "output conforms IncidentBrief",
             "output discovers hidden_truth.likely_cause",
@@ -739,17 +758,28 @@
             "trace.agent_called(MetricsAnalyst)",
             "trace.not_called(status_page.draft_update)"
           ],
+          "givens": {
+            "request": "IncidentReportRequest.fixture(\"checkout_latency\")",
+            "service": "ServiceCatalogEntry.fixture(\"checkout-api\")",
+            "start": "\"discovers_checkout_cause\"",
+            "window": "TimeWindow.fixture(\"incident_window\")"
+          },
+          "name": "discovers_checkout_cause",
           "semantic_expects": [
             "semantic(output, \"The brief is clear, operationally useful, and supported by evidence.\")"
           ],
           "span": {
-            "path": "examples/incident-command/evals/incident_command.eval",
+            "column": 6,
             "line": 1,
-            "column": 6
+            "path": "examples/incident-command/evals/incident_command.eval"
           }
         }
       ],
-      "monitors": []
+      "monitors": [],
+      "path": "examples/incident-command/evals/incident_command.eval",
+      "run_specs": [],
+      "types": []
     }
-  ]
+  ],
+  "root": "examples/incident-command"
 }

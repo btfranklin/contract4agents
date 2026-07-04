@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 from typing import Any
 
 from contract4agents.ast import FieldDef, TypeDef
+from contract4agents.type_refs import (
+    canonical_type_name,
+    collection_member_type,
+    is_builtin_type,
+    literal_values,
+    numeric_bounds,
+    referenced_type_names,
+)
 
 
 def type_to_schema(type_def: TypeDef, type_defs: Mapping[str, TypeDef] | None = None) -> dict[str, Any]:
@@ -49,30 +56,33 @@ def field_to_schema(field: FieldDef) -> dict[str, Any]:
 
 def _raw_type_to_schema(raw_type: str) -> dict[str, Any]:
     value = raw_type.strip()
-    if value.endswith("[]"):
-        return {"type": "array", "items": _raw_type_to_schema(value[:-2])}
-    if value.startswith("list[") and value.endswith("]"):
-        return {"type": "array", "items": _raw_type_to_schema(value[5:-1])}
-    if _literal_values(value):
-        return {"type": "string", "enum": _literal_values(value)}
-    between = re.fullmatch(r"(float|int)\s+between\s+([0-9.]+)\s+and\s+([0-9.]+)", value)
-    if between:
-        base, minimum, maximum = between.groups()
+    if value.endswith("?"):
+        return {"anyOf": [_raw_type_to_schema(value[:-1].strip()), {"type": "null"}]}
+    member_type = collection_member_type(value)
+    if member_type is not None:
+        return {"type": "array", "items": _raw_type_to_schema(member_type)}
+    values = literal_values(value)
+    if values:
+        return {"type": "string", "enum": values}
+    bounds = numeric_bounds(value)
+    if bounds is not None:
+        base, minimum, maximum = bounds
         return {
             "type": "number" if base == "float" else "integer",
-            "minimum": float(minimum),
-            "maximum": float(maximum),
+            "minimum": minimum,
+            "maximum": maximum,
         }
-    primitive = {
+    primitive_schemas = {
         "str": {"type": "string"},
         "int": {"type": "integer"},
         "float": {"type": "number"},
         "bool": {"type": "boolean"},
         "AgentRef": {"type": "string"},
-    }.get(value)
+    }
+    primitive = primitive_schemas.get(canonical_type_name(value)) if is_builtin_type(value) else None
     if primitive:
         return dict(primitive)
-    return {"$ref": f"#/$defs/{value}"}
+    return {"$ref": f"#/$defs/{canonical_type_name(value)}"}
 
 
 def _referenced_defs(type_def: TypeDef, type_defs: Mapping[str, TypeDef]) -> dict[str, Any]:
@@ -86,32 +96,15 @@ def _referenced_defs(type_def: TypeDef, type_defs: Mapping[str, TypeDef]) -> dic
         visiting.add(name)
         defs[name] = _type_to_schema(target, include_schema=False)
         for field in target.fields:
-            for nested_name in _referenced_type_names(field.type_name):
+            for nested_name in referenced_type_names(field.type_name):
                 add_ref(nested_name)
         visiting.remove(name)
 
     for field in type_def.fields:
-        for ref_name in _referenced_type_names(field.type_name):
+        for ref_name in referenced_type_names(field.type_name):
             add_ref(ref_name)
 
     return {name: defs[name] for name in sorted(defs)}
-
-
-def _referenced_type_names(raw_type: str) -> set[str]:
-    value = raw_type.strip().rstrip("?")
-    if value.endswith("[]"):
-        return _referenced_type_names(value[:-2])
-    if value.startswith("list[") and value.endswith("]"):
-        return _referenced_type_names(value[5:-1])
-    if _literal_values(value) or re.fullmatch(r"(float|int)\s+between\s+([0-9.]+)\s+and\s+([0-9.]+)", value):
-        return set()
-    if value in {"str", "int", "float", "bool", "AgentRef"}:
-        return set()
-    return {value} if value else set()
-
-
-def _literal_values(raw_type: str) -> list[str]:
-    return re.findall(r'"([^"]+)"', raw_type)
 
 
 def _coerce_default(raw: str) -> object:

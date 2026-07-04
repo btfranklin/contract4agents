@@ -6,7 +6,7 @@ agent team in an SDK such as the OpenAI Agents SDK.
 Contract4Agents does not replace your SDK. It gives you a typed, reviewable
 source of truth for the agent team, then compiles that source into artifacts your
 SDK integration can consume: instructions, manifests, JSON Schemas, eval packs,
-monitor rules, run contracts, and visualization files.
+monitor rules, run specs, and visualization files.
 
 You do not need to understand the whole language before trying it. The smallest
 useful loop is:
@@ -35,7 +35,7 @@ Contract4Agents owns the contract layer:
 - what agents exist;
 - what inputs and outputs they accept;
 - which host tools, hosted provider tools, subagents, and datasources each agent may use;
-- what policies, guards, assertions, evals, monitors, and run contracts should
+- what policies, guards, assertions, evals, monitors, and run specs should
   travel with the team;
 - what generated artifacts should be reviewed or consumed by an adapter.
 
@@ -46,7 +46,7 @@ The source files are durable. The generated files are disposable build output.
 Contract4Agents uses two small source file types:
 
 - `.contract` files define types, datasources, agents, guards, assertions,
-  monitors, and run contracts.
+  monitors, and run specs.
 - `.eval` files define scenario checks against agents.
 
 The definitive language docs are:
@@ -57,7 +57,7 @@ The definitive language docs are:
   deterministic eval, assertion, guard, and monitor expressions.
 - [Evals, Assertions, And Monitors](../evaluation/evals-assertions-monitors.md):
   the conceptual difference between those behavioral checks.
-- [Run Contracts](../reference/run-contracts.md): host-owned workflow sequence
+- [Run Specs](../reference/run-specs.md): host-owned workflow sequence
   expectations and runtime evaluation.
 - [Grammar Reference](../reference/grammar.md): the implemented V1 syntax
   surface.
@@ -101,6 +101,12 @@ contract4agents check agent_contracts
 contract4agents compile agent_contracts --out .contract/build
 contract4agents visualize agent_contracts --out .contract/build/visualization
 ```
+
+Relative `--out` paths are resolved from the current working directory. Keep
+generated artifacts under an ignored path such as `.contract/...`; the CLI
+refuses to write generated output into source-owned directories such as `docs`,
+`src`, `tests`, `examples`, `agents`, `types`, `evals`, `monitors`, and
+`datasources`.
 
 If your contract imports Pydantic models with `type Name from python
 "module:Model"`, add `--allow-python-imports` to CLI commands that compile
@@ -436,15 +442,15 @@ violations. A conditional assertion whose trace condition is false is skipped.
 When a trace file contains more than one run, pass the intended `run_id` to
 assertion, eval, and monitor evaluation.
 
-Use compiled run contracts when a host-owned multi-agent sequence should produce
+Use compiled run specs when a host-owned multi-agent sequence should produce
 specific stage outputs and trace behavior:
 
 ```python
-from contract4agents.assertions import evaluate_run_contract
+from contract4agents.assertions import evaluate_run_spec
 
-run_contract_result = evaluate_run_contract(
+run_spec_result = evaluate_run_spec(
     contract=artifacts,
-    run_contract="SupportEscalation",
+    run_spec="SupportEscalation",
     trace=trace,
     stage_outputs={"triage": triage_output, "reply": reply_output},
     run_id="run-support-001",

@@ -1,6 +1,6 @@
-# Run Contracts
+# Run Specs
 
-Run contracts describe expected observable behavior for a host-owned multi-agent
+Run specs describe expected observable behavior for a host-owned multi-agent
 run. They verify stage outputs, trace ordering, tool constraints, and run-level
 invariants without defining executable workflow control.
 
@@ -10,7 +10,7 @@ recovery, persistence, and business logic.
 ## Source Syntax
 
 ```contract
-run_contract CompendiumResearch:
+run_spec CompendiumResearch:
     stages = [
         plan: PlannerAgent -> ResearchPlan,
         section_research+: SectionResearchAgent -> SectionResearchBrief,
@@ -31,31 +31,31 @@ Stage suffixes define output cardinality:
 - `?`: the stage is optional.
 - `+`: one or more outputs are required.
 
-Run-contract assertions are trace expressions over the normalized trace. Use
+Run spec assertions are trace expressions over the normalized trace. Use
 stage outputs for schema checks and trace assertions for ordering, cardinality,
 and capability-use expectations.
 
 ## Compiler Artifact
 
-The compiler emits `run-contracts/run-contracts.json`. Each run contract records:
+The compiler emits `run-specs/run-specs.json`. Each run spec records:
 
-- run-contract name and source path
+- run spec name and source path
 - stage name, agent, output type, cardinality, manifest reference, and schema reference
 - trace assertions
 
 The artifact is included in compile freshness checks, so `compile --check`
-reports stale or missing run-contract output.
+reports stale or missing run spec output.
 
 ## Runtime Evaluation
 
-Host applications evaluate compiled run contracts after a run:
+Host applications evaluate compiled run specs after a run:
 
 ```python
-from contract4agents.assertions import evaluate_run_contract
+from contract4agents.assertions import evaluate_run_spec
 
-result = evaluate_run_contract(
+result = evaluate_run_spec(
     contract=artifacts,
-    run_contract="CompendiumResearch",
+    run_spec="CompendiumResearch",
     trace=trace,
     stage_outputs={
         "plan": plan_output,
@@ -72,4 +72,4 @@ object when present. Each output is validated against the declared stage output
 schema.
 
 Single-run traces can omit `run_id`. Multi-run traces must pass `run_id` so
-events from separate runs cannot satisfy the same run contract.
+events from separate runs cannot satisfy the same run spec.
