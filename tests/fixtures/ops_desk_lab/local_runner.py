@@ -118,7 +118,12 @@ async def _billing(
     trace: TraceRecorder,
 ) -> dict[str, Any]:
     trace.record("agent.started", agent="BillingSpecialist")
-    raw = await registry.call("billing.lookup_invoice", trace, account_id=account["account_id"])
+    raw = await registry.call(
+        "billing.lookup_invoice",
+        trace,
+        agent="OpsDeskCoordinator",
+        account_id=account["account_id"],
+    )
     invoices = json.loads(raw)["invoices"]
     if intent["action"] == "credit":
         duplicate = next(item for item in invoices if item["status"] == "duplicate")
@@ -126,6 +131,7 @@ async def _billing(
             await registry.call(
                 "billing.create_credit",
                 trace,
+                agent="OpsDeskCoordinator",
                 account_id=account["account_id"],
                 invoice_id=duplicate["invoice_id"],
                 amount=duplicate["amount"],
@@ -171,7 +177,12 @@ async def _security(
     trace: TraceRecorder,
 ) -> dict[str, Any]:
     trace.record("agent.started", agent="SecuritySpecialist")
-    raw = await registry.call("security.audit_log", trace, account_id=account["account_id"])
+    raw = await registry.call(
+        "security.audit_log",
+        trace,
+        agent="OpsDeskCoordinator",
+        account_id=account["account_id"],
+    )
     events = json.loads(raw)["events"]
     evidence = [item["summary"] for item in events]
     if intent["action"] == "lock":
@@ -179,6 +190,7 @@ async def _security(
             await registry.call(
                 "security.lock_account",
                 trace,
+                agent="OpsDeskCoordinator",
                 account_id=account["account_id"],
                 reason="suspicious login",
             )
@@ -221,12 +233,23 @@ async def _access(
     trace: TraceRecorder,
 ) -> dict[str, Any]:
     trace.record("agent.started", agent="AccessSpecialist")
-    raw = await registry.call("access.list_permissions", trace, account_id=account["account_id"])
+    raw = await registry.call(
+        "access.list_permissions",
+        trace,
+        agent="OpsDeskCoordinator",
+        account_id=account["account_id"],
+    )
     permissions = json.loads(raw)["permissions"]
     evidence = [f"{item['entitlement']}={item['status']}" for item in permissions]
     if intent["action"] == "grant":
         try:
-            await registry.call("access.grant_access", trace, account_id=account["account_id"], entitlement="admin")
+            await registry.call(
+                "access.grant_access",
+                trace,
+                agent="OpsDeskCoordinator",
+                account_id=account["account_id"],
+                entitlement="admin",
+            )
         except ToolPermissionDenied:
             output = _result(
                 start,
@@ -260,7 +283,7 @@ async def _access(
 
 async def _knowledge(start: OpsDeskStart, registry: FakeToolRegistry, trace: TraceRecorder) -> dict[str, Any]:
     trace.record("agent.started", agent="KnowledgeSpecialist")
-    raw = await registry.call("knowledge.search", trace, query="MFA reset")
+    raw = await registry.call("knowledge.search", trace, agent="OpsDeskCoordinator", query="MFA reset")
     articles = json.loads(raw)["articles"]
     evidence = [item["title"] for item in articles]
     output = _result(

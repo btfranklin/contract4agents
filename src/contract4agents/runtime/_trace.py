@@ -143,12 +143,19 @@ def event_data_from_envelope(envelope: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
-def scope_trace(trace: TraceRecorder, *, run_id: str | None = None, agent: str | None = None) -> TraceRecorder:
+def scope_trace(
+    trace: TraceRecorder,
+    *,
+    run_id: str | None = None,
+    agent: str | None = None,
+    strict_agent_scope: bool = False,
+) -> TraceRecorder:
     """Return a trace containing one run, optionally scoped to one agent.
 
     Single-run traces can be evaluated without an explicit run_id. Multi-run
     traces must provide a run_id so events from separate runs cannot satisfy the
-    same trace assertion or monitor rule.
+    same trace assertion or monitor rule. Strict agent scope is for monitors
+    where unattributed events should not satisfy an agent-owned rule.
     """
     event_run_ids = {_event_run_id(trace, event) for event in trace.events}
     if run_id is None:
@@ -164,7 +171,8 @@ def scope_trace(trace: TraceRecorder, *, run_id: str | None = None, agent: str |
     scoped.events = [
         event
         for event in trace.events
-        if _event_run_id(trace, event) == selected_run_id and _event_matches_agent(event, agent)
+        if _event_run_id(trace, event) == selected_run_id
+        and _event_matches_agent(event, agent, strict_agent_scope=strict_agent_scope)
     ]
     return scoped
 
@@ -173,10 +181,12 @@ def _event_run_id(trace: TraceRecorder, event: TraceEvent) -> str:
     return str(event.data.get("run_id", trace.run_id))
 
 
-def _event_matches_agent(event: TraceEvent, agent: str | None) -> bool:
+def _event_matches_agent(event: TraceEvent, agent: str | None, *, strict_agent_scope: bool) -> bool:
     if agent is None:
         return True
     event_agent = event.data.get("agent")
+    if strict_agent_scope:
+        return event_agent == agent
     return event_agent is None or event_agent == agent
 
 

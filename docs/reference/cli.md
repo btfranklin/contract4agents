@@ -84,17 +84,19 @@ Use `--allow-python-imports` for projects with Pydantic-backed contract types.
 Runs the local deterministic fixture project declared by `ROOT/fixture.json`.
 
 - Default root: `.`
-- Options: `--allow-python-imports`
+- Options: `--allow-python-imports`, `--fail-on-skipped-semantic`
 - Writes: `ROOT/.contract/runs/last`
-- Success message: fixture summary with per-start `PASS` lines
-- Failure shape: Click error `Contract4Agents fixture eval failed: ...` for runner failures, or `Contract4Agents eval failed` after a completed failing report
+- Success message: fixture summary with per-start `PASS` or `PARTIAL` lines
+- Failure shape: Click error `Contract4Agents fixture eval failed: ...` for runner failures, `Contract4Agents eval skipped semantic checks` when `--fail-on-skipped-semantic` is used, or `Contract4Agents eval failed` after a completed failing report
 - Side effects: compiles the fixture, seeds fixture data, writes traces and reports, and cleans transient build/data/trace artifacts only after successful runs unless `CONTRACT4AGENTS_KEEP_FIXTURE_ARTIFACTS=1`
 
 Use `--allow-python-imports` when a fixture project declares Pydantic-backed
 contract types.
 
 Completed reports separate eval failures, assertion failures, monitor violations,
-and skipped semantic checks.
+and skipped semantic checks. `PARTIAL` means deterministic checks passed but at
+least one semantic expectation was skipped because no semantic judge was
+configured.
 
 Failed eval runs keep generated artifacts and traces in `ROOT/.contract/runs/last` for debugging.
 

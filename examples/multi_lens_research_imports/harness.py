@@ -7,6 +7,7 @@ import json
 import os
 import sqlite3
 from contextlib import closing
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,13 @@ from contract4agents.runtime import FakeToolRegistry, TraceRecorder
 from examples.multi_lens_research_imports import citation, evidence, expert_review, sources
 
 SCENARIO_ID = "staged-eval-rollout-2026-06"
+FIXTURE_START_ID = "staged_rollout_research"
+
+
+@dataclass(frozen=True)
+class MultiLensResearchStart:
+    start_id: str
+    approve_expert_review: bool = False
 
 
 def seed_multi_lens_research(db_path: Path) -> Path:
@@ -87,6 +95,8 @@ def seed_multi_lens_research(db_path: Path) -> Path:
 
 
 def load_hidden_truth(db_path: Path, scenario_id: str = SCENARIO_ID) -> dict[str, Any]:
+    if scenario_id == FIXTURE_START_ID:
+        scenario_id = SCENARIO_ID
     with closing(sqlite3.connect(db_path)) as conn:
         row = conn.execute(
             "SELECT likely_conclusion, required_terms FROM scenario_truth WHERE scenario_id = ?",
@@ -97,12 +107,18 @@ def load_hidden_truth(db_path: Path, scenario_id: str = SCENARIO_ID) -> dict[str
     return {"likely_conclusion": json.loads(row[1])}
 
 
+def multi_lens_research_starts() -> list[MultiLensResearchStart]:
+    return [MultiLensResearchStart(FIXTURE_START_ID)]
+
+
 async def run_multi_lens_research_harness(
-    db_path: Path, approve_expert_review: bool = False
+    db_path: Path,
+    approve_expert_review: bool = False,
+    trace_path: Path | None = None,
 ) -> tuple[dict[str, Any], TraceRecorder]:
     os.environ["CONTRACT4AGENTS_MULTI_LENS_DB"] = str(db_path)
 
-    trace = TraceRecorder()
+    trace = TraceRecorder(trace_path)
     tools = FakeToolRegistry(approval_callback=lambda _name, _kwargs: approve_expert_review)
     tools.register("sources.search", sources.search, "preapproved")
     tools.register("sources.fetch", sources.fetch, "preapproved")
@@ -110,26 +126,51 @@ async def run_multi_lens_research_harness(
     tools.register("citation.format", citation.format, "preapproved")
     tools.register("expert_review.request", expert_review.request, "requires_approval")
 
-    evidence_hits = await tools.call("sources.search", trace, query="eval rollout", lens="evidence")
-    technical_source = await tools.call("sources.fetch", trace, source_id="src-tech-002")
-    policy_source = await tools.call("sources.fetch", trace, source_id="src-policy-003")
-    counter_hits = await tools.call("sources.search", trace, query="bypass eval gates", lens="counterargument")
-    counter_source = await tools.call("sources.fetch", trace, source_id="src-counter-004")
+    evidence_hits = await tools.call(
+        "sources.search",
+        trace,
+        agent="EvidenceMapper",
+        query="eval rollout",
+        lens="evidence",
+    )
+    technical_source = await tools.call("sources.fetch", trace, agent="TechnicalLensAnalyst", source_id="src-tech-002")
+    policy_source = await tools.call(
+        "sources.fetch",
+        trace,
+        agent="PolicySafetyLensAnalyst",
+        source_id="src-policy-003",
+    )
+    counter_hits = await tools.call(
+        "sources.search",
+        trace,
+        agent="CounterargumentAnalyst",
+        query="bypass eval gates",
+        lens="counterargument",
+    )
+    counter_source = await tools.call(
+        "sources.fetch",
+        trace,
+        agent="CounterargumentAnalyst",
+        source_id="src-counter-004",
+    )
     eval_score = await tools.call(
         "evidence.score",
         trace,
+        agent="EvidenceMapper",
         source_id="src-eval-001",
         claim="staged eval rollout reduced bad recommendations",
     )
     policy_score = await tools.call(
         "evidence.score",
         trace,
+        agent="PolicySafetyLensAnalyst",
         source_id="src-policy-003",
         claim="human review is required for regulated workflows",
     )
     citation_result = await tools.call(
         "citation.format",
         trace,
+        agent="EvidenceMapper",
         source_id="src-eval-001",
         claim="staged rollout with eval gates reduced bad recommendations",
     )
@@ -196,3 +237,12 @@ def run_multi_lens_research_harness_sync(
     db_path: Path, approve_expert_review: bool = False
 ) -> tuple[dict[str, Any], TraceRecorder]:
     return asyncio.run(run_multi_lens_research_harness(db_path, approve_expert_review))
+
+
+async def run_multi_lens_research_start(
+    start: MultiLensResearchStart,
+    db_path: Path,
+    _artifacts: dict[str, Any],
+    trace_path: Path,
+) -> tuple[dict[str, Any], TraceRecorder]:
+    return await run_multi_lens_research_harness(db_path, start.approve_expert_review, trace_path)

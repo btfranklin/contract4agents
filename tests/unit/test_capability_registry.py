@@ -18,6 +18,7 @@ from contract4agents.parser import parse_project
 
 ROOT = Path(__file__).resolve().parents[2]
 HOST_DRIFT = ROOT / "tests" / "fixtures" / "contract_projects" / "host-drift"
+PYDANTIC_INTEROP = ROOT / "tests" / "fixtures" / "contract_projects" / "pydantic-model-interop"
 
 
 def test_capability_registry_strict_happy_path() -> None:
@@ -157,6 +158,32 @@ def test_capability_registry_reports_pydantic_output_type_mismatch(tmp_path: Pat
     assert "DriftResult" in diagnostics[0].message
 
 
+def test_capability_registry_requires_python_backed_output_type_entry(tmp_path: Path) -> None:
+    project = tmp_path / "pydantic-model-interop"
+    shutil.copytree(PYDANTIC_INTEROP, project)
+    _write_registry(
+        project,
+        {
+            "version": 2,
+            "agents": {"ResearchPlanner": {"name": "ResearchPlanner"}},
+        },
+    )
+
+    diagnostics = _strict_diagnostics(project, allow_python_imports=True)
+
+    assert _codes(diagnostics) == ["CAP050"]
+    assert "ResearchSummary" in diagnostics[0].message
+
+
+def test_capability_registry_does_not_require_native_output_type_entry(tmp_path: Path) -> None:
+    project = _copy_host_drift(tmp_path)
+    _mutate_registry(project, lambda data: data.update({"output_types": {}}))
+
+    diagnostics = _strict_diagnostics(project)
+
+    assert diagnostics == []
+
+
 def test_capability_registry_reports_hosted_tool_drift(tmp_path: Path) -> None:
     project = _copy_host_drift(tmp_path)
     _mutate_registry(
@@ -287,9 +314,9 @@ def test_capability_registry_imports_work_after_chdir_away_from_repo(
     assert diagnostics == []
 
 
-def _strict_diagnostics(project: Path) -> list:
+def _strict_diagnostics(project: Path, allow_python_imports: bool = False) -> list:
     contract_project = parse_project(project)
-    artifacts = build_artifacts(contract_project)
+    artifacts = build_artifacts(contract_project, allow_python_imports=allow_python_imports)
     load = load_capability_registry(project, required=True)
     if load.diagnostics or load.registry is None:
         return load.diagnostics
@@ -307,6 +334,10 @@ def _mutate_registry(project: Path, mutator) -> None:
     data = json.loads(path.read_text())
     mutator(data)
     path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+
+
+def _write_registry(project: Path, data: dict) -> None:
+    (project / "contract4agents.registry.json").write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
 
 
 def _codes(diagnostics: list) -> list[str]:

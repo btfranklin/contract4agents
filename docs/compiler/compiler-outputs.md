@@ -104,7 +104,8 @@ manifest declarations against explicit host surfaces:
 - Stale tool, hosted-tool, agent, and per-agent permission registry entries are
   rejected.
 - Registered agent names and factory imports match contract agent declarations.
-- Registered Pydantic output classes match contract output schemas.
+- Python-backed agent output types are registered, and registered Pydantic output
+  classes match contract output schemas.
 - Registered prompt assets exist and point at known agents.
 - Manifest `host_context` entries are marked as host-provided.
 

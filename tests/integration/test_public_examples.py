@@ -55,6 +55,10 @@ def test_public_example_check_compile_visualize_smoke(example_root: Path, tmp_pa
     assert visualize_result.exit_code == 0, visualize_result.output
     assert (visualization_dir / "index.html").exists()
 
+    eval_result = runner.invoke(main, ["eval", str(example_root)])
+    assert eval_result.exit_code == 0, eval_result.output
+    assert "Fixture eval completed with skipped semantic checks" in eval_result.output
+
 
 def test_multi_lens_research_local_end_to_end(tmp_path: Path) -> None:
     example_root = ROOT / "examples" / "multi-lens-research"
@@ -72,7 +76,7 @@ def test_multi_lens_research_local_end_to_end(tmp_path: Path) -> None:
 def test_multi_lens_research_monitor_catches_unapproved_expert_review() -> None:
     artifacts = compile_project(ROOT / "examples" / "multi-lens-research")
     trace = TraceRecorder()
-    trace.record("approval.requested", tool="expert_review.request")
+    trace.record("approval.requested", agent="ResearchDirector", tool="expert_review.request")
 
     violations = run_monitors(_monitor_rules(artifacts), trace)
 
@@ -96,7 +100,7 @@ def test_market_research_brief_local_end_to_end(tmp_path: Path) -> None:
 def test_market_research_monitor_catches_missing_current_facts() -> None:
     artifacts = compile_project(ROOT / "examples" / "market-research-brief")
     trace = TraceRecorder()
-    trace.record("tool.completed", tool="documents.fetch")
+    trace.record("tool.completed", agent="MarketResearchLead", tool="documents.fetch")
 
     violations = run_monitors(_monitor_rules(artifacts), trace)
 
@@ -110,8 +114,8 @@ def test_incident_command_fixture_eval_smoke() -> None:
     result = runner.invoke(main, ["eval", str(ROOT / "examples" / "incident-command")])
 
     assert result.exit_code == 0, result.output
-    assert "Fixture eval passed: 1 starts" in result.output
-    assert "PASS discovers_checkout_cause" in result.output
+    assert "Fixture eval completed with skipped semantic checks: 1 starts" in result.output
+    assert "PARTIAL discovers_checkout_cause" in result.output
 
 
 async def _evaluate_first_case(

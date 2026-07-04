@@ -172,6 +172,7 @@ async def run_incident_command_harness(
     log_results = await tools.call(
         "logs.search",
         trace,
+        agent="LogInvestigator",
         service="checkout-api",
         start="2026-05-01T10:00:00Z",
         end="2026-05-01T11:00:00Z",
@@ -180,6 +181,7 @@ async def run_incident_command_harness(
     deploy_results = await tools.call(
         "deploys.list",
         trace,
+        agent="DeployAnalyst",
         service="checkout-api",
         start="2026-05-01T10:00:00Z",
         end="2026-05-01T11:00:00Z",
@@ -187,6 +189,7 @@ async def run_incident_command_harness(
     metric_results = await tools.call(
         "metrics.query",
         trace,
+        agent="MetricsAnalyst",
         service="checkout-api",
         metric="p95_latency_ms",
         start="2026-05-01T10:00:00Z",

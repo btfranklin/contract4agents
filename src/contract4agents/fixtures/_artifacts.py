@@ -44,6 +44,19 @@ def verify_fixture_artifacts(metadata: dict[str, Any], artifacts: CompilerArtifa
     _expect_set("tools", expected.get("tools", []), all_tools)
     _expect_permissions("tool permissions", expected.get("tool_permissions", {}), all_tools)
     checks.append("expected tools and permissions present")
+    all_hosted_tools = {
+        tool["name"]: tool["permission"]
+        for manifest in manifests.values()
+        for tool in manifest.get("hosted_tools", [])
+    }
+    _expect_set("hosted tools", expected.get("hosted_tools", []), all_hosted_tools)
+    _expect_permissions(
+        "hosted tool permissions",
+        expected.get("hosted_tool_permissions", {}),
+        all_hosted_tools,
+    )
+    if expected.get("hosted_tools") or expected.get("hosted_tool_permissions"):
+        checks.append("expected hosted tools and permissions present")
     coordinator = manifests[metadata["entry_agent"]]
     datasource_artifacts = {item["name"]: item for item in coordinator["datasources"]}
     _expect_set("datasources", expected.get("datasources", []), datasource_artifacts)

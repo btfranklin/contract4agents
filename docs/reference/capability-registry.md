@@ -80,6 +80,7 @@ declared by different agents with different permission states.
 - stale tool, hosted-tool, agent, and per-agent permission entries are rejected;
 - hosted-tool provider, tool, config, and permissions match the contract;
 - registered agent names match contract agent names, and factory refs import;
+- Python-backed agent output types are registered;
 - registered output types import Pydantic v2 `BaseModel` classes whose required
   fields and property schemas match the contract schema;
 - registered prompt assets exist and map to known agents;

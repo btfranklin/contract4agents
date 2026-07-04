@@ -54,7 +54,7 @@ def run_monitors(
                 )
             )
             continue
-        scoped_trace = scope_trace(trace, run_id=run_id, agent=rule.agent)
+        scoped_trace = scope_trace(trace, run_id=run_id, agent=rule.agent, strict_agent_scope=True)
         condition_failure = evaluate_trace(condition, scoped_trace) if condition else None
         if condition_failure:
             continue

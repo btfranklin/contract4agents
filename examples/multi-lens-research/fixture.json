@@ -1,0 +1,41 @@
+{
+  "name": "multi-lens-research",
+  "entry_agent": "ResearchDirector",
+  "output_type": "ResearchBrief",
+  "seed": "examples.multi_lens_research_imports.harness:seed_multi_lens_research",
+  "hidden_truth": "examples.multi_lens_research_imports.harness:load_hidden_truth",
+  "starts": "examples.multi_lens_research_imports.harness:multi_lens_research_starts",
+  "local_runner": "examples.multi_lens_research_imports.harness:run_multi_lens_research_start",
+  "expected": {
+    "agents": [
+      "CounterargumentAnalyst",
+      "EvidenceMapper",
+      "PolicySafetyLensAnalyst",
+      "ResearchDirector",
+      "SynthesisWriter",
+      "TechnicalLensAnalyst"
+    ],
+    "types": [
+      "CounterargumentSet",
+      "EvidenceMap",
+      "PolicySafetyAssessment",
+      "ResearchBrief",
+      "ResearchQuestion",
+      "SourceEvidence",
+      "TechnicalAssessment"
+    ],
+    "tools": [
+      "citation.format",
+      "evidence.score",
+      "expert_review.request",
+      "sources.fetch",
+      "sources.search"
+    ],
+    "tool_permissions": {
+      "expert_review.request": "requires_approval"
+    },
+    "datasources": [],
+    "eval_count": 1,
+    "monitor_count": 1
+  }
+}

@@ -43,15 +43,11 @@ Release setup requires the GitHub repository secret `OPENAI_API_KEY` for draft r
 
 ## CLI Smoke Path
 
-Use this path when changing parser, semantic analyzer, compiler, visualization, or README command examples:
+Use this path when changing parser, semantic analyzer, compiler, visualization,
+public examples, or README command examples:
 
 ```bash
-pdm run contract4agents --help
-pdm run contract4agents check examples/incident-command
-pdm run contract4agents check examples/incident-command --strict-drift
-pdm run contract4agents compile examples/incident-command --out .contract/build
-pdm run contract4agents visualize examples/incident-command --out .contract/build/visualization
-pdm run contract4agents eval examples/incident-command
+pdm run smoke:cli
 ```
 
 Generated `.contract/` output is local state and should stay untracked.

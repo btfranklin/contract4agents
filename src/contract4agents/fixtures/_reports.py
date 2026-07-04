@@ -36,7 +36,12 @@ def write_report(report: FixtureReport, run_root: Path) -> None:
         ]
     )
     for item in report.starts:
-        status = "PASS" if item.passed else "FAIL"
+        if not item.passed or item.monitor_violations:
+            status = "FAIL"
+        elif item.skipped_semantic:
+            status = "PARTIAL"
+        else:
+            status = "PASS"
         lines.append(
             "| "
             f"{item.start_id} | "

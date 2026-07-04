@@ -1,4 +1,5 @@
 eval staged_rollout_research for ResearchDirector:
+    given start = "staged_rollout_research"
     given question = ResearchQuestion.fixture("staged_eval_rollout")
 
     expect output conforms ResearchBrief

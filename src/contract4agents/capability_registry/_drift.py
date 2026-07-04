@@ -186,6 +186,20 @@ def _check_output_types(
     registry: CapabilityRegistry,
 ) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
+    python_type_names = {item["type"] for item in artifacts["type_bindings"] if item["source"] == "python"}
+    agent_output_types = {
+        manifest["output"]["type"]
+        for manifest in artifacts["manifests"].values()
+        if manifest["output"]["type"] in python_type_names
+    }
+    for name in sorted(agent_output_types - set(registry.output_types)):
+        diagnostics.append(
+            Diagnostic(
+                "CAP050",
+                f"Python-backed output type `{name}` is missing from `{registry.path}`",
+                hint=f"Add `output_types.{name}` with the host Pydantic model import path.",
+            )
+        )
     for name in sorted(registry.output_types):
         entry = registry.output_types[name]
         if name not in artifacts["schemas"]:

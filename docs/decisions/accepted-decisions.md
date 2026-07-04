@@ -79,10 +79,10 @@ Rationale: JSONL is inspectable and easy to diff.
 
 ## 2026-05-15: Demo Teams
 
-Decision: Use three moderately realistic demo teams rather than the original customer-support sketch:
+Decision: Use moderately realistic demo teams rather than the original customer-support sketch. The current public examples are `Incident Command`, `Multi-Lens Research`, and `Market Research Brief`; `Revenue Resolution` remains historical/future-sketch material.
 
 - `Incident Command`
-- `Revenue Resolution`
+- `Multi-Lens Research`
 - `Market Research Brief`
 
 Rationale: Together they exercise read-only investigation, guarded financial side effects, research quality, semantic evals, trace spies, approvals, hidden state, and multiple composition styles.

@@ -1,0 +1,44 @@
+{
+  "name": "market-research-brief",
+  "entry_agent": "MarketResearchLead",
+  "output_type": "MarketOpportunityReport",
+  "seed": "examples.market_research_brief_imports.harness:seed_market_research_brief",
+  "hidden_truth": "examples.market_research_brief_imports.harness:load_hidden_truth",
+  "starts": "examples.market_research_brief_imports.harness:market_research_brief_starts",
+  "local_runner": "examples.market_research_brief_imports.harness:run_market_research_brief_start",
+  "expected": {
+    "agents": [
+      "CompetitorAnalyst",
+      "CurrentTruthScout",
+      "CustomerSignalAnalyst",
+      "DocumentAnalyst",
+      "MarketResearchLead",
+      "ReportWriter"
+    ],
+    "types": [
+      "CompetitorSnapshot",
+      "CurrentFactEvidence",
+      "CustomerSignalSummary",
+      "DocumentEvidence",
+      "MarketOpportunityReport",
+      "MarketResearchQuestion"
+    ],
+    "tools": [
+      "citation.format",
+      "competitors.lookup",
+      "current_facts.fetch",
+      "current_facts.search",
+      "documents.fetch",
+      "documents.search"
+    ],
+    "hosted_tools": [
+      "openai.web_search"
+    ],
+    "hosted_tool_permissions": {
+      "openai.web_search": "available"
+    },
+    "datasources": [],
+    "eval_count": 1,
+    "monitor_count": 1
+  }
+}

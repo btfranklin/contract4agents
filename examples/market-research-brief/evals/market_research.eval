@@ -1,4 +1,5 @@
 eval validates_segment_opportunity for MarketResearchLead:
+    given start = "validates_segment_opportunity"
     given question = MarketResearchQuestion.fixture("field_ops_ai")
 
     expect output conforms MarketOpportunityReport

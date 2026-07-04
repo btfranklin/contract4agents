@@ -25,7 +25,7 @@ from contract4agents.adapters.openai import plan_openai_agents_from_contracts
 plan = plan_openai_agents_from_contracts(
     artifacts,
     output_type_registry={"SupportReply": SupportReplyModel},
-    model_registry={"SupportCoordinator": config.support_model},
+    model_registry={"SupportResponder": config.support_model},
     tool_registry={"crm.create_note": crm_create_note},
     hosted_tool_registry={"openai.web_search": True},
     agent_tool_registry={"BillingSpecialist": billing_specialist_tool},

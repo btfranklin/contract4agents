@@ -71,5 +71,8 @@ expect semantic(output, "Criterion text")
 ```
 
 When no semantic judge is configured, semantic expectations are reported as skipped.
+The CLI marks those starts as `PARTIAL` while keeping the default eval exit code
+successful; use `contract4agents eval --fail-on-skipped-semantic` when CI should
+fail on skipped semantic checks.
 Malformed semantic expectation syntax fails semantic analysis instead of being
 reported as a skipped semantic check.

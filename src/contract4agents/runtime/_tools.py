@@ -28,30 +28,31 @@ class FakeToolRegistry:
     def register(self, name: str, func: ToolCallable, permission: str = "preapproved") -> None:
         self.tools[name] = ToolSpec(name, func, permission)
 
-    async def call(self, name: str, trace: TraceRecorder, **kwargs: Any) -> Any:
+    async def call(self, name: str, trace: TraceRecorder, *, agent: str | None = None, **kwargs: Any) -> Any:
+        trace_data = {"agent": agent} if agent is not None else {}
         if name not in self.tools:
-            trace.record("tool.failed", tool=name, reason="tool is not registered")
+            trace.record("tool.failed", tool=name, reason="tool is not registered", **trace_data)
             raise ToolExecutionFailed(name, "tool is not registered")
         spec = self.tools[name]
-        trace.record("tool.requested", tool=name, arguments=kwargs)
+        trace.record("tool.requested", tool=name, arguments=kwargs, **trace_data)
         if spec.permission == "denied":
-            trace.record("tool.denied", tool=name, reason="permission denied")
+            trace.record("tool.denied", tool=name, reason="permission denied", **trace_data)
             raise ToolPermissionDenied(name)
         if spec.permission == "requires_approval":
-            trace.record("approval.requested", tool=name, arguments=kwargs)
+            trace.record("approval.requested", tool=name, arguments=kwargs, **trace_data)
             allowed = bool(self.approval_callback and self.approval_callback(name, kwargs))
-            trace.record("approval.completed", tool=name, approved=allowed)
+            trace.record("approval.completed", tool=name, approved=allowed, **trace_data)
             if not allowed:
-                trace.record("tool.denied", tool=name, reason="approval denied")
+                trace.record("tool.denied", tool=name, reason="approval denied", **trace_data)
                 raise ToolPermissionDenied(name)
-        trace.record("tool.allowed", tool=name)
+        trace.record("tool.allowed", tool=name, **trace_data)
         try:
             result = spec.func(**kwargs)
             if inspect.isawaitable(result):
                 result = await result
-            trace.record("tool.completed", tool=name, result=result)
+            trace.record("tool.completed", tool=name, result=result, **trace_data)
         except Exception as exc:
-            trace.record("tool.failed", tool=name, reason=str(exc))
+            trace.record("tool.failed", tool=name, reason=str(exc), **trace_data)
             raise ToolExecutionFailed(name, str(exc)) from exc
         return result
 

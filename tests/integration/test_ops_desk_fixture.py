@@ -30,7 +30,7 @@ def test_ops_desk_fixture_local_end_to_end(contract_project_path: Path, tmp_path
 
 def test_ops_desk_monitors_catch_approval_violation() -> None:
     trace = TraceRecorder()
-    trace.record("tool.completed", tool="billing.create_credit", result={"credit_id": 1})
+    trace.record("tool.completed", agent="OpsDeskCoordinator", tool="billing.create_credit", result={"credit_id": 1})
 
     violations = run_monitors(
         [

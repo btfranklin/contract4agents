@@ -49,6 +49,7 @@ def test_cli_compile_docs_eval_monitor(tmp_path: Path) -> None:
                 event_id="evt-2",
                 event_type="tool.completed",
                 timestamp=1.0,
+                agent="IncidentCommander",
                 tool="status_page.draft_update",
             )
         )
@@ -167,7 +168,8 @@ def test_cli_eval_runs_fixture_json_project(contract_project_path: Path) -> None
     result = runner.invoke(main, ["eval", str(contract_project_path)])
 
     assert result.exit_code == 0
-    assert "Fixture eval passed: 12 starts" in result.output
+    assert "Fixture eval completed with skipped semantic checks: 12 starts" in result.output
+    assert "PARTIAL" in result.output
 
 
 def test_cli_eval_runs_incident_command_public_fixture() -> None:
@@ -176,7 +178,33 @@ def test_cli_eval_runs_incident_command_public_fixture() -> None:
     result = runner.invoke(main, ["eval", str(ROOT / "examples" / "incident-command")])
 
     assert result.exit_code == 0
-    assert "Fixture eval passed: 1 starts" in result.output
+    assert "Fixture eval completed with skipped semantic checks: 1 starts" in result.output
+    assert "PARTIAL discovers_checkout_cause" in result.output
+
+
+def test_cli_eval_can_fail_on_skipped_semantic() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(
+        main,
+        ["eval", str(ROOT / "examples" / "incident-command"), "--fail-on-skipped-semantic"],
+    )
+
+    assert result.exit_code != 0
+    assert "skipped semantic checks" in result.output
+
+
+def test_cli_eval_failure_reports_debug_path(tmp_path: Path) -> None:
+    runner = CliRunner()
+    project = tmp_path / "bad-fixture"
+    project.mkdir()
+    (project / "fixture.json").write_text("{}\n")
+
+    result = runner.invoke(main, ["eval", str(project)])
+
+    assert result.exit_code != 0
+    assert "Debug report and traces" in result.output
+    assert str(project / ".contract" / "runs" / "last") in result.output
 
 
 def _trace_event(

@@ -182,8 +182,8 @@ from pathlib import Path
 from contract4agents.compiler import compile_project
 
 artifacts = compile_project(Path("agent_contracts"))
-support_manifest = artifacts["manifests"]["SupportCoordinator"]
-support_instructions = artifacts["instructions"]["SupportCoordinator"]
+support_manifest = artifacts["manifests"]["SupportResponder"]
+support_instructions = artifacts["instructions"]["SupportResponder"]
 support_schema = artifacts["schemas"]["SupportReply"]
 ```
 
@@ -258,13 +258,13 @@ def crm_create_note(account_id: str, note: str) -> str:
 plan = plan_openai_agents_from_contracts(
     artifacts,
     output_type_registry={"SupportReply": SupportReplyModel},
-    model_registry={"SupportCoordinator": config.support_model},
+    model_registry={"SupportResponder": config.support_model},
     tool_registry={"crm.create_note": OpenAIToolRegistration(crm_create_note, raw_callable=True)},
     hosted_tool_registry={"openai.web_search": WebSearchTool},
 )
 
 factory_result = build_openai_agents_from_plan(plan)
-agent = factory_result.agents["SupportCoordinator"]
+agent = factory_result.agents["SupportResponder"]
 ```
 
 The manifest tells you which host tools and hosted provider tools are declared
@@ -317,12 +317,12 @@ from pathlib import Path
 from contract4agents.runtime import TraceRecorder
 
 trace = TraceRecorder(Path("runs/support-001.trace.jsonl"), run_id="run-support-001")
-trace.record("agent.started", event_id="evt-001", agent="SupportCoordinator")
-trace.record("approval.requested", event_id="evt-002", agent="SupportCoordinator", tool="crm.create_note")
-trace.record("approval.completed", event_id="evt-003", agent="SupportCoordinator", tool="crm.create_note", approved=True)
-trace.record("tool.completed", event_id="evt-004", agent="SupportCoordinator", tool="crm.create_note", data={"note_id": "note-123"})
-trace.record("hosted_tool.completed", event_id="evt-005", agent="SupportCoordinator", tool="openai.web_search")
-trace.record("agent.completed", event_id="evt-006", agent="SupportCoordinator")
+trace.record("agent.started", event_id="evt-001", agent="SupportResponder")
+trace.record("approval.requested", event_id="evt-002", agent="SupportResponder", tool="crm.create_note")
+trace.record("approval.completed", event_id="evt-003", agent="SupportResponder", tool="crm.create_note", approved=True)
+trace.record("tool.completed", event_id="evt-004", agent="SupportResponder", tool="crm.create_note", data={"note_id": "note-123"})
+trace.record("hosted_tool.completed", event_id="evt-005", agent="SupportResponder", tool="openai.web_search")
+trace.record("agent.completed", event_id="evt-006", agent="SupportResponder")
 ```
 
 Each JSONL line uses `schema_version`, `event_id`, `event_type`, `timestamp`,
@@ -351,7 +351,7 @@ from contract4agents.assertions import evaluate_run_assertions
 assertion_result = evaluate_run_assertions(
     contract=artifacts,
     trace=trace,
-    outputs={"SupportCoordinator": output},
+    outputs={"SupportResponder": output},
     run_id="run-support-001",
 )
 ```

@@ -53,6 +53,14 @@ class FixtureReport:
     def passed(self) -> bool:
         return all(item.passed and not item.monitor_violations for item in self.starts)
 
+    @property
+    def skipped_semantic_count(self) -> int:
+        return sum(len(item.skipped_semantic) for item in self.starts)
+
+    @property
+    def has_skipped_semantic(self) -> bool:
+        return self.skipped_semantic_count > 0
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "project": self.project,
@@ -67,6 +75,7 @@ class FixtureReport:
                 "failures": sum(len(item.failures) for item in self.starts),
                 "assertion_failures": sum(len(item.assertion_failures) for item in self.starts),
                 "monitor_violations": sum(len(item.monitor_violations) for item in self.starts),
+                "skipped_semantic": self.skipped_semantic_count,
             },
         }
 

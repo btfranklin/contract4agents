@@ -7,6 +7,7 @@ import json
 import os
 import sqlite3
 from contextlib import closing
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,12 @@ from contract4agents.runtime import FakeToolRegistry, TraceRecorder
 from examples.market_research_brief_imports import citation, competitors, current_facts, documents
 
 SCENARIO_ID = "field-ops-ai-2026-06"
+FIXTURE_START_ID = "validates_segment_opportunity"
+
+
+@dataclass(frozen=True)
+class MarketResearchBriefStart:
+    start_id: str
 
 
 def seed_market_research_brief(db_path: Path) -> Path:
@@ -134,6 +141,8 @@ def seed_market_research_brief(db_path: Path) -> Path:
 
 
 def load_hidden_truth(db_path: Path, scenario_id: str = SCENARIO_ID) -> dict[str, Any]:
+    if scenario_id == FIXTURE_START_ID:
+        scenario_id = SCENARIO_ID
     with closing(sqlite3.connect(db_path)) as conn:
         row = conn.execute(
             "SELECT market_thesis, required_terms FROM scenario_truth WHERE scenario_id = ?",
@@ -144,10 +153,17 @@ def load_hidden_truth(db_path: Path, scenario_id: str = SCENARIO_ID) -> dict[str
     return {"market_thesis": json.loads(row[1])}
 
 
-async def run_market_research_brief_harness(db_path: Path) -> tuple[dict[str, Any], TraceRecorder]:
+def market_research_brief_starts() -> list[MarketResearchBriefStart]:
+    return [MarketResearchBriefStart(FIXTURE_START_ID)]
+
+
+async def run_market_research_brief_harness(
+    db_path: Path,
+    trace_path: Path | None = None,
+) -> tuple[dict[str, Any], TraceRecorder]:
     os.environ["CONTRACT4AGENTS_MARKET_RESEARCH_DB"] = str(db_path)
 
-    trace = TraceRecorder()
+    trace = TraceRecorder(trace_path)
     tools = FakeToolRegistry()
     tools.register("documents.search", documents.search, "preapproved")
     tools.register("documents.fetch", documents.fetch, "preapproved")
@@ -156,21 +172,50 @@ async def run_market_research_brief_harness(db_path: Path) -> tuple[dict[str, An
     tools.register("competitors.lookup", competitors.lookup, "preapproved")
     tools.register("citation.format", citation.format, "preapproved")
 
-    doc_hits = await tools.call("documents.search", trace, query="AI summaries", document_type="customer")
-    doc = await tools.call("documents.fetch", trace, document_id=doc_hits["results"][0]["document_id"])
-    current_hits = await tools.call("current_facts.search", trace, query="AI summaries", as_of_date="2026-06-15")
-    current_fact = await tools.call("current_facts.fetch", trace, fact_id=current_hits["results"][0]["fact_id"])
-    competitor_result = await tools.call("competitors.lookup", trace, segment="field operations")
-    customer_doc = await tools.call("documents.fetch", trace, document_id="doc-sales-002")
+    doc_hits = await tools.call(
+        "documents.search",
+        trace,
+        agent="MarketResearchLead",
+        query="AI summaries",
+        document_type="customer",
+    )
+    doc = await tools.call(
+        "documents.fetch",
+        trace,
+        agent="MarketResearchLead",
+        document_id=doc_hits["results"][0]["document_id"],
+    )
+    current_hits = await tools.call(
+        "current_facts.search",
+        trace,
+        agent="MarketResearchLead",
+        query="AI summaries",
+        as_of_date="2026-06-15",
+    )
+    current_fact = await tools.call(
+        "current_facts.fetch",
+        trace,
+        agent="MarketResearchLead",
+        fact_id=current_hits["results"][0]["fact_id"],
+    )
+    competitor_result = await tools.call(
+        "competitors.lookup",
+        trace,
+        agent="MarketResearchLead",
+        segment="field operations",
+    )
+    customer_doc = await tools.call("documents.fetch", trace, agent="MarketResearchLead", document_id="doc-sales-002")
     doc_citation = await tools.call(
         "citation.format",
         trace,
+        agent="MarketResearchLead",
         source_id=doc["document_id"],
         claim="customers distrust uncited AI summaries",
     )
     fact_citation = await tools.call(
         "citation.format",
         trace,
+        agent="MarketResearchLead",
         source_id=current_fact["fact_id"],
         claim="buyers prioritize auditable AI summaries with source citations",
     )
@@ -225,3 +270,12 @@ async def run_market_research_brief_harness(db_path: Path) -> tuple[dict[str, An
 
 def run_market_research_brief_harness_sync(db_path: Path) -> tuple[dict[str, Any], TraceRecorder]:
     return asyncio.run(run_market_research_brief_harness(db_path))
+
+
+async def run_market_research_brief_start(
+    _start: MarketResearchBriefStart,
+    db_path: Path,
+    _artifacts: dict[str, Any],
+    trace_path: Path,
+) -> tuple[dict[str, Any], TraceRecorder]:
+    return await run_market_research_brief_harness(db_path, trace_path)

@@ -87,7 +87,13 @@ pdm run contract4agents check examples/market-research-brief
 pdm run contract4agents check examples/market-research-brief --strict-drift
 pdm run contract4agents compile examples/market-research-brief --out .contract/build/market-research-brief
 pdm run contract4agents visualize examples/market-research-brief --out .contract/build/market-research-brief/visualization
+pdm run contract4agents eval examples/market-research-brief
 ```
+
+`check` validates the source. `compile` writes generated review artifacts.
+`visualize` writes the static graph. `eval` runs the deterministic local fixture
+and reports skipped semantic checks separately from deterministic pass/fail
+results.
 
 The `.contract/` directory is generated local output. It is safe to delete and
 regenerate.

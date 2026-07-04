@@ -73,7 +73,25 @@ test = "pytest"
 docs-check = "python -m contract4agents docs-check"
 lint = "ruff check src tests examples"
 typecheck = "mypy src"
-validate = {composite = ["lint", "typecheck", "docs-check", "test"]}
+validate = {composite = ["lint", "typecheck", "docs-check", "test:unit", "test:integration"]}
+"smoke:cli" = {composite = [
+    "contract4agents --help",
+    "contract4agents check examples/incident-command",
+    "contract4agents check examples/incident-command --strict-drift",
+    "contract4agents compile examples/incident-command --out .contract/build/incident-command",
+    "contract4agents visualize examples/incident-command --out .contract/build/incident-command/visualization",
+    "contract4agents eval examples/incident-command",
+    "contract4agents check examples/multi-lens-research",
+    "contract4agents check examples/multi-lens-research --strict-drift",
+    "contract4agents compile examples/multi-lens-research --out .contract/build/multi-lens-research",
+    "contract4agents visualize examples/multi-lens-research --out .contract/build/multi-lens-research/visualization",
+    "contract4agents eval examples/multi-lens-research",
+    "contract4agents check examples/market-research-brief",
+    "contract4agents check examples/market-research-brief --strict-drift",
+    "contract4agents compile examples/market-research-brief --out .contract/build/market-research-brief",
+    "contract4agents visualize examples/market-research-brief --out .contract/build/market-research-brief/visualization",
+    "contract4agents eval examples/market-research-brief",
+]}
 contract4agents = "python -m contract4agents"
 
 [tool.pytest.ini_options]

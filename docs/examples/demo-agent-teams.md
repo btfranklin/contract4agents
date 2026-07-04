@@ -1,8 +1,8 @@
 # Demo Agent Teams
 
-The customer-support example in this repo started as a brainstorming sketch. The first real demo data should be stronger and should exercise the patterns found in the SDK survey.
+The customer-support and revenue-resolution examples started as brainstorming sketches. The current public demo surface is stronger and exercises the patterns found in the SDK survey.
 
-These three teams are recommended because together they cover read-only evidence gathering, approval-gated side effects, multi-agent composition, structured outputs, datasources, hidden context, semantic evals, trace spies, and monitor rules.
+These three teams are current because together they cover read-only evidence gathering, approval-gated side effects, hosted-tool declarations, multi-agent composition, structured outputs, hidden context, semantic evals, trace spies, and monitor rules.
 
 ## Team 1: Incident Command
 
@@ -54,110 +54,109 @@ Why it is a good fixture:
 - It has a clear distinction between evidence, inference, and external communication.
 - It exercises both deterministic trace checks and qualitative judgment.
 
-## Team 2: Revenue Resolution
+## Team 2: Multi-Lens Research
 
-Purpose: triage billing, subscription, and refund requests without unsafe financial side effects.
-
-Agents:
-
-- `RevenueTriageAgent`: classifies the request and routes to the right specialist.
-- `InvoiceResearchAgent`: gathers invoices, payments, and account history.
-- `RefundPolicyAgent`: applies refund policy to the evidence.
-- `CustomerReplyAgent`: writes the customer-facing reply.
-- `ApprovalCoordinator`: prepares approval requests for irreversible actions.
-
-Typed context slots:
-
-- `CustomerMessage`
-- `AccountProfile`
-- `BillingHistory`
-- `ChargeEvidence`
-- `RefundPolicy`
-- `RefundRecommendation`
-- `CustomerReply`
-
-Datasources:
-
-- `AccountProfile` from authenticated account ID.
-- `BillingHistory` from account profile.
-- `RefundPolicy` from current plan and region.
-
-Tools:
-
-- `billing.list_invoices`
-- `billing.list_charges`
-- `billing.create_refund` requiring approval.
-- `crm.create_case_note`
-- `human.request_approval`
-
-Contract4Agents features exercised:
-
-- Approval-gated tools.
-- Deny rules and pre-approved read-only tools.
-- Structured output contract for refund recommendations.
-- Hidden account state versus rendered customer-safe context.
-- Trace spies for required evidence before any refund recommendation.
-- Semantic eval for non-technical customer copy.
-
-Why it is a good fixture:
-
-- It has realistic safety constraints.
-- It distinguishes recommendation from execution.
-- It tests the permission model better than a simple support chatbot.
-
-## Team 3: Market Research Brief
-
-Purpose: produce a sourced market-entry brief from mixed web, document, and internal context.
+Purpose: produce a sourced research brief by splitting evidence, technical, policy, counterargument, and synthesis work into separate lenses.
 
 Agents:
 
-- `ResearchLead`: owns the final structured brief.
-- `SourceScout`: finds and ranks candidate sources.
-- `EvidenceExtractor`: extracts claims and citations from approved sources.
-- `SkepticReviewer`: challenges weak claims and missing counterevidence.
-- `BriefWriter`: produces the final narrative and structured summary.
+- `ResearchDirector`: owns the final research workflow and review gate.
+- `EvidenceMapper`: searches, fetches, scores, and cites seeded sources.
+- `TechnicalLensAnalyst`: evaluates technical evidence.
+- `PolicySafetyLensAnalyst`: evaluates policy and safety implications.
+- `CounterargumentAnalyst`: finds contrary evidence and weak points.
+- `SynthesisWriter`: writes the final structured brief.
 
 Typed context slots:
 
 - `ResearchQuestion`
-- `ResearchScope`
-- `SourceList`
-- `EvidenceTable`
-- `CounterEvidence`
-- `MarketBrief`
-
-Datasources:
-
-- `ResearchScope` from user request and project defaults.
-- `ApprovedSourcePolicy` from project settings.
+- `SourceEvidence`
+- `EvidenceMap`
+- `TechnicalAssessment`
+- `PolicySafetyAssessment`
+- `CounterargumentSet`
+- `ResearchBrief`
 
 Tools:
 
-- `web.search`
-- `web.fetch`
-- `docs.search_internal`
+- `sources.search`
+- `sources.fetch`
+- `evidence.score`
 - `citation.format`
+- `expert_review.request` requiring approval.
 
 Contract4Agents features exercised:
 
-- Agent-as-tool manager pattern.
-- Semantic evals for claim support and balanced reasoning.
-- Output schema with citations.
-- Monitor for uncited factual claims.
+- Multi-agent composition.
+- Approval-gated review requests.
+- Structured intermediate outputs.
+- Semantic evals for balanced, source-backed synthesis.
+- Monitor rule for final-output evidence quality.
 
 Why it is a good fixture:
 
-- It exercises agent teams without risky side effects.
-- It makes trace-level behavior central because the final output can look plausible while the source path is weak.
-- It pushes Contract4Agents to represent semantic quality checks as first-class evals.
+- It makes the model gather evidence before synthesis.
+- It tests whether specialist outputs stay distinct before final writing.
+- It exercises both deterministic trace checks and skipped semantic checks.
+
+## Team 3: Market Research Brief
+
+Purpose: produce a market-entry brief from local documents, dated current-fact snapshots, customer signals, competitor data, and a hosted web-search declaration.
+
+Agents:
+
+- `MarketResearchLead`: owns the final report and delegates specialist work.
+- `DocumentAnalyst`: reads seeded internal documents.
+- `CurrentTruthScout`: checks dated current-fact snapshots and declares hosted web search.
+- `CompetitorAnalyst`: compares seeded competitor records.
+- `CustomerSignalAnalyst`: extracts customer-signal evidence.
+- `ReportWriter`: writes the final structured report.
+
+Typed context slots:
+
+- `MarketResearchQuestion`
+- `DocumentEvidence`
+- `CurrentFactEvidence`
+- `CompetitorSnapshot`
+- `CustomerSignalSummary`
+- `MarketOpportunityReport`
+
+Tools:
+
+- `documents.search`
+- `documents.fetch`
+- `current_facts.search`
+- `current_facts.fetch`
+- `competitors.lookup`
+- `citation.format`
+- Hosted tool declaration: `openai.web_search`
+
+
+Contract4Agents features exercised:
+
+- Hosted-tool metadata in artifacts and visualization.
+- Separation between internal documents and current facts.
+- Structured output with citations and freshness notes.
+- Semantic evals for source freshness and claim support.
+- Monitor rule for final-output evidence requirements.
+
+Why it is a good fixture:
+
+- It proves hosted tools can be declared without making the offline fixture call the network.
+- It makes freshness and source category visible in outputs.
+- It validates richer public examples with the same `eval` command as Incident Command.
 
 ## Recommended Fixture Order
 
 1. Start with `Incident Command` for parser, semantic analyzer, and trace-spy fixtures.
-2. Add `Revenue Resolution` for permissions, approvals, and output schemas.
-3. Add `Market Research Brief` for semantic evals, citation monitors, and source-evidence checks.
+2. Add `Multi-Lens Research` for specialist composition, approval-gated review, and source-evidence checks.
+3. Add `Market Research Brief` for hosted-tool metadata, freshness checks, and richer evidence categories.
 
-This order gives implementation a useful progression from read-only investigation to guarded action to open-ended research quality.
+This order gives implementation a useful progression from read-only investigation to specialist synthesis to hosted-tool-aware research quality.
+
+## Historical/Future Sketch: Revenue Resolution
+
+`Revenue Resolution` is not part of the current public example surface. Keep it as future sketch material only if the repo later needs a billing-flavored approval and permission example.
 
 ## Local Fake Tools And Data
 

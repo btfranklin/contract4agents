@@ -578,7 +578,7 @@ async def test_tool_spy_ignores_target_only_in_tool_result() -> None:
 
 def test_monitor_violation() -> None:
     trace = TraceRecorder()
-    trace.record("tool.completed", tool="status_page.draft_update")
+    trace.record("tool.completed", agent="IncidentCommander", tool="status_page.draft_update")
 
     violations = run_monitors(
         [
@@ -601,8 +601,14 @@ def test_monitor_violation() -> None:
 
 def test_monitor_requires_run_id_for_multi_run_trace() -> None:
     trace = TraceRecorder()
-    trace.record("tool.completed", run_id="run-a", tool="status_page.draft_update")
-    trace.record("approval.completed", run_id="run-b", tool="status_page.draft_update", approved=True)
+    trace.record("tool.completed", run_id="run-a", agent="IncidentCommander", tool="status_page.draft_update")
+    trace.record(
+        "approval.completed",
+        run_id="run-b",
+        agent="IncidentCommander",
+        tool="status_page.draft_update",
+        approved=True,
+    )
 
     with pytest.raises(TraceScopeError):
         run_monitors(
@@ -621,8 +627,14 @@ def test_monitor_requires_run_id_for_multi_run_trace() -> None:
 
 def test_monitor_run_id_prevents_cross_run_false_pass() -> None:
     trace = TraceRecorder()
-    trace.record("tool.completed", run_id="run-a", tool="status_page.draft_update")
-    trace.record("approval.completed", run_id="run-b", tool="status_page.draft_update", approved=True)
+    trace.record("tool.completed", run_id="run-a", agent="IncidentCommander", tool="status_page.draft_update")
+    trace.record(
+        "approval.completed",
+        run_id="run-b",
+        agent="IncidentCommander",
+        tool="status_page.draft_update",
+        approved=True,
+    )
 
     violations = run_monitors(
         [
@@ -640,6 +652,27 @@ def test_monitor_run_id_prevents_cross_run_false_pass() -> None:
 
     assert len(violations) == 1
     assert violations[0].run_id == "run-a"
+
+
+def test_monitor_condition_ignores_unattributed_events_for_agent_scope() -> None:
+    trace = TraceRecorder()
+    trace.record("tool.completed", tool="status_page.draft_update")
+    trace.record("approval.completed", tool="status_page.draft_update", approved=True)
+
+    violations = run_monitors(
+        [
+            MonitorRule(
+                "approval_required",
+                "IncidentCommander",
+                "high",
+                "trace.tool_called(status_page.draft_update)",
+                "trace.approval_granted(status_page.draft_update)",
+            )
+        ],
+        trace,
+    )
+
+    assert violations == []
 
 
 def test_explicit_run_id_scope_fails_when_no_events_match() -> None:

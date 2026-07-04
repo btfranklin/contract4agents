@@ -28,13 +28,18 @@ The fastest complete loop is the public Incident Command example. From the repos
 ```bash
 pdm run python examples/incident-command/data/seed.py
 pdm run contract4agents check examples/incident-command
-pdm run contract4agents check examples/incident-command --strict-drift
 pdm run contract4agents compile examples/incident-command --out .contract/build
 pdm run contract4agents visualize examples/incident-command --out .contract/build/visualization
 pdm run contract4agents eval examples/incident-command
 ```
 
-That loop checks the source files, verifies declared host capabilities against `contract4agents.registry.json`, writes generated artifacts, builds a static review graph, and runs the deterministic fixture eval. Open `.contract/build/visualization/index.html` after `visualize` to inspect the agent, tool, type, eval, and monitor graph.
+That loop validates the source files, writes generated artifacts, builds a static review graph, and runs the deterministic fixture eval. Open `.contract/build/visualization/index.html` after `visualize` to inspect the agent, tool, type, eval, and monitor graph.
+
+For CI drift checks against host-code surfaces, also run:
+
+```bash
+pdm run contract4agents check examples/incident-command --strict-drift
+```
 
 The `.contract/` directory is generated local output. It is safe to delete and regenerate.
 
@@ -94,24 +99,27 @@ contract4agents compile agent_contracts --out .contract/build
 contract4agents visualize agent_contracts --out .contract/build/visualization
 ```
 
-At that point, inspect `.contract/build/instructions/SupportResponder.md`,
-`.contract/build/schemas/SupportReply.json`, and
-`.contract/build/manifests/SupportResponder.json`. You now have reviewable
-instructions, structured output schema, and a machine-readable contract that your
-app can consume.
+Use `check` to validate the contract source. Use `compile` to generate files your
+app or reviewers can inspect. Then open these three files first:
 
-Adopt the rest in layers:
+- `.contract/build/instructions/SupportResponder.md`
+- `.contract/build/schemas/SupportReply.json`
+- `.contract/build/manifests/SupportResponder.json`
 
-1. Write contracts and run `check` plus `compile`.
-2. Add one `.eval` for an important scenario.
-3. Use `visualize` for human review.
-4. Add `contract4agents.registry.json` and `--strict-drift` when you want CI to compare contracts with host-code surfaces.
-5. Capture traces and run assertions or monitors after you have real or staged runs.
-6. Use the OpenAI adapter if you want help constructing SDK `Agent` objects.
+That is enough for the first pass: reviewable instructions, a structured output
+schema, and a machine-readable agent contract.
 
-Ignore monitors, run specs, trace JSONL, drift registries, and adapter caveats at
-first. They are useful after one contract compiles and you know which generated
-artifact your app should consume.
+Add the rest only when it helps:
+
+1. Add one `.eval` for an important scenario.
+2. Use `visualize` for human review.
+3. Add `contract4agents.registry.json` and `--strict-drift` when CI should compare contracts with host code.
+4. Capture traces and add monitors after you have real or staged runs.
+5. Use the OpenAI adapter if you want help constructing SDK `Agent` objects.
+
+Ignore run specs, trace JSONL, drift registries, adapter caveats, and live model
+checks until one contract compiles and you know which artifact your app should
+consume.
 
 ## Use It Beside Your Agent App
 
@@ -139,8 +147,8 @@ from pathlib import Path
 from contract4agents.compiler import compile_project
 
 artifacts = compile_project(Path("agent_contracts"))
-support_manifest = artifacts["manifests"]["SupportCoordinator"]
-support_instructions = artifacts["instructions"]["SupportCoordinator"]
+support_manifest = artifacts["manifests"]["SupportResponder"]
+support_instructions = artifacts["instructions"]["SupportResponder"]
 support_schema = artifacts["schemas"]["SupportReply"]
 ```
 

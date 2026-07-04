@@ -116,27 +116,47 @@ def visualize_cmd(root: Path, output_dir: Path, allow_python_imports: bool) -> N
 @main.command("eval")
 @click.argument("root", type=click.Path(path_type=Path), default=".", required=False)
 @click.option("--allow-python-imports", is_flag=True, help="Import configured Python model types during fixture eval.")
-def eval_cmd(root: Path, allow_python_imports: bool) -> None:
+@click.option(
+    "--fail-on-skipped-semantic",
+    is_flag=True,
+    help="Treat skipped semantic expectations as eval failures.",
+)
+def eval_cmd(root: Path, allow_python_imports: bool, fail_on_skipped_semantic: bool) -> None:
     """Run local evals for a fixture.json project."""
     if not (root / "fixture.json").exists():
         raise click.ClickException("Contract4Agents eval requires ROOT/fixture.json")
+    run_root = root / ".contract" / "runs" / "last"
     try:
         report = run_fixture_project_sync(
             project_root=root,
-            run_root=root / ".contract" / "runs" / "last",
+            run_root=run_root,
             allow_python_imports=allow_python_imports,
         )
     except Exception as exc:
-        raise click.ClickException(f"Contract4Agents fixture eval failed: {exc}") from exc
+        raise click.ClickException(
+            f"Contract4Agents fixture eval failed: {exc}\n"
+            f"Debug report and traces, when available, are kept under {run_root}"
+        ) from exc
     _print_fixture_report(report)
+    if fail_on_skipped_semantic and report.has_skipped_semantic:
+        raise click.ClickException("Contract4Agents eval skipped semantic checks")
     if not report.passed:
         raise click.ClickException("Contract4Agents eval failed")
 
 
 def _print_fixture_report(report: FixtureReport) -> None:
-    click.echo(f"Fixture eval {'passed' if report.passed else 'failed'}: {len(report.starts)} starts")
+    if report.passed and report.has_skipped_semantic:
+        headline = "completed with skipped semantic checks"
+    else:
+        headline = "passed" if report.passed else "failed"
+    click.echo(f"Fixture eval {headline}: {len(report.starts)} starts")
     for start in report.starts:
-        status = "PASS" if start.passed and not start.monitor_violations else "FAIL"
+        if not start.passed or start.monitor_violations:
+            status = "FAIL"
+        elif start.skipped_semantic:
+            status = "PARTIAL"
+        else:
+            status = "PASS"
         click.echo(f"{status} {start.start_id}")
         for failure in start.failures:
             click.echo(f"  {failure}")

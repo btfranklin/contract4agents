@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any, cast
 
 from contract4agents.adapters._openai_types import OpenAIAdapterUnavailable, OpenAIAgentFactoryError
-from contract4agents.hosted_tools import hosted_tool_kwargs
 
 
 def looks_like_sdk_tool(entry: Any) -> bool:
@@ -14,7 +13,7 @@ def looks_like_sdk_tool(entry: Any) -> bool:
 
 
 def hosted_tool_from_registry(name: str, config: dict[str, str], registry_entry: Any) -> Any:
-    kwargs = hosted_tool_kwargs(name, config)
+    kwargs = _openai_hosted_tool_kwargs(name, config)
     if registry_entry is True:
         if name == "openai.web_search":
             try:
@@ -26,6 +25,12 @@ def hosted_tool_from_registry(name: str, config: dict[str, str], registry_entry:
     if callable(registry_entry):
         return registry_entry(**kwargs)
     return registry_entry
+
+
+def _openai_hosted_tool_kwargs(name: str, config: dict[str, str]) -> dict[str, object]:
+    if name == "openai.web_search":
+        return {"search_context_size": config.get("context_size", "medium")}
+    return dict(config)
 
 
 __all__ = ["hosted_tool_from_registry", "looks_like_sdk_tool"]
