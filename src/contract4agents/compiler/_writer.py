@@ -22,6 +22,7 @@ def write_artifacts(artifacts: CompilerArtifacts, output_dir: Path, check: bool 
         files[output_dir / "instructions" / f"{name}.md"] = instructions
     files[output_dir / "evals" / "evals.json"] = _json(artifacts["evals"])
     files[output_dir / "monitors" / "monitors.json"] = _json(artifacts["monitors"])
+    files[output_dir / "run-contracts" / "run-contracts.json"] = _json(artifacts["run_contracts"])
     files[output_dir / "guards" / "guard-plan.json"] = _json(artifacts["guard_plan"])
     files[output_dir / "adapters" / "capability-matrix.json"] = _json(artifacts["adapter_capability_matrix"])
     for name, text in artifacts["docs"].items():

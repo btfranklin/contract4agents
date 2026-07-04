@@ -8,7 +8,8 @@ All contract parse, semantic, and compile failures are printed as Contract4Agent
 
 Parses `.contract` and `.eval` files under `ROOT` and runs semantic validation.
 This includes static child-agent context satisfiability across required parent
-parameters, declared `host_context`, and parent datasource chains.
+parameters, declared `host_context`, parent datasource chains, and run-contract
+stage and trace references.
 
 - Default root: `.`
 - Options: `--allow-python-imports`, `--strict-drift`, `--registry PATH`
@@ -41,7 +42,7 @@ Generates provider-neutral artifacts from a valid project.
 - Default root: `.`
 - Default output: `.contract/build`
 - Options: `--out PATH`, `--check`, `--allow-python-imports`
-- Writes without `--check`: schemas, type bindings, manifests, instructions, eval packs, monitor packs, guard plan, adapter capability matrix, and generated docs under `PATH`
+- Writes without `--check`: schemas, type bindings, manifests, instructions, eval packs, monitor packs, run contracts, guard plan, adapter capability matrix, and generated docs under `PATH`
 - Writes with `--check`: nothing
 - Success message: `Contract4Agents compile passed`
 - Failure shape: diagnostics; stale generated files use `COMPILE001`, unsafe output paths use `COMPILE002`

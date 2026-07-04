@@ -11,7 +11,12 @@ from contract4agents.adapters.openai import (
     plan_openai_agents_from_contracts,
     run_openai_agent_with_contract,
 )
-from contract4agents.assertions import AssertionFailure, evaluate_agent_assertions, evaluate_run_assertions
+from contract4agents.assertions import (
+    AssertionFailure,
+    evaluate_agent_assertions,
+    evaluate_run_assertions,
+    evaluate_run_contract,
+)
 from contract4agents.compiler import AgentManifest, CompilerArtifacts, compile_project
 from contract4agents.expressions import ExpressionError, ParsedExpression
 from contract4agents.guards import build_guard_plan
@@ -60,8 +65,10 @@ def test_assertion_facade_exports_canonical_public_surface() -> None:
     assert AssertionFailure("kind", "assertion", "message").kind == "kind"
     assert callable(evaluate_agent_assertions)
     assert callable(evaluate_run_assertions)
+    assert callable(evaluate_run_contract)
     assert contract4agents.evaluate_agent_assertions is evaluate_agent_assertions
     assert contract4agents.evaluate_run_assertions is evaluate_run_assertions
+    assert contract4agents.evaluate_run_contract is evaluate_run_contract
 
 
 def test_guard_facade_exports_canonical_public_surface() -> None:

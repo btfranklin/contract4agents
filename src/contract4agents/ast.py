@@ -41,6 +41,7 @@ class TypeDef:
 
 Permission = Literal["available", "preapproved", "requires_approval", "denied", "sandboxed"]
 UseKind = Literal["tool", "agent", "datasource", "hosted_tool"]
+RunStageCardinality = Literal["one", "optional", "many"]
 
 
 @dataclass(frozen=True)
@@ -103,6 +104,16 @@ class MonitorDef:
     span: SourceSpan
 
 
+@dataclass(frozen=True)
+class RunContractDef:
+    name: str
+    stages: list[str]
+    assertions: list[str]
+    attributes: dict[str, Any]
+    span: SourceSpan
+    attribute_spans: dict[str, SourceSpan] = field(default_factory=dict)
+
+
 @dataclass
 class ContractModule:
     path: Path
@@ -111,6 +122,7 @@ class ContractModule:
     agents: list[AgentDef] = field(default_factory=list)
     evals: list[EvalCase] = field(default_factory=list)
     monitors: list[MonitorDef] = field(default_factory=list)
+    run_contracts: list[RunContractDef] = field(default_factory=list)
 
 
 @dataclass
@@ -137,3 +149,7 @@ class ContractProject:
     @property
     def monitors(self) -> list[MonitorDef]:
         return [item for module in self.modules for item in module.monitors]
+
+    @property
+    def run_contracts(self) -> dict[str, RunContractDef]:
+        return {item.name: item for module in self.modules for item in module.run_contracts}

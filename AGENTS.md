@@ -21,7 +21,6 @@ This repository is the design and implementation home for Contract4Agents, a typ
 - Additional public example guides live in `examples/multi-lens-research/README.md`
   and `examples/market-research-brief/README.md`.
 - Release process and tag-first release notes flow live in `docs/releasing.md`.
-- Implementation sequencing lives in `docs/implementation/roadmap.md`.
 - Open product and architecture questions live in `docs/decisions/open-questions.md`.
 
 ## Package Management
@@ -48,4 +47,3 @@ This repository is the design and implementation home for Contract4Agents, a typ
 ## Current State
 
 - This repository has a usable local V1 implementation: package, parser, semantic analyzer, compiler, runtime, eval and monitor runners, CLI, local fixtures, and a first OpenAI adapter.
-- Treat `docs/implementation/roadmap.md` as the current hardening roadmap, not as a pre-implementation gate.

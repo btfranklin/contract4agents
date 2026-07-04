@@ -8,7 +8,7 @@ from lark.indenter import Indenter
 MODULE_GRAMMAR = r"""
     start: _NEWLINE* (declaration _NEWLINE*)*
 
-    ?declaration: python_type_def | type_def | datasource_def | agent_def | eval_def | monitor_def
+    ?declaration: python_type_def | type_def | datasource_def | agent_def | run_contract_def | eval_def | monitor_def
 
     type_def: "type" NAME ":" field_block?
     python_type_def: "type" NAME "from" "python" ESCAPED_STRING
@@ -53,6 +53,9 @@ MODULE_GRAMMAR = r"""
     severity_stmt: "severity" "=" SCALAR_VALUE _NEWLINE
     when_stmt: "when" SCALAR_VALUE _NEWLINE
     monitor_expect_stmt: "expect" SCALAR_VALUE _NEWLINE
+
+    run_contract_def: "run_contract" NAME ":" run_contract_block?
+    run_contract_block: _NEWLINE _INDENT assignment* _DEDENT
 
     _LPAR: "("
     _RPAR: ")"

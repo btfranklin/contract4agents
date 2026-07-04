@@ -9,6 +9,7 @@ from contract4agents.compiler._capabilities import adapter_capability_matrix
 from contract4agents.compiler._docs import generated_docs
 from contract4agents.compiler._instructions import agent_instructions
 from contract4agents.compiler._manifests import agent_manifest, eval_pack, monitor_pack
+from contract4agents.compiler._run_contracts import run_contract_artifact
 from contract4agents.compiler._schemas import build_type_artifacts
 from contract4agents.compiler._types import (
     AgentManifest,
@@ -24,6 +25,8 @@ from contract4agents.compiler._types import (
     ManifestOutput,
     ManifestUse,
     MonitorPack,
+    RunContractArtifact,
+    RunContractStage,
     TypeBinding,
 )
 from contract4agents.compiler._writer import write_artifacts
@@ -91,6 +94,10 @@ def build_artifacts(project: ContractProject, allow_python_imports: bool = False
     instructions = {name: agent_instructions(agent) for name, agent in project.agents.items()}
     eval_packs = [eval_pack(eval_case) for eval_case in project.evals]
     monitors = [monitor_pack(monitor) for monitor in project.monitors]
+    run_contracts = [
+        run_contract_artifact(run_contract, project)
+        for run_contract in sorted(project.run_contracts.values(), key=lambda item: item.name)
+    ]
     guard_plan = build_guard_plan(manifests)
     capability_matrix = adapter_capability_matrix()
     docs = generated_docs(project, manifests)
@@ -101,6 +108,7 @@ def build_artifacts(project: ContractProject, allow_python_imports: bool = False
         "instructions": instructions,
         "evals": eval_packs,
         "monitors": monitors,
+        "run_contracts": run_contracts,
         "guard_plan": guard_plan,
         "adapter_capability_matrix": capability_matrix,
         "docs": docs,
@@ -122,6 +130,8 @@ __all__ = [
     "ManifestOutput",
     "ManifestUse",
     "MonitorPack",
+    "RunContractArtifact",
+    "RunContractStage",
     "TypeBinding",
     "adapter_capability_matrix",
     "agent_instructions",
@@ -132,5 +142,6 @@ __all__ = [
     "eval_pack",
     "generated_docs",
     "monitor_pack",
+    "run_contract_artifact",
     "write_artifacts",
 ]

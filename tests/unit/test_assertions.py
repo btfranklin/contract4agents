@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from contract4agents.assertions import evaluate_agent_assertions, evaluate_run_assertions
+from contract4agents.assertions import evaluate_agent_assertions, evaluate_run_assertions, evaluate_run_contract
 from contract4agents.compiler import AgentManifest, CompilerArtifacts
 from contract4agents.runtime import TraceRecorder, TraceScopeError, load_trace_jsonl
 
@@ -200,6 +200,102 @@ def test_evaluate_run_assertions_requires_run_id_for_multi_run_trace() -> None:
     assert scoped_result.failures[0].kind == "trace"
 
 
+def test_evaluate_run_contract_passes_stage_outputs_and_trace() -> None:
+    trace = TraceRecorder()
+    trace.record("agent.completed", agent="ExampleAgent")
+    trace.record("agent.completed", agent="WriterAgent")
+    contract = _artifacts(
+        _manifest([]),
+        extra_manifests=[_manifest([], agent="WriterAgent")],
+        run_contracts=[_run_contract_artifact()],
+    )
+
+    result = evaluate_run_contract(
+        contract=contract,
+        run_contract="ExampleRun",
+        trace=trace,
+        stage_outputs={
+            "plan": {"ok": True, "summary": "plan"},
+            "sections": [{"ok": True, "summary": "section"}],
+            "synthesis": {"ok": True, "summary": "final"},
+        },
+    )
+
+    assert result.passed
+    assert [(item.stage, item.status) for item in result.stages] == [
+        ("plan", "passed"),
+        ("sections", "passed"),
+        ("review", "skipped"),
+        ("synthesis", "passed"),
+    ]
+    assert [check.status for check in result.assertions] == ["passed", "passed", "passed"]
+
+
+def test_evaluate_run_contract_reports_missing_stage_output() -> None:
+    contract = _artifacts(
+        _manifest([]),
+        extra_manifests=[_manifest([], agent="WriterAgent")],
+        run_contracts=[_run_contract_artifact()],
+    )
+
+    result = evaluate_run_contract(
+        contract=contract,
+        run_contract="ExampleRun",
+        trace=TraceRecorder(),
+        stage_outputs={
+            "plan": {"ok": True, "summary": "plan"},
+            "sections": [{"ok": True, "summary": "section"}],
+        },
+    )
+
+    assert not result.passed
+    assert result.failures[0].kind == "missing_stage_output"
+
+
+def test_evaluate_run_contract_reports_schema_and_cardinality_failures() -> None:
+    contract = _artifacts(_manifest([]), run_contracts=[_run_contract_artifact()])
+
+    result = evaluate_run_contract(
+        contract=contract,
+        run_contract="ExampleRun",
+        trace=TraceRecorder(),
+        stage_outputs={
+            "plan": {"ok": "yes", "summary": "plan"},
+            "sections": [],
+            "synthesis": {"ok": True, "summary": "final"},
+        },
+    )
+
+    assert not result.passed
+    assert {failure.kind for failure in result.failures} >= {"stage_schema", "malformed_stage_output"}
+
+
+def test_evaluate_run_contract_checks_not_tool_called_by() -> None:
+    trace = TraceRecorder()
+    trace.record("agent.completed", agent="ExampleAgent")
+    trace.record("agent.completed", agent="WriterAgent")
+    trace.record("hosted_tool.completed", agent="WriterAgent", tool="openai.web_search")
+    contract = _artifacts(
+        _manifest([]),
+        extra_manifests=[_manifest([], agent="WriterAgent")],
+        run_contracts=[_run_contract_artifact()],
+    )
+
+    result = evaluate_run_contract(
+        contract=contract,
+        run_contract="ExampleRun",
+        trace=trace,
+        stage_outputs={
+            "plan": {"ok": True, "summary": "plan"},
+            "sections": [{"ok": True, "summary": "section"}],
+            "synthesis": {"ok": True, "summary": "final"},
+        },
+    )
+
+    assert not result.passed
+    assert result.failures[-1].kind == "trace"
+
+
 def test_evaluate_agent_assertions_ignore_other_agent_trace_events() -> None:
     trace = TraceRecorder()
     trace.record("tool.completed", agent="OtherAgent", tool="tools.lookup")
@@ -216,9 +312,9 @@ def test_evaluate_agent_assertions_ignore_other_agent_trace_events() -> None:
     assert result.checks[0].failure.kind == "trace"
 
 
-def _manifest(assertions: list[str]) -> AgentManifest:
+def _manifest(assertions: list[str], agent: str = "ExampleAgent") -> AgentManifest:
     return {
-        "agent": "ExampleAgent",
+        "agent": agent,
         "source_path": "agents/example.contract",
         "description": "",
         "goal": "",
@@ -255,7 +351,15 @@ def _schemas() -> dict[str, dict[str, Any]]:
     }
 
 
-def _artifacts(manifest: AgentManifest) -> CompilerArtifacts:
+def _artifacts(
+    manifest: AgentManifest,
+    *,
+    extra_manifests: list[AgentManifest] | None = None,
+    run_contracts: list[dict[str, Any]] | None = None,
+) -> CompilerArtifacts:
+    manifests = {manifest["agent"]: manifest}
+    for extra_manifest in extra_manifests or []:
+        manifests[extra_manifest["agent"]] = extra_manifest
     return {
         "schemas": _schemas(),
         "type_bindings": [
@@ -267,11 +371,58 @@ def _artifacts(manifest: AgentManifest) -> CompilerArtifacts:
                 "schema_hash": "test",
             }
         ],
-        "manifests": {"ExampleAgent": manifest},
+        "manifests": manifests,
         "instructions": {"ExampleAgent": "instructions"},
         "evals": [],
         "monitors": [],
+        "run_contracts": run_contracts or [],
         "guard_plan": [],
         "adapter_capability_matrix": {},
         "docs": {},
+    }
+
+
+def _run_contract_artifact() -> dict[str, Any]:
+    return {
+        "name": "ExampleRun",
+        "source_path": "runs/example.contract",
+        "stages": [
+            {
+                "name": "plan",
+                "agent": "ExampleAgent",
+                "output_type": "Result",
+                "cardinality": "one",
+                "manifest_ref": "manifests/ExampleAgent.json",
+                "schema_ref": "schemas/Result.json",
+            },
+            {
+                "name": "sections",
+                "agent": "ExampleAgent",
+                "output_type": "Result",
+                "cardinality": "many",
+                "manifest_ref": "manifests/ExampleAgent.json",
+                "schema_ref": "schemas/Result.json",
+            },
+            {
+                "name": "review",
+                "agent": "WriterAgent",
+                "output_type": "Result",
+                "cardinality": "optional",
+                "manifest_ref": "manifests/WriterAgent.json",
+                "schema_ref": "schemas/Result.json",
+            },
+            {
+                "name": "synthesis",
+                "agent": "WriterAgent",
+                "output_type": "Result",
+                "cardinality": "one",
+                "manifest_ref": "manifests/WriterAgent.json",
+                "schema_ref": "schemas/Result.json",
+            },
+        ],
+        "assertions": [
+            "expect(trace.called_before(ExampleAgent, WriterAgent))",
+            "expect(trace.max_calls(WriterAgent, 2))",
+            "expect(trace.not_tool_called_by(WriterAgent, openai.web_search))",
+        ],
     }

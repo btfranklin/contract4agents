@@ -188,6 +188,13 @@ def check_trace_refs(
     spec = TRACE_OPS[op]
     allowed_agent_names = agent_names if agent_names is not None else index.agent_names
     allowed_datasource_targets = datasource_targets if datasource_targets is not None else index.datasource_targets
+    if spec.target_kind == "agent_tool":
+        agent_target, tool_target = targets
+        if agent_target not in allowed_agent_names:
+            diagnostics.append(Diagnostic("SEM051", f"Expression references unknown agent `{agent_target}`", span=span))
+        if tool_target not in (tool_names | hosted_tool_names):
+            diagnostics.append(Diagnostic("SEM053", f"Expression references unknown tool `{tool_target}`", span=span))
+        return diagnostics
     for target in targets:
         if target.isdigit():
             continue

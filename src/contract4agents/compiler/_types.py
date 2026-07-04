@@ -16,6 +16,7 @@ MANAGED_ARTIFACT_DIRS = (
     "evals",
     "monitors",
     "guards",
+    "run-contracts",
     "adapters",
     "docs",
 )
@@ -98,6 +99,22 @@ class MonitorPack(TypedDict):
     expect: str
 
 
+class RunContractStage(TypedDict):
+    name: str
+    agent: str
+    output_type: str
+    cardinality: str
+    manifest_ref: str
+    schema_ref: str
+
+
+class RunContractArtifact(TypedDict):
+    name: str
+    source_path: str
+    stages: list[RunContractStage]
+    assertions: list[str]
+
+
 class CapabilityEntry(TypedDict):
     status: CapabilityStatus
     caveats: list[str]
@@ -121,6 +138,7 @@ class CompilerArtifacts(TypedDict):
     instructions: dict[str, str]
     evals: list[EvalPack]
     monitors: list[MonitorPack]
+    run_contracts: list[RunContractArtifact]
     guard_plan: list[GuardPlanItem]
     adapter_capability_matrix: CapabilityMatrix
     docs: dict[str, str]
@@ -143,5 +161,7 @@ __all__ = [
     "ManifestOutput",
     "ManifestUse",
     "MonitorPack",
+    "RunContractArtifact",
+    "RunContractStage",
     "TypeBinding",
 ]

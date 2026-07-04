@@ -1,0 +1,28 @@
+agent PlannerAgent() -> ResearchPlan:
+    goal = "Plan the research sequence."
+
+agent SectionResearchAgent(plan: ResearchPlan) -> SectionResearchBrief:
+    goal = "Research one planned section."
+
+agent VerifierAgent(section: SectionResearchBrief) -> VerificationReport:
+    use tool quality.audit from tools.quality
+    goal = "Verify section research."
+
+agent SynthesisAgent(plan: ResearchPlan, verification: VerificationReport?) -> CompendiumPayload:
+    use hosted_tool openai.web_search context_size "medium"
+    goal = "Synthesize the final payload."
+
+run_contract CompendiumResearch:
+    stages = [
+        plan: PlannerAgent -> ResearchPlan,
+        section_research+: SectionResearchAgent -> SectionResearchBrief,
+        verification?: VerifierAgent -> VerificationReport,
+        synthesis: SynthesisAgent -> CompendiumPayload,
+    ]
+
+    assertions = [
+        expect(trace.called_before(PlannerAgent, SectionResearchAgent)),
+        expect(trace.called_before(VerifierAgent, SynthesisAgent)),
+        expect(trace.max_calls(VerifierAgent, 2)),
+        expect(trace.not_tool_called_by(SynthesisAgent, openai.web_search)),
+    ]

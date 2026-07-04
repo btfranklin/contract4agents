@@ -34,3 +34,7 @@ source-owned validation file used by `contract4agents check --strict-drift` to
 prove that manifest tools, hosted tools, agent names, selected output types,
 prompt assets, and `host_context` markers still match explicit host-code
 surfaces. See [Capability Registry Reference](capability-registry.md).
+
+Run contracts are generated separately under `run-contracts/run-contracts.json`.
+They reference agent manifests and output schemas by path instead of duplicating
+manifest contents.

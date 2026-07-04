@@ -26,6 +26,7 @@ For runtime implementation:
 
 - Read `runtime/context-and-datasources.md`.
 - Then read `evaluation/evals-assertions-monitors.md`.
+- Use `reference/run-contracts.md` for host-owned workflow expectation checks.
 
 For validation and release readiness:
 
@@ -35,7 +36,6 @@ For validation and release readiness:
 
 For project planning:
 
-- Read `implementation/roadmap.md`.
 - Read `decisions/accepted-decisions.md`.
 - Then resolve or explicitly accept the remaining defaults in `decisions/open-questions.md`.
 
@@ -54,6 +54,7 @@ For project planning:
 - `reference/capability-registry.md`: source-owned capability registry and strict drift checks.
 - `reference/visualization.md`: static project visualization command and artifact reference.
 - `reference/trace-schema.md`: normalized trace event reference.
+- `reference/run-contracts.md`: run-contract source syntax, artifacts, and runtime evaluation API.
 - `reference/eval-language.md`: deterministic, trace-spy, hidden-truth, and semantic eval syntax.
 - `reference/cli.md`: CLI command reference.
 - `reference/openai-adapter.md`: OpenAI execution adapter notes.
@@ -69,7 +70,6 @@ For project planning:
 - `../examples/multi-lens-research/README.md`: multi-lens research example guide.
 - `../examples/market-research-brief/README.md`: document-driven market research example guide.
 - `releasing.md`: tag-first release notes and PyPI publishing process.
-- `implementation/roadmap.md`: active backlog for VISION gaps that are not implemented yet.
 - `decisions/open-questions.md`: decisions needed before or during the first implementation tranche.
 
 ## Documentation Rules

@@ -37,6 +37,10 @@ def _summary_doc(project: ContractProject, manifests: dict[str, AgentManifest]) 
         lines.extend(["", "## Monitors"])
         for monitor in sorted(project.monitors, key=lambda item: (item.agent, item.name)):
             lines.append(f"- `{monitor.name}` for `{monitor.agent}` ({monitor.severity})")
+    if project.run_contracts:
+        lines.extend(["", "## Run Contracts"])
+        for run_contract in sorted(project.run_contracts.values(), key=lambda item: item.name):
+            lines.append(f"- `{run_contract.name}`")
     hosted_tools = [
         (agent_name, tool)
         for agent_name, manifest in sorted(manifests.items())

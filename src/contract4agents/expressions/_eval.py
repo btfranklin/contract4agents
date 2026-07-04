@@ -19,6 +19,7 @@ _TARGET_FIELDS_BY_KIND: dict[TraceTargetKind, tuple[str, ...]] = {
     "approval_tool": ("tool",),
     "guardrail": ("guardrail",),
     "text": (),
+    "agent_tool": (),
 }
 
 
@@ -96,6 +97,11 @@ def evaluate_trace(parsed: ParsedExpression, trace: TraceRecorder) -> str | None
         if count <= maximum:
             return None
         return f"Expected trace to include {args[0]} at most {maximum} times, found {count}"
+    if op == "not_tool_called_by":
+        agent, tool = args
+        if _tool_called_by(trace, agent, tool):
+            return f"Expected trace not to include {tool} called by {agent}"
+        return None
     if op in {"called_before", "called_after"}:
         left, right = args
         left_index = _first_trace_index(trace, left, None, target_kind)
@@ -203,5 +209,16 @@ def _approval_matches(trace: TraceRecorder, target: str, approved: bool) -> bool
         event.type == "approval.completed"
         and event.data.get("approved") is approved
         and _target_in_event_fields(target, event.data, _TARGET_FIELDS_BY_KIND["approval_tool"])
+        for event in trace.events
+    )
+
+
+def _tool_called_by(trace: TraceRecorder, agent: str, tool: str) -> bool:
+    clean_agent = agent.strip().strip('"')
+    clean_tool = tool.strip().strip('"')
+    return any(
+        event.type in {"tool.completed", "hosted_tool.completed"}
+        and event.data.get("agent") == clean_agent
+        and event.data.get("tool") == clean_tool
         for event in trace.events
     )

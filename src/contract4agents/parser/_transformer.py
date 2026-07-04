@@ -16,6 +16,7 @@ from contract4agents.ast import (
     FieldDef,
     MonitorDef,
     Permission,
+    RunContractDef,
     SourceSpan,
     TypeDef,
     UseDecl,
@@ -43,6 +44,8 @@ class _ModuleTransformer(Transformer[Any, Any]):
                 module.evals.append(item)
             elif isinstance(item, MonitorDef):
                 module.monitors.append(item)
+            elif isinstance(item, RunContractDef):
+                module.run_contracts.append(item)
         return module
 
     def type_def(self, items: list[Any]) -> TypeDef:
@@ -242,6 +245,22 @@ class _ModuleTransformer(Transformer[Any, Any]):
     def monitor_expect_stmt(self, items: list[Any]) -> tuple[str, str]:
         return "expect", str(items[0]).strip()
 
+    def run_contract_def(self, items: list[Any]) -> RunContractDef:
+        name = _token(items[0])
+        attributes = _assignment_attrs(items[1:])
+        attribute_spans = _assignment_spans(items[1:])
+        return RunContractDef(
+            str(name),
+            _list_attr(attributes, "stages"),
+            _list_attr(attributes, "assertions"),
+            attributes,
+            _span(self.path, name),
+            attribute_spans,
+        )
+
+    def run_contract_block(self, items: list[Any]) -> list[Any]:
+        return items
+
 
 @dataclass(frozen=True)
 class _AgentParts:
@@ -290,6 +309,16 @@ def _assignment_attrs(items: list[Any]) -> dict[str, Any]:
     return attrs
 
 
+def _assignment_spans(items: list[Any]) -> dict[str, SourceSpan]:
+    spans: dict[str, SourceSpan] = {}
+    for item in items:
+        if isinstance(item, list):
+            spans.update(_assignment_spans(item))
+        elif isinstance(item, _Assignment):
+            spans[item.key] = item.span
+    return spans
+
+
 def _agent_payload_items(items: list[Any]) -> list[Any]:
     result: list[Any] = []
     for item in items:
@@ -328,6 +357,11 @@ def _eval_tuple(value: tuple[Any, ...]) -> tuple[str, str, str]:
     if len(value) == 3:
         return str(value[0]), str(value[1]), str(value[2])
     return str(value[0]), "", str(value[-1])
+
+
+def _list_attr(attributes: dict[str, Any], key: str) -> list[str]:
+    value = attributes.get(key, [])
+    return value if isinstance(value, list) else []
 
 
 def _token(value: Any) -> Token:

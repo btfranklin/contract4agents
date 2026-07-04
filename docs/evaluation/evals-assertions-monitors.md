@@ -6,6 +6,7 @@ Contract4Agents treats agent behavior as output plus trace. Evals and monitors m
 
 - `guard`: safety intent and enforcement metadata available to adapters and host runtimes.
 - `assertion`: invariant checked during or after one run.
+- `run_contract`: stage-output and trace expectations for a host-owned multi-agent run.
 - `.eval`: offline fixture-based test case.
 - `monitor`: trace rule that can be run against recorded execution.
 
@@ -48,6 +49,7 @@ Initial spy vocabulary:
 - `trace.called_before(A, B)`
 - `trace.called_after(A, B)`
 - `trace.max_calls(Target, n)`
+- `trace.not_tool_called_by(agent_name, tool_name)`
 - `trace.tool_called(tool_name)`
 - `trace.hosted_tool_called(openai.web_search)`
 - `trace.agent_called(agent_name)`
@@ -59,12 +61,13 @@ Initial spy vocabulary:
 `trace.tool_called(...)` checks host-supplied `tool.completed` events by their
 normalized `tool` index field. `trace.hosted_tool_called(...)` checks
 provider-native hosted-tool events such as `hosted_tool.completed` by the same
-field. Other typed spies follow the same pattern: agent spies match `agent`,
-datasource spies match `datasource` or produced type, approval spies match the
-approved tool, and guardrail spies match `guardrail`. Generic spies such as
-`trace.called(...)` can still match these normalized target fields across
-categories by target name. Use `trace.contains(...)` for free-text payload
-searches.
+field. `trace.not_tool_called_by(...)` checks both host tools and hosted tools
+using the normalized `agent` and `tool` index fields. Other typed spies follow
+the same pattern: agent spies match `agent`, datasource spies match `datasource`
+or produced type, approval spies match the approved tool, and guardrail spies
+match `guardrail`. Generic spies such as `trace.called(...)` can still match
+these normalized target fields across categories by target name. Use
+`trace.contains(...)` for free-text payload searches.
 
 Spies should work for tools, hosted tools, agents, datasources, approvals,
 output validation, and guardrail-style trace events.
@@ -136,6 +139,30 @@ from separate runs cannot satisfy one assertion set.
 OpenAI adapter runs that use `run_openai_agent_with_contract(...)` call the same
 assertion API after the SDK run completes and record one `assertion.evaluated`
 trace event for each assertion check.
+
+## Run Contracts
+
+Run contracts are project-level expectations for a host-owned sequence of agent
+stages. They are evaluated after the host application has collected stage
+outputs and emitted a normalized trace:
+
+```python
+from contract4agents.assertions import evaluate_run_contract
+
+result = evaluate_run_contract(
+    contract=artifacts,
+    run_contract="CompendiumResearch",
+    trace=trace,
+    stage_outputs={"plan": plan, "section_research": sections, "synthesis": synthesis},
+    run_id="run-123",
+)
+```
+
+Stage outputs are validated against declared output schemas and cardinality.
+Run-contract assertions use trace expressions such as
+`trace.called_before(...)`, `trace.max_calls(...)`, and
+`trace.not_tool_called_by(...)`. They do not define execution order, branching,
+or retries; they verify what the host-run trace shows.
 
 ## Guards
 

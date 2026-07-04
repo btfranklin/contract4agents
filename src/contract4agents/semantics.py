@@ -10,6 +10,7 @@ from contract4agents.semantic_checks._agents import check_agent
 from contract4agents.semantic_checks._context import check_context_dependencies
 from contract4agents.semantic_checks._expressions import check_eval, check_monitor
 from contract4agents.semantic_checks._index import ProjectIndex
+from contract4agents.semantic_checks._run_contracts import check_run_contract
 from contract4agents.semantic_checks._types import check_datasource, check_type
 
 
@@ -40,6 +41,12 @@ def analyze_project(project: ContractProject) -> SemanticResult:
             "datasource",
         )
     )
+    diagnostics.extend(
+        _duplicates(
+            [(item.name, item.span) for module in project.modules for item in module.run_contracts],
+            "run contract",
+        )
+    )
     index = ProjectIndex.from_project(project)
     for type_def in index.type_defs.values():
         diagnostics.extend(check_type(type_def, index))
@@ -48,6 +55,8 @@ def analyze_project(project: ContractProject) -> SemanticResult:
     for agent in index.agent_defs.values():
         diagnostics.extend(check_agent(agent, index))
     diagnostics.extend(check_context_dependencies(index))
+    for run_contract in index.run_contract_defs.values():
+        diagnostics.extend(check_run_contract(run_contract, index))
     for eval_case in project.evals:
         diagnostics.extend(check_eval(eval_case.agent, eval_case.expects, eval_case.semantic_expects, index))
     for monitor in project.monitors:

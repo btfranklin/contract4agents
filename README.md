@@ -26,7 +26,6 @@ Start here:
 - `docs/examples/incident-command-walkthrough.md` walks through the clone-only example.
 - `docs/research/agent-sdk-pattern-survey.md` captures the cross-SDK patterns Contract4Agents should preserve.
 - `docs/decisions/accepted-decisions.md` records choices that should not be reopened casually.
-- `docs/implementation/roadmap.md` tracks the active backlog for VISION gaps that are not implemented yet.
 
 ## What's Included
 
@@ -36,6 +35,7 @@ Start here:
 - semantic analyzer
 - static child-agent context dependency checks
 - source-owned capability registry and strict host-code drift checks
+- run contracts for host-owned workflow trace and stage-output expectations
 - JSON Schema and provider-neutral manifest compiler
 - local fake-tool and datasource runtime primitives
 - eval and monitor runners

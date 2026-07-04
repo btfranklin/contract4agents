@@ -9,8 +9,8 @@ The Contract4Agents compiler turns source files into artifacts used by humans, h
 3. Resolve modules and names.
 4. Resolve types and schemas.
 5. Build declared capability metadata and runtime context metadata.
-6. Classify guards and preserve assertions, policies, and monitors in generated artifacts.
-7. Validate eval and monitor references against declared agent reachability.
+6. Classify guards and preserve assertions, policies, monitors, and run contracts in generated artifacts.
+7. Validate eval, monitor, and run-contract references against declared agent reachability.
 8. Generate target artifacts.
 9. Optionally check generated artifacts for freshness.
 
@@ -206,11 +206,27 @@ They include:
 - Severity.
 - Suggested remediation.
 
+### Run Contracts
+
+Run contracts are generated from `run_contract` declarations. They describe
+expected host-owned workflow behavior without executable orchestration.
+
+The compiler emits `run-contracts/run-contracts.json` with:
+
+- Run-contract name and source path.
+- Stage name, agent, output type, cardinality, manifest ref, and schema ref.
+- Trace assertions over the normalized run trace.
+
+Host applications evaluate the artifact with `evaluate_run_contract(...)` after
+they have emitted normalized trace events and collected stage outputs. Required
+and optional single stages validate one output object; repeated `+` stages
+validate a non-empty sequence of output objects.
+
 ### Generated Docs
 
 Generated docs should help humans review what will run:
 
-- `docs/summary.md`: project-level index of agents, types, evals, monitors, and hosted tools.
+- `docs/summary.md`: project-level index of agents, types, evals, monitors, run contracts, and hosted tools.
 - `docs/agents/*.md`: per-agent pages with signature, intent, inputs, output,
   host context, capabilities, checks, evals, monitors, and artifact links.
 - Capability tables.

@@ -6,7 +6,7 @@ agent team in an SDK such as the OpenAI Agents SDK.
 Contract4Agents does not replace your SDK. It gives you a typed, reviewable
 source of truth for the agent team, then compiles that source into artifacts your
 SDK integration can consume: instructions, manifests, JSON Schemas, eval packs,
-monitor rules, and visualization files.
+monitor rules, run contracts, and visualization files.
 
 You do not need to understand the whole language before trying it. The smallest
 useful loop is:
@@ -28,15 +28,15 @@ Your application still owns runtime execution:
 - approval UI and approval decisions;
 - database, search, document, and API connections;
 - deployment, auth, and observability;
-- final business workflow.
+- final business workflow and stage sequencing.
 
 Contract4Agents owns the contract layer:
 
 - what agents exist;
 - what inputs and outputs they accept;
 - which host tools, hosted provider tools, subagents, and datasources each agent may use;
-- what policies, guards, assertions, evals, and monitors should travel with the
-  team;
+- what policies, guards, assertions, evals, monitors, and run contracts should
+  travel with the team;
 - what generated artifacts should be reviewed or consumed by an adapter.
 
 The source files are durable. The generated files are disposable build output.
@@ -45,8 +45,8 @@ The source files are durable. The generated files are disposable build output.
 
 Contract4Agents uses two small source file types:
 
-- `.contract` files define types, datasources, agents, guards, assertions, and
-  monitors.
+- `.contract` files define types, datasources, agents, guards, assertions,
+  monitors, and run contracts.
 - `.eval` files define scenario checks against agents.
 
 The definitive language docs are:
@@ -57,6 +57,8 @@ The definitive language docs are:
   deterministic eval, assertion, guard, and monitor expressions.
 - [Evals, Assertions, And Monitors](../evaluation/evals-assertions-monitors.md):
   the conceptual difference between those behavioral checks.
+- [Run Contracts](../reference/run-contracts.md): host-owned workflow sequence
+  expectations and runtime evaluation.
 - [Grammar Reference](../reference/grammar.md): the implemented V1 syntax
   surface.
 
@@ -433,6 +435,24 @@ Assertion failures are reported separately from `.eval` failures and monitor
 violations. A conditional assertion whose trace condition is false is skipped.
 When a trace file contains more than one run, pass the intended `run_id` to
 assertion, eval, and monitor evaluation.
+
+Use compiled run contracts when a host-owned multi-agent sequence should produce
+specific stage outputs and trace behavior:
+
+```python
+from contract4agents.assertions import evaluate_run_contract
+
+run_contract_result = evaluate_run_contract(
+    contract=artifacts,
+    run_contract="SupportEscalation",
+    trace=trace,
+    stage_outputs={"triage": triage_output, "reply": reply_output},
+    run_id="run-support-001",
+)
+```
+
+The host still decides which stages run and when. Contract4Agents validates the
+declared stage output schemas, cardinality, and trace assertions after the run.
 
 For public examples in this repo, deterministic harnesses run fake tools and use
 the eval runner directly. In a production app, you can use the same idea against
