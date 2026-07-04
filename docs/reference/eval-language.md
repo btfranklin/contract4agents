@@ -61,7 +61,10 @@ invariants over values supplied by the host application:
 Data relations are run-spec-only. They are not valid in agent assertions, eval
 expectations, guards, or monitors. They compare scalar values or scalar
 sequences already prepared by host code; they do not support JSONPath, `where`,
-or host function calls.
+or host function calls. Run specs can optionally declare the referenced
+host-supplied values with `derived_values = [name: str[], ...]`; when that block
+is present, unknown `value.*` names are rejected during semantic analysis and
+runtime evaluation validates the declared scalar or collection shape.
 
 Unsupported deterministic expectations fail closed. Semantic analysis reports
 unsupported expressions in source files, and the eval runner reports an

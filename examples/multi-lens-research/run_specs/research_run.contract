@@ -7,6 +7,11 @@ run_spec MultiLensResearchRun:
         final_brief: ResearchDirector -> ResearchBrief,
     ]
 
+    derived_values = [
+        evidence_source_ids: str[],
+        final_citation_ids: str[],
+    ]
+
     assertions = [
         expect(trace.called_before(EvidenceMapper, ResearchDirector)),
         expect(trace.called_before(CounterargumentAnalyst, ResearchDirector)),

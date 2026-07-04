@@ -83,9 +83,9 @@ intermediate values.
 
 `MultiLensResearchRun` is a post-run spec. It validates that the evidence and
 counterargument stages precede the final brief and that
-`value.final_citation_ids subset_of value.evidence_source_ids`. Filtering and
-flattening stay in the host harness; the contract only verifies the supplied
-derived values.
+`value.final_citation_ids subset_of value.evidence_source_ids`. The run spec
+declares those two derived values as `str[]`; filtering and flattening stay in
+the host harness, and the contract verifies the supplied values after the run.
 
 ## Run It
 

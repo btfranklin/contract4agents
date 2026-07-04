@@ -256,6 +256,11 @@ run_spec CompendiumResearch:
         synthesis: SynthesisAgent -> CompendiumPayload,
     ]
 
+    derived_values = [
+        ledger_cited_ids: str[],
+        synthesis_citation_ids: str[],
+    ]
+
     assertions = [
         expect(trace.called_before(PlannerAgent, SectionResearchAgent)),
         expect(trace.max_calls(VerifierAgent, 2)),
@@ -271,6 +276,12 @@ derived-value data relations over values supplied by the host. Branching, loops,
 retries, checkpointing, recovery, stage execution, and any filtering or
 flattening needed to produce derived values belong in host Python code, not in
 `.contract` files.
+
+The optional `derived_values` block documents and validates the runtime values
+available through `value.<name>`. Supported declaration types are `str`, `int`,
+`float`, `bool`, and collection forms such as `str[]` and `list[str]`. When the
+block is present, relation assertions that reference undeclared `value.*` names
+fail semantic analysis.
 
 Derived-value assertions compare scalar sequences already prepared by the host:
 

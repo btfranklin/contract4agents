@@ -162,8 +162,9 @@ Stage outputs are validated against declared output schemas and cardinality.
 Run spec assertions use trace expressions such as `trace.called_before(...)`,
 `trace.max_calls(...)`, and `trace.not_tool_called_by(...)`, plus derived-value
 data relations such as `value.synthesis_citation_ids subset_of
-value.ledger_cited_ids`. They do not define execution order, branching, retries,
-or data transformation; they verify what the host run observed and supplied.
+value.ledger_cited_ids`. Run specs can declare those host-supplied values with
+`derived_values`. They do not define execution order, branching, retries, or
+data transformation; they verify what the host run observed and supplied.
 
 ## Guards
 

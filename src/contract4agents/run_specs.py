@@ -12,6 +12,10 @@ _RUN_STAGE_RE = re.compile(
     r"(?P<agent>[A-Za-z_][A-Za-z0-9_]*)\s*->\s*"
     r"(?P<output>[A-Za-z_][A-Za-z0-9_]*)\s*"
 )
+_RUN_DERIVED_VALUE_RE = re.compile(
+    r"\s*(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*:\s*(?P<type>.+?)\s*"
+)
+DERIVED_VALUE_SCALAR_TYPES = frozenset({"str", "int", "float", "bool"})
 
 
 @dataclass(frozen=True)
@@ -20,6 +24,13 @@ class RunSpecStageDeclaration:
     agent: str
     output_type: str
     cardinality: RunSpecStageCardinality
+    raw: str
+
+
+@dataclass(frozen=True)
+class RunSpecDerivedValueDeclaration:
+    name: str
+    type_name: str
     raw: str
 
 
@@ -44,4 +55,50 @@ def parse_run_spec_stage_declaration(value: str) -> RunSpecStageDeclaration | No
     )
 
 
-__all__ = ["RunSpecStageDeclaration", "parse_run_spec_stage_declaration"]
+def parse_run_spec_derived_value_declaration(value: str) -> RunSpecDerivedValueDeclaration | None:
+    match = _RUN_DERIVED_VALUE_RE.fullmatch(value)
+    if match is None:
+        return None
+    return RunSpecDerivedValueDeclaration(
+        name=match.group("name"),
+        type_name=_compact_type_name(match.group("type")),
+        raw=value,
+    )
+
+
+def normalize_derived_value_type(type_name: str) -> str | None:
+    value = _compact_type_name(type_name)
+    if value in DERIVED_VALUE_SCALAR_TYPES:
+        return value
+    if value.endswith("[]"):
+        member_type = value[:-2]
+        if member_type in DERIVED_VALUE_SCALAR_TYPES:
+            return f"{member_type}[]"
+        return None
+    if value.startswith("list[") and value.endswith("]"):
+        member_type = value[5:-1]
+        if member_type in DERIVED_VALUE_SCALAR_TYPES:
+            return f"{member_type}[]"
+    return None
+
+
+def derived_value_collection_member_type(type_name: str) -> str | None:
+    normalized = normalize_derived_value_type(type_name)
+    if normalized is None or not normalized.endswith("[]"):
+        return None
+    return normalized[:-2]
+
+
+def _compact_type_name(type_name: str) -> str:
+    return re.sub(r"\s+", "", type_name.strip())
+
+
+__all__ = [
+    "DERIVED_VALUE_SCALAR_TYPES",
+    "RunSpecDerivedValueDeclaration",
+    "RunSpecStageDeclaration",
+    "derived_value_collection_member_type",
+    "normalize_derived_value_type",
+    "parse_run_spec_derived_value_declaration",
+    "parse_run_spec_stage_declaration",
+]

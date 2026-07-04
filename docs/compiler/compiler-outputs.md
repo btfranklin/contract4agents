@@ -221,12 +221,15 @@ The compiler emits `run-specs/run-specs.json` with:
 
 - Run spec name and source path.
 - Stage name, agent, output type, cardinality, manifest ref, and schema ref.
+- Declared host-supplied derived values, when present, as `{name, type}` entries.
 - Trace assertions over the normalized run trace and derived-value data relation assertions.
 
 Host applications evaluate the artifact with `evaluate_run_spec(...)` after
 they have emitted normalized trace events and collected stage outputs. Required
 and optional single stages validate one output object; repeated `+` stages
-validate a non-empty sequence of output objects.
+validate a non-empty sequence of output objects. Declared derived values are
+validated against their scalar or collection type before data-relation
+assertions run.
 
 ### Generated Docs
 

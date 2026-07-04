@@ -376,6 +376,34 @@ def test_evaluate_run_spec_passes_derived_value_subset_assertion() -> None:
     assert result.assertions[0].status == "passed"
 
 
+def test_evaluate_run_spec_validates_declared_derived_values() -> None:
+    run_spec = {
+        **_run_spec_artifact(),
+        "derived_values": [
+            {"name": "synthesis_citation_ids", "type": "str[]"},
+            {"name": "ledger_cited_ids", "type": "str[]"},
+            {"name": "reviewed", "type": "bool"},
+        ],
+        "assertions": ["expect(value.synthesis_citation_ids subset_of value.ledger_cited_ids)"],
+    }
+    contract = _artifacts(_manifest([]), run_specs=[run_spec])
+
+    result = evaluate_run_spec(
+        contract=contract,
+        run_spec="ExampleRun",
+        trace=TraceRecorder(),
+        stage_outputs=_valid_stage_outputs(),
+        derived_values={
+            "synthesis_citation_ids": ["C01", "C02"],
+            "ledger_cited_ids": ["C01", "C02", "C03"],
+            "reviewed": True,
+        },
+    )
+
+    assert result.passed
+    assert not [failure for failure in result.failures if failure.kind == "derived_value"]
+
+
 def test_evaluate_run_spec_reports_missing_subset_values() -> None:
     run_spec = {
         **_run_spec_artifact(),
@@ -397,6 +425,68 @@ def test_evaluate_run_spec_reports_missing_subset_values() -> None:
     assert not result.passed
     assert result.failures[0].kind == "data_relation"
     assert "missing C04, C07" in result.failures[0].message
+
+
+def test_evaluate_run_spec_reports_missing_declared_derived_values() -> None:
+    run_spec = {
+        **_run_spec_artifact(),
+        "derived_values": [
+            {"name": "synthesis_citation_ids", "type": "str[]"},
+            {"name": "ledger_cited_ids", "type": "str[]"},
+        ],
+        "assertions": ["expect(value.synthesis_citation_ids subset_of value.ledger_cited_ids)"],
+    }
+    contract = _artifacts(_manifest([]), run_specs=[run_spec])
+
+    missing_mapping = evaluate_run_spec(
+        contract=contract,
+        run_spec="ExampleRun",
+        trace=TraceRecorder(),
+        stage_outputs=_valid_stage_outputs(),
+    )
+    result = evaluate_run_spec(
+        contract=contract,
+        run_spec="ExampleRun",
+        trace=TraceRecorder(),
+        stage_outputs=_valid_stage_outputs(),
+        derived_values={"synthesis_citation_ids": ["C01"]},
+    )
+
+    assert not missing_mapping.passed
+    assert any(
+        "declares derived values but no derived_values mapping was supplied" in failure.message
+        for failure in missing_mapping.failures
+        if failure.kind == "derived_value"
+    )
+    assert not result.passed
+    derived_failures = [failure for failure in result.failures if failure.kind == "derived_value"]
+    assert derived_failures
+    assert "No derived value supplied for `value.ledger_cited_ids`" in derived_failures[0].message
+
+
+def test_evaluate_run_spec_reports_declared_derived_value_type_mismatches() -> None:
+    run_spec = {
+        **_run_spec_artifact(),
+        "derived_values": [
+            {"name": "ids", "type": "str[]"},
+            {"name": "approved", "type": "bool"},
+        ],
+        "assertions": ["expect(value.ids subset_of value.ids)"],
+    }
+    contract = _artifacts(_manifest([]), run_specs=[run_spec])
+
+    result = evaluate_run_spec(
+        contract=contract,
+        run_spec="ExampleRun",
+        trace=TraceRecorder(),
+        stage_outputs=_valid_stage_outputs(),
+        derived_values={"ids": "C01", "approved": [True]},
+    )
+
+    assert not result.passed
+    messages = [failure.message for failure in result.failures if failure.kind == "derived_value"]
+    assert any("`value.ids` declared as `str[]` must be a sequence of str values" in message for message in messages)
+    assert any("`value.approved` declared as `bool` must be bool, found sequence" in message for message in messages)
 
 
 @pytest.mark.parametrize(

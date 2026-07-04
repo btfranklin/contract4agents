@@ -35,8 +35,8 @@ A Contract4Agents example should make these pieces visible:
 - `evals/`: expectations for a scenario. These describe what a successful run
   should produce and what should appear in the trace.
 - `monitors/`: trace rules for behavior that should be watched after a run.
-- `run_specs/`: post-run stage and derived-value invariants for host-owned
-  workflows.
+- `run_specs/`: post-run stage checks and declared derived-value invariants for
+  host-owned workflows.
 - `data/`: optional local seed data for deterministic fake tools.
 - `contract4agents.registry.json`: optional capability registry for strict
   host-code drift checks.

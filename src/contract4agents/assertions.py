@@ -7,10 +7,11 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from contract4agents.compiler import AgentManifest, CompilerArtifacts
-from contract4agents.compiler._types import RunSpecArtifact, RunSpecStage
+from contract4agents.compiler._types import RunSpecArtifact, RunSpecDerivedValue, RunSpecStage
 from contract4agents.expressions._eval import evaluate_data_relation, evaluate_parsed_expression, evaluate_trace
 from contract4agents.expressions._grammar import parse_contract_expression
 from contract4agents.expressions._model import ConditionalExpression, ExpressionError, ParsedExpression
+from contract4agents.run_specs import derived_value_collection_member_type, normalize_derived_value_type
 from contract4agents.runtime import TraceRecorder, scope_trace
 
 AssertionStatus = Literal["passed", "failed", "skipped"]
@@ -176,6 +177,7 @@ def evaluate_run_spec(
     stage_checks = [
         _evaluate_run_spec_stage(stage, stage_outputs, contract["schemas"]) for stage in artifact["stages"]
     ]
+    derived_value_failures = _evaluate_run_spec_derived_values(artifact, derived_values)
     assertion_checks = [
         _evaluate_run_spec_assertion(assertion, scoped_trace, derived_values) for assertion in artifact["assertions"]
     ]
@@ -184,6 +186,7 @@ def evaluate_run_spec(
         for stage in stage_checks
         for failure in stage.failures
     ]
+    failures.extend(derived_value_failures)
     failures.extend(check.failure for check in assertion_checks if check.failure is not None)
     return RunSpecEvaluationResult(
         run_spec,
@@ -192,6 +195,104 @@ def evaluate_run_spec(
         assertion_checks,
         failures,
     )
+
+
+def _evaluate_run_spec_derived_values(
+    artifact: RunSpecArtifact,
+    derived_values: Mapping[str, Any] | None,
+) -> list[AssertionFailure]:
+    declarations = artifact.get("derived_values", [])
+    if not declarations:
+        return []
+    if derived_values is None:
+        return [
+            AssertionFailure(
+                "derived_value",
+                "__derived_values__",
+                f"Run spec `{artifact['name']}` declares derived values but no derived_values mapping was supplied",
+            )
+        ]
+
+    failures: list[AssertionFailure] = []
+    for declaration in declarations:
+        name = declaration["name"]
+        if name not in derived_values:
+            failures.append(
+                AssertionFailure(
+                    "derived_value",
+                    "__derived_values__",
+                    f"No derived value supplied for `value.{name}` declared as `{declaration['type']}`",
+                )
+            )
+            continue
+        type_failure = _derived_value_type_failure(declaration, derived_values[name])
+        if type_failure is not None:
+            failures.append(AssertionFailure("derived_value", "__derived_values__", type_failure))
+    return failures
+
+
+def _derived_value_type_failure(declaration: RunSpecDerivedValue, value: Any) -> str | None:
+    name = declaration["name"]
+    type_name = declaration["type"]
+    normalized_type = normalize_derived_value_type(type_name)
+    if normalized_type is None:
+        return f"Run spec derived value `value.{name}` has unsupported compiled type `{type_name}`"
+
+    member_type = derived_value_collection_member_type(normalized_type)
+    if member_type is None:
+        if _matches_derived_scalar_type(value, normalized_type):
+            return None
+        return (
+            f"Derived value `value.{name}` declared as `{normalized_type}` must be {normalized_type}, "
+            f"found {_derived_value_runtime_type(value)}"
+        )
+
+    if not _is_derived_value_sequence(value):
+        return (
+            f"Derived value `value.{name}` declared as `{normalized_type}` must be a sequence of "
+            f"{member_type} values"
+        )
+    for index, item in enumerate(value):
+        if not _matches_derived_scalar_type(item, member_type):
+            return (
+                f"Derived value `value.{name}` item at index {index} must be {member_type}, "
+                f"found {_derived_value_runtime_type(item)}"
+            )
+    return None
+
+
+def _is_derived_value_sequence(value: Any) -> bool:
+    return isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray | Mapping)
+
+
+def _matches_derived_scalar_type(value: Any, type_name: str) -> bool:
+    if type_name == "str":
+        return isinstance(value, str)
+    if type_name == "bool":
+        return type(value) is bool
+    if type_name == "int":
+        return type(value) is int
+    if type_name == "float":
+        return type(value) is float
+    return False
+
+
+def _derived_value_runtime_type(value: Any) -> str:
+    if isinstance(value, Mapping):
+        return "mapping"
+    if _is_derived_value_sequence(value):
+        return "sequence"
+    if isinstance(value, str):
+        return "str"
+    if type(value) is bool:
+        return "bool"
+    if type(value) is int:
+        return "int"
+    if type(value) is float:
+        return "float"
+    if value is None:
+        return "null"
+    return type(value).__name__
 
 
 def _evaluate_assertion(

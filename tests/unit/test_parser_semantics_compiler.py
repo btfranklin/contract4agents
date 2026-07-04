@@ -121,6 +121,39 @@ run_spec GoodRun:
     assert result.ok, [diagnostic.format() for diagnostic in result.diagnostics]
 
 
+def test_run_spec_allows_declared_derived_value_data_relation_assertions(tmp_path: Path) -> None:
+    (tmp_path / "good.contract").write_text(
+        """
+type Result:
+    ok: bool
+
+agent KnownAgent() -> Result:
+    goal = "known"
+
+run_spec GoodRun:
+    stages = [
+        plan: KnownAgent -> Result,
+    ]
+    derived_values = [
+        synthesis_citation_ids: list[str],
+        ledger_cited_ids: str[],
+    ]
+    assertions = [
+        expect(value.synthesis_citation_ids subset_of value.ledger_cited_ids),
+    ]
+""".strip()
+    )
+
+    result = analyze_project(parse_project(tmp_path))
+    artifacts = compile_project(tmp_path)
+
+    assert result.ok, [diagnostic.format() for diagnostic in result.diagnostics]
+    assert artifacts["run_specs"][0]["derived_values"] == [
+        {"name": "synthesis_citation_ids", "type": "str[]"},
+        {"name": "ledger_cited_ids", "type": "str[]"},
+    ]
+
+
 def test_data_relation_assertions_are_run_spec_only(tmp_path: Path) -> None:
     (tmp_path / "bad.contract").write_text(
         """
@@ -163,6 +196,48 @@ run_spec BadRun:
     ]
 """,
             {"SEM084", "SEM085"},
+        ),
+        (
+            """
+run_spec BadRun:
+    stages = [
+        known: KnownAgent -> Result,
+    ]
+    derived_values = [
+        malformed declaration,
+    ]
+""",
+            {"SEM088"},
+        ),
+        (
+            """
+run_spec BadRun:
+    stages = [
+        known: KnownAgent -> Result,
+    ]
+    derived_values = [
+        ids: str[],
+        ids: list[str],
+        payloads: Result[],
+    ]
+    assertions = [
+        expect(value.ids subset_of value.missing_ids),
+    ]
+""",
+            {"SEM089", "SEM090", "SEM091"},
+        ),
+        (
+            """
+run_spec BadRun:
+    stages = [
+        known: KnownAgent -> Result,
+    ]
+    derived_values = []
+    assertions = [
+        expect(value.ids subset_of value.other_ids),
+    ]
+""",
+            {"SEM091"},
         ),
         (
             """
@@ -1074,6 +1149,7 @@ def test_compile_project_artifacts_include_run_specs(tmp_path: Path) -> None:
         "manifest_ref": "manifests/SectionResearchAgent.json",
         "schema_ref": "schemas/SectionResearchBrief.json",
     }
+    assert run_spec["derived_values"] == []
     assert (tmp_path / "build" / "run-specs" / "run-specs.json").exists()
     assert "`CompendiumResearch`" in artifacts["docs"]["summary.md"]
 

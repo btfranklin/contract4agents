@@ -108,10 +108,16 @@ class RunSpecStage(TypedDict):
     schema_ref: str
 
 
+class RunSpecDerivedValue(TypedDict):
+    name: str
+    type: str
+
+
 class RunSpecArtifact(TypedDict):
     name: str
     source_path: str
     stages: list[RunSpecStage]
+    derived_values: list[RunSpecDerivedValue]
     assertions: list[str]
 
 
@@ -161,6 +167,7 @@ __all__ = [
     "ManifestOutput",
     "ManifestUse",
     "MonitorPack",
+    "RunSpecDerivedValue",
     "RunSpecArtifact",
     "RunSpecStage",
     "TypeBinding",

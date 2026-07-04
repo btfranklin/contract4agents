@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
-from contract4agents.ast import RunSpecDef
+from contract4agents.ast import RunSpecDef, SourceSpan
 from contract4agents.diagnostics import Diagnostic
 from contract4agents.expressions._grammar import parse_contract_expression
 from contract4agents.expressions._model import ConditionalExpression, ExpressionError, ParsedExpression
-from contract4agents.run_specs import RunSpecStageDeclaration, parse_run_spec_stage_declaration
+from contract4agents.run_specs import (
+    RunSpecDerivedValueDeclaration,
+    RunSpecStageDeclaration,
+    normalize_derived_value_type,
+    parse_run_spec_derived_value_declaration,
+    parse_run_spec_stage_declaration,
+)
 from contract4agents.semantic_checks._expressions import check_trace_refs
 from contract4agents.semantic_checks._index import ProjectIndex
 
-RUN_SPEC_ATTRIBUTES = {"stages", "assertions"}
+RUN_SPEC_ATTRIBUTES = {"stages", "assertions", "derived_values"}
 WORKFLOW_LIKE_ATTRIBUTES = {"branch", "branches", "loop", "loops", "retry", "retries", "checkpoint", "recovery"}
 
 
@@ -18,8 +24,10 @@ def check_run_spec(run_spec: RunSpecDef, index: ProjectIndex) -> list[Diagnostic
     diagnostics: list[Diagnostic] = []
     diagnostics.extend(_check_attributes(run_spec))
     stages = _parse_stages(run_spec, diagnostics)
+    derived_values = _parse_derived_values(run_spec, diagnostics)
+    strict_derived_value_refs = isinstance(run_spec.attributes.get("derived_values"), list)
     diagnostics.extend(_check_stage_refs(run_spec, stages, index))
-    diagnostics.extend(_check_run_assertions(run_spec, stages, index))
+    diagnostics.extend(_check_run_assertions(run_spec, stages, derived_values, strict_derived_value_refs, index))
     return diagnostics
 
 
@@ -30,7 +38,7 @@ def _check_attributes(run_spec: RunSpecDef) -> list[Diagnostic]:
         if key not in RUN_SPEC_ATTRIBUTES:
             hint = "Run specs verify host-owned workflow behavior; executable workflow control belongs in Python."
             if key not in WORKFLOW_LIKE_ATTRIBUTES:
-                hint = "Accepted run spec attributes are: `assertions`, `stages`."
+                hint = "Accepted run spec attributes are: `assertions`, `derived_values`, `stages`."
             diagnostics.append(
                 Diagnostic(
                     "SEM080",
@@ -91,6 +99,58 @@ def _parse_stages(run_spec: RunSpecDef, diagnostics: list[Diagnostic]) -> list[R
     return stages
 
 
+def _parse_derived_values(
+    run_spec: RunSpecDef,
+    diagnostics: list[Diagnostic],
+) -> list[RunSpecDerivedValueDeclaration]:
+    declarations: list[RunSpecDerivedValueDeclaration] = []
+    seen: set[str] = set()
+    value = run_spec.attributes.get("derived_values", [])
+    if not isinstance(value, list):
+        return declarations
+    span = run_spec.attribute_spans.get("derived_values", run_spec.span)
+    for raw_value in value:
+        raw_declaration = raw_value if isinstance(raw_value, str) else str(raw_value)
+        declaration = parse_run_spec_derived_value_declaration(raw_declaration)
+        if declaration is None:
+            diagnostics.append(
+                Diagnostic(
+                    "SEM088",
+                    f"Malformed run spec derived value declaration `{raw_declaration}` on `{run_spec.name}`",
+                    span=span,
+                    hint=(
+                        "Expected `name: str`, `name: int`, `name: float`, `name: bool`, "
+                        "or a `[]`/`list[...]` collection."
+                    ),
+                )
+            )
+            continue
+        if declaration.name in seen:
+            diagnostics.append(
+                Diagnostic(
+                    "SEM089",
+                    f"Run spec `{run_spec.name}` declares derived value `{declaration.name}` more than once",
+                    span=span,
+                )
+            )
+        seen.add(declaration.name)
+        if normalize_derived_value_type(declaration.type_name) is None:
+            diagnostics.append(
+                Diagnostic(
+                    "SEM090",
+                    f"Run spec `{run_spec.name}` derived value `{declaration.name}` uses unsupported type "
+                    f"`{declaration.type_name}`",
+                    span=span,
+                    hint=(
+                        "Supported derived value types are `str`, `int`, `float`, `bool`, "
+                        "and their `[]`/`list[...]` forms."
+                    ),
+                )
+            )
+        declarations.append(declaration)
+    return declarations
+
+
 def _check_stage_refs(
     run_spec: RunSpecDef,
     stages: list[RunSpecStageDeclaration],
@@ -122,6 +182,8 @@ def _check_stage_refs(
 def _check_run_assertions(
     run_spec: RunSpecDef,
     stages: list[RunSpecStageDeclaration],
+    derived_values: list[RunSpecDerivedValueDeclaration],
+    strict_derived_value_refs: bool,
     index: ProjectIndex,
 ) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
@@ -133,6 +195,7 @@ def _check_run_assertions(
         reachable_tools.update(index.reachable_tools(agent))
         reachable_hosted_tools.update(index.reachable_hosted_tools(agent))
     span = run_spec.attribute_spans.get("assertions", run_spec.span)
+    declared_value_names = {value.name for value in derived_values}
     for expression in run_spec.assertions:
         try:
             parsed_items = parse_contract_expression(expression)
@@ -141,6 +204,8 @@ def _check_run_assertions(
             continue
         for parsed in _iter_run_spec_assertion_items(parsed_items):
             if parsed.kind == "data_relation":
+                if strict_derived_value_refs:
+                    diagnostics.extend(_check_data_relation_refs(run_spec, parsed, declared_value_names, span))
                 continue
             if parsed.kind != "trace":
                 diagnostics.append(
@@ -161,6 +226,29 @@ def _check_run_assertions(
                     agent_names=staged_agents,
                     datasource_targets=set(),
                     stage_targets=stage_names,
+                )
+            )
+    return diagnostics
+
+
+def _check_data_relation_refs(
+    run_spec: RunSpecDef,
+    parsed: ParsedExpression,
+    declared_value_names: set[str],
+    span: SourceSpan,
+) -> list[Diagnostic]:
+    diagnostics: list[Diagnostic] = []
+    for ref in [parsed.left_ref, parsed.right_ref]:
+        if ref and ref not in declared_value_names:
+            diagnostics.append(
+                Diagnostic(
+                    "SEM091",
+                    f"Run spec `{run_spec.name}` assertion references undeclared derived value `value.{ref}`",
+                    span=span,
+                    hint=(
+                        "Declare the value in `derived_values` or remove the `derived_values` block "
+                        "to keep runtime-only names."
+                    ),
                 )
             )
     return diagnostics

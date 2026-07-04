@@ -18,6 +18,11 @@ run_spec CompendiumResearch:
         synthesis: SynthesisAgent -> CompendiumPayload,
     ]
 
+    derived_values = [
+        ledger_cited_ids: str[],
+        synthesis_citation_ids: str[],
+    ]
+
     assertions = [
         expect(trace.called_before(PlannerAgent, SectionResearchAgent)),
         expect(trace.max_calls(VerifierAgent, 2)),
@@ -36,6 +41,12 @@ Run spec assertions can use trace expressions over the normalized trace and
 derived-value data relations supplied by the host after the run. Use stage
 outputs for schema checks, trace assertions for ordering and capability-use
 expectations, and derived values for cross-stage data invariants.
+
+`derived_values` is optional. When present, it declares the host-supplied values
+available to `value.<name>` relation assertions. Supported declaration types are
+`str`, `int`, `float`, `bool`, and collection forms such as `str[]` or
+`list[str]`. Declared `value.*` references are checked statically; undeclared
+derived-value names fail semantic analysis when the block is present.
 
 Derived-value assertions use host-supplied `value.<name>` references and set
 operators:
@@ -59,6 +70,7 @@ The compiler emits `run-specs/run-specs.json`. Each run spec records:
 
 - run spec name and source path
 - stage name, agent, output type, cardinality, manifest reference, and schema reference
+- derived value name and canonical type, when declared
 - assertion text
 
 The artifact is included in compile freshness checks, so `compile --check`
@@ -97,6 +109,13 @@ schema.
 Values may be scalars or sequences of scalars. Strings are treated as scalar
 items, not character sequences. Unknown derived values, missing derived values,
 non-scalar items, and unsupported operators fail closed.
+
+When a run spec declares `derived_values`, runtime evaluation also validates the
+declared inputs before evaluating relation assertions. Missing declared values,
+missing `derived_values`, scalar values supplied for collection declarations,
+collection values supplied for scalar declarations, and mismatched primitive
+items produce `derived_value` failures. Extra host-supplied derived values are
+ignored.
 
 The first supported cross-stage data invariant pattern is derived-value based.
 Direct nested stage projections such as `stage.synthesis.sections[]` and filters
