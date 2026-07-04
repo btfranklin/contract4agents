@@ -377,7 +377,8 @@ run_spec_result = evaluate_run_spec(
 ```
 
 The host still decides which stages run and when. Contract4Agents validates the
-declared stage output schemas, cardinality, and trace assertions after the run.
+declared stage output schemas, cardinality, trace assertions, and host-supplied
+derived-value data relations after the run.
 
 For public examples in this repo, deterministic harnesses run fake tools and use
 the eval runner directly. In a production app, you can use the same idea against

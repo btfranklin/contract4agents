@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from contract4agents.compiler import AgentManifest, CompilerArtifacts
 from contract4agents.compiler._types import RunSpecArtifact, RunSpecStage
-from contract4agents.expressions._eval import evaluate_parsed_expression, evaluate_trace
+from contract4agents.expressions._eval import evaluate_data_relation, evaluate_parsed_expression, evaluate_trace
 from contract4agents.expressions._grammar import parse_contract_expression
 from contract4agents.expressions._model import ConditionalExpression, ExpressionError, ParsedExpression
 from contract4agents.runtime import TraceRecorder, scope_trace
@@ -159,6 +159,7 @@ def evaluate_run_spec(
     run_spec: str,
     trace: TraceRecorder,
     stage_outputs: Mapping[str, Any],
+    derived_values: Mapping[str, Any] | None = None,
     run_id: str | None = None,
 ) -> RunSpecEvaluationResult:
     """Evaluate a compiled run spec against host-emitted trace and stage outputs."""
@@ -176,7 +177,7 @@ def evaluate_run_spec(
         _evaluate_run_spec_stage(stage, stage_outputs, contract["schemas"]) for stage in artifact["stages"]
     ]
     assertion_checks = [
-        _evaluate_run_spec_assertion(assertion, scoped_trace) for assertion in artifact["assertions"]
+        _evaluate_run_spec_assertion(assertion, scoped_trace, derived_values) for assertion in artifact["assertions"]
     ]
     failures = [
         failure
@@ -262,7 +263,11 @@ def _evaluate_run_spec_stage(
     )
 
 
-def _evaluate_run_spec_assertion(assertion: str, trace: TraceRecorder) -> AssertionCheck:
+def _evaluate_run_spec_assertion(
+    assertion: str,
+    trace: TraceRecorder,
+    derived_values: Mapping[str, Any] | None,
+) -> AssertionCheck:
     try:
         parsed_items = parse_contract_expression(assertion)
     except ExpressionError as exc:
@@ -271,20 +276,23 @@ def _evaluate_run_spec_assertion(assertion: str, trace: TraceRecorder) -> Assert
     failures: list[AssertionFailure] = []
     for parsed in parsed_items:
         if isinstance(parsed, ConditionalExpression):
-            check = _evaluate_run_spec_conditional(assertion, parsed, trace)
+            check = _evaluate_run_spec_conditional(assertion, parsed, trace, derived_values)
             if check.status == "skipped":
                 return check
             if check.failure is not None:
                 failures.append(check.failure)
             continue
-        if parsed.kind != "trace":
-            failures.append(
-                AssertionFailure("unsupported", assertion, f"Unsupported run spec assertion: {assertion}")
-            )
+        if parsed.kind == "trace":
+            trace_failure = evaluate_trace(parsed, trace)
+            if trace_failure:
+                failures.append(AssertionFailure("trace", assertion, trace_failure))
             continue
-        trace_failure = evaluate_trace(parsed, trace)
-        if trace_failure:
-            failures.append(AssertionFailure("trace", assertion, trace_failure))
+        if parsed.kind == "data_relation":
+            data_failure = evaluate_data_relation(parsed, derived_values)
+            if data_failure:
+                failures.append(AssertionFailure("data_relation", assertion, data_failure))
+            continue
+        failures.append(AssertionFailure("unsupported", assertion, f"Unsupported run spec assertion: {assertion}"))
     if failures:
         return AssertionCheck(assertion, "failed", failures[0])
     return AssertionCheck(assertion, "passed")
@@ -311,16 +319,22 @@ def _evaluate_run_spec_conditional(
     assertion: str,
     parsed: ConditionalExpression,
     trace: TraceRecorder,
+    derived_values: Mapping[str, Any] | None,
 ) -> AssertionCheck:
-    if parsed.condition.kind != "trace" or parsed.expectation.kind != "trace":
+    if parsed.condition.kind != "trace" or parsed.expectation.kind not in {"trace", "data_relation"}:
         failure = AssertionFailure("unsupported", assertion, f"Unsupported run spec assertion: {assertion}")
         return AssertionCheck(assertion, "failed", failure)
     condition_failure = evaluate_trace(parsed.condition, trace)
     if condition_failure:
         return AssertionCheck(assertion, "skipped")
-    trace_failure = evaluate_trace(parsed.expectation, trace)
-    if trace_failure:
-        return AssertionCheck(assertion, "failed", AssertionFailure("trace", assertion, trace_failure))
+    if parsed.expectation.kind == "trace":
+        trace_failure = evaluate_trace(parsed.expectation, trace)
+        if trace_failure:
+            return AssertionCheck(assertion, "failed", AssertionFailure("trace", assertion, trace_failure))
+    else:
+        data_failure = evaluate_data_relation(parsed.expectation, derived_values)
+        if data_failure:
+            return AssertionCheck(assertion, "failed", AssertionFailure("data_relation", assertion, data_failure))
     return AssertionCheck(assertion, "passed")
 
 

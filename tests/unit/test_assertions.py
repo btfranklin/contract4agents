@@ -354,6 +354,147 @@ def test_evaluate_run_spec_evaluates_structured_conditionals() -> None:
     assert [check.status for check in result.assertions] == ["passed", "skipped"]
 
 
+def test_evaluate_run_spec_passes_derived_value_subset_assertion() -> None:
+    run_spec = {
+        **_run_spec_artifact(),
+        "assertions": ["expect(value.synthesis_citation_ids subset_of value.ledger_cited_ids)"],
+    }
+    contract = _artifacts(_manifest([]), run_specs=[run_spec])
+
+    result = evaluate_run_spec(
+        contract=contract,
+        run_spec="ExampleRun",
+        trace=TraceRecorder(),
+        stage_outputs=_valid_stage_outputs(),
+        derived_values={
+            "synthesis_citation_ids": ["C01", "C02"],
+            "ledger_cited_ids": ["C01", "C02", "C03"],
+        },
+    )
+
+    assert result.passed
+    assert result.assertions[0].status == "passed"
+
+
+def test_evaluate_run_spec_reports_missing_subset_values() -> None:
+    run_spec = {
+        **_run_spec_artifact(),
+        "assertions": ["expect(value.synthesis_citation_ids subset_of value.ledger_cited_ids)"],
+    }
+    contract = _artifacts(_manifest([]), run_specs=[run_spec])
+
+    result = evaluate_run_spec(
+        contract=contract,
+        run_spec="ExampleRun",
+        trace=TraceRecorder(),
+        stage_outputs=_valid_stage_outputs(),
+        derived_values={
+            "synthesis_citation_ids": ["C01", "C04", "C07"],
+            "ledger_cited_ids": ["C01", "C02", "C03"],
+        },
+    )
+
+    assert not result.passed
+    assert result.failures[0].kind == "data_relation"
+    assert "missing C04, C07" in result.failures[0].message
+
+
+@pytest.mark.parametrize(
+    ("assertion", "derived_values", "passed"),
+    [
+        (
+            "expect(value.ledger_cited_ids contains_all value.synthesis_citation_ids)",
+            {"ledger_cited_ids": ["A", "B"], "synthesis_citation_ids": ["A"]},
+            True,
+        ),
+        ("expect(value.left equals_set value.right)", {"left": ["B", "A"], "right": ["A", "B"]}, True),
+        ("expect(value.left intersects value.right)", {"left": ["A", "B"], "right": ["C", "B"]}, True),
+        ("expect(value.left disjoint_from value.right)", {"left": ["A", "B"], "right": ["C", "D"]}, True),
+        ("expect(value.left intersects value.right)", {"left": ["A"], "right": ["B"]}, False),
+        ("expect(value.left disjoint_from value.right)", {"left": ["A"], "right": ["A", "B"]}, False),
+    ],
+)
+def test_evaluate_run_spec_checks_derived_value_set_operators(
+    assertion: str,
+    derived_values: dict[str, list[str]],
+    passed: bool,
+) -> None:
+    run_spec = {**_run_spec_artifact(), "assertions": [assertion]}
+    contract = _artifacts(_manifest([]), run_specs=[run_spec])
+
+    result = evaluate_run_spec(
+        contract=contract,
+        run_spec="ExampleRun",
+        trace=TraceRecorder(),
+        stage_outputs=_valid_stage_outputs(),
+        derived_values=derived_values,
+    )
+
+    assert result.passed is passed
+
+
+def test_evaluate_run_spec_data_relation_failures_are_closed() -> None:
+    run_spec = {
+        **_run_spec_artifact(),
+        "assertions": [
+            "expect(value.left subset_of value.right)",
+            "expect(value.left overlaps value.right)",
+        ],
+    }
+    contract = _artifacts(_manifest([]), run_specs=[run_spec])
+
+    missing_values = evaluate_run_spec(
+        contract=contract,
+        run_spec="ExampleRun",
+        trace=TraceRecorder(),
+        stage_outputs=_valid_stage_outputs(),
+    )
+    unknown_value = evaluate_run_spec(
+        contract=contract,
+        run_spec="ExampleRun",
+        trace=TraceRecorder(),
+        stage_outputs=_valid_stage_outputs(),
+        derived_values={"left": ["A"]},
+    )
+    non_scalar = evaluate_run_spec(
+        contract=contract,
+        run_spec="ExampleRun",
+        trace=TraceRecorder(),
+        stage_outputs=_valid_stage_outputs(),
+        derived_values={"left": [{"id": "A"}], "right": ["A"]},
+    )
+
+    assert not missing_values.passed
+    assert missing_values.failures[0].kind == "data_relation"
+    assert "No derived values supplied" in missing_values.failures[0].message
+    assert not unknown_value.passed
+    assert "Unknown derived value `value.right`" in unknown_value.failures[0].message
+    assert not non_scalar.passed
+    assert "contains non-scalar item" in non_scalar.failures[0].message
+    assert missing_values.assertions[1].failure
+    assert missing_values.assertions[1].failure.kind == "unsupported"
+
+
+def test_evaluate_run_spec_supports_conditional_derived_value_assertion() -> None:
+    trace = TraceRecorder()
+    trace.record("stage.completed", stage="synthesis")
+    run_spec = {
+        **_run_spec_artifact(),
+        "assertions": ["when(trace.called(synthesis), expect(value.left subset_of value.right))"],
+    }
+    contract = _artifacts(_manifest([]), run_specs=[run_spec])
+
+    result = evaluate_run_spec(
+        contract=contract,
+        run_spec="ExampleRun",
+        trace=trace,
+        stage_outputs=_valid_stage_outputs(),
+        derived_values={"left": ["A"], "right": ["A", "B"]},
+    )
+
+    assert result.passed
+
+
 def test_evaluate_run_spec_scopes_multi_run_trace_by_run_id() -> None:
     trace = TraceRecorder()
     trace.record("stage.completed", run_id="run-a", stage="plan")
@@ -399,6 +540,14 @@ def test_evaluate_agent_assertions_ignore_other_agent_trace_events() -> None:
     assert not result.passed
     assert result.checks[0].failure
     assert result.checks[0].failure.kind == "trace"
+
+
+def _valid_stage_outputs() -> dict[str, Any]:
+    return {
+        "plan": {"ok": True, "summary": "plan"},
+        "sections": [{"ok": True, "summary": "section"}],
+        "synthesis": {"ok": True, "summary": "final"},
+    }
 
 
 def _manifest(assertions: list[str], agent: str = "ExampleAgent") -> AgentManifest:

@@ -7,7 +7,16 @@ from typing import Any, Literal
 
 from contract4agents.expressions._trace_ops import TraceOp
 
-ExpressionKind = Literal["output_conforms", "output_compare", "output_text", "hidden_truth", "trace", "semantic"]
+DataRelationOperator = Literal["subset_of", "contains_all", "equals_set", "intersects", "disjoint_from"]
+ExpressionKind = Literal[
+    "output_conforms",
+    "output_compare",
+    "output_text",
+    "hidden_truth",
+    "trace",
+    "semantic",
+    "data_relation",
+]
 ExpressionWrapper = Literal["expect", "require", "forbid"]
 
 
@@ -25,6 +34,8 @@ class ParsedExpression:
     value: Any = None
     trace_op: TraceOp | None = None
     args: tuple[str, ...] = ()
+    left_ref: str | None = None
+    right_ref: str | None = None
     wrapper: ExpressionWrapper | None = None
     approval_required: bool = False
 
@@ -42,6 +53,7 @@ ContractExpression = ParsedExpression | ConditionalExpression
 __all__ = [
     "ConditionalExpression",
     "ContractExpression",
+    "DataRelationOperator",
     "ExpressionError",
     "ExpressionKind",
     "ExpressionWrapper",

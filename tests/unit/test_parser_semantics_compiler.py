@@ -93,6 +93,65 @@ run_spec GoodRun:
     assert result.ok, [diagnostic.format() for diagnostic in result.diagnostics]
 
 
+def test_run_spec_allows_derived_value_data_relation_assertions(tmp_path: Path) -> None:
+    (tmp_path / "good.contract").write_text(
+        """
+type Result:
+    ok: bool
+
+agent KnownAgent() -> Result:
+    goal = "known"
+
+run_spec GoodRun:
+    stages = [
+        plan: KnownAgent -> Result,
+    ]
+    assertions = [
+        expect(value.synthesis_citation_ids subset_of value.ledger_cited_ids),
+        expect(value.ledger_cited_ids contains_all value.synthesis_citation_ids),
+        expect(value.left equals_set value.right),
+        expect(value.left intersects value.right),
+        expect(value.left disjoint_from value.right),
+    ]
+""".strip()
+    )
+
+    result = analyze_project(parse_project(tmp_path))
+
+    assert result.ok, [diagnostic.format() for diagnostic in result.diagnostics]
+
+
+def test_data_relation_assertions_are_run_spec_only(tmp_path: Path) -> None:
+    (tmp_path / "bad.contract").write_text(
+        """
+type Result:
+    ok: bool
+
+agent KnownAgent() -> Result:
+    guards = [
+        expect(value.left subset_of value.right),
+    ]
+    assertions = [
+        expect(value.left subset_of value.right),
+    ]
+    goal = "known"
+
+eval bad_eval for KnownAgent:
+    expect value.left subset_of value.right
+
+monitor bad_monitor for KnownAgent:
+    when trace.called(KnownAgent)
+    expect value.left subset_of value.right
+""".strip()
+    )
+
+    result = analyze_project(parse_project(tmp_path))
+    messages = [diagnostic.message for diagnostic in result.diagnostics]
+
+    assert sum("Data relation assertions are only supported in run specs" in message for message in messages) == 3
+    assert any("Unsupported expression: value.left subset_of value.right" in message for message in messages)
+
+
 @pytest.mark.parametrize(
     ("body", "expected_codes"),
     [

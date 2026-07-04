@@ -260,14 +260,28 @@ run_spec CompendiumResearch:
         expect(trace.called_before(PlannerAgent, SectionResearchAgent)),
         expect(trace.max_calls(VerifierAgent, 2)),
         expect(trace.not_tool_called_by(SynthesisAgent, openai.web_search)),
+        expect(value.synthesis_citation_ids subset_of value.ledger_cited_ids),
     ]
 ```
 
 Stage suffixes define expected host-provided output cardinality: no suffix means
 exactly one output, `?` means zero or one output, and `+` means one or more
-outputs. Run spec assertions are trace expressions over the normalized
-trace. Branching, loops, retries, checkpointing, recovery, and stage execution
-belong in host Python code, not in `.contract` files.
+outputs. Run spec assertions are trace expressions over the normalized trace or
+derived-value data relations over values supplied by the host. Branching, loops,
+retries, checkpointing, recovery, stage execution, and any filtering or
+flattening needed to produce derived values belong in host Python code, not in
+`.contract` files.
+
+Derived-value assertions compare scalar sequences already prepared by the host:
+
+```contract
+expect(value.synthesis_citation_ids subset_of value.ledger_cited_ids)
+```
+
+This is the intended first-pass shape for invariants such as "every final
+citation ID must be backed by a cited source ledger ID." Direct `stage.*`
+projections, JSONPath-style filters, `where` clauses, and host function calls
+are not part of the run spec language.
 
 ## Policies And Success Criteria
 

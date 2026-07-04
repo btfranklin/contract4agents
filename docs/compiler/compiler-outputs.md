@@ -221,7 +221,7 @@ The compiler emits `run-specs/run-specs.json` with:
 
 - Run spec name and source path.
 - Stage name, agent, output type, cardinality, manifest ref, and schema ref.
-- Trace assertions over the normalized run trace.
+- Trace assertions over the normalized run trace and derived-value data relation assertions.
 
 Host applications evaluate the artifact with `evaluate_run_spec(...)` after
 they have emitted normalized trace events and collected stage outputs. Required

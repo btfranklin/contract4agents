@@ -22,6 +22,7 @@ EXPRESSION_GRAMMAR = r"""
         | output_text
         | hidden_truth
         | trace_expr
+        | data_relation
 
     ?contract_expr: expect_wrapper
         | require_wrapper
@@ -38,6 +39,8 @@ EXPRESSION_GRAMMAR = r"""
     trace_expr: "trace" "." TRACE_OP "(" [trace_args] ")"
     trace_args: trace_arg ("," trace_arg)*
     trace_arg: ESCAPED_STRING | ARG_VALUE
+    data_relation: value_ref SET_OP value_ref
+    value_ref: "value" "." NAME
 
     expect_wrapper: "expect" "(" expectation ")"
     require_wrapper: "require" "(" expectation ")"
@@ -47,6 +50,7 @@ EXPRESSION_GRAMMAR = r"""
 
     COMPARE_OP: "==" | "!="
     TEXT_OP: "contains" | "excludes"
+    SET_OP: "subset_of" | "contains_all" | "equals_set" | "intersects" | "disjoint_from"
     TRACE_OP: /[A-Za-z_][A-Za-z0-9_]*/
     DOTTED_NAME: /[A-Za-z_][A-Za-z0-9_.]*/
     NAME: /[A-Za-z_][A-Za-z0-9_]*/
@@ -165,6 +169,19 @@ class _ExpressionTransformer(Transformer[Any, Any]):
 
     def trace_arg(self, items: list[Any]) -> str:
         return unquote(str(items[0]).strip())
+
+    def data_relation(self, items: list[Any]) -> ParsedExpression:
+        left_ref, operator, right_ref = items
+        return ParsedExpression(
+            "data_relation",
+            self.expression,
+            operator=str(operator),
+            left_ref=str(left_ref),
+            right_ref=str(right_ref),
+        )
+
+    def value_ref(self, items: list[Any]) -> str:
+        return str(items[0])
 
     def expect_wrapper(self, items: list[Any]) -> ParsedExpression:
         return replace(cast(ParsedExpression, items[0]), wrapper="expect")

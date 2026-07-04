@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import operator
 import re
+from collections.abc import Mapping, Sequence, Set
 from typing import Any
 
 from contract4agents.expressions._model import ExpressionError, ParsedExpression
@@ -124,6 +125,62 @@ def evaluate_trace(parsed: ParsedExpression, trace: TraceRecorder) -> str | None
     return None if _trace_contains(trace, args[0], event_type, target_kind) else f"Expected trace to include {args[0]}"
 
 
+def evaluate_data_relation(parsed: ParsedExpression, derived_values: Mapping[str, Any] | None) -> str | None:
+    """Return a failure message for a derived-value relation, or None when it passes."""
+    if parsed.kind != "data_relation" or not parsed.operator or not parsed.left_ref or not parsed.right_ref:
+        raise ExpressionError(f"Not a data relation expression: {parsed.expression}")
+    if derived_values is None:
+        return "No derived values supplied for data relation assertions"
+
+    left = _resolve_derived_set(parsed.left_ref, derived_values)
+    if isinstance(left, str):
+        return left
+    right = _resolve_derived_set(parsed.right_ref, derived_values)
+    if isinstance(right, str):
+        return right
+
+    if parsed.operator == "subset_of":
+        missing = left - right
+        if missing:
+            return (
+                f"value.{parsed.left_ref} is not a subset of value.{parsed.right_ref}: "
+                f"missing {_format_items(missing)}"
+            )
+        return None
+    if parsed.operator == "contains_all":
+        missing = right - left
+        if missing:
+            return (
+                f"value.{parsed.left_ref} does not contain all values from value.{parsed.right_ref}: "
+                f"missing {_format_items(missing)}"
+            )
+        return None
+    if parsed.operator == "equals_set":
+        if left == right:
+            return None
+        missing = right - left
+        extra = left - right
+        parts: list[str] = []
+        if missing:
+            parts.append(f"missing {_format_items(missing)}")
+        if extra:
+            parts.append(f"extra {_format_items(extra)}")
+        return f"value.{parsed.left_ref} does not equal value.{parsed.right_ref}: {', '.join(parts)}"
+    if parsed.operator == "intersects":
+        if left & right:
+            return None
+        return f"value.{parsed.left_ref} does not intersect value.{parsed.right_ref}"
+    if parsed.operator == "disjoint_from":
+        overlap = left & right
+        if not overlap:
+            return None
+        return (
+            f"value.{parsed.left_ref} is not disjoint from value.{parsed.right_ref}: "
+            f"overlap {_format_items(overlap)}"
+        )
+    return f"Unsupported data relation operator `{parsed.operator}`"
+
+
 def evaluate_parsed_expression(
     parsed: ParsedExpression,
     *,
@@ -143,6 +200,40 @@ def evaluate_parsed_expression(
         failure = evaluate_hidden_truth(parsed, output, hidden_truth)
         return ("hidden_truth", failure) if failure else None
     return ("unsupported", f"Unsupported expression: {parsed.expression}")
+
+
+def _resolve_derived_set(ref: str, derived_values: Mapping[str, Any]) -> set[Any] | str:
+    if ref not in derived_values:
+        return f"Unknown derived value `value.{ref}`"
+    return _coerce_scalar_set(ref, derived_values[ref])
+
+
+def _coerce_scalar_set(ref: str, value: Any) -> set[Any] | str:
+    if _is_scalar_relation_item(value):
+        return {value}
+    if isinstance(value, Mapping):
+        return f"Derived value `value.{ref}` must be a scalar or sequence of scalars"
+    if isinstance(value, bytes | bytearray):
+        return f"Derived value `value.{ref}` must be a supported scalar or sequence of scalars"
+    if isinstance(value, Sequence | Set):
+        items: set[Any] = set()
+        for index, item in enumerate(value):
+            if not _is_scalar_relation_item(item):
+                return f"Derived value `value.{ref}` contains non-scalar item at index {index}: {item!r}"
+            items.add(item)
+        return items
+    return f"Derived value `value.{ref}` must be a scalar or sequence of scalars"
+
+
+def _is_scalar_relation_item(value: Any) -> bool:
+    return value is None or isinstance(value, str | int | float | bool)
+
+
+def _format_items(items: set[Any], *, limit: int = 10) -> str:
+    ordered = sorted(items, key=repr)
+    shown = ", ".join(str(item) for item in ordered[:limit])
+    remaining = len(ordered) - limit
+    return f"{shown}, and {remaining} more" if remaining > 0 else shown
 
 
 def _hidden_truth_matches(rule: Any, text: str) -> bool:

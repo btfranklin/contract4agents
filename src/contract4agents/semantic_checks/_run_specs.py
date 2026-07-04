@@ -140,11 +140,13 @@ def _check_run_assertions(
             diagnostics.append(Diagnostic("SEM052", str(exc), span=span))
             continue
         for parsed in _iter_run_spec_assertion_items(parsed_items):
+            if parsed.kind == "data_relation":
+                continue
             if parsed.kind != "trace":
                 diagnostics.append(
                     Diagnostic(
                         "SEM087",
-                        f"Run spec `{run_spec.name}` assertion must be a trace expression",
+                        f"Run spec `{run_spec.name}` assertion must be a trace or data relation expression",
                         span=span,
                     )
                 )

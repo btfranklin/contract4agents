@@ -154,6 +154,14 @@ def _check_parsed_expression(
     stage_targets: set[str] | None,
 ) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
+    if parsed.kind == "data_relation":
+        return [
+            Diagnostic(
+                "SEM052",
+                f"Data relation assertions are only supported in run specs: {parsed.expression}",
+                span=span,
+            )
+        ]
     type_name = referenced_type(parsed)
     if type_name and type_name not in index.type_defs:
         diagnostics.append(Diagnostic("SEM002", f"Unknown type `{type_name}` in expression", span=span))

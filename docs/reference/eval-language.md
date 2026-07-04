@@ -49,6 +49,20 @@ surface, wrapped as contract assertions:
 - `expect(trace.hosted_tool_called(openai.web_search))`
 - `when(trace.tool_called(name), expect(output.field == value))`
 
+Run spec assertions also support derived-value data relations for post-run
+invariants over values supplied by the host application:
+
+- `expect(value.left subset_of value.right)`
+- `expect(value.left contains_all value.right)`
+- `expect(value.left equals_set value.right)`
+- `expect(value.left intersects value.right)`
+- `expect(value.left disjoint_from value.right)`
+
+Data relations are run-spec-only. They are not valid in agent assertions, eval
+expectations, guards, or monitors. They compare scalar values or scalar
+sequences already prepared by host code; they do not support JSONPath, `where`,
+or host function calls.
+
 Unsupported deterministic expectations fail closed. Semantic analysis reports
 unsupported expressions in source files, and the eval runner reports an
 `unsupported` failure defensively if an unchecked expression reaches runtime.
