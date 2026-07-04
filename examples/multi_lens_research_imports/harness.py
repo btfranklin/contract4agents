@@ -9,7 +9,7 @@ import sqlite3
 from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from contract4agents.runtime import FakeToolRegistry, TraceRecorder
 from examples.multi_lens_research_imports import citation, evidence, expert_review, sources
@@ -239,6 +239,25 @@ def run_multi_lens_research_harness_sync(
     return asyncio.run(run_multi_lens_research_harness(db_path, approve_expert_review))
 
 
+def multi_lens_research_run_spec_inputs(
+    output: dict[str, Any],
+    trace: TraceRecorder,
+) -> tuple[dict[str, Any], dict[str, list[str]]]:
+    evidence_map = _completed_agent_output(trace, "EvidenceMapper")
+    stage_outputs = {
+        "evidence": evidence_map,
+        "technical": _completed_agent_output(trace, "TechnicalLensAnalyst"),
+        "policy_safety": _completed_agent_output(trace, "PolicySafetyLensAnalyst"),
+        "counterarguments": _completed_agent_output(trace, "CounterargumentAnalyst"),
+        "final_brief": output,
+    }
+    derived_values = {
+        "evidence_source_ids": list(cast(list[str], evidence_map["source_ids"])),
+        "final_citation_ids": list(cast(list[str], output["citations"])),
+    }
+    return stage_outputs, derived_values
+
+
 async def run_multi_lens_research_start(
     start: MultiLensResearchStart,
     db_path: Path,
@@ -246,3 +265,11 @@ async def run_multi_lens_research_start(
     trace_path: Path,
 ) -> tuple[dict[str, Any], TraceRecorder]:
     return await run_multi_lens_research_harness(db_path, start.approve_expert_review, trace_path)
+
+
+def _completed_agent_output(trace: TraceRecorder, agent: str) -> dict[str, Any]:
+    for event in reversed(trace.events):
+        output = event.data.get("output")
+        if event.type == "agent.completed" and event.data.get("agent") == agent and isinstance(output, dict):
+            return cast(dict[str, Any], output)
+    raise ValueError(f"No completed output recorded for `{agent}`")

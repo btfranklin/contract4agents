@@ -35,6 +35,8 @@ The example source files are:
 - `evals/multi_lens_research.eval`: expected behavior for the staged-rollout
   scenario.
 - `monitors/research.monitors.contract`: approval-sensitive monitor rule.
+- `run_specs/research_run.contract`: post-run checks for stage order and the
+  final citation invariant.
 - `data/seed.py`: local fake data setup.
 
 The Python files in `../multi_lens_research_imports/` are deterministic fake
@@ -51,6 +53,11 @@ Then read `evals/multi_lens_research.eval`. It shows what the example considers
 successful: the final output must conform to `ResearchBrief`, discover the
 hidden conclusion, call the specialist agents, use source and citation tools, and
 avoid unapproved expert review.
+
+Then read `run_specs/research_run.contract`. It shows the advanced run-level
+contract: after host orchestration finishes, every final citation ID must be
+backed by an ID that came from the evidence map. The harness prepares those
+derived ID lists in Python and passes them to `evaluate_run_spec(...)`.
 
 ## How The Files Fit Together
 
@@ -73,6 +80,12 @@ specialist outputs that host orchestration passes between child agents.
 `contract4agents.registry.json` maps the fake source, evidence, citation, and
 expert-review tools to importable Python callables and marks those host-provided
 intermediate values.
+
+`MultiLensResearchRun` is a post-run spec. It validates that the evidence and
+counterargument stages precede the final brief and that
+`value.final_citation_ids subset_of value.evidence_source_ids`. Filtering and
+flattening stay in the host harness; the contract only verifies the supplied
+derived values.
 
 ## Run It
 
@@ -105,6 +118,8 @@ After `compile`, inspect:
 - `instructions/ResearchDirector.md`: generated instructions for the director.
 - `evals/evals.json`: compiled eval expectations.
 - `monitors/monitors.json`: compiled monitor rules.
+- `run-specs/run-specs.json`: compiled run spec for post-run stage and
+  citation-invariant checks.
 - `guards/guard-plan.json`: guard enforcement metadata.
 - `adapters/capability-matrix.json`: adapter support notes.
 - `docs/summary.md` and `docs/agents/*.md`: generated review docs.

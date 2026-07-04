@@ -1,0 +1,14 @@
+run_spec MultiLensResearchRun:
+    stages = [
+        evidence: EvidenceMapper -> EvidenceMap,
+        technical: TechnicalLensAnalyst -> TechnicalAssessment,
+        policy_safety: PolicySafetyLensAnalyst -> PolicySafetyAssessment,
+        counterarguments: CounterargumentAnalyst -> CounterargumentSet,
+        final_brief: ResearchDirector -> ResearchBrief,
+    ]
+
+    assertions = [
+        expect(trace.called_before(EvidenceMapper, ResearchDirector)),
+        expect(trace.called_before(CounterargumentAnalyst, ResearchDirector)),
+        expect(value.final_citation_ids subset_of value.evidence_source_ids),
+    ]

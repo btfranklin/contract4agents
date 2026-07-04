@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 from click.testing import CliRunner
 
+from contract4agents.assertions import evaluate_run_spec
 from contract4agents.cli import main
 from contract4agents.compiler import CompilerArtifacts, compile_project
 from contract4agents.evaluation import EvalRunner
@@ -23,6 +24,7 @@ from examples.multi_lens_research_imports.harness import (
     load_hidden_truth as load_multi_lens_hidden_truth,
 )
 from examples.multi_lens_research_imports.harness import (
+    multi_lens_research_run_spec_inputs,
     run_multi_lens_research_harness_sync,
     seed_multi_lens_research,
 )
@@ -68,9 +70,18 @@ def test_multi_lens_research_local_end_to_end(tmp_path: Path) -> None:
     hidden_truth = load_multi_lens_hidden_truth(db_path)
 
     result = asyncio.run(_evaluate_first_case(artifacts, output, trace, hidden_truth))
+    stage_outputs, derived_values = multi_lens_research_run_spec_inputs(output, trace)
+    run_spec_result = evaluate_run_spec(
+        contract=artifacts,
+        run_spec="MultiLensResearchRun",
+        trace=trace,
+        stage_outputs=stage_outputs,
+        derived_values=derived_values,
+    )
 
     assert result.passed
     assert result.skipped_semantic
+    assert run_spec_result.passed
 
 
 def test_multi_lens_research_monitor_catches_unapproved_expert_review() -> None:
