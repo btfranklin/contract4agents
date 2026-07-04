@@ -1,23 +1,18 @@
 # Using Contract4Agents With An Agent App
 
-This tutorial is for an engineer who already has, or is about to build, an
-agent team in an SDK such as the OpenAI Agents SDK.
+This guide is for an engineer who already has one Contract4Agents project
+compiling and now wants to wire the artifacts beside an agent SDK such as the
+OpenAI Agents SDK.
 
 Contract4Agents does not replace your SDK. It gives you a typed, reviewable
 source of truth for the agent team, then compiles that source into artifacts your
 SDK integration can consume: instructions, manifests, JSON Schemas, eval packs,
 monitor rules, run specs, and visualization files.
 
-You do not need to understand the whole language before trying it. The smallest
-useful loop is:
-
-1. describe one agent's input and output;
-2. write that agent's contract;
-3. add one eval that describes a run you care about;
-4. compile and inspect the generated artifacts.
-
-This tutorial walks through that loop first, then shows where the generated
-artifacts fit beside an SDK implementation.
+If you have not written a contract yet, start with
+[First Contract Project](first-contract-project.md). This guide assumes you can
+already run `contract4agents check agent_contracts` and
+`contract4agents compile agent_contracts --out .contract/build`.
 
 ## The Mental Model
 
@@ -62,10 +57,11 @@ The definitive language docs are:
 - [Grammar Reference](../reference/grammar.md): the implemented V1 syntax
   surface.
 
-Read this tutorial first if you want the practical path. Use the language docs
-when you want to know exactly what syntax is allowed.
+Use the language docs when you want to know exactly what syntax is allowed. Use
+this guide when you need to decide how compiled artifacts fit into application
+startup, SDK construction, CI, traces, assertions, and monitors.
 
-## Where To Put The Files
+## Project Layout Recap
 
 Put a Contract4Agents project inside the same repo as your agent app, in a
 stable directory that can be checked by CI.
@@ -114,92 +110,15 @@ artifacts, including `check`, `compile`, `visualize`, `eval`, and `monitor`.
 
 Keep `.contract/` ignored. It is generated output.
 
-## What To Write
+## What To Add After The First Contract
 
-Start with three small sets of files.
+Once one agent compiles, expand the contract project deliberately:
 
-First, write types. Types are the vocabulary of the contract. They define the
-structured values your SDK code will pass into an agent and the structured value
-the agent should return.
-
-```contract
-type SupportRequest:
-    account_id: str
-    message: str
-
-type SupportReply:
-    route: str
-    answer: str
-    evidence: str[]
-```
-
-Then write one agent. An agent contract is not an implementation. It is the
-callable boundary and behavior contract for something your SDK implementation
-will run.
-
-```contract
-agent SupportCoordinator(
-    request: SupportRequest
-) -> SupportReply:
-
-    use agent BillingSpecialist from ./billing_specialist
-    use tool crm.create_note from tools.crm requires approval
-    use hosted_tool openai.web_search context_size "medium"
-
-    goal = "Route the support request and produce a source-backed reply."
-
-    policy = [
-        "delegate billing questions to BillingSpecialist",
-        "do not write CRM notes without approval",
-        "do not invent account facts",
-    ]
-
-    guards = [
-        require(output conforms SupportReply),
-        forbid(tool.crm.create_note unless approved_by_human),
-    ]
-
-    assertions = [
-        expect(output conforms SupportReply),
-        expect(output.answer excludes unsupported_customer_fact),
-    ]
-```
-
-The contract says:
-
-- this agent receives a `SupportRequest`;
-- it must return a `SupportReply`;
-- it may call `BillingSpecialist`;
-- it has one approval-sensitive CRM tool;
-- it should not invent unsupported account facts.
-
-You can stop here and run `check` and `compile`. That is already useful: you get
-schemas, instructions, manifests, and a review graph.
-
-Next, add an eval. Evals are not unit tests for Python functions. They are
-scenario expectations for an agent run: what the output should look like and
-what should appear in the trace.
-
-```contract
-eval duplicate_charge for SupportCoordinator:
-    given request = SupportRequest.fixture("duplicate_charge")
-
-    expect output conforms SupportReply
-    expect trace.agent_called(BillingSpecialist)
-    expect trace.not_called(crm.create_note)
-    expect semantic(output, "The reply is helpful and supported by evidence.")
-```
-
-Finally, add a monitor for behavior you never want to miss in a trace. Monitors
-are useful when a final answer looks fine, but the agent did something risky
-along the way.
-
-```contract
-monitor crm_note_requires_approval for SupportCoordinator:
-    severity = "high"
-    when trace.approval_requested("crm.create_note")
-    expect trace.approval_granted("crm.create_note")
-```
+1. Add one `.eval` for a controlled run you care about.
+2. Add only the host tools, hosted provider tools, subagents, and datasources the agent really needs.
+3. Add guards and assertions for output conformance, approval-sensitive actions, and behavior your host app can verify.
+4. Add monitors when you have normalized traces from real or staged runs.
+5. Add run specs only when a host-owned multi-stage workflow needs stage-output and trace expectations.
 
 The eval and monitor expression vocabulary is intentionally small. When you need
 the exact list of supported `output...` and `trace...` expressions, use the

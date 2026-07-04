@@ -4,6 +4,7 @@ This repository is the design and implementation home for Contract4Agents, a typ
 
 ## Repo Map
 
+- `README.md` is the public/user front door; this file is the coding-agent operating map.
 - Start with `VISION.md` for the product and architecture intent.
 - Use `docs/index.md` as the documentation entry point.
 - Language syntax and semantics live in `docs/language/contract-language.md`.

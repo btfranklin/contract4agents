@@ -8,7 +8,9 @@ For product intent:
 
 - Read `../VISION.md`.
 - Then read `architecture/system-design.md`.
-- For a practical adoption path, read
+- For the smallest practical adoption path, read
+  `tutorials/first-contract-project.md`.
+- For the deeper SDK integration guide, read
   `tutorials/using-contract4agents-with-an-agent-app.md`.
 - To understand the project from a concrete example, read
   `../examples/incident-command/README.md`.
@@ -48,7 +50,8 @@ For project planning:
 - `compiler/compiler-outputs.md`: compiler phases, generated artifacts, diagnostics, and static checks.
 - `evaluation/evals-assertions-monitors.md`: `.eval` files, trace spies, assertions, guards, and monitor rules.
 - `quality/validation.md`: local validation commands, packaging checks, release pipeline, generated artifacts, and live-test boundaries.
-- `tutorials/using-contract4agents-with-an-agent-app.md`: practical tutorial for using Contract4Agents beside an existing agent SDK implementation.
+- `tutorials/first-contract-project.md`: shortest path from one existing agent to one compiled contract project.
+- `tutorials/using-contract4agents-with-an-agent-app.md`: deeper guide for using Contract4Agents beside an existing agent SDK implementation.
 - `reference/grammar.md`: implemented V1 grammar surface.
 - `reference/manifest.md`: provider-neutral manifest reference.
 - `reference/capability-registry.md`: source-owned capability registry and strict drift checks.

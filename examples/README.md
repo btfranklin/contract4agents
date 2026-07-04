@@ -1,8 +1,9 @@
 # Examples
 
-Examples are the best first place to understand Contract4Agents. Each example is
-a small contract project that shows what a user writes, what the tool checks, and
-what generated artifacts mean.
+Examples are the best next place to understand Contract4Agents after the
+[first-contract tutorial](../docs/tutorials/first-contract-project.md). Each
+example is a small contract project that shows what a user writes, what the tool
+checks, and what generated artifacts mean.
 
 Examples are repository learning material. They are not included in the installed
 Python package.
@@ -21,7 +22,8 @@ Python package.
   customer-signal analysis, an OpenAI hosted web-search declaration, evals, and
   monitors.
 
-Start with [incident-command/README.md](incident-command/README.md).
+Start with [incident-command/README.md](incident-command/README.md) for the first
+complete offline example.
 
 ## What Users Write
 
