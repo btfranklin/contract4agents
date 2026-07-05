@@ -4,6 +4,7 @@
   "description": "Syntax highlighting for Contract4Agents .contract and .eval files.",
   "version": "0.0.0",
   "publisher": "btfranklin",
+  "author": "B.T. Franklin",
   "icon": "media/icon.png",
   "license": "MIT",
   "repository": {
