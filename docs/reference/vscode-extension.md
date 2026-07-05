@@ -24,6 +24,7 @@ The extension source lives in `editors/vscode` from the repository root.
 
 ```bash
 npm --prefix editors/vscode ci
+npm --prefix editors/vscode test
 npm --prefix editors/vscode run package
 code --install-extension editors/vscode/dist/contract4agents-vscode-*.vsix
 ```

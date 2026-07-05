@@ -10,10 +10,10 @@
       "include": "#strings"
     },
     {
-      "include": "#scalar-values"
+      "include": "#list-values"
     },
     {
-      "include": "#list-values"
+      "include": "#scalar-values"
     },
     {
       "include": "#declarations"
@@ -55,7 +55,7 @@
       "patterns": [
         {
           "name": "meta.assignment.scalar.prose.contract4agents",
-          "match": "^\\s*(goal|description)(\\s*=\\s*)([^\"\\[#\\n][^#\\n]*?)(?=\\s*(?:#|$))",
+          "match": "^\\s*(goal|description)(\\s*=\\s*)(?!\\s*\\[)([^\"\\[#\\n][^#\\n]*?)(?=\\s*(?:#|$))",
           "captures": {
             "1": {
               "name": "variable.other.assignment.contract4agents"
@@ -85,7 +85,7 @@
         },
         {
           "name": "meta.assignment.scalar.enum.contract4agents",
-          "match": "^\\s*(render|cache|severity)(\\s*=\\s*)([^\"\\[#\\n][^#\\n]*?)(?=\\s*(?:#|$))",
+          "match": "^\\s*(render|cache|severity)(\\s*=\\s*)(?!\\s*\\[)([^\"\\[#\\n][^#\\n]*?)(?=\\s*(?:#|$))",
           "captures": {
             "1": {
               "name": "variable.other.assignment.contract4agents"
@@ -100,7 +100,7 @@
         },
         {
           "name": "meta.assignment.scalar.source.contract4agents",
-          "match": "^\\s*(python)(\\s*=\\s*)([^\"\\[#\\n][^#\\n]*?)(?=\\s*(?:#|$))",
+          "match": "^\\s*(python)(\\s*=\\s*)(?!\\s*\\[)([^\"\\[#\\n][^#\\n]*?)(?=\\s*(?:#|$))",
           "captures": {
             "1": {
               "name": "variable.other.assignment.contract4agents"
@@ -115,7 +115,7 @@
         },
         {
           "name": "meta.assignment.scalar.contract4agents",
-          "match": "^\\s*([A-Za-z_][A-Za-z0-9_]*)(\\s*=\\s*)([^\"\\[#\\n][^#\\n]*?)(?=\\s*(?:#|$))",
+          "match": "^\\s*([A-Za-z_][A-Za-z0-9_]*)(\\s*=\\s*)(?!\\s*\\[)([^\"\\[#\\n][^#\\n]*?)(?=\\s*(?:#|$))",
           "captures": {
             "1": {
               "name": "variable.other.assignment.contract4agents"

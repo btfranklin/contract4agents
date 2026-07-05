@@ -38,6 +38,7 @@ Run the VS Code extension package gate when changing `editors/vscode`,
 
 ```bash
 npm --prefix editors/vscode ci
+npm --prefix editors/vscode test
 npm --prefix editors/vscode run package
 ```
 

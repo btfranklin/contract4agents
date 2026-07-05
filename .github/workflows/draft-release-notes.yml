@@ -41,6 +41,8 @@ jobs:
               run: npm version --no-git-tag-version "${{ steps.extension-version.outputs.version }}"
             - name: Install VS Code extension dependencies
               run: npm ci --prefix editors/vscode
+            - name: Test VS Code extension grammar scopes
+              run: npm test --prefix editors/vscode
             - name: Package VS Code extension
               run: npm run package --prefix editors/vscode
             - name: Upload VSIX release asset

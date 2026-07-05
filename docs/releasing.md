@@ -12,6 +12,7 @@ Run the canonical local validation and build before tagging:
 pdm run validate
 pdm build
 npm --prefix editors/vscode ci
+npm --prefix editors/vscode test
 npm --prefix editors/vscode run package
 ```
 
