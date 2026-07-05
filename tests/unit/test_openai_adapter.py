@@ -28,6 +28,7 @@ from contract4agents.runtime import ContextValue, RuntimeContext
 from tests.fixtures.pydantic_models import ResearchSummaryModel
 
 ROOT = Path(__file__).resolve().parents[2]
+HOSTED_TOOL_AGENT_CONFIGS = ROOT / "tests" / "fixtures" / "contract_projects" / "hosted-tool-agent-configs"
 PYDANTIC_FIXTURE = ROOT / "tests" / "fixtures" / "contract_projects" / "pydantic-model-interop"
 
 
@@ -261,6 +262,49 @@ def test_openai_agent_factory_builds_enabled_openai_web_search(monkeypatch: pyte
     hosted_tool = result.agents["ParentAgent"].kwargs["tools"][0]
     assert hosted_tool.kwargs == {"search_context_size": "medium"}
     assert result.plan.agents["ParentAgent"].hosted_tools[0].config == {"context_size": "medium"}
+
+
+def test_openai_agent_factory_uses_each_manifest_hosted_tool_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_fake_agents_module(monkeypatch)
+
+    result = build_openai_agents_from_contracts(
+        compile_project(HOSTED_TOOL_AGENT_CONFIGS),
+        output_type_registry={
+            "ResearchAgenda": dict,
+            "SectionResearchBrief": dict,
+            "SynthesisBrief": dict,
+            "VerificationReport": dict,
+        },
+        model_registry={
+            "ResearchManagerAgent": "test-model",
+            "SectionResearchAgent": "test-model",
+            "SynthesisAgent": "test-model",
+            "VerifierAgent": "test-model",
+        },
+        hosted_tool_registry={"openai.web_search": True},
+    )
+
+    assert {
+        agent_name: agent_plan.hosted_tools[0].config
+        for agent_name, agent_plan in result.plan.agents.items()
+        if agent_plan.hosted_tools
+    } == {
+        "ResearchManagerAgent": {"context_size": "medium"},
+        "SectionResearchAgent": {"context_size": "high"},
+        "VerifierAgent": {"context_size": "medium"},
+    }
+    assert {
+        agent_name: agent.kwargs["tools"][0].kwargs
+        for agent_name, agent in result.agents.items()
+        if agent.kwargs["tools"]
+    } == {
+        "ResearchManagerAgent": {"search_context_size": "medium"},
+        "SectionResearchAgent": {"search_context_size": "high"},
+        "VerifierAgent": {"search_context_size": "medium"},
+    }
+    assert result.agents["SynthesisAgent"].kwargs["tools"] == []
 
 
 def test_openai_agent_factory_omits_denied_hosted_tool(monkeypatch: pytest.MonkeyPatch) -> None:

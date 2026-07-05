@@ -74,6 +74,24 @@ def _validate_hosted_tool_entry(section: str, name: str, value: Any) -> list[Dia
     config = value.get("config", {})
     if not isinstance(config, dict) or any(not isinstance(k, str) or not isinstance(v, str) for k, v in config.items()):
         diagnostics.append(_invalid_entry(section, name, "`config` must be an object of string values"))
+    agent_configs = value.get("agent_configs", {})
+    if not isinstance(agent_configs, dict):
+        diagnostics.append(_invalid_entry(section, name, "`agent_configs` must be an object"))
+    else:
+        for agent_name, agent_config in agent_configs.items():
+            if not isinstance(agent_name, str) or not agent_name:
+                diagnostics.append(_invalid_entry(section, name, "`agent_configs` keys must be non-empty agent names"))
+                continue
+            if not isinstance(agent_config, dict) or any(
+                not isinstance(k, str) or not isinstance(v, str) for k, v in agent_config.items()
+            ):
+                diagnostics.append(
+                    _invalid_entry(
+                        section,
+                        name,
+                        f"`agent_configs.{agent_name}` must be an object of string values",
+                    )
+                )
     factory = value.get("factory")
     if factory is not None and not _valid_python_ref(factory):
         diagnostics.append(_invalid_entry(section, name, "`factory` must use `module:object` syntax"))

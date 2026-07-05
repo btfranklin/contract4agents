@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from pydantic import BaseModel
@@ -80,7 +81,7 @@ def _check_hosted_tools(
     registry: CapabilityRegistry,
 ) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
-    expected_hosted_tools = _manifest_hosted_tool_permissions(artifacts)
+    expected_hosted_tools = _manifest_hosted_tool_groups(artifacts)
     for stale_name in sorted(set(registry.hosted_tools) - set(expected_hosted_tools)):
         diagnostics.append(
             Diagnostic(
@@ -99,30 +100,40 @@ def _check_hosted_tools(
                 )
             )
             continue
-        expected = {
-            "provider": expected_item["provider"],
-            "tool": expected_item["tool"],
-            "config": expected_item["config"],
-        }
-        actual = {
-            "provider": entry["provider"],
-            "tool": entry["tool"],
-            "config": entry.get("config", {}),
-        }
-        if actual != expected:
-            diagnostics.append(
-                Diagnostic(
-                    "CAP060",
-                    f"Hosted tool `{name}` in `{registry.path}` does not match the contract declaration",
-                    hint=f"Expected {expected}; registry has {actual}.",
+        for expected_declaration in expected_item["declarations"]:
+            agent_name = expected_declaration["agent"]
+            expected = {
+                "provider": expected_declaration["provider"],
+                "tool": expected_declaration["tool"],
+                "config": expected_declaration["config"],
+            }
+            actual = {
+                "provider": entry["provider"],
+                "tool": entry["tool"],
+                "config": _effective_hosted_tool_config(entry, agent_name),
+            }
+            if actual != expected:
+                diagnostics.append(
+                    Diagnostic(
+                        "CAP060",
+                        f"Hosted tool `{name}` for agent `{agent_name}` in `{registry.path}` "
+                        "does not match the contract declaration",
+                        hint=f"Expected {expected}; registry has {actual}.",
+                    )
                 )
-            )
         diagnostics.extend(
             _check_permissions(
                 "hosted tool",
                 name,
                 expected_item["permissions"],
                 entry.get("permissions", {}),
+            )
+        )
+        diagnostics.extend(
+            _check_hosted_tool_agent_configs(
+                name,
+                expected_item["permissions"],
+                entry.get("agent_configs", {}),
             )
         )
         factory = entry.get("factory")
@@ -332,6 +343,34 @@ def _check_permissions(
     return diagnostics
 
 
+def _check_hosted_tool_agent_configs(
+    name: str,
+    expected_permissions: dict[str, str],
+    actual: Any,
+) -> list[Diagnostic]:
+    if not isinstance(actual, dict):
+        return []
+    diagnostics: list[Diagnostic] = []
+    for stale_agent in sorted(set(actual) - set(expected_permissions)):
+        diagnostics.append(
+            Diagnostic(
+                "CAP090",
+                f"Hosted tool `{name}` registry agent_configs entry for `{stale_agent}` "
+                "does not match any contract declaration",
+                hint=f"Remove `hosted_tools.{name}.agent_configs.{stale_agent}` "
+                f"or declare `{name}` on `{stale_agent}`.",
+            )
+        )
+    return diagnostics
+
+
+def _effective_hosted_tool_config(entry: Mapping[str, Any], agent_name: str) -> dict[str, str]:
+    agent_configs = entry.get("agent_configs", {})
+    if isinstance(agent_configs, dict) and agent_name in agent_configs:
+        return dict(agent_configs[agent_name])
+    return dict(entry.get("config", {}))
+
+
 def _manifest_tool_permissions(artifacts: CompilerArtifacts) -> dict[str, dict[str, str]]:
     permissions: dict[str, dict[str, str]] = {}
     for tool in _manifest_tools(artifacts):
@@ -339,19 +378,18 @@ def _manifest_tool_permissions(artifacts: CompilerArtifacts) -> dict[str, dict[s
     return permissions
 
 
-def _manifest_hosted_tool_permissions(artifacts: CompilerArtifacts) -> dict[str, dict[str, Any]]:
+def _manifest_hosted_tool_groups(artifacts: CompilerArtifacts) -> dict[str, dict[str, Any]]:
     hosted_tools: dict[str, dict[str, Any]] = {}
     for hosted_tool in _manifest_hosted_tools(artifacts):
         name = hosted_tool["name"]
         item = hosted_tools.setdefault(
             name,
             {
-                "provider": hosted_tool["provider"],
-                "tool": hosted_tool["tool"],
-                "config": hosted_tool["config"],
+                "declarations": [],
                 "permissions": {},
             },
         )
+        item["declarations"].append(hosted_tool)
         item["permissions"][hosted_tool["agent"]] = hosted_tool["permission"]
     return hosted_tools
 

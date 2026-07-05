@@ -38,6 +38,9 @@ from `ROOT`.
       "provider": "openai",
       "tool": "web_search",
       "config": {"context_size": "medium"},
+      "agent_configs": {
+        "SupportCoordinator": {"context_size": "high"}
+      },
       "permissions": {
         "SupportCoordinator": "available"
       }
@@ -69,6 +72,21 @@ Every section is a map. Empty section maps are valid. Tool and hosted-tool
 entries use agent-scoped `permissions` maps because the same capability can be
 declared by different agents with different permission states.
 
+Hosted-tool `config` is the default config for every declaring agent.
+`agent_configs` can override that default for one declaring agent without
+creating a fake hosted-tool name:
+
+```text
+effective_config(agent, hosted_tool) =
+  hosted_tools[name].agent_configs[agent]
+  else hosted_tools[name].config
+  else {}
+```
+
+`agent_configs` is additive to `permissions`; it does not make the hosted tool
+available to an agent. The agent must still declare the hosted tool in contract
+source and appear in the hosted-tool `permissions` map.
+
 ## Strict Drift Checks
 
 `--strict-drift` checks these surfaces:
@@ -77,8 +95,10 @@ declared by different agents with different permission states.
 - local tool refs import and point at callables;
 - explicitly host-owned tools use `external: true`;
 - every declared agent/tool permission pair has a matching registry permission;
-- stale tool, hosted-tool, agent, and per-agent permission entries are rejected;
-- hosted-tool provider, tool, config, and permissions match the contract;
+- stale tool, hosted-tool, agent, per-agent permission, and per-agent
+  hosted-tool config entries are rejected;
+- hosted-tool provider, tool, effective config, and permissions match each
+  agent's contract declaration;
 - registered agent names match contract agent names, and factory refs import;
 - Python-backed agent output types are registered;
 - registered output types import Pydantic v2 `BaseModel` classes whose required

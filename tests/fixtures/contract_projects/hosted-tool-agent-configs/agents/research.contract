@@ -1,0 +1,14 @@
+agent ResearchManagerAgent() -> ResearchAgenda:
+    goal = "Plan current-source research."
+    use hosted_tool openai.web_search context_size "medium"
+
+agent SectionResearchAgent() -> SectionResearchBrief:
+    goal = "Research one section with high context."
+    use hosted_tool openai.web_search context_size "high"
+
+agent VerifierAgent() -> VerificationReport:
+    goal = "Verify claims against current sources."
+    use hosted_tool openai.web_search context_size "medium"
+
+agent SynthesisAgent() -> SynthesisBrief:
+    goal = "Synthesize verified section research without web search."

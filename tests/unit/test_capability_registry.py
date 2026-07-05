@@ -18,6 +18,7 @@ from contract4agents.parser import parse_project
 
 ROOT = Path(__file__).resolve().parents[2]
 HOST_DRIFT = ROOT / "tests" / "fixtures" / "contract_projects" / "host-drift"
+HOSTED_TOOL_AGENT_CONFIGS = ROOT / "tests" / "fixtures" / "contract_projects" / "hosted-tool-agent-configs"
 PYDANTIC_INTEROP = ROOT / "tests" / "fixtures" / "contract_projects" / "pydantic-model-interop"
 
 
@@ -33,6 +34,21 @@ def test_capability_registry_reports_malformed_registry(tmp_path: Path) -> None:
 
     assert _codes(load.diagnostics) == ["CAP001"]
     assert "section `tools`" in load.diagnostics[0].message
+
+
+def test_capability_registry_rejects_malformed_hosted_tool_agent_configs(tmp_path: Path) -> None:
+    project = _copy_hosted_tool_agent_configs(tmp_path)
+    _mutate_registry(
+        project,
+        lambda data: data["hosted_tools"]["openai.web_search"].update(
+            {"agent_configs": {"SectionResearchAgent": {"context_size": 42}}}
+        ),
+    )
+
+    load = load_capability_registry(project, required=True)
+
+    assert _codes(load.diagnostics) == ["CAP001"]
+    assert "agent_configs.SectionResearchAgent" in load.diagnostics[0].message
 
 
 def test_capability_registry_rejects_v1_registry_shape(tmp_path: Path) -> None:
@@ -197,6 +213,47 @@ def test_capability_registry_reports_hosted_tool_drift(tmp_path: Path) -> None:
     assert "openai.web_search" in diagnostics[0].message
 
 
+def test_capability_registry_allows_per_agent_hosted_tool_configs() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(main, ["check", str(HOSTED_TOOL_AGENT_CONFIGS), "--strict-drift"])
+
+    assert result.exit_code == 0
+    assert "passed" in result.output
+
+
+def test_capability_registry_reports_per_agent_hosted_tool_config_drift(tmp_path: Path) -> None:
+    project = _copy_hosted_tool_agent_configs(tmp_path)
+    _mutate_registry(
+        project,
+        lambda data: data["hosted_tools"]["openai.web_search"]["agent_configs"]["SectionResearchAgent"].update(
+            {"context_size": "medium"}
+        ),
+    )
+
+    diagnostics = _strict_diagnostics(project)
+
+    assert _codes(diagnostics) == ["CAP060"]
+    assert "openai.web_search" in diagnostics[0].message
+    assert "SectionResearchAgent" in diagnostics[0].message
+
+
+def test_capability_registry_reports_stale_hosted_tool_agent_config(tmp_path: Path) -> None:
+    project = _copy_hosted_tool_agent_configs(tmp_path)
+    _mutate_registry(
+        project,
+        lambda data: data["hosted_tools"]["openai.web_search"]["agent_configs"].update(
+            {"StaleAgent": {"context_size": "high"}}
+        ),
+    )
+
+    diagnostics = _strict_diagnostics(project)
+
+    assert _codes(diagnostics) == ["CAP090"]
+    assert "agent_configs" in diagnostics[0].message
+    assert "StaleAgent" in diagnostics[0].message
+
+
 def test_capability_registry_reports_hosted_tool_permission_mismatch(tmp_path: Path) -> None:
     project = _copy_host_drift(tmp_path)
     _mutate_registry(
@@ -326,6 +383,12 @@ def _strict_diagnostics(project: Path, allow_python_imports: bool = False) -> li
 def _copy_host_drift(tmp_path: Path) -> Path:
     project = tmp_path / "host-drift"
     shutil.copytree(HOST_DRIFT, project)
+    return project
+
+
+def _copy_hosted_tool_agent_configs(tmp_path: Path) -> Path:
+    project = tmp_path / "hosted-tool-agent-configs"
+    shutil.copytree(HOSTED_TOOL_AGENT_CONFIGS, project)
     return project
 
 

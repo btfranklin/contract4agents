@@ -100,9 +100,10 @@ manifest declarations against explicit host surfaces:
 - Python tool refs import and are callable, unless marked `external: true`.
 - Tool and hosted-tool permissions match the manifest for every declaring
   agent.
-- Hosted-tool provider, tool, and config match the manifest.
-- Stale tool, hosted-tool, agent, and per-agent permission registry entries are
-  rejected.
+- Hosted-tool provider, tool, and effective per-agent config match each
+  declaring agent's manifest.
+- Stale tool, hosted-tool, agent, per-agent permission, and per-agent
+  hosted-tool config registry entries are rejected.
 - Registered agent names and factory imports match contract agent declarations.
 - Python-backed agent output types are registered, and registered Pydantic output
   classes match contract output schemas.
@@ -277,8 +278,8 @@ The compiler currently fails on:
 
 With `contract4agents check --strict-drift`, project checks also fail on missing
 capability registry entries, unresolved registry Python refs, permission drift,
-hosted-tool config drift, agent-name drift, registered Pydantic output-type
-drift, prompt asset drift, and unmarked host-provided context.
+per-agent hosted-tool config drift, agent-name drift, registered Pydantic
+output-type drift, prompt asset drift, and unmarked host-provided context.
 
 The compiler can warn on:
 
