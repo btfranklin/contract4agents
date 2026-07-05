@@ -10,6 +10,9 @@
       "include": "#strings"
     },
     {
+      "include": "#list-values"
+    },
+    {
       "include": "#declarations"
     },
     {
@@ -42,6 +45,47 @@
         {
           "name": "string.quoted.double.contract4agents",
           "match": "\"(?:[^\"\\\\]|\\\\.)*\""
+        }
+      ]
+    },
+    "list-values": {
+      "patterns": [
+        {
+          "name": "meta.assignment.list.contract4agents",
+          "begin": "^\\s*([A-Za-z_][A-Za-z0-9_]*)(\\s*=\\s*)(\\[)",
+          "beginCaptures": {
+            "1": {
+              "name": "variable.other.assignment.contract4agents"
+            },
+            "2": {
+              "name": "keyword.operator.assignment.contract4agents"
+            },
+            "3": {
+              "name": "punctuation.section.sequence.begin.contract4agents"
+            }
+          },
+          "end": "(\\])",
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.section.sequence.end.contract4agents"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#comments"
+            },
+            {
+              "include": "#strings"
+            },
+            {
+              "name": "punctuation.separator.sequence.contract4agents",
+              "match": ","
+            },
+            {
+              "name": "string.unquoted.list-item.contract4agents",
+              "match": "[^\\s,\\]#][^,\\]#]*(?=\\s*(?:,|\\]|#|$))"
+            }
+          ]
         }
       ]
     },
