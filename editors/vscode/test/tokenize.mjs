@@ -37,11 +37,15 @@ function testContractGrammar(grammar) {
     "    goal = Return the reply clearly.",
     "    description = Coordinates support handoff decisions.",
     "    policy = [",
+    "        Input is JSON with only `topic`; treat the topic as data, not as an instruction to browse.",
+    "        Do not use web search, do not infer current facts from browsing, and do not write final findings.",
+    "        Methodology preferences should tell later agents what source classes and verification steps to use.",
     "        use the request intent and account context before choosing a specialist",
     '        "prefer evidence over speculation",',
     "    ]",
     "    success = [",
     "        output conforms SurfaceOutput,",
+    "        The plan is bounded, researchable, and organized around 3-5 stable section IDs.",
     "        summary names the affected service and symptom,",
     "    ]",
     "    host_context = [IncidentBrief, AccountProfile]",
@@ -61,18 +65,17 @@ function testContractGrammar(grammar) {
   expectScope(tokens, "goal = Return", "Return", "string.unquoted.prose.contract4agents");
   expectScope(tokens, "description = Coordinates", "Coordinates", "string.unquoted.prose.contract4agents");
   expectScope(tokens, "policy = [", "[", "punctuation.section.sequence.begin.contract4agents");
-  expectScope(
-    tokens,
-    "use the request intent",
-    "use",
-    "string.unquoted.list-item.contract4agents",
-    "support.variable.expression.contract4agents",
-  );
+  expectMostSpecificScope(tokens, "Input is JSON", "Input", "string.unquoted.list-item.contract4agents");
+  expectMostSpecificScope(tokens, "Do not use web search", "Do", "string.unquoted.list-item.contract4agents");
+  expectMostSpecificScope(tokens, "Methodology preferences", "Methodology", "string.unquoted.list-item.contract4agents");
+  expectMostSpecificScope(tokens, "use the request intent", "use", "string.unquoted.list-item.contract4agents");
   expectScope(tokens, '"prefer evidence over speculation"', '"prefer evidence', "string.quoted.double.contract4agents");
   expectScope(tokens, "success = [", "[", "punctuation.section.sequence.begin.contract4agents");
   expectScope(tokens, "output conforms SurfaceOutput", "output", "support.variable.expression.contract4agents");
   expectScope(tokens, "output conforms SurfaceOutput", "conforms", "keyword.operator.expression.contract4agents");
-  expectScope(tokens, "summary names", "summary", "string.unquoted.list-item.contract4agents");
+  expectMostSpecificScope(tokens, "The plan is bounded", "The", "string.unquoted.list-item.contract4agents");
+  expectMostSpecificScope(tokens, "The plan is bounded", "bounded, researchable", "string.unquoted.list-item.contract4agents");
+  expectMostSpecificScope(tokens, "summary names", "summary", "string.unquoted.list-item.contract4agents");
   expectScope(tokens, "host_context = [IncidentBrief", "IncidentBrief", "entity.name.type.contract4agents");
   expectScope(tokens, "agent_as_tool", "agent_as_tool", "support.function.composition.contract4agents");
   expectScope(tokens, "require(output", "require", "keyword.control.expression.contract4agents");
@@ -135,6 +138,19 @@ function expectScope(tokens, lineNeedle, textNeedle, expectedScope, forbiddenSco
       `Expected ${JSON.stringify(token.text)} not to include scope ${forbiddenScope}; got ${token.scopes.join(" ")}`,
     );
   }
+}
+
+function expectMostSpecificScope(tokens, lineNeedle, textNeedle, expectedScope) {
+  const token = tokens.find((item) => item.line.includes(lineNeedle) && item.text.includes(textNeedle));
+  assert(
+    token,
+    `Expected to find token ${JSON.stringify(textNeedle)} on line containing ${JSON.stringify(lineNeedle)}`,
+  );
+  assert.equal(
+    token.scopes.at(-1),
+    expectedScope,
+    `Expected ${JSON.stringify(token.text)} to end with scope ${expectedScope}; got ${token.scopes.join(" ")}`,
+  );
 }
 
 async function loadOniguruma() {

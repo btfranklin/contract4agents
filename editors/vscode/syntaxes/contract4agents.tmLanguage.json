@@ -278,22 +278,73 @@
               "include": "#strings"
             },
             {
+              "include": "#mixed-expression-block-item"
+            },
+            {
+              "include": "#mixed-expression-inline-item"
+            },
+            {
+              "include": "#mixed-prose-block-item"
+            },
+            {
               "include": "#list-punctuation"
             },
             {
-              "include": "#expressions"
-            },
-            {
-              "include": "#types"
-            },
-            {
-              "include": "#dotted-names"
-            },
-            {
-              "name": "string.unquoted.list-item.contract4agents",
-              "match": "[^\\s,\\]#][^,\\]#]*(?=\\s*(?:,|\\]|#|$))"
+              "include": "#mixed-prose-inline-item"
             }
           ]
+        }
+      ]
+    },
+    "mixed-expression-block-item": {
+      "patterns": [
+        {
+          "name": "meta.list.expression-item.contract4agents",
+          "begin": "^\\s*(?=(?:require|expect|forbid|when|semantic)\\b|(?:output|trace|tool|value|hidden_truth|input|intent)(?:\\.[A-Za-z_]|\\s*(?:conforms|contains|excludes|discovers|subset_of|contains_all|equals_set|intersects|disjoint_from|==|!=)))",
+          "end": "(?=\\s*,?\\s*(?:#|$))",
+          "patterns": [
+            {
+              "include": "#expression-content"
+            }
+          ]
+        }
+      ]
+    },
+    "mixed-expression-inline-item": {
+      "patterns": [
+        {
+          "name": "meta.list.expression-item.contract4agents",
+          "begin": "\\G\\s*(?=(?:require|expect|forbid|when|semantic)\\b|(?:output|trace|tool|value|hidden_truth|input|intent)(?:\\.[A-Za-z_]|\\s*(?:conforms|contains|excludes|discovers|subset_of|contains_all|equals_set|intersects|disjoint_from|==|!=)))",
+          "end": "(?=\\s*(?:,|\\]|#|$))",
+          "patterns": [
+            {
+              "include": "#expression-content"
+            }
+          ]
+        }
+      ]
+    },
+    "mixed-prose-block-item": {
+      "patterns": [
+        {
+          "name": "meta.list.prose-item.contract4agents",
+          "match": "^\\s*([^\\s\"\\]#][^\\]#]*?)(,)?\\s*(?=#|$)",
+          "captures": {
+            "1": {
+              "name": "string.unquoted.list-item.contract4agents"
+            },
+            "2": {
+              "name": "punctuation.separator.sequence.contract4agents"
+            }
+          }
+        }
+      ]
+    },
+    "mixed-prose-inline-item": {
+      "patterns": [
+        {
+          "name": "string.unquoted.list-item.contract4agents",
+          "match": "[^\\s,\\]#][^,\\]#]*(?=\\s*(?:,|\\]|#|$))"
         }
       ]
     },
