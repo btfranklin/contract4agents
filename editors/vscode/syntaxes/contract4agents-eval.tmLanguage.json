@@ -10,6 +10,9 @@
       "include": "#strings"
     },
     {
+      "include": "#given-values"
+    },
+    {
       "include": "#eval-declaration"
     },
     {
@@ -39,6 +42,55 @@
         {
           "name": "string.quoted.double.contract4agents-eval",
           "match": "\"(?:[^\"\\\\]|\\\\.)*\""
+        }
+      ]
+    },
+    "given-values": {
+      "patterns": [
+        {
+          "name": "meta.statement.given.fixture.contract4agents-eval",
+          "match": "^\\s*(given)\\s+([A-Za-z_][A-Za-z0-9_]*)(\\s*=\\s*)([A-Z][A-Za-z0-9_]*)(\\.)(fixture)(\\()",
+          "captures": {
+            "1": {
+              "name": "keyword.control.given.contract4agents-eval"
+            },
+            "2": {
+              "name": "variable.other.assignment.contract4agents-eval"
+            },
+            "3": {
+              "name": "keyword.operator.assignment.contract4agents-eval"
+            },
+            "4": {
+              "name": "entity.name.type.contract4agents-eval"
+            },
+            "5": {
+              "name": "punctuation.accessor.contract4agents-eval"
+            },
+            "6": {
+              "name": "support.function.fixture.contract4agents-eval"
+            },
+            "7": {
+              "name": "punctuation.section.group.begin.contract4agents-eval"
+            }
+          }
+        },
+        {
+          "name": "meta.statement.given.scalar.contract4agents-eval",
+          "match": "^\\s*(given)\\s+([A-Za-z_][A-Za-z0-9_]*)(\\s*=\\s*)([^\"#\\n][^#\\n]*?)(?=\\s*(?:#|$))",
+          "captures": {
+            "1": {
+              "name": "keyword.control.given.contract4agents-eval"
+            },
+            "2": {
+              "name": "variable.other.assignment.contract4agents-eval"
+            },
+            "3": {
+              "name": "keyword.operator.assignment.contract4agents-eval"
+            },
+            "4": {
+              "name": "string.unquoted.scalar.contract4agents-eval"
+            }
+          }
         }
       ]
     },
@@ -97,6 +149,36 @@
           "match": "\\b(expect|semantic)\\b"
         },
         {
+          "name": "meta.function.trace.contract4agents-eval",
+          "match": "\\b(trace)(\\.)(called|not_called|called_once|called_times|called_before|called_after|max_calls|not_tool_called_by|tool_called|hosted_tool_called|agent_called|datasource_resolved|approval_requested|approval_granted|approval_denied|guardrail_rejected|contains)\\b",
+          "captures": {
+            "1": {
+              "name": "support.variable.expression.contract4agents-eval"
+            },
+            "2": {
+              "name": "punctuation.accessor.contract4agents-eval"
+            },
+            "3": {
+              "name": "support.function.trace.contract4agents-eval"
+            }
+          }
+        },
+        {
+          "name": "meta.reference.expression.contract4agents-eval",
+          "match": "\\b(output|value|hidden_truth)(\\.)([A-Za-z_][A-Za-z0-9_]*)\\b",
+          "captures": {
+            "1": {
+              "name": "support.variable.expression.contract4agents-eval"
+            },
+            "2": {
+              "name": "punctuation.accessor.contract4agents-eval"
+            },
+            "3": {
+              "name": "variable.other.member.contract4agents-eval"
+            }
+          }
+        },
+        {
           "name": "support.variable.expression.contract4agents-eval",
           "match": "\\b(output|trace|value|hidden_truth)\\b"
         },
@@ -105,8 +187,16 @@
           "match": "\\b(conforms|contains|excludes|discovers|subset_of|contains_all|equals_set|intersects|disjoint_from)\\b|==|!="
         },
         {
-          "name": "support.function.trace.contract4agents-eval",
-          "match": "\\b(tool_called|agent_called|not_called|not_tool_called_by|approval_requested|approval_granted|called_before)\\b"
+          "name": "constant.language.boolean.contract4agents-eval",
+          "match": "\\b(true|false|null)\\b"
+        },
+        {
+          "name": "constant.numeric.integer.contract4agents-eval",
+          "match": "\\b[0-9]+\\b"
+        },
+        {
+          "name": "punctuation.accessor.contract4agents-eval",
+          "match": "\\."
         },
         {
           "name": "support.function.fixture.contract4agents-eval",
@@ -116,6 +206,10 @@
     },
     "types": {
       "patterns": [
+        {
+          "name": "support.type.primitive.contract4agents-eval",
+          "match": "\\b(str|int|float|bool|list\\[[A-Za-z_][A-Za-z0-9_?]*\\]|[A-Za-z_][A-Za-z0-9_?]*\\[\\])\\b"
+        },
         {
           "name": "entity.name.type.contract4agents-eval",
           "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
