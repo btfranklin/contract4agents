@@ -43,6 +43,22 @@ pdm run contract4agents check examples/incident-command --strict-drift
 
 The `.contract/` directory is generated local output. It is safe to delete and regenerate.
 
+## VS Code Syntax Highlighting
+
+The repo ships a VS Code extension as a GitHub Release asset. Install the
+latest Contract4Agents syntax-coloring VSIX with:
+
+```bash
+tmpdir="$(mktemp -d)"
+tag="$(gh release view --repo btfranklin/contract4agents --json tagName --jq .tagName)"
+gh release download "$tag" --repo btfranklin/contract4agents --pattern "contract4agents-vscode-*.vsix" --dir "$tmpdir"
+code --install-extension "$tmpdir"/contract4agents-vscode-*.vsix
+```
+
+You can also download `contract4agents-vscode-*.vsix` from the latest GitHub
+Release and use **Install from VSIX...** in VS Code. The extension colors
+`.contract` and `.eval` files; diagnostics and completions are future work.
+
 ## First 15 Minutes With Your Own Agent App
 
 Start with one existing agent. Put a small Contract4Agents project beside your
@@ -200,6 +216,7 @@ The reusable public example pattern is documented in [examples/README.md](exampl
 - [Language Reference](docs/language/contract-language.md): `.contract` syntax and semantics.
 - [CLI Reference](docs/reference/cli.md): command behavior, options, side effects, and diagnostics.
 - [OpenAI Adapter Reference](docs/reference/openai-adapter.md): OpenAI Agents SDK planning, construction, and run helper notes.
+- [VS Code Extension](docs/reference/vscode-extension.md): syntax-highlighting install, local build, and release asset notes.
 - [Validation And Quality Gates](docs/quality/validation.md): local validation, packaging checks, CI behavior, and live-test boundaries.
 - [Releasing](docs/releasing.md): tag-first release notes and PyPI publishing flow.
 

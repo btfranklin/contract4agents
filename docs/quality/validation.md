@@ -31,11 +31,25 @@ The source distribution should not include generated `*.egg-info` directories or
 
 Package versions are derived from Git tags through `pdm-backend` SCM versioning. Use semantic version tags in the form `vX.Y.Z`; do not hand-edit a static package version in `pyproject.toml`.
 
+## VS Code Extension Validation
+
+Run the VS Code extension package gate when changing `editors/vscode`,
+`.github/workflows/vscode-extension.yml`, or release asset handling:
+
+```bash
+npm --prefix editors/vscode ci
+npm --prefix editors/vscode run package
+```
+
+Generated `.vsix` files are release assets, not Python package files. They
+should stay untracked locally.
+
 ## Release Pipeline
 
 The repository follows the same release path as the sibling public Python packages:
 
 - `.github/workflows/python-package.yml` runs the full local validation gate and builds the package on push and pull request.
+- `.github/workflows/vscode-extension.yml` builds the VS Code syntax-highlighting VSIX on push and pull request.
 - `.github/workflows/draft-release-notes.yml` creates draft release notes when a `v*.*.*` tag is pushed.
 - `.github/workflows/python-publish.yml` publishes to PyPI through Trusted Publishing when a GitHub release is published.
 

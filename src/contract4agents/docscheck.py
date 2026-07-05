@@ -15,6 +15,19 @@ REQUIRED_DOCS = [
     "docs/index.md",
 ]
 
+IGNORED_DOC_DIRS = {
+    ".contract",
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "node_modules",
+}
+
 
 def check_docs(root: Path) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
@@ -24,6 +37,8 @@ def check_docs(root: Path) -> list[Diagnostic]:
             missing_required.add(relative)
             diagnostics.append(Diagnostic("DOC001", f"Missing required doc `{relative}`"))
     for path in root.rglob("*.md"):
+        if _is_ignored_path(path, root):
+            continue
         text = path.read_text()
         for match in re.finditer(r"\]\(([^)]+)\)", text):
             target = _doc_link_target(match.group(1))
@@ -103,6 +118,14 @@ def _doc_link_target(raw_target: str) -> str | None:
 
 def _strip_doc_anchor(path: str) -> str:
     return path.split("#", 1)[0]
+
+
+def _is_ignored_path(path: Path, root: Path) -> bool:
+    try:
+        relative_parts = path.relative_to(root).parts
+    except ValueError:
+        return False
+    return any(part in IGNORED_DOC_DIRS for part in relative_parts)
 
 
 def _is_repo_doc_path(path: str, root: Path) -> bool:

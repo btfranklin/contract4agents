@@ -67,3 +67,16 @@ def test_docs_check_uses_docs_index_as_required_map(tmp_path: Path) -> None:
     assert [(diagnostic.code, diagnostic.message) for diagnostic in diagnostics] == [
         ("DOC001", "Missing required doc `docs/quality/validation.md`")
     ]
+
+
+def test_docs_check_ignores_dependency_and_build_directories(tmp_path: Path) -> None:
+    for relative in REQUIRED_DOCS:
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# ok\n")
+    for directory in ["node_modules", "dist", ".contract"]:
+        path = tmp_path / directory / "README.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("[broken](missing.md)\n")
+
+    assert check_docs(tmp_path) == []

@@ -1,0 +1,134 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Contract4Agents Eval",
+  "scopeName": "source.contract4agents.eval",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#eval-declaration"
+    },
+    {
+      "include": "#statements"
+    },
+    {
+      "include": "#expressions"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#dotted-names"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.number-sign.contract4agents-eval",
+          "match": "#.*$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.contract4agents-eval",
+          "match": "\"(?:[^\"\\\\]|\\\\.)*\""
+        }
+      ]
+    },
+    "eval-declaration": {
+      "patterns": [
+        {
+          "name": "meta.declaration.eval.contract4agents-eval",
+          "match": "^\\s*(eval)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+(for)\\s+([A-Z][A-Za-z0-9_]*)\\s*(:)",
+          "captures": {
+            "1": {
+              "name": "keyword.declaration.eval.contract4agents-eval"
+            },
+            "2": {
+              "name": "entity.name.function.eval.contract4agents-eval"
+            },
+            "3": {
+              "name": "keyword.control.contract4agents-eval"
+            },
+            "4": {
+              "name": "entity.name.type.agent.contract4agents-eval"
+            },
+            "5": {
+              "name": "punctuation.definition.block.contract4agents-eval"
+            }
+          }
+        }
+      ]
+    },
+    "statements": {
+      "patterns": [
+        {
+          "name": "meta.statement.given.contract4agents-eval",
+          "match": "^\\s*(given)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(=)",
+          "captures": {
+            "1": {
+              "name": "keyword.control.given.contract4agents-eval"
+            },
+            "2": {
+              "name": "variable.other.assignment.contract4agents-eval"
+            },
+            "3": {
+              "name": "keyword.operator.assignment.contract4agents-eval"
+            }
+          }
+        },
+        {
+          "name": "keyword.control.expect.contract4agents-eval",
+          "match": "^\\s*\\b(expect)\\b"
+        }
+      ]
+    },
+    "expressions": {
+      "patterns": [
+        {
+          "name": "keyword.control.expression.contract4agents-eval",
+          "match": "\\b(expect|semantic)\\b"
+        },
+        {
+          "name": "support.variable.expression.contract4agents-eval",
+          "match": "\\b(output|trace|value|hidden_truth)\\b"
+        },
+        {
+          "name": "keyword.operator.expression.contract4agents-eval",
+          "match": "\\b(conforms|contains|excludes|discovers|subset_of|contains_all|equals_set|intersects|disjoint_from)\\b|==|!="
+        },
+        {
+          "name": "support.function.trace.contract4agents-eval",
+          "match": "\\b(tool_called|agent_called|not_called|not_tool_called_by|approval_requested|approval_granted|called_before)\\b"
+        },
+        {
+          "name": "support.function.fixture.contract4agents-eval",
+          "match": "\\bfixture\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "entity.name.type.contract4agents-eval",
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
+    "dotted-names": {
+      "patterns": [
+        {
+          "name": "support.function.dotted.contract4agents-eval",
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)+\\b"
+        }
+      ]
+    }
+  }
+}

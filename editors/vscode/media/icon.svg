@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">Contract4Agents icon</title>
+  <desc id="desc">A contract document with agent nodes and a validation check.</desc>
+  <defs>
+    <linearGradient id="background" x1="18" y1="12" x2="110" y2="116" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#183D43"/>
+      <stop offset="1" stop-color="#17242D"/>
+    </linearGradient>
+    <linearGradient id="contract" x1="38" y1="20" x2="94" y2="108" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F8FBF9"/>
+      <stop offset="1" stop-color="#C8D7D2"/>
+    </linearGradient>
+    <linearGradient id="check" x1="46" y1="76" x2="96" y2="96" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3FD5B7"/>
+      <stop offset="1" stop-color="#F0B84A"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="24" fill="url(#background)"/>
+  <path d="M40 18h34l20 20v70a6 6 0 0 1-6 6H40a6 6 0 0 1-6-6V24a6 6 0 0 1 6-6Z" fill="url(#contract)"/>
+  <path d="M74 18v18a6 6 0 0 0 6 6h14L74 18Z" fill="#9FB8B3"/>
+  <path d="M50 48h26M50 61h28M50 74h18" fill="none" stroke="#24464B" stroke-width="6" stroke-linecap="round"/>
+  <path d="M34 88c-10 0-16-6-16-15s6-15 16-15" fill="none" stroke="#3FD5B7" stroke-width="7" stroke-linecap="round"/>
+  <path d="M94 58c10 0 16 6 16 15s-6 15-16 15" fill="none" stroke="#F0B84A" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="34" cy="73" r="8" fill="#3FD5B7"/>
+  <circle cx="94" cy="73" r="8" fill="#F0B84A"/>
+  <path d="M51 91 62 102 88 76" fill="none" stroke="url(#check)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

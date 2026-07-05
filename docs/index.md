@@ -34,7 +34,8 @@ For validation and release readiness:
 
 - Read `quality/validation.md`.
 - Read `releasing.md` before tagging or publishing a package release.
-- Use `reference/cli.md` for command behavior and `reference/test-fixtures.md` for fixture-runner behavior.
+- Use `reference/cli.md` for command behavior, `reference/test-fixtures.md` for fixture-runner behavior, and
+  `reference/vscode-extension.md` for editor-extension packaging.
 
 For project planning:
 
@@ -63,6 +64,7 @@ For project planning:
 - `reference/openai-adapter.md`: OpenAI execution adapter notes.
 - `reference/semantic-judge.md`: OpenAI semantic judge notes.
 - `reference/test-fixtures.md`: isolated multi-agent fixture runner reference.
+- `reference/vscode-extension.md`: VS Code syntax-highlighting extension install, local build, and release asset notes.
 - `research/agent-sdk-pattern-survey.md`: survey of OpenAI Agents SDK, Google ADK, Claude Agent SDK, and Strands patterns.
 - `examples/demo-agent-teams.md`: proposed realistic demo teams for fixtures and examples.
 - `examples/fake-tools-and-data.md`: local fake-tool and fake-database fixture rules.

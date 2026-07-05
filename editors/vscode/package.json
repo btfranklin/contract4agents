@@ -1,0 +1,71 @@
+{
+  "name": "contract4agents-vscode",
+  "displayName": "Contract4Agents",
+  "description": "Syntax highlighting for Contract4Agents .contract and .eval files.",
+  "version": "0.0.0",
+  "publisher": "btfranklin",
+  "icon": "media/icon.png",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/btfranklin/contract4agents.git",
+    "directory": "editors/vscode"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "contract4agents",
+    "agents",
+    "contracts",
+    "evals"
+  ],
+  "engines": {
+    "vscode": "^1.100.0",
+    "node": ">=20"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "contract4agents",
+        "aliases": [
+          "Contract4Agents",
+          "contract4agents"
+        ],
+        "extensions": [
+          ".contract"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "contract4agents-eval",
+        "aliases": [
+          "Contract4Agents Eval",
+          "contract4agents-eval"
+        ],
+        "extensions": [
+          ".eval"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "contract4agents",
+        "scopeName": "source.contract4agents",
+        "path": "./syntaxes/contract4agents.tmLanguage.json"
+      },
+      {
+        "language": "contract4agents-eval",
+        "scopeName": "source.contract4agents.eval",
+        "path": "./syntaxes/contract4agents-eval.tmLanguage.json"
+      }
+    ]
+  },
+  "scripts": {
+    "package": "mkdir -p dist && vsce package --out dist/contract4agents-vscode-${npm_package_version}.vsix"
+  },
+  "devDependencies": {
+    "@vscode/vsce": ">=3.9.2"
+  }
+}

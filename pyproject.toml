@@ -60,7 +60,7 @@ source = "scm"
 
 [tool.pdm.build]
 package-dir = "src"
-excludes = ["examples/**", "tests/**"]
+excludes = ["editors/**", "examples/**", "tests/**"]
 
 [tool.pdm.scripts]
 test = "pytest"

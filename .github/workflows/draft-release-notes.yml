@@ -21,3 +21,32 @@ jobs:
                   openai_api_key: ${{ secrets.OPENAI_API_KEY }}
                   github_token: ${{ secrets.GITHUB_TOKEN }}
                   include_github_generated_notes: "true"
+            - name: Set up Node
+              uses: actions/setup-node@v6.4.0
+              with:
+                  node-version: "22"
+                  cache: npm
+                  cache-dependency-path: editors/vscode/package-lock.json
+            - name: Derive VS Code extension version
+              id: extension-version
+              run: |
+                  version="${GITHUB_REF_NAME#v}"
+                  if [ "$version" = "$GITHUB_REF_NAME" ]; then
+                      echo "Expected a vX.Y.Z tag, got $GITHUB_REF_NAME" >&2
+                      exit 1
+                  fi
+                  echo "version=$version" >> "$GITHUB_OUTPUT"
+            - name: Set VS Code extension version
+              working-directory: editors/vscode
+              run: npm version --no-git-tag-version "${{ steps.extension-version.outputs.version }}"
+            - name: Install VS Code extension dependencies
+              run: npm ci --prefix editors/vscode
+            - name: Package VS Code extension
+              run: npm run package --prefix editors/vscode
+            - name: Upload VSIX release asset
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  gh release upload "$GITHUB_REF_NAME" \
+                      "editors/vscode/dist/contract4agents-vscode-${{ steps.extension-version.outputs.version }}.vsix" \
+                      --clobber

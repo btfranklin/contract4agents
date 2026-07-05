@@ -42,6 +42,7 @@ htmlcov/
 # Python packaging and build output
 build/
 dist/
+*.vsix
 *.egg-info/
 .eggs/
 pip-wheel-metadata/
@@ -55,6 +56,9 @@ __pypackages__/
 venv/
 env/
 ENV/
+
+# Node.js dependencies
+node_modules/
 
 # Contract4Agents generated artifacts and fixture state
 .contract/

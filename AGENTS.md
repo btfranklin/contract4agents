@@ -14,6 +14,7 @@ This repository is the design and implementation home for Contract4Agents, a typ
 - Eval, assertion, and monitor design lives in `docs/evaluation/evals-assertions-monitors.md`.
 - Validation, release checks, and live-test boundaries live in `docs/quality/validation.md`.
 - Current SDK research lives in `docs/research/agent-sdk-pattern-survey.md`.
+- VS Code syntax-highlighting extension guidance lives in `docs/reference/vscode-extension.md`.
 - Demo team planning lives in `docs/examples/demo-agent-teams.md`.
 - Fake local tool and data fixture rules live in `docs/examples/fake-tools-and-data.md`.
 - Public example structure lives in `examples/README.md`.
