@@ -14,7 +14,6 @@ This repository is the design and implementation home for Contract4Agents, a typ
 - Eval, assertion, and monitor design lives in `docs/evaluation/evals-assertions-monitors.md`.
 - Validation, release checks, and live-test boundaries live in `docs/quality/validation.md`.
 - Current SDK research lives in `docs/research/agent-sdk-pattern-survey.md`.
-- Accepted decisions live in `docs/decisions/accepted-decisions.md`.
 - Demo team planning lives in `docs/examples/demo-agent-teams.md`.
 - Fake local tool and data fixture rules live in `docs/examples/fake-tools-and-data.md`.
 - Public example structure lives in `examples/README.md`.
@@ -30,12 +29,11 @@ This repository is the design and implementation home for Contract4Agents, a typ
 - Do not use `pip` directly for project dependency management.
 - When adding dependencies, check the latest available version and express the dependency with a lower bound such as `package>=x.y.z`.
 - Do not pin exact versions unless a specific compatibility issue requires it.
-- For AI prompt assets, use `promptdown` from PyPI and keep prompts outside Python source.
 
 ## Documentation Rules
 
 - Keep this file short. It is a map, not the system of record.
-- Put durable design decisions under `docs/`.
+- Put durable design decisions in the relevant topical docs under `docs/`.
 - When a design question is unresolved, update `docs/decisions/open-questions.md` instead of burying the uncertainty in prose.
 - Prefer examples that can later become parser fixtures, runtime fixtures, or eval cases.
 

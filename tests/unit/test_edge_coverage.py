@@ -262,7 +262,6 @@ def test_docs_broken_link(tmp_path: Path) -> None:
     for relative in [
         "VISION.md",
         "docs/index.md",
-        "docs/decisions/accepted-decisions.md",
         "docs/architecture/parser-internals.md",
         "docs/reference/grammar.md",
         "docs/reference/manifest.md",

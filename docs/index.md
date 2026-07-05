@@ -38,8 +38,8 @@ For validation and release readiness:
 
 For project planning:
 
-- Read `decisions/accepted-decisions.md`.
-- Then resolve or explicitly accept the remaining defaults in `decisions/open-questions.md`.
+- Read `decisions/open-questions.md`.
+- Resolve open questions in the relevant topical docs when implementation settles them.
 
 ## Documents
 
@@ -64,7 +64,6 @@ For project planning:
 - `reference/semantic-judge.md`: OpenAI semantic judge notes.
 - `reference/test-fixtures.md`: isolated multi-agent fixture runner reference.
 - `research/agent-sdk-pattern-survey.md`: survey of OpenAI Agents SDK, Google ADK, Claude Agent SDK, and Strands patterns.
-- `decisions/accepted-decisions.md`: locked design choices.
 - `examples/demo-agent-teams.md`: proposed realistic demo teams for fixtures and examples.
 - `examples/fake-tools-and-data.md`: local fake-tool and fake-database fixture rules.
 - `examples/incident-command-walkthrough.md`: runnable V1 fixture walkthrough.
@@ -79,6 +78,6 @@ For project planning:
 
 - Keep `AGENTS.md` as a routing map.
 - Keep `VISION.md` as product intent, not implementation detail.
-- Put concrete implementation decisions under this directory.
+- Put concrete implementation decisions in the relevant topical document under this directory.
 - When implementation changes the design, update the relevant doc in the same change.
 - Prefer small, linked documents over a single large design note.
