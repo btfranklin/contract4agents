@@ -13,9 +13,9 @@ jobs:
     package:
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v6.0.1
+            - uses: actions/checkout@v6
             - name: Set up Node
-              uses: actions/setup-node@v6.4.0
+              uses: actions/setup-node@v6
               with:
                   node-version: "22"
                   cache: npm
@@ -27,7 +27,7 @@ jobs:
             - name: Package VSIX
               run: npm run package --prefix editors/vscode
             - name: Upload VSIX artifact
-              uses: actions/upload-artifact@v7.0.1
+              uses: actions/upload-artifact@v7
               with:
                   name: contract4agents-vscode-vsix
                   path: editors/vscode/dist/*.vsix
