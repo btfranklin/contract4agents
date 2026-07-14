@@ -25,30 +25,17 @@ jobs:
               uses: actions/setup-node@v6
               with:
                   node-version: "22"
-                  cache: npm
-                  cache-dependency-path: editors/vscode/package-lock.json
-            - name: Derive VS Code extension version
-              id: extension-version
-              run: |
-                  version="${GITHUB_REF_NAME#v}"
-                  if [ "$version" = "$GITHUB_REF_NAME" ]; then
-                      echo "Expected a vX.Y.Z tag, got $GITHUB_REF_NAME" >&2
-                      exit 1
-                  fi
-                  echo "version=$version" >> "$GITHUB_OUTPUT"
-            - name: Set VS Code extension version
+            - name: Build VS Code release asset
               working-directory: editors/vscode
-              run: npm version --no-git-tag-version "${{ steps.extension-version.outputs.version }}"
-            - name: Install VS Code extension dependencies
-              run: npm ci --prefix editors/vscode
-            - name: Test VS Code extension grammar scopes
-              run: npm test --prefix editors/vscode
-            - name: Package VS Code extension
-              run: npm run package --prefix editors/vscode
+              run: |
+                  npm ci
+                  npm version --no-git-tag-version "${GITHUB_REF_NAME#v}"
+                  npm test
+                  npm run package
             - name: Upload VSIX release asset
               env:
                   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                   gh release upload "$GITHUB_REF_NAME" \
-                      "editors/vscode/dist/contract4agents-vscode-${{ steps.extension-version.outputs.version }}.vsix" \
+                      editors/vscode/dist/contract4agents-vscode-*.vsix \
                       --clobber
