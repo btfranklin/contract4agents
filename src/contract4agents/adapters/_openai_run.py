@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 from collections.abc import Awaitable, Mapping
 from typing import Any
 
@@ -66,7 +67,6 @@ async def run_openai_agent_with_contract(
         Runner,
         agent,
         result,
-        runner_context,
         max_turns,
         run_hooks,
         run_trace,
@@ -105,7 +105,6 @@ async def _resolve_approval_interruptions(
     runner: Any,
     agent: Any,
     result: Any,
-    context: Any,
     max_turns: int | None,
     hooks: Any,
     trace: TraceRecorder,
@@ -138,7 +137,7 @@ async def _resolve_approval_interruptions(
                 state.approve(interruption)
             else:
                 state.reject(interruption, rejection_message=f"Approval denied for {tool_name}")
-        result = await runner.run(agent, state, context=context, max_turns=max_turns, hooks=hooks)
+        result = await runner.run(agent, state, max_turns=max_turns, hooks=hooks)
     return result, approvals
 
 
@@ -147,6 +146,13 @@ def _approval_arguments(interruption: Any) -> dict[str, Any]:
         value = getattr(interruption, attr, None)
         if isinstance(value, dict):
             return dict(value)
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict):
+                return parsed
     return {}
 
 

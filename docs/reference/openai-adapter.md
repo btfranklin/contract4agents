@@ -130,6 +130,12 @@ real tools, hosted-tool enablement, and deployment behavior.
 
 ## Live Checks
 
+The default offline suite constructs the installed Agents SDK objects and runs
+them through a deterministic SDK `Model`, covering tools, hosted-tool
+construction, agent composition, structured output, approval interruption and
+resume, and result translation without credentials. Live checks retain the
+narrower role of verifying the real provider request path and model behavior.
+
 Live OpenAI tests are opt-in and require `OPENAI_API_KEY` plus an explicit flag:
 
 ```bash

@@ -19,6 +19,19 @@ That runs:
 
 Skipped live OpenAI tests are expected in the default gate unless the explicit live-test environment flags are set.
 
+## Offline OpenAI Agents SDK Checks
+
+The default suite imports and constructs the installed OpenAI Agents SDK types.
+Its adapter tests run the real SDK `Agent`, `Runner`, function-tool, hosted-tool,
+agent-as-tool, handoff, structured-output, approval interruption, and state-resume
+surfaces against a deterministic test `Model`. The test model returns scripted
+SDK `ModelResponse` objects and performs no network requests.
+
+Keep provider-neutral planning assertions separate from these construction and
+execution checks. Planning tests should inspect `OpenAIAdapterPlan` directly;
+tests that claim SDK compatibility should use the installed SDK rather than a
+replacement `agents` module.
+
 ## Packaging Validation
 
 Run packaging validation when changing `pyproject.toml`, `README.md`, `LICENSE`, build configuration, or public package files:
@@ -73,14 +86,14 @@ when changing capability registry or host-code drift behavior.
 
 ## Live OpenAI Checks
 
-The normal validation suite does not call external APIs. Run live checks only when changing OpenAI client setup, semantic judging, or OpenAI Agents SDK execution behavior:
+The normal validation suite does not call external APIs. Run live checks only when changing OpenAI client setup, semantic judging, hosted-provider execution, or end-to-end OpenAI model behavior:
 
 ```bash
 CONTRACT4AGENTS_RUN_OPENAI_LIVE=1 pdm run test:openai-live
 CONTRACT4AGENTS_RUN_OPENAI_AGENT_LIVE=1 pdm run test:openai-agent-live
 ```
 
-These checks require `OPENAI_API_KEY` in the process environment or the ignored local `.env` file. Do not treat skipped live tests as proof that live OpenAI behavior was exercised.
+These checks require `OPENAI_API_KEY` in the process environment or the ignored local `.env` file. They complement the deterministic offline SDK checks with provider authentication, request compatibility, hosted-tool execution, and real model behavior. Do not use them as the sole proof that the installed SDK boundary is compatible, and do not treat skipped live tests as proof that live OpenAI behavior was exercised.
 
 ## Documentation Freshness
 
