@@ -44,7 +44,7 @@ git push origin v0.1.0
   across supported Python versions.
 - `.github/workflows/vscode-extension.yml` builds the VS Code
   syntax-highlighting VSIX on pushes and pull requests.
-- `.github/workflows/draft-release-notes.yml` runs on pushed `v*.*.*` tags and
+- `.github/workflows/create-draft-release.yml` runs on pushed `v*.*.*` tags and
   drafts release notes with `btfranklin/release-notes-scribe`, then attaches
   the version-matched VSIX to the draft release.
 - `.github/workflows/python-publish.yml` runs when a GitHub Release is

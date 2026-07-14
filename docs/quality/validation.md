@@ -51,7 +51,7 @@ The repository follows the same release path as the sibling public Python packag
 
 - `.github/workflows/python-package.yml` runs the full local validation gate and builds the package on push and pull request.
 - `.github/workflows/vscode-extension.yml` builds the VS Code syntax-highlighting VSIX on push and pull request.
-- `.github/workflows/draft-release-notes.yml` creates draft release notes when a `v*.*.*` tag is pushed.
+- `.github/workflows/create-draft-release.yml` creates draft release notes when a `v*.*.*` tag is pushed.
 - `.github/workflows/python-publish.yml` publishes to PyPI through Trusted Publishing when a GitHub release is published.
 
 Release setup requires the GitHub repository secret `OPENAI_API_KEY` for draft release notes, a GitHub environment named `release`, and a PyPI Trusted Publisher entry for the `python-publish.yml` workflow with the `release` environment. The release-note workflow should draft the notes; do not manually write release notes before the tag workflow runs.
