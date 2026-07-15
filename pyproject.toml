@@ -71,7 +71,8 @@ test = "pytest"
 docs-check = "python scripts/docs_check.py"
 lint = "ruff check src tests examples"
 typecheck = "mypy src"
-validate = {composite = ["lint", "typecheck", "docs-check", "test:editor", "test:unit", "test:integration"]}
+"validate:python" = {composite = ["lint", "typecheck", "docs-check", "test:unit", "test:integration"]}
+validate = {composite = ["validate:python", "test:editor"]}
 "smoke:cli" = {composite = [
     "contract4agents --help",
     "contract4agents check examples/incident-command",

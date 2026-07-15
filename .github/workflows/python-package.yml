@@ -35,7 +35,7 @@ jobs:
                   pdm install --group dev --group openai
             - name: Validate package
               run: |
-                  pdm run validate
+                  pdm run validate:python
             - name: Build package
               run: |
                   pdm build

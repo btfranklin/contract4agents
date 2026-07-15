@@ -74,7 +74,7 @@ def render_agent_mermaid(
     *,
     view: TruthView | None = None,
 ) -> str:
-    """Render an agent and its immediate declared/planned/observed neighbors."""
+    """Render an agent neighborhood with semantic entities behind relationship nodes."""
 
     detail = graph["agents"].get(agent_name)
     if detail is None:
@@ -87,6 +87,19 @@ def render_agent_mermaid(
         if edge["source"] == focus_id:
             node_ids.add(edge["target"])
         if edge["target"] == focus_id:
+            node_ids.add(edge["source"])
+    bridge_kinds = {"grant", "composition", "context"}
+    bridge_ids = {
+        node["id"]
+        for node in graph["nodes"]
+        if node["id"] in node_ids and node["kind"] in bridge_kinds
+    }
+    for edge in graph["edges"]:
+        if not _visible(edge["truth"], view):
+            continue
+        if edge["source"] in bridge_ids:
+            node_ids.add(edge["target"])
+        if edge["target"] in bridge_ids:
             node_ids.add(edge["source"])
     return render_mermaid(graph, view=view, node_ids=node_ids)
 

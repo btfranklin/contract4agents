@@ -55,15 +55,9 @@ def build_visualization_graph(
     _add_declared(ir, nodes, edges)
     if plan is not None:
         _add_planned(plan, nodes, edges)
-    else:
-        warnings.append("No materialization plan supplied; planned runtime mappings are not shown.")
     if trace is not None:
         _add_observed(trace, nodes, edges)
-    else:
-        warnings.append("No normalized trace supplied; observed runtime behavior is not shown.")
     _add_assured(control_results, nodes, edges, warnings)
-    if not control_results:
-        warnings.append("No control results supplied; declared controls have no assurance status.")
 
     agents = _agent_details(ir, nodes)
     ordered_nodes = sorted(nodes.values(), key=lambda item: (item["kind"], item["id"]))
@@ -498,6 +492,14 @@ def _add_observed(
             refs.append((str(event.semantic.capability_id), "capability"))
         if event.semantic.grant_id is not None:
             refs.append((str(event.semantic.grant_id), "grant"))
+        if event.semantic.composition_id is not None:
+            refs.append((str(event.semantic.composition_id), "composition"))
+        if event.semantic.context_id is not None:
+            refs.append((str(event.semantic.context_id), "context"))
+        if event.semantic.isolation_id is not None:
+            refs.append((str(event.semantic.isolation_id), "isolation"))
+        if event.semantic.quality_id is not None:
+            refs.append((str(event.semantic.quality_id), "quality"))
         refs.extend((str(control_id), "control") for control_id in event.semantic.control_ids)
         for semantic_id, role in refs:
             if semantic_id not in nodes:

@@ -13,7 +13,8 @@ def test_pdm_docs_check_is_part_of_validate() -> None:
     scripts = pyproject["tool"]["pdm"]["scripts"]
 
     assert scripts["docs-check"] == "python scripts/docs_check.py"
-    assert "docs-check" in scripts["validate"]["composite"]
+    assert "validate:python" in scripts["validate"]["composite"]
+    assert "docs-check" in scripts["validate:python"]["composite"]
 
 
 def test_docs_check_reports_missing_doc(tmp_path: Path) -> None:
