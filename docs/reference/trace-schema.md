@@ -1,6 +1,6 @@
 # Trace Schema Reference
 
-Contract4Agents normalized trace schema version `2` connects observed execution
+Contract4Agents normalized trace schema version `1` connects observed execution
 to the exact contract and materialization plan that governed it. JSONL is the
 portable storage form; provider-native spans remain available through
 correlation references.
@@ -9,7 +9,7 @@ correlation references.
 
 ```json
 {
-  "schema_version": "2",
+  "schema_version": "1",
   "run_id": "run-123",
   "thread_id": "thread-1",
   "event_id": "evt-000004",

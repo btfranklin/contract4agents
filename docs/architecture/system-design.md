@@ -72,7 +72,7 @@ control flow.
 
 ## Trace
 
-Normalized schema V2 preserves contract and plan digests, stable semantic IDs,
+The normalized trace schema preserves contract and plan digests, stable semantic IDs,
 causal relationships, provider-native correlation, provenance, evidence links,
 and audience-safe redaction. It supplements provider trace systems rather than
 replacing them.

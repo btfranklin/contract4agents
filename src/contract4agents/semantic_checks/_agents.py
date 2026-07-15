@@ -1,4 +1,4 @@
-"""V2 agent signature and attribute checks."""
+"""Agent signature and attribute checks."""
 
 from __future__ import annotations
 

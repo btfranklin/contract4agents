@@ -1,4 +1,4 @@
-"""Honest provider capability descriptor for OpenAI V2 planning."""
+"""Honest provider capability descriptor for OpenAI planning."""
 
 from __future__ import annotations
 

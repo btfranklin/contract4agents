@@ -44,7 +44,7 @@ and assurance bundles are derived from those two authorities.
 
 ## Trace, Evaluate, and Assure
 
-- [Trace Schema](reference/trace-schema.md): normalized trace V2 identity,
+- [Trace Schema](reference/trace-schema.md): normalized trace identity,
   evidence, validation, redaction, and OpenTelemetry export.
 - [Eval Language](reference/eval-language.md): scenario and expectation syntax.
 - [Evals, Controls, and Assurance](evaluation/evals-controls-assurance.md):
@@ -65,7 +65,7 @@ and assurance bundles are derived from those two authorities.
 
 ## Project and Contributor References
 
-- [V2 Semantic Model](architecture/v2-semantic-model.md): accepted detailed
+- [Semantic Model](architecture/semantic-model.md): accepted detailed
   implementation specification.
 - [SDK Pattern Survey](research/agent-sdk-pattern-survey.md): provider
   differences the target layer must preserve.

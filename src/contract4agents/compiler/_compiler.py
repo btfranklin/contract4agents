@@ -1,4 +1,4 @@
-"""Canonical V2 compilation from source through portable generated artifacts."""
+"""Canonical compilation from source through portable generated artifacts."""
 
 from __future__ import annotations
 
@@ -49,21 +49,21 @@ def compile_project(
     *,
     check: bool = False,
 ) -> CompilerArtifacts:
-    """Compile a V2 project, optionally writing or checking its artifacts."""
+    """Compile a project, optionally writing or checking its artifacts."""
 
     project = parse_project(root)
     raise_if_errors(analyze_project(project).diagnostics)
     artifacts = build_artifacts(build_canonical_ir(project))
     if output_dir is not None:
         output_path = validate_output_dir(project.root, output_dir, artifact_label="compiler artifacts")
-        from contract4agents.compiler._v2_writer import write_artifacts
+        from contract4agents.compiler._writer import write_artifacts
 
         write_artifacts(artifacts, output_path, check=check)
     return artifacts
 
 
 def build_artifacts(ir: CanonicalIR) -> CompilerArtifacts:
-    """Build every target-independent V2 artifact from canonical IR only."""
+    """Build every target-independent artifact from canonical IR only."""
 
     digest = contract_digest(ir)
     schemas = FrozenMap((item.name, _schema_for_type(item, ir)) for item in ir.types.values())

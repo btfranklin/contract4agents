@@ -83,7 +83,7 @@ def _event(
     )
 
 
-def test_v2_trace_round_trips_as_deterministic_jsonl(tmp_path: Path) -> None:
+def test_trace_round_trips_as_deterministic_jsonl(tmp_path: Path) -> None:
     trace = NormalizedTrace(
         (
             _event("evt-000001", "approval.requested"),
@@ -97,7 +97,7 @@ def test_v2_trace_round_trips_as_deterministic_jsonl(tmp_path: Path) -> None:
     write_trace_jsonl(path, loaded)
 
     first_payload = json.loads(rendered.splitlines()[0])
-    assert first_payload["schema_version"] == TRACE_SCHEMA_VERSION == "2"
+    assert first_payload["schema_version"] == TRACE_SCHEMA_VERSION == "1"
     assert first_payload["run_id"] == "run-123"
     assert first_payload["thread_id"] == "thread-1"
     assert first_payload["contract_digest"] == CONTRACT_DIGEST

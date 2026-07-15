@@ -1,13 +1,13 @@
-# V2 Semantic Model
+# Semantic Model
 
 Status: accepted implementation specification for the contract-first product.
-This document is the authority for the V2 ownership model and the decisions
+This document is the authority for the ownership model and the decisions
 that must remain consistent across the language, IR, targets, runtime, traces,
 evals, and assurance system.
 
 ## Product lifecycle
 
-Contract4Agents V2 follows one lifecycle:
+Contract4Agents follows one lifecycle:
 
 ```text
 Declare -> Compile -> Plan -> Materialize -> Run -> Trace -> Assure
@@ -69,7 +69,7 @@ and isolation profiles state each required boundary explicitly.
 
 ### Portable declarations
 
-V2 source supports these top-level semantic declarations:
+Contract source supports these top-level semantic declarations:
 
 - `type`
 - `tool`
@@ -102,7 +102,7 @@ type LogFinding:
     confidence: float
 ```
 
-The portable V2 type subset includes:
+The portable type subset includes:
 
 - Named scalar types: `string`, `integer`, `float`, `boolean`, and `datetime`.
 - Named contract types.
@@ -113,7 +113,8 @@ The portable V2 type subset includes:
 Arbitrary language-specific validators, methods, computed properties, and
 runtime callbacks are outside the portable type system.
 
-`type ... from python` does not exist in V2.
+Portable types are declared structurally in contract source. Language-specific
+implementations are generated from the canonical type graph.
 
 ### Shared tools
 
@@ -382,7 +383,7 @@ telemetry provider supplies that capability.
 
 ## Complete proposed source
 
-The following small project exercises every core V2 concept:
+The following small project exercises every core concept:
 
 ```contract
 type IncidentRequest:
@@ -478,7 +479,7 @@ eval clear_incident for IncidentCommander:
 
 ### Identity
 
-The canonical IR is deterministic JSON with `ir_version = "2"`. It is generated
+The canonical IR is deterministic JSON with `ir_version = "1"`. It is generated
 only from parsed source and never hand-authored.
 
 Semantic IDs use readable, kind-qualified names:
@@ -505,7 +506,7 @@ repository-relative source paths, and all source spans removed.
 
 ```json
 {
-  "ir_version": "2",
+  "ir_version": "1",
   "agents": {
     "agent:IncidentCommander": {
       "name": "IncidentCommander",
@@ -567,9 +568,9 @@ assurance results join without display-name heuristics.
 ## Target bindings
 
 The default target-binding filename is `contract4agents.targets.toml`.
-There is no profile inheritance in V2's first implementation. Target-level
+Profiles are complete and do not inherit. Target-level
 bindings are shared by that target; a profile supplies model selections and
-provider options. Profiles cannot change portable permissions, controls,
+provider options. Profiles cannot change portable grants, authorization, controls,
 schemas, audiences, composition, or isolation requirements.
 
 ```toml
@@ -717,13 +718,13 @@ and application workflow.
 
 ## Trace identity and evidence
 
-V2 trace schema version `2` uses an immutable run context plus event-specific
+Trace schema version `1` uses an immutable run context plus event-specific
 data. Required run identity is repeated in JSONL events so files remain
 independently inspectable:
 
 ```json
 {
-  "schema_version": "2",
+  "schema_version": "1",
   "run_id": "run-123",
   "thread_id": "thread-1",
   "event_id": "evt-000004",
@@ -769,7 +770,7 @@ All control assessment uses one result model:
   "reason": "Approval was granted before the capability started.",
   "evidence_event_ids": ["evt-000003", "evt-000004", "evt-000005"],
   "assessment": "runtime",
-  "assessor": {"name": "contract4agents", "version": "2"}
+  "assessor": {"name": "contract4agents", "version": "1"}
 }
 ```
 
@@ -839,7 +840,7 @@ coverage changes.
 
 ## CLI decisions
 
-The V2 installed CLI contains:
+The installed CLI contains:
 
 ```text
 check
@@ -871,12 +872,12 @@ Every implementation phase must preserve these invariants:
 8. Missing telemetry never becomes a passing assurance claim.
 9. Deterministic host workflow stays outside the DSL.
 
-## Phase 0 resolution
+## Current design choices
 
-This specification resolves the Phase 0 choices as follows:
+The product uses these design choices:
 
 - Target bindings use `contract4agents.targets.toml`.
-- Profiles do not inherit from other profiles in the first implementation.
+- Profiles do not inherit from other profiles.
 - Shared tools are provider-neutral; “hosted tool” is a target-binding detail.
 - Composition uses named `delegate` and `handoff` edges.
 - Agent grants use orthogonal availability, authorization, and execution fields.
@@ -885,10 +886,9 @@ This specification resolves the Phase 0 choices as follows:
 - Stable semantic IDs are deterministic kind-qualified names.
 - SHA-256 over canonical JSON defines contract and plan digests.
 - `materialize(...)` is the primary runtime-construction API.
-- V2 trace schema is version `2` and requires contract and plan identity.
+- Trace schema version `1` requires contract and plan identity.
 - Control results use `passed`, `violated`, and `unverified`.
 - Environment isolation requires a bound enforcing provider.
 
-There are no remaining Phase 0 implementation-blocking decisions. Surface
-details may be corrected only by updating this specification before
-implementation diverges.
+Open product questions live in the decisions document. Surface details are
+corrected by updating this specification before implementation diverges.

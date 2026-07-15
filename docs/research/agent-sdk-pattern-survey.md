@@ -189,7 +189,7 @@ Across all four SDKs, a production agent definition tends to contain these parts
 
 ## Contract4Agents Design Applied From The Survey
 
-The implemented V2 semantic model preserves the cross-SDK concepts without
+The implemented semantic model preserves the cross-SDK concepts without
 copying any one framework's object model:
 
 - Agents have stable identity, description, typed signatures, goal, and

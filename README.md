@@ -154,7 +154,7 @@ not a general workflow language and does not hide provider differences.
 
 ## Evidence, Evals, and Assurance
 
-Normalized trace schema V2 binds every event to a contract digest, plan digest,
+The normalized trace schema binds every event to a contract digest, plan digest,
 stable semantic IDs, provider-native correlation, provenance, and audience-safe
 redaction metadata. The same control assessor is used for controlled evals and
 imported production traces.
@@ -197,7 +197,7 @@ See [the examples guide](examples/README.md) for the common project structure.
 - [Documentation Index](docs/index.md)
 - [Vision](VISION.md)
 
-The [V2 semantic model](docs/architecture/v2-semantic-model.md) is the detailed
+The [semantic model](docs/architecture/semantic-model.md) is the detailed
 architecture specification. Coding agents should begin with [AGENTS.md](AGENTS.md).
 
 ## Development

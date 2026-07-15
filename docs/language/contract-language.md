@@ -1,6 +1,6 @@
 # Contract Language
 
-Contract4Agents V2 is a portable declarative language. Contracts describe
+Contract4Agents is a portable declarative language. Contracts describe
 desired agent semantics; target bindings describe how one runtime implements
 them. Python, TypeScript, provider, SDK, and deployment details are never
 portable source authority.

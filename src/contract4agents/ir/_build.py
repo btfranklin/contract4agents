@@ -1,4 +1,4 @@
-"""Build canonical V2 IR from a semantically valid contract project."""
+"""Build canonical IR from a semantically valid contract project."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ from contract4agents.semantics import analyze_project
 
 _QUALITY_EXPECTATION = re.compile(r"quality\(([A-Za-z_][A-Za-z0-9_]*)\)")
 def build_canonical_ir(project: ContractProject) -> CanonicalIR:
-    """Build immutable canonical IR from semantically valid V2 source."""
+    """Build immutable canonical IR from semantically valid source."""
 
     raise_if_errors(analyze_project(project).diagnostics)
 

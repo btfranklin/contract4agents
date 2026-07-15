@@ -1,6 +1,6 @@
 # Grammar Reference
 
-The implemented language is the portable V2 surface documented in
+The implemented language is the portable surface documented in
 [Contract Language](../language/contract-language.md). A project may contain
 `.contract` and `.eval` files.
 

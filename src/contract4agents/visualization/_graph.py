@@ -1,4 +1,4 @@
-"""Build a V2 review graph without collapsing desired and actual truth."""
+"""Build a review graph without collapsing desired and actual truth."""
 
 # mypy: allow-redefinition
 
@@ -20,7 +20,7 @@ from contract4agents.visualization._types import (
 )
 from contract4agents.visualization._utils import add_edge, add_node
 
-VISUALIZATION_VERSION = "2"
+VISUALIZATION_VERSION = "1"
 
 
 def build_visualization_graph(

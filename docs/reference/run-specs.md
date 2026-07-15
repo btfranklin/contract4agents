@@ -55,7 +55,7 @@ assessment.
 
 ## Trace Relations
 
-Run specs use normalized trace V2 and therefore inherit contract/plan identity,
+Run specs use normalized traces and therefore inherit contract/plan identity,
 semantic IDs, parent relationships, and completeness rules. A missing event can
 prove a negative or ordering claim only when the reviewed plan establishes the
 necessary telemetry coverage. Otherwise the result is unverified.

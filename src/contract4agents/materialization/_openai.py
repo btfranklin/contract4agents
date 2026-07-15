@@ -1,4 +1,4 @@
-"""Clean V2 OpenAI Agents SDK materializer."""
+"""OpenAI Agents SDK materializer."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol, cast
 
+from contract4agents.adapters._openai import openai_planner_capabilities
 from contract4agents.adapters._openai_names import openai_tool_name
-from contract4agents.adapters._openai_v2 import openai_planner_capabilities
 from contract4agents.compiler import CompilerArtifacts
 from contract4agents.ir import CanonicalIR, FrozenMap, SemanticId, format_type_ref, freeze_json
 from contract4agents.materialization._context import ContextRuntime

@@ -7,7 +7,7 @@ from contract4agents.parser import parse_project
 from contract4agents.semantics import analyze_project
 
 
-def test_v2_source_surface_parses_and_is_semantically_valid(tmp_path: Path) -> None:
+def test_source_surface_parses_and_is_semantically_valid(tmp_path: Path) -> None:
     source = tmp_path / "incident.contract"
     source.write_text(
         """\
@@ -117,7 +117,7 @@ eval delegates_for_evidence for IncidentCommander:
     assert contract_digest(ir).startswith("sha256:")
 
 
-def test_v2_enabled_grant_requires_explicit_authorization_and_execution(tmp_path: Path) -> None:
+def test_enabled_grant_requires_explicit_authorization_and_execution(tmp_path: Path) -> None:
     (tmp_path / "invalid.contract").write_text(
         """\
 type Request:
@@ -145,7 +145,7 @@ agent Worker(request: Request) -> Result:
     ]
 
 
-def test_v2_required_composition_inputs_and_isolation_fail_closed_semantically(tmp_path: Path) -> None:
+def test_required_composition_inputs_and_isolation_fail_closed_semantically(tmp_path: Path) -> None:
     (tmp_path / "invalid.contract").write_text(
         """\
 type Request:
@@ -176,7 +176,7 @@ composition broken from Parent to Child:
     ]
 
 
-def test_v2_datasource_context_requires_complete_typed_input_mappings(tmp_path: Path) -> None:
+def test_datasource_context_requires_complete_typed_input_mappings(tmp_path: Path) -> None:
     (tmp_path / "invalid.contract").write_text(
         """\
 type Request:

@@ -140,7 +140,7 @@ Options:
 
 - `--target NAME`, `--profile NAME`: required.
 - `--bindings PATH`: optional binding override.
-- `--trace PATH`: required normalized trace V2 JSONL.
+- `--trace PATH`: required normalized trace JSONL.
 - `--run-id ID`: optional run selection.
 
 Every control result is printed. Violated or unverified controls produce a

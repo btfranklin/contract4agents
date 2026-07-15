@@ -1,4 +1,4 @@
-"""OpenAI Agents SDK span correlation into normalized trace schema V2."""
+"""OpenAI Agents SDK span correlation into normalized trace schema."""
 
 from __future__ import annotations
 

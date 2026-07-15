@@ -1,4 +1,4 @@
-"""Dependency-free OpenTelemetry bridge over normalized trace v2."""
+"""Dependency-free OpenTelemetry bridge over normalized traces."""
 
 from __future__ import annotations
 

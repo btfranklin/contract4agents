@@ -1,4 +1,4 @@
-"""Atomic artifact writing and freshness checking for the V2 compiler."""
+"""Atomic artifact writing and freshness checking for the compiler."""
 
 from __future__ import annotations
 
@@ -7,11 +7,11 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from contract4agents.compiler._v2 import CompilerArtifacts
+from contract4agents.compiler._compiler import CompilerArtifacts
 from contract4agents.diagnostics import ContractError, Diagnostic
 from contract4agents.ir import canonical_ir_data
 
-V2_MANAGED_ARTIFACT_DIRS = ("ir", "schemas", "instructions", "generated", "docs")
+MANAGED_ARTIFACT_DIRS = ("ir", "schemas", "instructions", "generated", "docs")
 
 
 def write_artifacts(artifacts: CompilerArtifacts, output_dir: Path, *, check: bool = False) -> None:
@@ -21,7 +21,7 @@ def write_artifacts(artifacts: CompilerArtifacts, output_dir: Path, *, check: bo
         stale = [path for path, source in files.items() if not path.is_file() or path.read_text() != source]
         stale.extend(
             path
-            for directory in V2_MANAGED_ARTIFACT_DIRS
+            for directory in MANAGED_ARTIFACT_DIRS
             for path in sorted((output_dir / directory).rglob("*"))
             if path.is_file() and path not in expected
         )
@@ -39,13 +39,13 @@ def write_artifacts(artifacts: CompilerArtifacts, output_dir: Path, *, check: bo
         return
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    temporary_root = Path(tempfile.mkdtemp(prefix=".contract4agents-v2-", dir=output_dir))
+    temporary_root = Path(tempfile.mkdtemp(prefix=".contract4agents-", dir=output_dir))
     try:
         for path, source in files.items():
             temporary = temporary_root / path.relative_to(output_dir)
             temporary.parent.mkdir(parents=True, exist_ok=True)
             temporary.write_text(source)
-        for directory in V2_MANAGED_ARTIFACT_DIRS:
+        for directory in MANAGED_ARTIFACT_DIRS:
             current = output_dir / directory
             replacement = temporary_root / directory
             if current.exists():
@@ -76,4 +76,4 @@ def _json(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
 
 
-__all__ = ["V2_MANAGED_ARTIFACT_DIRS", "write_artifacts"]
+__all__ = ["MANAGED_ARTIFACT_DIRS", "write_artifacts"]

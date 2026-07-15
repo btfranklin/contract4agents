@@ -101,7 +101,7 @@ def test_explicit_absolute_path_is_not_resolved_under_project_root(tmp_path: Pat
     ("content", "code", "message"),
     [
         ("schema_version = [", "TGT001", "Invalid target bindings TOML"),
-        ('schema_version = "2"\n[targets.openai]\nadapter = "openai"\n', "TGT001", "schema_version"),
+        ('schema_version = "999"\n[targets.openai]\nadapter = "openai"\n', "TGT001", "schema_version"),
         ('schema_version = "1"\n', "TGT001", "non-empty `targets`"),
         (
             'schema_version = "1"\n[targets.openai]\nadapter = ""\n',

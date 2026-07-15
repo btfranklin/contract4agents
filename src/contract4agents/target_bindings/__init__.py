@@ -1,4 +1,4 @@
-"""Target-specific implementation bindings for Contract4Agents V2."""
+"""Target-specific implementation bindings for Contract4Agents."""
 
 from __future__ import annotations
 

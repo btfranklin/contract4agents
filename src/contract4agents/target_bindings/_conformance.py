@@ -1,4 +1,4 @@
-"""Conformance checks between target bindings and canonical V2 semantics."""
+"""Conformance checks between target bindings and canonical semantics."""
 
 from __future__ import annotations
 

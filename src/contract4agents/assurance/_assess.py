@@ -10,7 +10,7 @@ from contract4agents.ir import CanonicalIR, ControlIR, SemanticId
 from contract4agents.planning import MaterializationPlan
 from contract4agents.tracing import NormalizedTrace, TraceEvent, assess_trace_completeness
 
-_ASSESSOR = AssessorIdentity("contract4agents", "2")
+_ASSESSOR = AssessorIdentity("contract4agents", "1")
 _CALL = re.compile(r"trace\.(?P<operation>[a-z_]+)\((?P<arguments>[^)]*)\)\Z")
 
 

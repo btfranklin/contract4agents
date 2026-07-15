@@ -68,14 +68,14 @@ def test_assurance_bundle_is_deterministic_verified_and_explicit_about_missing_e
         status="passed",
         reason="Output matched the canonical schema.",
         assessment="adapter",
-        assessor=AssessorIdentity("contract4agents", "2"),
+        assessor=AssessorIdentity("contract4agents", "1"),
         evidence_event_ids=("evt-000001",),
     )
 
     first = assemble_assurance_bundle(
         ir,
         plan,
-        normalized_trace_jsonl='{"schema_version":"2"}\n',
+        normalized_trace_jsonl='{"schema_version":"1"}\n',
         control_results=(result,),
         eval_results={"campaigns": []},
         provenance={"sources": ["test"]},
@@ -83,7 +83,7 @@ def test_assurance_bundle_is_deterministic_verified_and_explicit_about_missing_e
     second = assemble_assurance_bundle(
         ir,
         plan,
-        normalized_trace_jsonl='{"schema_version":"2"}\n',
+        normalized_trace_jsonl='{"schema_version":"1"}\n',
         control_results=(result,),
         eval_results={"campaigns": []},
         provenance={"sources": ["test"]},

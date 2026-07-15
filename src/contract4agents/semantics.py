@@ -7,11 +7,8 @@ from dataclasses import dataclass
 from contract4agents.ast import ContractProject, SourceSpan
 from contract4agents.diagnostics import Diagnostic
 from contract4agents.semantic_checks._agents import check_agent
-from contract4agents.semantic_checks._expressions import check_eval
-from contract4agents.semantic_checks._index import ProjectIndex
-from contract4agents.semantic_checks._run_specs import check_run_spec
-from contract4agents.semantic_checks._types import check_datasource, check_type
-from contract4agents.semantic_checks._v2 import (
+from contract4agents.semantic_checks._contracts import (
+    check_agent_contract,
     check_composition,
     check_control,
     check_external_context,
@@ -19,8 +16,11 @@ from contract4agents.semantic_checks._v2 import (
     check_operational_control,
     check_quality,
     check_tool,
-    check_v2_agent,
 )
+from contract4agents.semantic_checks._expressions import check_eval
+from contract4agents.semantic_checks._index import ProjectIndex
+from contract4agents.semantic_checks._run_specs import check_run_spec
+from contract4agents.semantic_checks._types import check_datasource, check_type
 
 
 @dataclass(frozen=True)
@@ -109,7 +109,7 @@ def analyze_project(project: ContractProject) -> SemanticResult:
         diagnostics.extend(check_isolation(isolation))
     for agent in index.agent_defs.values():
         diagnostics.extend(check_agent(agent, index))
-        diagnostics.extend(check_v2_agent(agent, index))
+        diagnostics.extend(check_agent_contract(agent, index))
     for composition in index.composition_defs.values():
         diagnostics.extend(check_composition(composition, index))
     for control in project.controls:

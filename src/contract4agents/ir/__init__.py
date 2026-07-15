@@ -1,4 +1,4 @@
-"""Provider-neutral immutable Contract4Agents V2 intermediate representation."""
+"""Provider-neutral immutable Contract4Agents intermediate representation."""
 
 from contract4agents.ir._build import build_canonical_ir
 from contract4agents.ir._collections import FrozenJsonValue, FrozenMap, JsonScalar, freeze_json

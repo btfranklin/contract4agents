@@ -201,7 +201,7 @@ async def _judge_quality(
             str(quality_id),
             "unverified",
             "The eval references an unknown quality rubric.",
-            AssessorIdentity("contract4agents", "2"),
+            AssessorIdentity("contract4agents", "1"),
         )
     try:
         decision = await provider.judge(

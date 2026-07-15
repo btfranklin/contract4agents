@@ -47,9 +47,9 @@ default_model = "gpt-5.2"
 model = "gpt-5.6-luna"
 ```
 
-The first implementation has no profile inheritance. A profile must be
-complete. Bindings cannot contain permissions, prompts, controls, schemas,
-agent factories, output-type mappings, or composition registries.
+Profiles are complete and do not inherit. Bindings cannot contain permissions,
+prompts, controls, schemas, agent factories, output-type mappings, or
+composition registries.
 
 Python locators use `module:attribute`. Planning may import a locator to inspect
 its callable signature, but it never calls application code.
@@ -192,7 +192,7 @@ system = materialize(
 Events identify the contract and plan digests and the stable semantic IDs for
 constructed agents, tools, grants, approvals, composition edges, output types,
 context, datasources, and isolation mechanisms. Runtime provider spans should
-be correlated into normalized trace schema V2.
+be correlated into the normalized trace schema.
 
 Use the supplied Agents SDK tracing processor for runtime correlation:
 

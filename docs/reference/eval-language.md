@@ -52,7 +52,7 @@ Supported trace expectations include:
 - `trace.contains("text")`
 
 Expressions are resolved against canonical semantic IDs and normalized trace
-schema V2. Unsupported expressions fail closed during semantic analysis or
+schema. Unsupported expressions fail closed during semantic analysis or
 produce an explicit unverified result if unchecked input reaches an assessor.
 
 ## Negative Claims

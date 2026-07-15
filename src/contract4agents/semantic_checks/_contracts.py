@@ -1,4 +1,4 @@
-"""Semantic checks for V2 contract declarations."""
+"""Semantic checks for contract declarations."""
 
 from __future__ import annotations
 
@@ -67,7 +67,7 @@ def check_external_context(item: ExternalContextDef, index: ProjectIndex) -> lis
     return diagnostics
 
 
-def check_v2_agent(agent: AgentDef, index: ProjectIndex) -> list[Diagnostic]:
+def check_agent_contract(agent: AgentDef, index: ProjectIndex) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     seen_grants: set[str] = set()
     for grant in agent.grants:
@@ -486,5 +486,5 @@ __all__ = [
     "check_operational_control",
     "check_quality",
     "check_tool",
-    "check_v2_agent",
+    "check_agent_contract",
 ]

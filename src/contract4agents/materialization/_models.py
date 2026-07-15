@@ -1,4 +1,4 @@
-"""Public result and provider models for V2 materialization."""
+"""Public result and provider models for materialization."""
 
 from __future__ import annotations
 

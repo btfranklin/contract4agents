@@ -53,7 +53,7 @@ TypeRef: TypeAlias = PrimitiveTypeRef | NamedTypeRef | NullableTypeRef | ListTyp
 
 
 def parse_type_ref(source: str) -> TypeRef:
-    """Parse the complete portable V2 type-reference subset."""
+    """Parse the complete portable type-reference subset."""
 
     parser = _TypeRefParser(source)
     result = parser.parse()

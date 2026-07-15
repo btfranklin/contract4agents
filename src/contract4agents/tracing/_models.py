@@ -10,7 +10,7 @@ from typing import Literal, cast
 
 from contract4agents.ir import Audience, FrozenJsonValue, FrozenMap, SemanticId, freeze_json
 
-TRACE_SCHEMA_VERSION = "2"
+TRACE_SCHEMA_VERSION = "1"
 
 RedactionState = Literal["safe", "sensitive", "redacted"]
 

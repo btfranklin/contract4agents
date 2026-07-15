@@ -7,17 +7,17 @@ from contract4agents.parser import parse_project
 from contract4agents.semantics import analyze_project
 
 ROOT = Path(__file__).resolve().parents[2]
-FIXTURE = ROOT / "tests" / "fixtures" / "contract_projects" / "parser-golden" / "v2-surface-lab"
-GOLDEN = ROOT / "tests" / "golden" / "ast" / "v2-surface-lab.json"
+FIXTURE = ROOT / "tests" / "fixtures" / "contract_projects" / "parser-golden" / "surface-lab"
+GOLDEN = ROOT / "tests" / "golden" / "ast" / "surface-lab.json"
 
 
-def test_v2_parser_surface_matches_golden() -> None:
+def test_parser_surface_matches_golden() -> None:
     project = parse_project(FIXTURE)
 
     assert _snapshot(project) == json.loads(GOLDEN.read_text())
 
 
-def test_v2_parser_golden_is_semantically_valid() -> None:
+def test_parser_golden_is_semantically_valid() -> None:
     result = analyze_project(parse_project(FIXTURE))
 
     assert result.ok, [item.format() for item in result.diagnostics]

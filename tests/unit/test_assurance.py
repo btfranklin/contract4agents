@@ -18,7 +18,7 @@ def test_control_result_is_immutable_and_serializes_deterministically() -> None:
         status="passed",
         reason="Approval was granted before the capability started.",
         assessment="runtime",
-        assessor=AssessorIdentity("contract4agents", "2"),
+        assessor=AssessorIdentity("contract4agents", "1"),
         evidence_event_ids=("evt-000005", "evt-000003", "evt-000004", "evt-000003"),
         evidence_refs=("provider:openai:span-2", "provider:openai:span-1"),
     )
@@ -27,7 +27,7 @@ def test_control_result_is_immutable_and_serializes_deterministically() -> None:
         status="passed",
         reason="Approval was granted before the capability started.",
         assessment="runtime",
-        assessor=AssessorIdentity("contract4agents", "2"),
+        assessor=AssessorIdentity("contract4agents", "1"),
         evidence_event_ids=("evt-000004", "evt-000005", "evt-000003"),
         evidence_refs=("provider:openai:span-1", "provider:openai:span-2"),
     )
@@ -35,7 +35,7 @@ def test_control_result_is_immutable_and_serializes_deterministically() -> None:
     assert result.evidence_event_ids == ("evt-000003", "evt-000004", "evt-000005")
     assert result.to_json() == same_result.to_json()
     assert json.loads(result.to_json()) == result.to_dict()
-    assert result.to_dict()["assessor"] == {"name": "contract4agents", "version": "2"}
+    assert result.to_dict()["assessor"] == {"name": "contract4agents", "version": "1"}
     with pytest.raises(FrozenInstanceError):
         result.status = "violated"  # type: ignore[misc]
 

@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 INCIDENT = ROOT / "examples" / "incident-command"
 
 
-def test_public_example_uses_only_v2_source_semantics() -> None:
+def test_public_example_uses_canonical_source_semantics() -> None:
     project = parse_project(INCIDENT)
     result = analyze_project(project)
 
@@ -29,7 +29,7 @@ def test_public_example_uses_only_v2_source_semantics() -> None:
     assert project.agents["IncidentCommander"].grants[-1].authorization == "approval_required"
 
 
-def test_v2_parser_builds_shared_capabilities_grants_context_and_assurance(tmp_path: Path) -> None:
+def test_parser_builds_shared_capabilities_grants_context_and_assurance(tmp_path: Path) -> None:
     source = tmp_path / "surface.contract"
     source.write_text(
         """\
@@ -101,7 +101,7 @@ def test_unknown_agent_attributes_report_the_current_surface(tmp_path: Path) -> 
     ]
 
 
-def test_compile_project_is_the_canonical_v2_compiler(tmp_path: Path) -> None:
+def test_compile_project_is_the_canonical_compiler(tmp_path: Path) -> None:
     artifacts = compile_project(INCIDENT, tmp_path / "build")
 
     assert artifacts.ir.agents[semantic_id("agent", "IncidentCommander")].name == "IncidentCommander"
@@ -120,7 +120,7 @@ def test_build_artifacts_accepts_canonical_ir_only() -> None:
     assert "summary.md" in {str(path) for path in artifacts.docs}
 
 
-def test_compile_check_detects_stale_v2_artifacts(tmp_path: Path) -> None:
+def test_compile_check_detects_stale_artifacts(tmp_path: Path) -> None:
     build = tmp_path / "build"
     compile_project(INCIDENT, build)
     (build / "ir" / "contract.json").write_text("{}\n")

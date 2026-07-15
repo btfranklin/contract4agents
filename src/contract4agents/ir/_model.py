@@ -1,4 +1,4 @@
-"""Immutable provider-neutral Contract4Agents V2 intermediate representation."""
+"""Immutable provider-neutral Contract4Agents intermediate representation."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from contract4agents.ir._collections import FrozenJsonValue, FrozenMap, freeze_j
 from contract4agents.ir._ids import SemanticId, SemanticKind
 from contract4agents.ir._type_refs import TypeRef
 
-IR_VERSION = "2"
+IR_VERSION = "1"
 
 Audience = Literal["model", "adapter", "host", "evaluator", "reviewer"]
 CapabilityKind = Literal["tool", "datasource"]
@@ -390,7 +390,7 @@ EntityT = TypeVar("EntityT", bound=_Entity)
 
 @dataclass(frozen=True)
 class CanonicalIR:
-    """The complete immutable V2 semantic graph before target planning."""
+    """The complete immutable semantic graph before target planning."""
 
     ir_version: str = field(default=IR_VERSION, init=False)
     types: FrozenMap[SemanticId, TypeIR] = field(default_factory=FrozenMap)

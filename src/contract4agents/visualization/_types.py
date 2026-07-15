@@ -1,4 +1,4 @@
-"""JSON-compatible contracts for V2 review artifacts."""
+"""JSON-compatible contracts for review artifacts."""
 
 from __future__ import annotations
 

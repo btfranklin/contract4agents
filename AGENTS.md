@@ -6,7 +6,7 @@ This repository is the design and implementation home for Contract4Agents, a typ
 
 - `README.md` is the public/user front door; this file is the coding-agent operating map.
 - Start with `VISION.md` for the product and architecture intent.
-- Use `docs/architecture/v2-semantic-model.md` for the accepted V2
+- Use `docs/architecture/semantic-model.md` for the accepted
   implementation decisions.
 - Use `docs/index.md` as the documentation entry point.
 - Language syntax and semantics live in `docs/language/contract-language.md`.
@@ -48,7 +48,7 @@ This repository is the design and implementation home for Contract4Agents, a typ
 
 ## Current State
 
-- This repository implements the contract-first V2 path: canonical IR, target
+- This repository implements the contract-first path: canonical IR, target
   bindings and planning, portable type generation, native OpenAI
   materialization, multidimensional isolation planning, contract-bound traces,
   eval campaigns, shared control assessment, assurance bundles, semantic diffs,

@@ -1,4 +1,4 @@
-"""Dependency-free assets for the static V2 review page."""
+"""Dependency-free assets for the static review page."""
 
 # ruff: noqa: E501
 

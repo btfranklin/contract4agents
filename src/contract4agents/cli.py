@@ -88,7 +88,7 @@ def compile_cmd(root: Path, output_dir: Path, check_mode: bool) -> None:
 )
 @click.option("--check", "check_mode", is_flag=True, help="Fail if generated source is stale.")
 def generate_cmd(root: Path, output_dir: Path, check_mode: bool) -> None:
-    """Generate Pydantic, TypeScript, and Zod types from canonical V2 contracts."""
+    """Generate Pydantic, TypeScript, and Zod types from canonical contracts."""
 
     try:
         artifacts = compile_project(root)

@@ -31,14 +31,14 @@ ROOT = Path(__file__).resolve().parents[2]
 INCIDENT_COMMAND = ROOT / "examples" / "incident-command"
 
 
-def test_declared_graph_is_ir_native_and_represents_v2_semantics() -> None:
+def test_declared_graph_is_ir_native_and_represents_contract_semantics() -> None:
     ir = _ir()
     graph = build_visualization_graph(ir, project_root=INCIDENT_COMMAND)
 
     node_ids = {node["id"] for node in graph["nodes"]}
     edge_kinds = {edge["kind"] for edge in graph["edges"]}
-    assert graph["version"] == "2"
-    assert graph["ir_version"] == "2"
+    assert graph["version"] == "1"
+    assert graph["ir_version"] == "1"
     assert graph["contract_digest"] == contract_digest(ir)
     assert "agent:IncidentCommander" in node_ids
     assert "tool:logs.search" in node_ids
@@ -196,24 +196,24 @@ def test_artifact_writer_emits_graph_mermaid_and_self_contained_html(tmp_path: P
     write_visualization_artifacts(graph, tmp_path)
 
     encoded = json.loads((tmp_path / "graph.json").read_text())
-    assert encoded["version"] == "2"
+    assert encoded["version"] == "1"
     assert encoded["contract_digest"].startswith("sha256:")
     assert (tmp_path / "graph.mmd").read_text().startswith("flowchart LR\n")
     assert "Contract4Agents Truth Review" in (tmp_path / "index.html").read_text()
 
 
-def test_cli_visualize_writes_v2_review_artifacts(tmp_path: Path) -> None:
+def test_cli_visualize_writes_review_artifacts(tmp_path: Path) -> None:
     output_dir = tmp_path / "visualization"
     result = CliRunner().invoke(main, ["visualize", str(INCIDENT_COMMAND), "--out", str(output_dir)])
 
     assert result.exit_code == 0, result.output
     assert "Contract4Agents visualization written" in result.output
     graph = json.loads((output_dir / "graph.json").read_text())
-    assert graph["version"] == "2"
+    assert graph["version"] == "1"
     assert "IncidentCommander" in graph["agents"]
 
 
-def test_visualization_public_facade_exports_v2_api() -> None:
+def test_visualization_public_facade_exports_api() -> None:
     assert visualization.build_visualization_graph is build_visualization_graph
     assert visualization.render_agent_mermaid is render_agent_mermaid
     assert visualization.render_html is render_html

@@ -1,4 +1,4 @@
-"""Render a dependency-free, self-contained V2 review page."""
+"""Render a dependency-free, self-contained review page."""
 
 from __future__ import annotations
 

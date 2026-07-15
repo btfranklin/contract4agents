@@ -1,4 +1,4 @@
-"""Provider-neutral target planning for Contract4Agents V2."""
+"""Provider-neutral target planning for Contract4Agents."""
 
 from contract4agents.planning._errors import PlanningError, PlanningIssue
 from contract4agents.planning._models import (
