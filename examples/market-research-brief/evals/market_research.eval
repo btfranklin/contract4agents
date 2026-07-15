@@ -15,4 +15,6 @@ eval validates_segment_opportunity for MarketResearchLead:
     expect trace.agent_called(CompetitorAnalyst)
     expect trace.agent_called(CustomerSignalAnalyst)
     expect trace.agent_called(ReportWriter)
-    expect semantic(output, "The report distinguishes internal documents from current market facts and includes freshness notes.")
+    expect quality(clear_market_thesis)
+    expect quality(separates_evidence_sources)
+    expect quality(balanced_recommendation)

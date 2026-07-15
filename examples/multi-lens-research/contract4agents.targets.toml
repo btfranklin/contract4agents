@@ -1,0 +1,34 @@
+schema_version = "1"
+
+[targets.openai]
+adapter = "openai"
+
+[targets.openai.environments.in_process]
+provider = "contract4agents.runtime:InProcessEnvironment"
+
+[targets.openai.tools."sources.search"]
+python = "examples.multi_lens_research_imports.sources:search"
+
+[targets.openai.tools."sources.fetch"]
+python = "examples.multi_lens_research_imports.sources:fetch"
+
+[targets.openai.tools."evidence.score"]
+python = "examples.multi_lens_research_imports.evidence:score"
+
+[targets.openai.tools."citation.format"]
+python = "examples.multi_lens_research_imports.citation:format"
+
+[targets.openai.tools."expert_review.request"]
+python = "examples.multi_lens_research_imports.expert_review:request"
+
+[targets.openai.profiles.test]
+default_model = "test-model"
+
+[targets.openai.profiles.test.options]
+environment = "in_process"
+
+[targets.openai.profiles.production]
+default_model = "gpt-5.2"
+
+[targets.openai.profiles.production.options]
+environment = "in_process"

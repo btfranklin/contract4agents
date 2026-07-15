@@ -1,148 +1,121 @@
-# Fake Tools And Data
+# Deterministic Eval Data
 
-Demo agent teams should use local fake tools backed by fake local data.
+Public examples use deterministic data to exercise contracts, plans, traces,
+controls, and quality criteria without provider credentials. The data is an
+eval-provider input, not a second description of the agent system.
 
-The tools are fake because they do not call remote connectors, vendor APIs, production systems, or live credentials. They are real because they execute normal Python code, read structured local data, return realistic tool results, and emit normalized traces.
+## Responsibilities
 
-## Goals
+Contracts and the target plan already define:
 
-- Exercise real tool schemas, tool execution, permission checks, and trace capture.
-- Keep demos deterministic and safe.
-- Let evals verify that agents discovered facts hidden in seeded data.
-- Avoid network, account, and credential dependencies during core language and adapter work.
-- Make fixtures useful across compiler, eval, monitor, and adapter checks.
+- agents, capabilities, grants, and authorization;
+- composition, context, and isolation;
+- controls, rubrics, and expected telemetry;
+- input and output schemas.
 
-## Storage
+`eval-data.json` supplies only case-specific facts:
 
-Use a local SQLite database for seeded fake data when fixtures need cross-tool consistency.
+- fixture values and optional trial input overrides;
+- normalized output and trace events;
+- approval decisions;
+- semantic judge decisions;
+- latency, cost, and token metrics.
 
-Recommended paths:
+It must not contain expected agent counts, permission inventories, prompts,
+agent factories, tool registries, or output-type mappings.
 
-```text
-examples/
-  incident-command/
-    data/
-      seed.py
-      fixture.sqlite
-    tools/
-      logs.py
-      deploys.py
-      metrics.py
-      status_page.py
+## File Shape
+
+```json
+{
+  "schema_version": "1",
+  "cases": {
+    "eval:IncidentCommander:discovers_checkout_cause": {
+      "inputs": {
+        "hidden_truth": {
+          "likely_cause": {
+            "contains_all": ["deploy", "checkout-api"]
+          }
+        }
+      },
+      "trials": [
+        {
+          "output": {
+            "summary": "Checkout latency followed the latest checkout-api deploy.",
+            "likely_cause": "checkout-api deploy",
+            "evidence": ["log-17", "deploy-42", "metric-9"],
+            "next_actions": ["roll back deploy-42", "watch checkout latency"]
+          },
+          "events": [
+            {
+              "event_type": "tool.completed",
+              "semantic": {
+                "agent_id": "agent:LogInvestigator",
+                "capability_id": "tool:logs.search",
+                "grant_id": "grant:LogInvestigator:logs.search"
+              }
+            }
+          ],
+          "approvals": {
+            "tool:status_page.draft_update": false
+          },
+          "judges": {
+            "quality:IncidentCommander:concise_operational_summary": {
+              "status": "passed",
+              "reason": "The brief is concise and cites all material claims.",
+              "score": 0.95,
+              "provider": "file",
+              "version": "1"
+            }
+          },
+          "metrics": {
+            "latency_ms": 1800,
+            "cost_usd": 0.01,
+            "input_tokens": 900,
+            "output_tokens": 220
+          }
+        }
+      ]
+    }
+  }
+}
 ```
 
-JSON fixture files are acceptable for tiny parser tests, but SQLite is better for eval tests because multiple fake tools can query the same scenario state.
+The loader fills run IDs, contract/plan digests, default provider correlation,
+event IDs, parent relationships, evidence references, provenance, and safe
+redaction metadata when omitted. Explicit values are still strictly validated.
 
-## Tool Shape
+## Seed Scripts
 
-Fake tools should be ordinary Python functions or async functions.
+Example `data/seed.py` scripts should be deterministic and idempotent. Use
+stable IDs and timestamps, delete or replace prior generated state, and avoid
+network access. Generated data should live in ignored paths or in the committed
+small `eval-data.json` when the file itself is the teaching artifact.
 
-```python
-async def search_logs(service: str, start: str, end: str, query: str) -> dict:
-    """Search seeded incident logs for matching events."""
-```
+## Fake Implementations
 
-Each fake tool should have:
+Target-bound local Python tools and datasource providers should:
 
-- Typed parameters.
-- A short docstring suitable for tool schema generation.
-- Deterministic output.
-- No network calls.
-- No real credentials.
-- A stable error mode for negative tests.
+- match the portable input/output shape;
+- return stable results for stable inputs;
+- record side effects explicitly rather than performing external writes;
+- fail loudly on unknown IDs or malformed data;
+- avoid hidden authorization logic that contradicts the contract grant;
+- remain ordinary application functions, not test-only agent configuration.
 
-## Seeded Scenario Truth
+Approval decisions belong to the eval provider or host, not inside the tool.
 
-Each demo scenario should include a hidden truth record that evals can inspect but agents cannot receive directly.
+## Negative Cases
 
-Example:
+Useful deterministic campaigns include:
 
-```text
-scenario_id: checkout-latency-2026-05-01
-hidden_truth:
-  likely_cause: deploy checkout-api 8f31c2 changed payment timeout handling
-  required_evidence:
-    - log event showing timeout spike
-    - deploy event for checkout-api 8f31c2
-    - metric increase in p95 latency
-```
+- missing required tool or composition evidence;
+- a denied approval;
+- incomplete telemetry yielding `unverified`;
+- a violated explicit control;
+- a judge error yielding unverified quality;
+- latency/cost threshold failure;
+- a baseline regression.
 
-Agents should discover the truth only by calling fake tools or receiving allowed datasource context. Evals can compare the final output and trace against the hidden truth.
-
-## Incident Command Fake Tools
-
-First fixture tools:
-
-- `logs.search(service, start, end, query)`: searches seeded log events.
-- `deploys.list(service, start, end)`: returns deploy records in the incident window.
-- `metrics.query(service, metric, start, end)`: returns time-series summaries.
-- `status_page.draft_update(incident_id, message)`: records a draft update and requires approval.
-
-First fixture data tables:
-
-- `services`
-- `incidents`
-- `log_events`
-- `deploys`
-- `metric_points`
-- `status_page_drafts`
-- `scenario_truth`
-
-Expected eval checks:
-
-- The trace includes at least one log search, deploy lookup, and metrics query.
-- The final brief cites evidence from at least two tool categories.
-- The likely cause matches or semantically entails the hidden truth.
-- `status_page.draft_update` is not executed without approval.
-
-## Historical/Future Sketch: Revenue Resolution
-
-`Revenue Resolution` is not a current public example. These notes are future
-material for a billing-flavored approval and permission fixture.
-
-Candidate tools:
-
-- `billing.list_invoices(account_id)`
-- `billing.list_charges(account_id, window)`
-- `billing.create_refund(charge_id, amount)` requiring approval.
-- `crm.create_case_note(account_id, note)`
-- `human.request_approval(reason, proposed_action)`
-
-Candidate data tables:
-
-- `accounts`
-- `subscriptions`
-- `invoices`
-- `charges`
-- `refund_policies`
-- `case_notes`
-- `scenario_truth`
-
-## Market Research Brief Fake Tools
-
-Candidate tools:
-
-- `documents.search(query)`
-- `documents.fetch(document_id)`
-- `current_facts.search(query)`
-- `current_facts.fetch(fact_id)`
-- `competitors.lookup(segment)`
-- `citation.format(source_id, claim)`
-- Hosted declaration: `openai.web_search`
-
-Candidate data tables:
-
-- `documents`
-- `current_facts`
-- `competitors`
-- `customer_signals`
-- `scenario_truth`
-
-## Rules
-
-- Do not make fake tools shortcuts to the answer.
-- Do not pass hidden truth into model-visible context.
-- Keep data fake but realistic.
-- Make every scenario reproducible from a seed script.
-- Record every fake tool call in normalized traces.
-- Prefer simple schemas that map cleanly into manifests and adapter tests.
+The negative data should test retained assurance behavior. Do not add cases whose
+only purpose is to prove removed syntax no longer exists.

@@ -1,8 +1,0 @@
-eval resolves_datasource_graph for ContextComposer:
-    given account_id = acct_123
-    expect output conforms GraphOutput
-    expect trace.datasource_resolved(AccountProfile)
-    expect trace.datasource_resolved(BillingSnapshot)
-    expect trace.datasource_resolved(RiskSignal)
-    expect trace.datasource_resolved(RenderedContext)
-    expect trace.tool_called(tools.context.render)

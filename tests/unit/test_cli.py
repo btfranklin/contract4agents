@@ -1,236 +1,180 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
 from click.testing import CliRunner
 
+from contract4agents import compile_project, materialize
 from contract4agents.cli import main
+from contract4agents.eval_campaigns import CampaignConfig, FileEvalProvider, run_campaign
+from contract4agents.tracing import write_trace_jsonl
 
 ROOT = Path(__file__).resolve().parents[2]
+EXAMPLE = ROOT / "examples" / "incident-command"
 
 
 def test_cli_help_and_check() -> None:
     runner = CliRunner()
 
     help_result = runner.invoke(main, ["--help"])
-    check_result = runner.invoke(main, ["check", str(ROOT / "examples" / "incident-command")])
+    check_result = runner.invoke(main, ["check", str(EXAMPLE)])
+    eval_help = runner.invoke(main, ["eval", "--help"])
 
     assert help_result.exit_code == 0
-    assert "compile" in help_result.output
+    assert {"assure", "compile", "diff", "eval", "generate", "monitor", "plan"} <= set(help_result.output.split())
     assert check_result.exit_code == 0
     assert "passed" in check_result.output
-
-    eval_help = runner.invoke(main, ["eval", "--help"])
-    assert eval_help.exit_code == 0
-    assert "fixture.json" in eval_help.output
-    assert "Incident Command" not in eval_help.output
+    assert "target profile" in eval_help.output
+    assert "fixture.json" not in eval_help.output
 
 
-def test_cli_compile_docs_eval_monitor(tmp_path: Path) -> None:
+def test_cli_contract_first_workflow(tmp_path: Path) -> None:
     runner = CliRunner()
-    fixture = ROOT / "examples" / "incident-command"
-    trace_path = tmp_path / "trace.jsonl"
-    trace_path.write_text(
-        json.dumps(
-            _trace_event(
-                event_id="evt-1",
-                event_type="agent.completed",
-                timestamp=1.0,
-                agent="IncidentCommander",
-            )
-        )
-        + "\n"
-    )
-    violation_trace_path = tmp_path / "violation.jsonl"
-    violation_trace_path.write_text(
-        json.dumps(
-            _trace_event(
-                event_id="evt-2",
-                event_type="tool.completed",
-                timestamp=1.0,
-                agent="IncidentCommander",
-                tool="status_page.draft_update",
-            )
-        )
-        + "\n"
-    )
+    build = tmp_path / "build"
+    generated = tmp_path / "generated"
+    plan = tmp_path / "plan.json"
+    eval_results = tmp_path / "eval-results.json"
+    trace = tmp_path / "trace.jsonl"
+    assurance = tmp_path / "assurance"
 
-    assert runner.invoke(main, ["compile", str(fixture), "--out", str(tmp_path / "build")]).exit_code == 0
-    assert runner.invoke(main, ["docs-check", str(ROOT)]).exit_code == 0
-    assert runner.invoke(main, ["monitor", str(fixture), "--trace", str(trace_path)]).exit_code == 0
-    violation = runner.invoke(main, ["monitor", str(fixture), "--trace", str(violation_trace_path)])
-    assert violation.exit_code != 0
-    assert "status_update_requires_approval" in violation.output
-
-    multi_run_trace_path = tmp_path / "multi-run.jsonl"
-    multi_run_trace_path.write_text(
-        json.dumps(
-            _trace_event(
-                run_id="run-tool",
-                event_id="evt-3",
-                event_type="tool.completed",
-                timestamp=1.0,
-                tool="status_page.draft_update",
-            )
-        )
-        + "\n"
-        + json.dumps(
-            _trace_event(
-                run_id="run-approval",
-                event_id="evt-4",
-                event_type="approval.completed",
-                timestamp=2.0,
-                tool="status_page.draft_update",
-                approved=True,
-            )
-        )
-        + "\n"
-    )
-    multi_run_missing_scope = runner.invoke(main, ["monitor", str(fixture), "--trace", str(multi_run_trace_path)])
-    assert multi_run_missing_scope.exit_code != 0
-    assert "multiple run_id" in multi_run_missing_scope.output
-
-    scoped_pass = runner.invoke(
+    assert runner.invoke(main, ["compile", str(EXAMPLE), "--out", str(build)]).exit_code == 0
+    assert runner.invoke(main, ["generate", str(EXAMPLE), "--out", str(generated)]).exit_code == 0
+    assert runner.invoke(
         main,
-        ["monitor", str(fixture), "--trace", str(multi_run_trace_path), "--run-id", "run-approval"],
+        ["plan", str(EXAMPLE), "--target", "openai", "--profile", "test", "--out", str(plan)],
+    ).exit_code == 0
+    evaluated_trace = _evaluated_trace()
+    write_trace_jsonl(trace, evaluated_trace)
+
+    eval_run = runner.invoke(
+        main,
+        [
+            "eval",
+            str(EXAMPLE),
+            "--target",
+            "openai",
+            "--profile",
+            "test",
+            "--out",
+            str(eval_results),
+        ],
     )
-    assert scoped_pass.exit_code == 0
+    assert eval_run.exit_code == 0, eval_run.output
+    assert "1 passed, 0 violated, 0 unverified" in eval_run.output
+
+    monitor = runner.invoke(
+        main,
+        [
+            "monitor",
+            str(EXAMPLE),
+            "--target",
+            "openai",
+            "--profile",
+            "test",
+            "--trace",
+            str(trace),
+        ],
+    )
+    assert monitor.exit_code == 0, monitor.output
+
+    provenance = tmp_path / "provenance.json"
+    provenance.write_text(json.dumps({"source": "unit-test"}))
+    assured = runner.invoke(
+        main,
+        [
+            "assure",
+            str(EXAMPLE),
+            "--target",
+            "openai",
+            "--profile",
+            "test",
+            "--trace",
+            str(trace),
+            "--eval-results",
+            str(eval_results),
+            "--provenance",
+            str(provenance),
+            "--out",
+            str(assurance),
+        ],
+    )
+    assert assured.exit_code == 0, assured.output
+    assert (assurance / "attestation.json").exists()
+
+    diff = runner.invoke(main, ["diff", str(EXAMPLE), str(EXAMPLE)])
+    assert diff.exit_code == 0
+    assert '"contract_changes": []' in diff.output
 
 
-def test_cli_pydantic_import_gate(tmp_path: Path) -> None:
+def test_cli_rejects_removed_v1_flags(tmp_path: Path) -> None:
     runner = CliRunner()
-    fixture = ROOT / "tests" / "fixtures" / "contract_projects" / "pydantic-model-interop"
-
-    default_check = runner.invoke(main, ["check", str(fixture)])
-    import_check = runner.invoke(main, ["check", str(fixture), "--allow-python-imports"])
-    default_compile = runner.invoke(main, ["compile", str(fixture), "--out", str(tmp_path / "blocked")])
-    import_compile = runner.invoke(
-        main,
-        ["compile", str(fixture), "--out", str(tmp_path / "build"), "--allow-python-imports"],
-    )
-
-    assert default_check.exit_code == 0
-    assert import_check.exit_code == 0
-    assert default_compile.exit_code != 0
-    assert "--allow-python-imports" in default_compile.output
-    assert import_compile.exit_code == 0
-    assert (tmp_path / "build" / "types" / "type-bindings.json").exists()
-
-    default_visualize = runner.invoke(main, ["visualize", str(fixture), "--out", str(tmp_path / "viz-blocked")])
-    import_visualize = runner.invoke(
-        main,
-        ["visualize", str(fixture), "--out", str(tmp_path / "viz"), "--allow-python-imports"],
-    )
-    assert default_visualize.exit_code != 0
-    assert "--allow-python-imports" in default_visualize.output
-    assert import_visualize.exit_code == 0
-    assert (tmp_path / "viz" / "graph.json").exists()
+    invocations = [
+        ["check", str(EXAMPLE), "--allow-python-imports"],
+        ["check", str(EXAMPLE), "--strict-drift"],
+        ["check", str(EXAMPLE), "--registry", str(tmp_path / "registry.json")],
+        ["eval", str(EXAMPLE), "--fixture", str(tmp_path / "fixture.json")],
+    ]
+    for args in invocations:
+        result = runner.invoke(main, args)
+        assert result.exit_code != 0
+        assert "No such option" in result.output
 
 
-def test_cli_monitor_reports_invalid_trace_json(tmp_path: Path) -> None:
-    runner = CliRunner()
-    fixture = ROOT / "examples" / "incident-command"
+def test_cli_reports_invalid_normalized_trace(tmp_path: Path) -> None:
     trace_path = tmp_path / "bad.jsonl"
     trace_path.write_text("{bad\n")
 
-    result = runner.invoke(main, ["monitor", str(fixture), "--trace", str(trace_path)])
-
-    assert result.exit_code != 0
-    assert "Invalid trace JSON" in result.output
-    assert "bad.jsonl:1" in result.output
-
-
-def test_cli_monitor_reports_invalid_contract_setup(tmp_path: Path) -> None:
-    runner = CliRunner()
-    project = tmp_path / "project"
-    project.mkdir()
-    (project / "bad.contract").write_text(
-        """
-agent BadAgent() -> MissingResult:
-    goal = "bad"
-""".strip()
-    )
-    trace_path = tmp_path / "trace.jsonl"
-    trace_path.write_text(
-        json.dumps(_trace_event(event_id="evt-1", event_type="agent.completed", timestamp=1.0)) + "\n"
-    )
-
-    result = runner.invoke(main, ["monitor", str(project), "--trace", str(trace_path)])
-
-    assert result.exit_code != 0
-    assert "MissingResult" in result.output
-
-
-def test_cli_eval_runs_fixture_json_project(contract_project_path: Path) -> None:
-    runner = CliRunner()
-
-    result = runner.invoke(main, ["eval", str(contract_project_path)])
-
-    assert result.exit_code == 0
-    assert "Fixture eval completed with skipped semantic checks: 12 starts" in result.output
-    assert "PARTIAL" in result.output
-
-
-def test_cli_eval_runs_incident_command_public_fixture() -> None:
-    runner = CliRunner()
-
-    result = runner.invoke(main, ["eval", str(ROOT / "examples" / "incident-command")])
-
-    assert result.exit_code == 0
-    assert "Fixture eval completed with skipped semantic checks: 1 starts" in result.output
-    assert "PARTIAL discovers_checkout_cause" in result.output
-
-
-def test_cli_eval_can_fail_on_skipped_semantic() -> None:
-    runner = CliRunner()
-
-    result = runner.invoke(
+    result = CliRunner().invoke(
         main,
-        ["eval", str(ROOT / "examples" / "incident-command"), "--fail-on-skipped-semantic"],
+        [
+            "monitor",
+            str(EXAMPLE),
+            "--target",
+            "openai",
+            "--profile",
+            "test",
+            "--trace",
+            str(trace_path),
+        ],
     )
 
     assert result.exit_code != 0
-    assert "skipped semantic checks" in result.output
+    assert "Invalid normalized trace" in result.output
+    assert "line 1" in result.output
 
 
-def test_cli_eval_failure_reports_debug_path(tmp_path: Path) -> None:
-    runner = CliRunner()
-    project = tmp_path / "bad-fixture"
-    project.mkdir()
-    (project / "fixture.json").write_text("{}\n")
-
-    result = runner.invoke(main, ["eval", str(project)])
+def test_cli_eval_requires_provider_data(tmp_path: Path) -> None:
+    result = CliRunner().invoke(
+        main,
+        [
+            "eval",
+            str(EXAMPLE),
+            "--target",
+            "openai",
+            "--profile",
+            "test",
+            "--data",
+            str(tmp_path / "missing.json"),
+        ],
+    )
 
     assert result.exit_code != 0
-    assert "Debug report and traces" in result.output
-    assert str(project / ".contract" / "runs" / "last") in result.output
+    assert "Could not load eval data" in result.output
 
 
-def _trace_event(
-    *,
-    run_id: str = "run-cli",
-    event_id: str,
-    event_type: str,
-    timestamp: float,
-    agent: str | None = None,
-    tool: str | None = None,
-    approved: bool | None = None,
-) -> dict[str, object]:
-    data: dict[str, object] = {}
-    if approved is not None:
-        data["approved"] = approved
-    payload: dict[str, object] = {
-        "schema_version": "1",
-        "run_id": run_id,
-        "event_id": event_id,
-        "event_type": event_type,
-        "timestamp": timestamp,
-        "data": data,
-        "provider": {},
-    }
-    if agent is not None:
-        payload["agent"] = agent
-    if tool is not None:
-        payload["tool"] = tool
-    return payload
+def _evaluated_trace():  # type: ignore[no-untyped-def]
+    artifacts = compile_project(EXAMPLE)
+    result = materialize(EXAMPLE, "openai", "test")
+    campaign = asyncio.run(
+        run_campaign(
+            artifacts.ir,
+            result.plan,
+            FileEvalProvider.load(EXAMPLE / "eval-data.json"),
+            CampaignConfig("cli-test"),
+        )
+    )
+    trace = campaign.cases[0].trials[0].trace
+    assert trace is not None
+    return trace

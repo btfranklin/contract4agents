@@ -1,144 +1,234 @@
-# OpenAI Adapter Reference
+# OpenAI Target Reference
 
-The OpenAI adapter projects compiled Contract4Agents artifacts onto the OpenAI
-Agents SDK. It is plan-first: host code can inspect exactly what will be mapped
-before SDK `Agent` objects are constructed.
+The OpenAI target materializes canonical Contract4Agents IR into ordinary
+OpenAI Agents SDK objects. It is contract-first and plan-first: users review a
+provider-neutral materialization plan before the same mapping constructs the
+native graph.
 
-V1 maps Contract4Agents manifests to:
+Install the optional target dependencies:
 
-- OpenAI `Agent` name, model, instructions, and output type.
-- Host tools from SDK tool objects or raw Python callables wrapped with
-  `agents.function_tool(...)`.
-- Hosted provider tools such as `openai.web_search`.
-- Agent-as-tool and handoff registrations supplied by the host.
-- Guard-plan metadata for output conformance, denied tools, and approval-required tools.
-- Runtime context rendering, SDK approval interruption resolution, normalized
-  trace hooks, and post-run assertion checks for one supplied SDK agent.
+```bash
+pdm add "contract4agents[openai]"
+```
 
-## Planning And Construction
+## Target Bindings
 
-Use `plan_openai_agents_from_contracts(...)` to inspect the mapping:
+`contract4agents.targets.toml` contains target-specific locators and options:
+
+```toml
+schema_version = "1"
+
+[targets.openai]
+adapter = "openai"
+
+[targets.openai.tools."documents.search"]
+python = "my_app.tools:search_documents"
+
+[targets.openai.tools."web.search"]
+provider = "web_search"
+search_context_size = "medium"
+
+[targets.openai.datasources."account.history"]
+python = "my_app.context:account_history"
+
+[targets.openai.external_context.authenticated_account]
+python = "my_app.context:authenticated_account"
+
+[targets.openai.environments.in_process]
+provider = "contract4agents.runtime:InProcessEnvironment"
+
+[targets.openai.profiles.test]
+default_model = "test-model"
+
+[targets.openai.profiles.production]
+default_model = "gpt-5.2"
+
+[targets.openai.profiles.production.agents.ResearchAgent]
+model = "gpt-5.6-luna"
+```
+
+The first implementation has no profile inheritance. A profile must be
+complete. Bindings cannot contain permissions, prompts, controls, schemas,
+agent factories, output-type mappings, or composition registries.
+
+Python locators use `module:attribute`. Planning may import a locator to inspect
+its callable signature, but it never calls application code.
+
+## Plan Without Constructing Agents
+
+```bash
+contract4agents plan agent_contracts --target openai --profile production \
+  --out .contract/build/openai-production-plan.json
+```
+
+The plan contains the contract digest, resolved model for every agent, binding
+identities, grants and authorization, native composition mappings, control and
+isolation mechanisms, expected telemetry, host obligations, and target caveats.
+It contains no live SDK objects or process-specific callable addresses.
+
+Each mapping reports one outcome:
+
+- `exact`: the SDK natively implements the requested semantic.
+- `host_enforced`: a named host or environment provider enforces it.
+- `emulated`: generated runtime behavior preserves it.
+- `degraded`: construction would lose a documented semantic.
+- `unsupported`: no honest implementation exists.
+
+Required degraded and unsupported mappings fail planning.
+
+## Materialize the Complete Graph
 
 ```python
-from contract4agents.adapters.openai import plan_openai_agents_from_contracts
+from contract4agents import materialize
 
-plan = plan_openai_agents_from_contracts(
-    artifacts,
-    output_type_registry={"SupportReply": SupportReplyModel},
-    model_registry={"SupportResponder": config.support_model},
-    tool_registry={"crm.create_note": crm_create_note},
-    hosted_tool_registry={"openai.web_search": True},
-    agent_tool_registry={"BillingSpecialist": billing_specialist_tool},
-    default_model=config.default_agent_model,
+system = materialize(
+    "agent_contracts",
+    target="openai",
+    profile="production",
+)
+
+lead = system.agents["ResearchLead"]
+plan = system.plan
+```
+
+`system.agents` is keyed by the names written in contracts. Its values are
+native OpenAI Agents SDK `Agent` objects. `system.graph` also exposes generated
+output types, resolved implementations, native grant and composition objects,
+the typed context runtime, environment-enforcement evidence, and
+graph-validation evidence.
+
+Construction uses two passes so source-file order does not constrain the graph:
+
+1. Build agent shells, instructions, generated Pydantic output types, tools,
+   approval configuration, and hooks.
+2. Resolve named delegation and handoff edges across the complete graph.
+
+The adapter then validates models, tools, grants, approvals, outputs,
+composition, and hooks against the immutable plan.
+
+## Tools and Approvals
+
+A contract tool is a shared portable interface. Its grant selects `host`,
+`provider_hosted`, `remote`, or a named environment execution boundary. The
+OpenAI target currently resolves Python host callables and supported
+provider-native tools from target bindings.
+
+Raw Python callables are converted to native function tools. Dotted contract
+names are mapped to reversible SDK-safe names. An `approval_required` grant
+sets the native tool's approval requirement and creates expected approval
+telemetry. The application remains responsible for approval decisions and UI.
+
+Missing implementations, signature mismatches, unverified required approval
+enforcement, and unsupported remote bindings fail closed.
+
+## Delegation and Handoff
+
+For a named `composition` edge:
+
+- `delegate` creates an agent-as-tool that returns the target agent's typed
+  final output to the source agent.
+- `handoff` creates a native SDK handoff that transfers control.
+
+Descriptions, typed input mappings, history transfer, and isolation profiles
+come from the edge. OpenAI agent-as-tool and handoff payloads are model supplied,
+so the plan classifies source-value transfer as emulated and exposes a host
+obligation when equality with the declared source mapping must be proven. The
+host does not supply agent factories, agent-tool registries, or ordinary
+handoff registries.
+
+Provider-specific callback behavior that cannot be expressed portably belongs
+in an explicitly nonportable target binding, never in portable source.
+
+## Isolation
+
+The built-in `InProcessEnvironment` can report and enforce only the dimensions
+it actually controls, such as fresh context, capability allowlisting, fresh
+state, and return-channel restriction. It does not claim an operating-system,
+filesystem, network, process, or secret boundary.
+
+A contract requiring stronger isolation must select an environment provider
+that implements `EnvironmentProvider` and supplies enforcement evidence. If the
+selected provider cannot satisfy a required dimension, materialization stops.
+
+## Running
+
+Run the returned object with the normal SDK API:
+
+```python
+from agents import Runner
+
+result = await Runner.run(system.agents["ResearchLead"], input=user_request)
+```
+
+If the entry agent declares datasource or external context, resolve it through
+`system.context.resolve_agent(...)` first and pass the returned rendered values
+through the application's normal SDK context or input strategy. Resolution
+validates contract types, enforces declared cache scopes, and emits normalized
+provenance events. Contract4Agents deliberately does not hide the remaining
+provider-specific injection step: the OpenAI SDK has no framework-native typed
+entry-input channel.
+
+Contract4Agents does not replace the SDK runner, provider trace backend, session
+store, or deployment environment. It constructs and validates the graph those
+systems execute.
+
+## Materialization Evidence
+
+Pass a `TraceSink` to `materialize` to capture deterministic construction
+evidence. `RecordingTraceSink` is useful for tests and small host integrations:
+
+```python
+from contract4agents.materialization import RecordingTraceSink
+
+sink = RecordingTraceSink()
+system = materialize(
+    "agent_contracts",
+    target="openai",
+    profile="production",
+    trace_sink=sink,
 )
 ```
 
-Each `OpenAIAgentPlan` includes manifest `source_path`, generated
-`instruction_ref`, `output_schema_ref`, instructions, model, output type,
-host-tool plans, hosted-tool plans, composition plans, context inputs,
-datasources, guards, assertions, and caveats.
+Events identify the contract and plan digests and the stable semantic IDs for
+constructed agents, tools, grants, approvals, composition edges, output types,
+context, datasources, and isolation mechanisms. Runtime provider spans should
+be correlated into normalized trace schema V2.
 
-The adapter registries in this API are runtime construction inputs. They are
-separate from the source-owned `contract4agents.registry.json` file used by
-`contract4agents check --strict-drift`; use the capability registry in CI to
-catch obvious drift before host code builds SDK objects.
-
-Use `build_openai_agents_from_plan(plan)` after inspection, or use
-`build_openai_agents_from_contracts(...)` as the convenience function that plans
-and builds in one call. `build_openai_agent(...)` remains the low-level helper
-for constructing one SDK object from one manifest and instruction string.
-
-## Output Types
-
-Callers can pass explicit output types:
+Use the supplied Agents SDK tracing processor for runtime correlation:
 
 ```python
-output_type_registry={"SupportReply": SupportReplyModel}
+from agents import add_trace_processor
+from contract4agents.tracing import OpenAINormalizedTraceProcessor
+
+processor = OpenAINormalizedTraceProcessor(
+    artifacts.ir,
+    system.plan,
+    run_id=run_id,
+    thread_id=thread_id,
+)
+add_trace_processor(processor)
+
+# Run the native graph, then obtain strict normalized evidence.
+trace = processor.normalized_trace()
 ```
 
-If the contract declares `type SupportReply from python
-"my_app.models:SupportReplyModel"`, compile with `--allow-python-imports` to
-derive the canonical schema and preserve the import path in the manifest. The
-adapter still uses an explicit output type registry or generated SDK output
-models when constructing OpenAI agents.
+The processor maps native agent, function-tool, delegation, and handoff spans
+to stable contract IDs, adds output-validation evidence for successful agent
+spans, and preserves provider trace/span correlation. It intentionally does not
+copy raw provider inputs or outputs into normalized payloads.
 
-Or they can ask the adapter to generate Pydantic v2 models from the compiled
-Contract4Agents JSON Schema subset:
+## Offline and Live Validation
 
-```python
-from contract4agents.adapters.openai import build_openai_output_type_registry
-
-output_types = build_openai_output_type_registry(artifacts)
-```
-
-`generate_output_types=True` enables that helper inside the planner/factory.
-Explicit registry entries override generated models. Unsupported schemas fail
-closed with `OpenAIAgentFactoryError`.
-
-## Tools, Hosted Tools, And Approvals
-
-Host tools may be supplied as existing SDK tool objects or raw Python callables.
-Raw callables are wrapped with `agents.function_tool(name_override=...)`.
-Contract4Agents encodes contract tool names as length-prefixed OpenAI SDK names
-with a `c4a_` prefix. For example, `billing.create_credit` becomes
-`c4a_7_billing13_create_credit`. Use `openai_tool_name(...)` and
-`contract_tool_name(...)` instead of hand-writing or parsing these names; legacy
-`__` dotted-name spellings are rejected because underscores make them
-ambiguous.
-Approval-required raw callables are wrapped with `needs_approval=True`.
-Prebuilt SDK tools are accepted, but approval enforcement cannot be verified by
-Contract4Agents, so the plan returns an `approval_enforcement_unverified`
-caveat.
-
-Hosted provider tools are declared separately from host tools:
-
-```contract
-use hosted_tool openai.web_search context_size "medium"
-```
-
-Pass `hosted_tool_registry={"openai.web_search": True}` to let the adapter build
-`agents.WebSearchTool(search_context_size="medium")`. A registry entry can also
-be a provider object or a factory callable. Denied host and hosted tools are
-omitted and reported as caveats; missing non-denied host or hosted tools are
-configuration errors.
-
-Composition declarations are mapped when the host supplies the corresponding
-objects:
-
-- `agent_as_tool(...)` uses `agent_tool_registry`.
-- `handoff(...)` uses `handoff_registry`.
-- `isolated_subagent(...)` is reported as unsupported.
-
-Agent dependencies without an explicit composition declaration remain unwired
-even if matching registry objects are present.
-
-Semantic analysis rejects malformed composition declarations and declarations
-that target unknown agents before adapter planning runs.
-
-## Running With Contract Checks
-
-`run_openai_agent_with_contract(...)` runs one supplied SDK agent, appends
-`RuntimeContext.rendered_context()` to the user input, keeps hidden and
-sensitive context out of the prompt, resolves SDK approval interruptions through
-a host callback, records `approval.requested` and `approval.completed`, evaluates
-compiled assertions with `evaluate_run_assertions(...)`, records
-`assertion.evaluated`, and returns `OpenAIContractRunResult`.
-
-This helper does not run routes, replay workflows, choose specialists, or own
-approval UX. Host code still controls orchestration, persistence, credentials,
-real tools, hosted-tool enablement, and deployment behavior.
-
-## Live Checks
-
-The default offline suite constructs the installed Agents SDK objects and runs
-them through a deterministic SDK `Model`, covering tools, hosted-tool
-construction, agent composition, structured output, approval interruption and
-resume, and result translation without credentials. Live checks retain the
-narrower role of verifying the real provider request path and model behavior.
-
-Live OpenAI tests are opt-in and require `OPENAI_API_KEY` plus an explicit flag:
+The default test suite constructs real SDK objects with deterministic local
+models and no credentials. Live provider checks are opt-in:
 
 ```bash
 CONTRACT4AGENTS_RUN_OPENAI_LIVE=1 pdm run test:openai-live
-CONTRACT4AGENTS_RUN_OPENAI_AGENT_LIVE=1 pdm run test:openai-agent-live
 ```
+
+This single smoke test exercises contract compilation, production-profile
+planning, native graph materialization, typed context resolution, three
+agent-as-tool delegations, structured output, and SDK-span correlation.
+
+See [Validation and Quality Gates](../quality/validation.md) before interpreting
+a skipped live check as coverage.

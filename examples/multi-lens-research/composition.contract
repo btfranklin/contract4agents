@@ -1,0 +1,46 @@
+isolation FreshResearchContext:
+    context = explicit_only
+    capabilities = declared_only
+    state = fresh
+    filesystem = inherited
+    network = inherited
+    secrets = inherited
+    return = final_output_only
+
+composition map_evidence from ResearchDirector to EvidenceMapper:
+    mode = delegate
+    description = "Map source evidence before specialist judgment."
+    history = none
+    map question = input.question
+    isolation = FreshResearchContext
+
+composition technical_lens from ResearchDirector to TechnicalLensAnalyst:
+    mode = delegate
+    description = "Evaluate technical feasibility against the mapped evidence."
+    history = none
+    map question = input.question
+    map evidence = result.map_evidence
+
+composition policy_safety_lens from ResearchDirector to PolicySafetyLensAnalyst:
+    mode = delegate
+    description = "Evaluate policy and safety implications against the mapped evidence."
+    history = none
+    map question = input.question
+    map evidence = result.map_evidence
+
+composition counterarguments from ResearchDirector to CounterargumentAnalyst:
+    mode = delegate
+    description = "Search for disconfirming evidence and weak assumptions."
+    history = none
+    map question = input.question
+    map evidence = result.map_evidence
+
+composition synthesize_brief from ResearchDirector to SynthesisWriter:
+    mode = delegate
+    description = "Synthesize the completed specialist lenses into the final brief."
+    history = none
+    map question = input.question
+    map evidence = result.map_evidence
+    map technical = result.technical_lens
+    map policy_safety = result.policy_safety_lens
+    map counterarguments = result.counterarguments

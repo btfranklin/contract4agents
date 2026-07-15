@@ -1,0 +1,48 @@
+{
+  "schema_version": "1",
+  "cases": {
+    "eval:ResearchDirector:staged_rollout_research": {
+      "inputs": {"hidden_truth": {"likely_conclusion": "Use staged rollout gates with representative regression cases."}},
+      "trials": [
+        {
+          "output": {
+            "summary": "A staged evaluation rollout reduces operational and quality risk.",
+            "recommendation": "Use staged rollout gates with representative regression cases.",
+            "confidence": 0.86,
+            "key_findings": ["Multiple lenses support staged adoption", "Evidence quality varies by domain"],
+            "risks": ["Evaluation drift", "Unrepresentative cases"],
+            "counterarguments": ["A single launch is faster"],
+            "citations": ["[SRC-001]", "[SRC-002]"],
+            "next_actions": ["Define gates", "Run a pilot"]
+          },
+          "events": [
+            {"event_type": "agent.started"},
+            {"event_type": "isolation.enforced", "semantic": {"isolation_id": "isolation:FreshResearchContext", "composition_id": "edge:map_evidence"}, "data": {"context": "explicit_only", "capabilities": "declared_only", "state": "fresh", "return": "final_output_only"}},
+            {"event_type": "tool.completed", "semantic": {"capability_id": "tool:sources.search"}},
+            {"event_type": "tool.completed", "semantic": {"capability_id": "tool:sources.fetch"}},
+            {"event_type": "tool.completed", "semantic": {"capability_id": "tool:evidence.score"}},
+            {"event_type": "tool.completed", "semantic": {"capability_id": "tool:citation.format"}},
+            {"event_type": "agent.completed", "semantic": {"agent_id": "agent:EvidenceMapper"}},
+            {"event_type": "agent.completed", "semantic": {"agent_id": "agent:TechnicalLensAnalyst"}},
+            {"event_type": "agent.completed", "semantic": {"agent_id": "agent:PolicySafetyLensAnalyst"}},
+            {"event_type": "agent.completed", "semantic": {"agent_id": "agent:CounterargumentAnalyst"}},
+            {"event_type": "agent.completed", "semantic": {"agent_id": "agent:SynthesisWriter"}},
+            {"event_type": "composition.completed", "semantic": {"agent_id": "agent:ResearchDirector", "composition_id": "edge:map_evidence"}},
+            {"event_type": "output.accepted", "semantic": {"agent_id": "agent:ResearchDirector"}},
+            {"event_type": "agent.completed", "semantic": {"agent_id": "agent:ResearchDirector"}}
+          ],
+          "judges": {
+            "quality:ResearchDirector:balanced_source_backed_brief": {
+              "status": "passed",
+              "reason": "The brief incorporates multiple lenses, uncertainty, counterarguments, and scoped action.",
+              "score": 0.92,
+              "provider": "deterministic-example",
+              "version": "1"
+            }
+          },
+          "metrics": {"latency_ms": 38.0, "cost_usd": 0.0, "input_tokens": 0, "output_tokens": 0}
+        }
+      ]
+    }
+  }
+}

@@ -4,18 +4,16 @@ agent LogInvestigator(
     window: TimeWindow
 ) -> LogEvidenceBundle:
 
-    use tool logs.search from tools.logs preapproved
+    use logs.search:
+        availability = enabled
+        authorization = preapproved
+        execution = host
 
     goal = "Find log evidence that explains the reported incident symptom."
 
     description = "Searches seeded log events for symptom-relevant errors."
 
-    policy = [
+    guidance = [
         "search only within the incident time window",
         "return concise log evidence",
     ]
-
-    guards = [
-        require(output conforms LogEvidenceBundle),
-    ]
-

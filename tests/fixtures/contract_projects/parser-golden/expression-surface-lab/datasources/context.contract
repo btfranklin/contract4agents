@@ -1,6 +1,0 @@
-datasource KnownContextSource:
-    python = "tests.fixtures.parser_golden:known_context"
-    requires = [ExpressionInput]
-    produces = KnownContext
-    render = "markdown"
-    cache = "run"

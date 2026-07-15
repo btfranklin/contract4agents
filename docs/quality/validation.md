@@ -1,53 +1,98 @@
-# Validation And Quality Gates
+# Validation and Quality Gates
 
-This document is the operational map for validating Contract4Agents changes. Keep command behavior details in `docs/reference/cli.md`; keep fixture-runner details in `docs/reference/test-fixtures.md`.
+Contract4Agents validation is offline by default and staged by responsibility.
 
-## Default Local Validation
-
-Run the composite gate before handing off code changes:
+## Full Local Gate
 
 ```bash
 pdm run validate
 ```
 
-That runs:
+The composite runs:
 
-- `pdm run lint`: Ruff over `src`, `tests`, and `examples`.
+- `pdm run lint`: Ruff over source, tests, and examples.
 - `pdm run typecheck`: strict mypy over `src`.
-- `pdm run docs-check`: required-doc and markdown-link checks.
-- `pdm run test`: offline unit and integration tests.
+- `pdm run docs-check`: repository documentation and link consistency.
+- offline unit and integration tests.
 
-Skipped live OpenAI tests are expected in the default gate unless the explicit live-test environment flags are set.
+Run this before handing off implementation changes.
 
-## Offline OpenAI Agents SDK Checks
+## Product Vertical Slice
 
-The default suite imports and constructs the installed OpenAI Agents SDK types.
-Its adapter tests run the real SDK `Agent`, `Runner`, function-tool, hosted-tool,
-agent-as-tool, handoff, structured-output, approval interruption, and state-resume
-surfaces against a deterministic test `Model`. The test model returns scripted
-SDK `ModelResponse` objects and performs no network requests.
+When changing the language, IR, planner, materializer, tracing, assurance, CLI,
+or public examples, also run:
 
-Keep provider-neutral planning assertions separate from these construction and
-execution checks. Planning tests should inspect `OpenAIAdapterPlan` directly;
-tests that claim SDK compatibility should use the installed SDK rather than a
-replacement `agents` module.
+```bash
+pdm run smoke:cli
+```
 
-## Packaging Validation
+The smoke suite exercises every public example through the supported
+contract-first path: source check, target/profile plan, compilation,
+visualization, and eval campaign. It must not depend on a second hand-authored
+runtime inventory.
 
-Run packaging validation when changing `pyproject.toml`, `README.md`, `LICENSE`, build configuration, or public package files:
+## Generated Artifact Freshness
+
+For projects that commit or package generated artifacts:
+
+```bash
+contract4agents compile agent_contracts --out .contract/build
+contract4agents compile agent_contracts --out .contract/build --check
+contract4agents generate agent_contracts --out .contract/generated
+contract4agents generate agent_contracts --out .contract/generated --check
+```
+
+Freshness checks compare deterministic content and detect missing, modified,
+extra, or digest-stale managed files. Generated files are disposable and must
+not be edited by hand.
+
+## Planner and Materializer Gates
+
+Provider-neutral planner tests should prove:
+
+- every required binding is present exactly once;
+- target bindings cannot override contract-owned semantics;
+- callable shape checks never invoke business code;
+- required degraded or unsupported mappings fail closed;
+- models, grants, controls, context, isolation, and telemetry are represented in
+  the plan;
+- plan serialization and digest are deterministic.
+
+Adapter tests that claim SDK compatibility must construct the installed SDK's
+real native objects. Materialization tests should validate the complete graph
+against the plan and include a negative case for every required guarantee that
+can be unsupported.
+
+## Trace and Assurance Gates
+
+Tests should cover:
+
+- duplicate, broken, cyclic, mixed-digest, and malformed trace rejection;
+- stable semantic references and provider correlation;
+- audience redaction before serialization and export;
+- completeness assessment against plan telemetry;
+- missing evidence becoming `unverified`;
+- identical control results in eval and production-trace assessment;
+- deterministic assurance bundle assembly and internal digest verification;
+- semantic diffs for access, authorization, context, isolation, audience,
+  control, model, and enforcement changes.
+
+## Packaging
+
+Run a build after changes to package metadata, `README.md`, `LICENSE`, build
+configuration, or public package files:
 
 ```bash
 pdm build
 ```
 
-The source distribution should not include generated `*.egg-info` directories or the repository-level `examples/` projects. The project uses `pdm-backend` explicitly so package metadata is generated during build without publishing stale local build artifacts.
+Versioning comes from semantic Git tags through the PDM backend. Do not edit a
+static package version. The source distribution must exclude repository-local
+examples, generated build output, and stale metadata directories.
 
-Package versions are derived from Git tags through `pdm-backend` SCM versioning. Use semantic version tags in the form `vX.Y.Z`; do not hand-edit a static package version in `pyproject.toml`.
+## VS Code Extension
 
-## VS Code Extension Validation
-
-Run the VS Code extension package gate when changing `editors/vscode`,
-`.github/workflows/vscode-extension.yml`, or release asset handling:
+When changing `editors/vscode` or its release workflow:
 
 ```bash
 npm --prefix editors/vscode ci
@@ -55,52 +100,31 @@ npm --prefix editors/vscode test
 npm --prefix editors/vscode run package
 ```
 
-Generated `.vsix` files are release assets, not Python package files. They
-should stay untracked locally.
-
-## Release Pipeline
-
-The repository follows the same release path as the sibling public Python packages:
-
-- `.github/workflows/python-package.yml` runs the full local validation gate and builds the package on push and pull request.
-- `.github/workflows/vscode-extension.yml` builds the VS Code syntax-highlighting VSIX on push and pull request.
-- `.github/workflows/create-draft-release.yml` creates draft release notes when a `v*.*.*` tag is pushed.
-- `.github/workflows/python-publish.yml` publishes to PyPI through Trusted Publishing when a GitHub release is published.
-
-Release setup requires the GitHub repository secret `OPENAI_API_KEY` for draft release notes, a GitHub environment named `release`, and a PyPI Trusted Publisher entry for the `python-publish.yml` workflow with the `release` environment. The release-note workflow should draft the notes; do not manually write release notes before the tag workflow runs.
-
-## CLI Smoke Path
-
-Use this path when changing parser, semantic analyzer, compiler, visualization,
-public examples, or README command examples:
-
-```bash
-pdm run smoke:cli
-```
-
-Generated `.contract/` output is local state and should stay untracked.
-Use `pdm run test:agent-fixture` or `pdm run contract4agents eval tests/fixtures/contract_projects/ops-desk-lab`
-when changing internal fixture edge-case behavior.
-Use `pdm run contract4agents check tests/fixtures/contract_projects/host-drift --strict-drift`
-when changing capability registry or host-code drift behavior.
+The VSIX is a release asset, not a Python package file.
 
 ## Live OpenAI Checks
 
-The normal validation suite does not call external APIs. Run live checks only when changing OpenAI client setup, semantic judging, hosted-provider execution, or end-to-end OpenAI model behavior:
+Normal validation does not call external APIs. The offline adapter suite uses
+real SDK classes with deterministic local model behavior. Live provider checks
+are opt-in and require `OPENAI_API_KEY`:
 
 ```bash
 CONTRACT4AGENTS_RUN_OPENAI_LIVE=1 pdm run test:openai-live
-CONTRACT4AGENTS_RUN_OPENAI_AGENT_LIVE=1 pdm run test:openai-agent-live
 ```
 
-These checks require `OPENAI_API_KEY` in the process environment or the ignored local `.env` file. They complement the deterministic offline SDK checks with provider authentication, request compatibility, hosted-tool execution, and real model behavior. Do not use them as the sole proof that the installed SDK boundary is compatible, and do not treat skipped live tests as proof that live OpenAI behavior was exercised.
+The live test materializes the public Incident Command example from contracts,
+resolves its declared context, executes the commander and three delegated
+specialists through the native Agents SDK, validates structured output, and
+correlates SDK spans into normalized contract-bound events. Use it for real
+authentication, request compatibility, native agent-as-tool execution, and
+model behavior. A skipped live test is not evidence that a live provider path
+was exercised.
 
-## Documentation Freshness
+## Documentation
 
-`pdm run docs-check` protects the main repo map:
+```bash
+pdm run docs-check
+```
 
-- required top-level and docs-system files must exist;
-- normal markdown links to local `.md` files must resolve;
-- markdown paths listed in `docs/index.md` must resolve.
-
-When adding a new durable design, reference, quality, or operations document, link it from `docs/index.md` so coding agents can discover it.
+This is a repository-maintenance command, not an installed product command. It
+checks required docs, local Markdown links, and paths listed in the docs index.

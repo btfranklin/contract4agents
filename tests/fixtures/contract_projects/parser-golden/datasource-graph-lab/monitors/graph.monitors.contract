@@ -1,4 +1,0 @@
-monitor context_rendered_after_resolution for ContextComposer:
-    severity = "low"
-    when trace.datasource_resolved(RenderedContext)
-    expect trace.tool_called(tools.context.render)

@@ -1,163 +1,193 @@
 # Vision
 
-Contract4Agents is a typed, declarative project language and local toolchain for specifying AI agents as callable contracts.
+Contract4Agents is contracts-as-code for trustworthy agent systems.
 
-The core idea is simple:
+An agent's middle is probabilistic: a model chooses actions, tools, and
+delegations rather than executing one stable function body. Its durable source
+of truth therefore needs to describe more than a prompt. It needs typed inputs
+and outputs, available capabilities, authorization, composition, context
+provenance, required controls, quality criteria, and the evidence expected from
+execution.
 
-> An agent is a callable whose implementation is supplied by an AI runtime, so its durable source of truth must describe inputs, outputs, allowed capabilities, policies, success criteria, and observable behavior.
+The core lifecycle is:
 
-Contract4Agents should feel close to writing a function signature and a behavior contract, not close to writing YAML. A `.contract` file should be compact enough for an LLM to read accurately, structured enough for static analysis, and clear enough for a human to review before the agent is wired into a host application.
-
-## The Mental Model
-
-A traditional function has stable code between its input and output. An agent does not. Its middle is a probabilistic planning and execution process. That makes the function analogy useful but incomplete.
-
-Contract4Agents treats an agent as:
-
-- A callable interface with typed parameters and a typed return value.
-- A policy-bound process that may call tools, agents, and datasources.
-- A manifest-backed component with explicit capabilities, permissions, and context requirements.
-- A behavior surface whose output and execution trace can be tested.
-
-The source artifact is not primarily a prompt. It is an agent contract that compiles into the artifacts needed to review, integrate, evaluate, and monitor the agent.
-
-## The Shape
-
-The language should look more like this than like configuration:
-
-```contract
-agent CustomerGreeter(
-    user_message: UserMessage,
-    customer_profile: CustomerProfile
-) -> GreetingResult:
-
-    use tool calculate from mathlib
-    use agent BillingAgent from ./billing
-    use agent SupportAgent from ./support
-    use datasource AccountRejectionStatus from datasources.account_rejection_status
-
-    goal = "Greet the customer and route them to the right specialist when needed."
-
-    policy = [
-        "answer directly only when the request is simple",
-        "delegate billing questions to BillingAgent",
-        "delegate account-support questions to SupportAgent",
-        "do not invent account details",
-    ]
-
-    success = [
-        "message is friendly and specific",
-        "routed_to is set when delegation happens",
-        "no unsupported customer facts are asserted",
-    ]
-
-    guards = [
-        require(output conforms GreetingResult),
-        forbid(tool.stripe.create_refund unless approved_by_human),
-    ]
-
-    assertions = [
-        expect(output conforms GreetingResult),
-        expect(output.message excludes unsupported_customer_fact),
-        when(trace.called(BillingAgent), expect(output.routed_to == BillingAgent)),
-    ]
+```text
+Declare -> Compile -> Plan -> Materialize -> Run -> Trace -> Assure
 ```
 
-This syntax is intentionally function-like at the boundary and declarative inside. Contract files describe intended behavior, required context, capabilities, safety constraints, and reviewable expectations without turning the contract language into general-purpose application code.
+## The Contract Is the Product
 
-## What Compiles From It
+A `.contract` project should be the agent configuration kept in source control.
+It should be compact enough for a model to understand, structured enough for
+static analysis, and precise enough for a human to review without reading
+generated provider code.
 
-A Contract4Agents project produces multiple artifacts from one source of truth:
+The contract owns portable semantics:
 
-- Agent instructions optimized for LLM comprehension.
-- Provider-neutral manifests with tool, agent, datasource, permission, context, and output-schema metadata.
-- JSON Schemas for declared output and context types.
-- Adapter mappings, starting with explicit OpenAI support.
-- Eval packs that check output, trace behavior, hidden-truth discovery, and qualitative expectations.
-- Monitor packs that inspect normalized traces for contract violations.
-- Run specs that verify host-owned workflow stage outputs and trace behavior.
-- Static visualization artifacts for review and onboarding.
-- Human-readable generated docs.
+- native structural types and typed agent signatures;
+- reusable tools and datasource interfaces;
+- explicit per-agent capability grants;
+- model-selectable delegation and handoff edges;
+- named context origins and isolation requirements;
+- model guidance, assessable controls, quality rubrics, and eval scenarios;
+- expected trace and assurance evidence.
 
-The compiler is the leverage point. The syntax is valuable because it lets the system produce safer and more inspectable agent integrations from a durable contract.
+A separate target binding owns only implementation choices: Python or
+TypeScript locators, provider-native tools, remote endpoints, environment
+providers, models, and provider options.
 
-## Parameters Are Typed Context Slots
+Changing from one supported framework, model, or deployment profile to another
+should be a target change when portable semantics stay the same. It must not
+require recreating the team as a parallel tree of SDK agent configuration.
 
-Agent parameters are not divided into rigid categories like "input" and "context." Every parameter is a typed context slot:
+## Function-Like, Not a Workflow Language
 
-```contract
-agent SupportAgent(
-    user_message: UserMessage,
-    customer_profile: CustomerProfile,
-    problem_summary: AccountRejectionStatus
-) -> SupportResult:
-```
-
-When one agent depends on another agent or a host application invokes an agent, the available context values should be explicit and typed. If a required value is missing, an allowed datasource can resolve it.
-
-Datasources are deliberately real Python code, not a second DSL. They follow a small interface, declare the type they produce, declare the context types they require, and return a value plus a renderable representation for the model.
-
-This creates dependency injection for agents:
-
-- The caller has `UserMessage` and `CustomerProfile`.
-- `SupportAgent` also requires `AccountRejectionStatus`.
-- A Python datasource can produce `AccountRejectionStatus` from `CustomerProfile`.
-- Runtime context primitives resolve it, record provenance, render it for the model, and include it in the trace.
-
-## Tests, Assertions, Guards, And Monitors
-
-Contract4Agents separates behavior checks by when and how they are used.
-
-- `guard`: safety intent and enforcement metadata available to adapters and host runtimes.
-- `assertion`: invariant checked during or after a single run.
-- `.eval`: offline examples and adversarial cases, kept outside the agent file.
-- `monitor`: trace rule that can be run against recorded execution.
-
-Eval files should live beside the project, not inside the agent implementation:
+The language should feel like typed declarations beside normal application
+code:
 
 ```contract
-eval simple_greeting for CustomerGreeter:
-    given user_message = UserMessage("Hi, can you help me?")
-    given customer_profile = null
+type IncidentRequest:
+    incident_id: string
+    question: string
 
-    expect output.routed_to == null
-    expect output.message contains greeting
-    expect trace.not_called(BillingAgent)
-    expect trace.not_called(SupportAgent)
+type LogFinding:
+    summary: string
+    evidence_ids: list[string]
 
-eval billing_request for CustomerGreeter:
-    given user_message = UserMessage("I was charged twice")
-    given customer_profile = CustomerProfile.fixture("active_customer")
+tool logs.search(request: IncidentRequest) -> LogFinding:
+    description = "Search approved incident logs."
+    side_effect = false
 
-    expect trace.called(BillingAgent)
-    expect output.routed_to == BillingAgent
+agent LogInvestigator(request: IncidentRequest) -> LogFinding:
+    use logs.search:
+        availability = enabled
+        authorization = preapproved
+        execution = host
+
+    goal = "Find the most likely cause supported by log evidence."
+    guidance = ["Cite evidence IDs and distinguish facts from hypotheses."]
 ```
 
-The trace is part of the agent's behavioral surface. A correct-looking final answer is not enough if the agent called an unapproved tool, skipped required evidence, wasted tool calls, or failed to route work to the right subagent.
+Named composition edges describe relationships available to the model:
 
-## Why Not YAML
+```contract
+composition investigate from IncidentCommander to LogInvestigator:
+    mode = delegate
+    description = "Investigate when log evidence is needed."
+    history = none
+    map request = input.request
+```
 
-YAML is tolerable for configuration, but this project needs a language with:
+Deterministic ordering, branching, loops, retries, checkpoints, and data
+transformations remain ordinary host code. Contract4Agents should never become
+a disguised general-purpose programming language.
 
-- Agent signatures.
-- Type references.
-- Tool, agent, and datasource capability declarations.
-- Static checks.
-- Separate eval files.
-- Syntax that feels natural beside Python code.
+## One Declaration, Many Consequences
 
-Contract4Agents should sit comfortably next to `.py` files and behave like a project language, not a pile of nested configuration.
+If the system can derive something deterministically from the canonical
+contract, users should not have to declare it again.
+
+For example, an `approval_required` grant should produce:
+
+- safe model guidance when appropriate;
+- a target enforcement requirement;
+- expected approval trace events;
+- a default live assessment rule;
+- assurance evidence obligations.
+
+Likewise, a typed return produces structured-output schema, generated runtime
+types, output validation, telemetry expectations, and an assurance control.
+
+This is how the language stays small while the system becomes powerful.
+
+## Plan Before You Trust
+
+Provider neutrality must not hide meaningful provider differences. Planning
+resolves one target and profile before native objects exist. Every requested
+mapping reports whether it is:
+
+- exact;
+- host-enforced;
+- emulated without losing the guarantee;
+- degraded with a documented semantic loss; or
+- unsupported.
+
+Required degraded or unsupported guarantees fail closed. “The adapter will
+probably handle it” is not an acceptable trust claim.
+
+The same rule applies to isolation. Context separation, capability restriction,
+state, filesystem, network, secrets, and return channels are independent
+dimensions. Code generation can create fresh context and tool allowlists; it
+cannot create an operating-system or network boundary by assertion. A runtime
+provider must enforce stronger boundaries and produce evidence of the mechanism.
+
+## Construct Normal Framework Objects
+
+Contract4Agents materializes ordinary objects from the chosen framework. The
+OpenAI target, for example, returns normal Agents SDK agents, generated output
+types, tools, approval hooks, delegations, and handoffs.
+
+The host still owns real tool implementations, credentials, approval decisions,
+persistence, deterministic workflow, deployment, and external services. The
+boundary is not “Contract4Agents only writes documents.” It owns complete
+portable agent configuration and verifies the native graph it constructs, while
+the application retains business behavior and operational authority.
+
+## Evidence Is Part of the Contract
+
+A correct-looking final answer is insufficient for high-reliability work. The
+system also needs to know which tools ran, which approval was granted, which
+agent received what context, which isolation mechanism was active, and whether
+the expected telemetry was complete.
+
+Normalized traces bind observed events to:
+
+- the exact contract and materialization plan digests;
+- stable semantic IDs for agents, capabilities, grants, controls, and edges;
+- causal parent/stage relationships;
+- provider-native trace and span identifiers;
+- provenance, evidence references, and audience-safe redaction.
+
+Contract4Agents should integrate with existing provider traces and OpenTelemetry
+rather than become a trace-storage or dashboard company merely because evidence
+needs a portable schema.
+
+## Assurance, Not Wishful Labels
+
+Model-facing guidance is not automatically enforced policy. A prose wish is not
+a verified success criterion. The language separates:
+
+- `guidance`: behavioral instruction shown to the model;
+- `control`: a named requirement with assessment class and evidence;
+- `quality`: a named qualitative rubric for a judge or reviewer;
+- `operational_control`: latency, cost, retry, volume, or cross-run behavior.
+
+Assessment reports `passed`, `violated`, or `unverified`. Missing or incomplete
+evidence must never become a pass. The same assessor should interpret controlled
+eval traces and imported production traces.
+
+Assurance bundles combine declared, planned, observed, and assessed truth for a
+release review, compliance process, or incident investigation. They make
+evidence portable and uncertainty explicit; they do not appoint
+Contract4Agents as a legal certification authority.
 
 ## What Success Looks Like
 
-Contract4Agents succeeds when it makes agent systems more reliable and easier to inspect:
+Contract4Agents succeeds when:
 
-- A human can review an agent's behavior contract without reading generated prompts.
-- A model can read the same source and understand the job quickly.
-- A compiler can reject missing tools, unsatisfied context dependencies, ambiguous datasources, invalid output schemas, and impossible eval references.
-- Host applications and SDK adapters can consume the same manifest, schema, instruction, eval, monitor, and visualization artifacts.
-- Host applications can evaluate run specs against normalized traces and stage outputs without moving workflow ownership out of Python.
-- Eval runners can inspect traces as first-class behavior.
-- Monitor rules can reuse the same source of truth as development evals.
+- a team can keep contracts rather than provider SDK agent configuration as the
+  durable source in its repository;
+- a reviewer can understand agent access, composition, context, controls, and
+  evidence obligations before execution;
+- changing a supported model or framework is a target/profile change when
+  semantics remain portable;
+- planning exposes every target loss and blocks unsupported required guarantees;
+- materialization constructs and validates the complete native graph;
+- Python and TypeScript types derive from the same contract IR;
+- traces prove which contract and plan produced observed behavior;
+- eval and production monitoring share controls and result semantics;
+- release reviewers can see semantic changes, regressions, violations, and
+  unverifiable claims without reconstructing the system by hand.
 
-The end state is not a prettier prompt format. It is a source-controlled contract layer for building, reviewing, testing, and observing agent integrations.
+The end state is not a prettier prompt format or an SDK wrapper. It is a
+source-controlled trust layer for building and proving agent systems.

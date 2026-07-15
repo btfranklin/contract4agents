@@ -16,4 +16,9 @@ def list(service: str, start: str, end: str) -> dict[str, object]:
             """,
             (service, start, end),
         ).fetchall()
-    return {"deploys": [{"id": row[0], "ts": row[1], "sha": row[2], "summary": row[3]} for row in rows]}
+    return {
+        "deploys": [
+            f"{row[0]} at {row[1]} ({row[2]}): {row[3]}"
+            for row in rows
+        ]
+    }

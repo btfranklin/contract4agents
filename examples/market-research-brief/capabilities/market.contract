@@ -1,0 +1,44 @@
+tool documents.search(
+    query: string,
+    document_type: string
+) -> DocumentSearchResults:
+    description = "Search internal product, customer, and sales documents."
+    side_effect = false
+
+tool documents.fetch(
+    document_id: string
+) -> DocumentRecord:
+    description = "Fetch one internal document by identifier."
+    side_effect = false
+
+tool current_facts.search(
+    query: string,
+    as_of_date: string
+) -> CurrentFactSearchResults:
+    description = "Search dated external-fact snapshots available to the host."
+    side_effect = false
+
+tool current_facts.fetch(
+    fact_id: string
+) -> CurrentFactRecord:
+    description = "Fetch one dated external-fact snapshot by identifier."
+    side_effect = false
+
+tool competitors.lookup(
+    segment: string
+) -> CompetitorLookupResults:
+    description = "Look up dated competitor positioning for a target segment."
+    side_effect = false
+
+tool citation.format(
+    source_id: string,
+    claim: string
+) -> Citation:
+    description = "Format a source identifier and claim as a citation."
+    side_effect = false
+
+tool web.search(
+    query: string
+) -> WebSearchResults:
+    description = "Search the current public web for evidence relevant to a market claim."
+    side_effect = false

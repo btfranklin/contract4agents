@@ -1,0 +1,29 @@
+composition investigate_logs from IncidentCommander to LogInvestigator:
+    mode = delegate
+    description = "Delegate focused log investigation when log evidence is needed."
+    history = none
+    map request = input.request
+    map service = input.service
+    map window = input.window
+
+composition inspect_deploys from IncidentCommander to DeployAnalyst:
+    mode = delegate
+    description = "Delegate deploy correlation when recent changes may explain the incident."
+    history = none
+    map request = input.request
+    map service = input.service
+    map window = input.window
+
+composition measure_impact from IncidentCommander to MetricsAnalyst:
+    mode = delegate
+    description = "Delegate metric analysis when quantified impact is needed."
+    history = none
+    map request = input.request
+    map service = input.service
+    map window = input.window
+
+composition rewrite_customer_impact from IncidentCommander to CustomerImpactWriter:
+    mode = delegate
+    description = "Delegate a final rewrite when customer-facing language needs refinement."
+    history = none
+    map brief = output

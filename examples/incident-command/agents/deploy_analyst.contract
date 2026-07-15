@@ -4,18 +4,16 @@ agent DeployAnalyst(
     window: TimeWindow
 ) -> RecentDeploys:
 
-    use tool deploys.list from tools.deploys preapproved
+    use deploys.list:
+        availability = enabled
+        authorization = preapproved
+        execution = host
 
     goal = "Find deploys near the incident window that may explain the symptom."
 
     description = "Inspects seeded deploy records for likely change correlation."
 
-    policy = [
+    guidance = [
         "look for deploys immediately before or during the incident",
         "do not claim causality without corroborating evidence",
     ]
-
-    guards = [
-        require(output conforms RecentDeploys),
-    ]
-

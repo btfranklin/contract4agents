@@ -6,23 +6,17 @@ agent ReportWriter(
     customer_signals: CustomerSignalSummary
 ) -> MarketOpportunityReport:
 
-    use tool citation.format from tools.citation preapproved
+    use citation.format:
+        availability = enabled
+        authorization = preapproved
+        execution = host
 
     goal = "Write a market opportunity report that separates internal documents from current external facts."
 
     description = "Produces the final report with citations, freshness notes, opportunity framing, and risks."
 
-    policy = [
+    guidance = [
         "do not state a market claim without a current-fact citation",
         "label internal evidence as internal evidence",
         "include freshness notes for dated facts",
-    ]
-
-    guards = [
-        require(output conforms MarketOpportunityReport),
-    ]
-
-    assertions = [
-        expect(output conforms MarketOpportunityReport),
-        expect(output.thesis excludes uncited_market_claim),
     ]

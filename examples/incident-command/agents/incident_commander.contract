@@ -4,42 +4,26 @@ agent IncidentCommander(
     window: TimeWindow
 ) -> IncidentBrief:
 
-    use agent LogInvestigator from ./log_investigator
-    use agent DeployAnalyst from ./deploy_analyst
-    use agent MetricsAnalyst from ./metrics_analyst
-    use agent CustomerImpactWriter from ./customer_impact_writer
-    use tool status_page.draft_update from tools.status_page requires approval
+    use logs.search:
+        availability = enabled
+        authorization = approval_required
+        execution = host
 
-    host_context = [IncidentBrief]
+    use status_page.draft_update:
+        availability = enabled
+        authorization = approval_required
+        execution = host
+
+    context catalog_service: ServiceCatalogEntry from datasource incident.service:
+        map service_id = input.service.id
+    context active_incident: IncidentReportRequest from external active_incident
 
     goal = "Produce an evidence-backed incident brief for an active production incident."
 
     description = "Coordinates incident investigation and produces the final operational brief."
 
-    policy = [
+    guidance = [
         "prefer evidence over speculation",
         "cite log, deploy, or metric evidence before naming a likely cause",
         "do not publish a status-page draft without approval",
-    ]
-
-    success = [
-        "summary names the affected service and symptom",
-        "likely_cause is backed by at least two evidence categories",
-        "next_actions are concrete and operational",
-    ]
-
-    composition = [
-        isolated_subagent(LogInvestigator),
-        isolated_subagent(DeployAnalyst),
-        isolated_subagent(MetricsAnalyst),
-    ]
-
-    guards = [
-        require(output conforms IncidentBrief),
-        forbid(tool.status_page.draft_update unless approved_by_human),
-    ]
-
-    assertions = [
-        expect(output conforms IncidentBrief),
-        expect(output.likely_cause excludes unsupported_customer_fact),
     ]

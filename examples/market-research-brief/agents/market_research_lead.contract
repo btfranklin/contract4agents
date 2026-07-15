@@ -2,44 +2,13 @@ agent MarketResearchLead(
     question: MarketResearchQuestion
 ) -> MarketOpportunityReport:
 
-    use agent DocumentAnalyst from ./document_analyst
-    use agent CurrentTruthScout from ./current_truth_scout
-    use agent CompetitorAnalyst from ./competitor_analyst
-    use agent CustomerSignalAnalyst from ./customer_signal_analyst
-    use agent ReportWriter from ./report_writer
-
-    host_context = [DocumentEvidence, CurrentFactEvidence, CompetitorSnapshot, CustomerSignalSummary]
-
     goal = "Coordinate a document-driven market research report grounded in current external facts."
 
     description = "Splits market research into internal document review, current-fact checking, competitor analysis, customer-signal analysis, and report writing."
 
-    policy = [
+    guidance = [
         "use internal documents to find hypotheses and customer language",
         "use current-fact snapshots before stating market truth",
         "do not merge stale internal claims with current external facts",
         "keep citations and freshness notes in the final report",
-    ]
-
-    success = [
-        "report states a clear market thesis",
-        "current facts and internal documents are separated",
-        "competitor and customer signals both influence the recommendation",
-    ]
-
-    composition = [
-        isolated_subagent(DocumentAnalyst),
-        isolated_subagent(CurrentTruthScout),
-        isolated_subagent(CompetitorAnalyst),
-        isolated_subagent(CustomerSignalAnalyst),
-        isolated_subagent(ReportWriter),
-    ]
-
-    guards = [
-        require(output conforms MarketOpportunityReport),
-    ]
-
-    assertions = [
-        expect(output conforms MarketOpportunityReport),
-        expect(output.thesis excludes uncited_market_claim),
     ]

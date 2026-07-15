@@ -1,0 +1,33 @@
+schema_version = "1"
+
+[targets.openai]
+adapter = "openai"
+
+[targets.openai.tools."documents.search"]
+python = "examples.market_research_brief_imports.documents:search"
+
+[targets.openai.tools."documents.fetch"]
+python = "examples.market_research_brief_imports.documents:fetch"
+
+[targets.openai.tools."current_facts.search"]
+python = "examples.market_research_brief_imports.current_facts:search"
+
+[targets.openai.tools."current_facts.fetch"]
+python = "examples.market_research_brief_imports.current_facts:fetch"
+
+[targets.openai.tools."competitors.lookup"]
+python = "examples.market_research_brief_imports.competitors:lookup"
+
+[targets.openai.tools."citation.format"]
+python = "examples.market_research_brief_imports.citation:format"
+
+[targets.openai.tools."web.search"]
+provider = "openai"
+tool = "web_search"
+search_context_size = "medium"
+
+[targets.openai.profiles.test]
+default_model = "test-model"
+
+[targets.openai.profiles.production]
+default_model = "gpt-5.2"

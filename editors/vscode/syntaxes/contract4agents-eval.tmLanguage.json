@@ -146,11 +146,11 @@
       "patterns": [
         {
           "name": "keyword.control.expression.contract4agents-eval",
-          "match": "\\b(expect|semantic)\\b"
+          "match": "\\b(expect|quality)\\b"
         },
         {
           "name": "meta.function.trace.contract4agents-eval",
-          "match": "\\b(trace)(\\.)(called|not_called|called_once|called_times|called_before|called_after|max_calls|not_tool_called_by|tool_called|hosted_tool_called|agent_called|datasource_resolved|approval_requested|approval_granted|approval_denied|guardrail_rejected|contains)\\b",
+          "match": "\\b(trace)(\\.)(called|not_called|called_once|called_times|called_before|called_after|max_calls|not_tool_called_by|tool_called|agent_called|datasource_resolved|approval_requested|approval_granted|approval_denied|contains)\\b",
           "captures": {
             "1": {
               "name": "support.variable.expression.contract4agents-eval"
@@ -208,7 +208,7 @@
       "patterns": [
         {
           "name": "support.type.primitive.contract4agents-eval",
-          "match": "\\b(str|int|float|bool|list\\[[A-Za-z_][A-Za-z0-9_?]*\\]|[A-Za-z_][A-Za-z0-9_?]*\\[\\])\\b"
+          "match": "\\b(string|integer|float|boolean|datetime|list|map)\\b"
         },
         {
           "name": "entity.name.type.contract4agents-eval",

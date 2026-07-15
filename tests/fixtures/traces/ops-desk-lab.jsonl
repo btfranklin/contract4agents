@@ -1,4 +1,0 @@
-{"schema_version":"1","run_id":"run-ops-desk-lab","event_id":"evt-000001","event_type":"agent.started","timestamp":1.0,"agent":"OpsDeskCoordinator","data":{},"provider":{}}
-{"schema_version":"1","run_id":"run-ops-desk-lab","event_id":"evt-000002","event_type":"agent.completed","timestamp":2.0,"agent":"BillingSpecialist","data":{"status":"resolved"},"provider":{}}
-{"schema_version":"1","run_id":"run-ops-desk-lab","event_id":"evt-000003","event_type":"tool.completed","timestamp":3.0,"tool":"billing.lookup_invoice","data":{"invoice_id":"INV-1001"},"provider":{}}
-{"schema_version":"1","run_id":"run-ops-desk-lab","event_id":"evt-000004","event_type":"agent.completed","timestamp":4.0,"agent":"OpsDeskCoordinator","data":{"status":"resolved"},"provider":{}}

@@ -132,7 +132,7 @@ Important patterns for Contract4Agents:
 Contract4Agents implication:
 
 - Contract4Agents must separate "available", "allowed", "pre-approved", "denied", and "requires approval." A single `tools = [...]` list is not precise enough.
-- Contract4Agents' trace schema needs to represent tool calls, tool results, approvals, final output, and isolated subagent traces.
+- Contract4Agents' trace schema needs to represent tool calls, tool results, approvals, final output, and dimension-specific isolation evidence.
 - Contract4Agents should model subagent context isolation separately from manager-style agent calls.
 
 ## Amazon Strands Agents SDK
@@ -187,36 +187,52 @@ Across all four SDKs, a production agent definition tends to contain these parts
 | Runtime loop | runner | runner/session/event model | Claude Code loop | Strands event loop |
 | Trace/results | traces/results/state | events/callbacks/state | streaming messages/result/cost | result, metrics, trace output |
 
-## Contract4Agents Design Requirements From The Survey
+## Contract4Agents Design Applied From The Survey
 
-Contract4Agents should make these concepts first-class:
+The implemented V2 semantic model preserves the cross-SDK concepts without
+copying any one framework's object model:
 
-- `agent` identity: `name`, `description`, and callable signature.
-- Model intent: provider-neutral model choice and model settings, with adapter-specific overrides.
-- Instructions: generated from goal, policy, success criteria, routes, guards, and output contract.
-- Typed context slots: values may be rendered to the model or kept hidden in runtime state.
-- Capabilities: tools, MCP tools, code executors, built-in tools, datasources, and agents.
-- Permission semantics: available, allowed, denied, approval-required, pre-approved, and sandboxed.
-- Output contracts: JSON Schema as canonical interchange, with Pydantic/Zod generated or accepted at adapter boundaries.
-- Composition semantics: agent-as-tool, handoff, and isolated subagent.
-- Hooks and guards: before/after agent, model, tool, datasource, and output-validation intervention points.
-- Trace contract: normalized trace events across tool calls, subagent calls, approvals, and final output.
-- Eval contract: deterministic output checks, trace spies, semantic judgments, and monitor rules.
+- Agents have stable identity, description, typed signatures, goal, and
+  audience-classified guidance.
+- Models and provider settings live in target profiles because they are target
+  choices, not portable semantics.
+- Shared capability interfaces are defined once; per-agent grants separate
+  availability, authorization, and execution boundary.
+- Datasource and external-context interfaces retain explicit value provenance,
+  rendering, sensitivity, and target-bound providers.
+- Native contract types generate JSON Schema, Pydantic, TypeScript, and Zod
+  outward from one canonical IR.
+- Named composition edges distinguish returning delegation from transferring
+  handoff. Deterministic workflow remains host code.
+- Isolation profiles separate context, capability, state, filesystem, network,
+  secret, and return-channel guarantees.
+- Guidance, enforceable controls, evaluator quality rubrics, and operational
+  controls are distinct constructs.
+- Normalized traces join provider evidence to contract and plan digests and
+  stable semantic IDs.
+- Eval and production monitoring use the same control assessor and report
+  missing evidence as unverified.
 
-## Adapter Strategy
+## Target Strategy
 
-Contract4Agents should not choose one SDK's object model as its internal model. Instead:
+Contract4Agents does not use an SDK object model as its internal representation:
 
-1. Compile `.contract` files into a provider-neutral manifest.
-2. Compile the manifest into adapter-specific code or configuration.
-3. Run adapter conformance tests against the same demo teams.
-4. Record target-specific warnings when an adapter cannot faithfully represent a Contract4Agents feature.
+1. Portable source compiles to deterministic canonical IR.
+2. A target binding selects implementations and a complete profile.
+3. A provider-neutral plan reports exact, host-enforced, emulated, degraded,
+   and unsupported mappings before construction.
+4. A target materializer constructs and validates the native graph against the
+   immutable plan.
+5. Conformance tests run the same contract projects across targets while
+   preserving target-specific differences and caveats.
 
 Recommended first adapter order:
 
-1. OpenAI Agents SDK: best fit for the current Contract4Agents mental model because it already names agents, instructions, context, tools, handoffs, guardrails, output schemas, results, and traces.
+1. OpenAI Agents SDK: implemented first because it directly represents agents,
+   tools, handoffs, structured outputs, approvals, results, and traces.
 2. Google ADK: important second target because it has config loading, session state, callbacks, and multi-language pressure.
 3. Strands: important for model-neutral and multi-agent pattern breadth.
 4. Claude Agent SDK: important for permissions, coding-agent loop semantics, MCP, subagent isolation, and session controls, but its surface is less like a simple agent class.
 
-This is a recommended implementation order, not a language dependency. Contract4Agents should preserve all common patterns from the beginning.
+This is a target roadmap, not a language dependency. A future target must
+report semantic loss in its plan instead of changing portable contract meaning.

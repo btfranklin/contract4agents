@@ -3,19 +3,21 @@ agent TechnicalLensAnalyst(
     evidence: EvidenceMap
 ) -> TechnicalAssessment:
 
-    use tool sources.fetch from tools.sources preapproved
-    use tool evidence.score from tools.evidence preapproved
+    use sources.fetch:
+        availability = enabled
+        authorization = preapproved
+        execution = host
+    use evidence.score:
+        availability = enabled
+        authorization = preapproved
+        execution = host
 
     goal = "Evaluate technical feasibility and implementation risk for the research decision."
 
     description = "Reviews technical evidence only, keeping implementation judgment narrow and source-backed."
 
-    policy = [
+    guidance = [
         "stay focused on technical feasibility",
         "name implementation risks separately from policy risks",
         "cite evidence before recommending controls",
-    ]
-
-    guards = [
-        require(output conforms TechnicalAssessment),
     ]

@@ -1,0 +1,46 @@
+{
+  "schema_version": "1",
+  "cases": {
+    "eval:MarketResearchLead:validates_segment_opportunity": {
+      "inputs": {"hidden_truth": {"market_thesis": "Field operations teams are an attractive initial segment for governed AI workflows."}},
+      "trials": [
+        {
+          "output": {
+            "thesis": "Field operations teams are an attractive initial segment for governed AI workflows.",
+            "opportunity": "Reduce coordination delay while preserving review evidence.",
+            "current_facts": ["Current buyers prioritize integration and governance"],
+            "internal_evidence": ["Pilot users reduced handoff time"],
+            "competitor_signals": ["Competitors emphasize generic copilots"],
+            "customer_signals": ["Customers ask for auditable automation"],
+            "risks": ["Long enterprise sales cycles"],
+            "recommendation": "Run a governed field-operations design-partner program.",
+            "citations": ["[DOC-001]", "[WEB-001]"],
+            "freshness_notes": ["External facts checked in the current eval snapshot"]
+          },
+          "events": [
+            {"event_type": "agent.started"},
+            {"event_type": "tool.completed", "semantic": {"capability_id": "tool:documents.search"}},
+            {"event_type": "tool.completed", "semantic": {"capability_id": "tool:documents.fetch"}},
+            {"event_type": "tool.completed", "semantic": {"capability_id": "tool:current_facts.search"}},
+            {"event_type": "tool.completed", "semantic": {"capability_id": "tool:current_facts.fetch"}},
+            {"event_type": "tool.completed", "semantic": {"capability_id": "tool:competitors.lookup"}},
+            {"event_type": "tool.completed", "semantic": {"capability_id": "tool:citation.format"}},
+            {"event_type": "agent.completed", "semantic": {"agent_id": "agent:DocumentAnalyst"}},
+            {"event_type": "agent.completed", "semantic": {"agent_id": "agent:CurrentTruthScout"}},
+            {"event_type": "agent.completed", "semantic": {"agent_id": "agent:CompetitorAnalyst"}},
+            {"event_type": "agent.completed", "semantic": {"agent_id": "agent:CustomerSignalAnalyst"}},
+            {"event_type": "agent.completed", "semantic": {"agent_id": "agent:ReportWriter"}},
+            {"event_type": "output.accepted", "semantic": {"agent_id": "agent:MarketResearchLead"}},
+            {"event_type": "agent.completed", "semantic": {"agent_id": "agent:MarketResearchLead"}}
+          ],
+          "judges": {
+            "quality:MarketResearchLead:clear_market_thesis": {"status": "passed", "reason": "The thesis directly answers the decision question.", "score": 0.94, "provider": "deterministic-example", "version": "1"},
+            "quality:MarketResearchLead:separates_evidence_sources": {"status": "passed", "reason": "Internal and current external evidence remain separate and cited.", "score": 0.96, "provider": "deterministic-example", "version": "1"},
+            "quality:MarketResearchLead:balanced_recommendation": {"status": "passed", "reason": "Competitor and customer evidence both influence the recommendation.", "score": 0.91, "provider": "deterministic-example", "version": "1"}
+          },
+          "metrics": {"latency_ms": 42.0, "cost_usd": 0.0, "input_tokens": 0, "output_tokens": 0}
+        }
+      ]
+    }
+  }
+}

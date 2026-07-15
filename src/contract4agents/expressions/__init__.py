@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-from contract4agents.expressions._eval import evaluate_hidden_truth, evaluate_output, evaluate_trace
 from contract4agents.expressions._grammar import (
     parse_contract_expression,
     parse_expectation,
-    parse_monitor_condition,
-    parse_monitor_expectation,
     parse_semantic_expectation,
 )
 from contract4agents.expressions._model import (
@@ -27,13 +24,8 @@ __all__ = [
     "ContractExpression",
     "ParsedExpression",
     "TraceOp",
-    "evaluate_hidden_truth",
-    "evaluate_output",
-    "evaluate_trace",
     "parse_contract_expression",
     "parse_expectation",
-    "parse_monitor_condition",
-    "parse_monitor_expectation",
     "parse_semantic_expectation",
     "referenced_output_fields",
     "referenced_trace_targets",

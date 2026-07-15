@@ -3,19 +3,21 @@ agent PolicySafetyLensAnalyst(
     evidence: EvidenceMap
 ) -> PolicySafetyAssessment:
 
-    use tool sources.fetch from tools.sources preapproved
-    use tool evidence.score from tools.evidence preapproved
+    use sources.fetch:
+        availability = enabled
+        authorization = preapproved
+        execution = host
+    use evidence.score:
+        availability = enabled
+        authorization = preapproved
+        execution = host
 
     goal = "Evaluate policy and safety risks without drifting into implementation planning."
 
     description = "Reviews compliance, stakeholder, and safety evidence as a focused specialist."
 
-    policy = [
+    guidance = [
         "separate policy risk from safety risk",
         "prefer mitigations tied to evidence",
         "do not claim a regulatory requirement unless the source supports it",
-    ]
-
-    guards = [
-        require(output conforms PolicySafetyAssessment),
     ]

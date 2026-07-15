@@ -1,47 +1,71 @@
 type ResearchQuestion:
-    topic: str
-    decision: str
-    audience: str
-    risk_tolerance: str
+    topic: string
+    decision: string
+    audience: string
+    risk_tolerance: string
 
 type SourceEvidence:
-    source_id: str
-    title: str
-    lens: str
-    claim: str
-    citation: str
+    source_id: string
+    title: string
+    lens: string
+    claim: string
+    citation: string
 
 type EvidenceMap:
-    topic: str
-    source_ids: str[]
-    claims: str[]
-    citations: str[]
-    quality_notes: str[]
+    topic: string
+    source_ids: list[string]
+    claims: list[string]
+    citations: list[string]
+    quality_notes: list[string]
 
 type TechnicalAssessment:
-    feasibility: str
-    implementation_risks: str[]
-    required_controls: str[]
-    citations: str[]
+    feasibility: string
+    implementation_risks: list[string]
+    required_controls: list[string]
+    citations: list[string]
 
 type PolicySafetyAssessment:
-    policy_risks: str[]
-    safety_risks: str[]
-    mitigation_requirements: str[]
-    citations: str[]
+    policy_risks: list[string]
+    safety_risks: list[string]
+    mitigation_requirements: list[string]
+    citations: list[string]
 
 type CounterargumentSet:
-    strongest_counterarguments: str[]
-    weak_assumptions: str[]
-    disconfirming_sources: str[]
-    citations: str[]
+    strongest_counterarguments: list[string]
+    weak_assumptions: list[string]
+    disconfirming_sources: list[string]
+    citations: list[string]
 
 type ResearchBrief:
-    summary: str
-    recommendation: str
+    summary: string
+    recommendation: string
     confidence: float
-    key_findings: str[]
-    risks: str[]
-    counterarguments: str[]
-    citations: str[]
-    next_actions: str[]
+    key_findings: list[string]
+    risks: list[string]
+    counterarguments: list[string]
+    citations: list[string]
+    next_actions: list[string]
+
+type SourceSearchResults:
+    results: list[string]
+
+type SourceRecord:
+    source_id: string
+    found: boolean?
+    title: string?
+    lens: string?
+    body: string?
+    quality: float?
+
+type EvidenceScore:
+    source_id: string
+    score: float
+    rationale: string
+
+type FormattedCitation:
+    citation: string
+
+type ExpertReviewRequest:
+    topic: string
+    summary: string
+    requested: boolean

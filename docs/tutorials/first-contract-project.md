@@ -1,169 +1,234 @@
 # First Contract Project
 
-This tutorial is for an engineer with an existing or planned agent app who wants
-the smallest useful Contract4Agents adoption path. Contract4Agents does not run
-your agent for you. It gives your app a typed, reviewable contract that can
-compile into instructions, manifests, JSON Schemas, guard metadata, eval packs,
-monitor rules, and visualization files. Start with one agent, get one contract
-compiling, then add stricter checks only when they help.
+This tutorial builds one small, runnable OpenAI agent. The contract defines the
+agent; the Python code supplies one ordinary tool and starts the finished agent.
 
-## Create A Contract Directory
-
-Put contract source beside your application code:
+## 1. Create the Project
 
 ```text
-your-agent-app/
+your-app/
   agent_contracts/
+    agents/
+      support.contract
+    capabilities/
+      support.contract
+    evals/
+      support.eval
     types/
       support.contract
-    agents/
-      support_responder.contract
-  src/
-    your_app/
-      agents/
-      tools/
-      runtime.py
-  .contract/
-    build/
+    contract4agents.targets.toml
+    eval-data.json
+  your_app/
+    __init__.py
+    run_agent.py
+    tools.py
 ```
 
-The directory name is up to you. The examples use `agent_contracts` because it is
-easy to recognize in commands and CI.
+Install Contract4Agents with OpenAI support:
 
-## Write The Types
+```bash
+pdm add "contract4agents[openai]"
+```
+
+## 2. Define the Data
 
 Create `agent_contracts/types/support.contract`:
 
 ```contract
-type SupportTicket:
-    ticket_id: str
-    customer_message: str
-    product_area: str
+type KnowledgeResult:
+    answer: string
+    source_ids: list[string]
 
 type SupportReply:
-    answer: str
-    confidence: float
-    follow_up_needed: bool
+    answer: string
+    source_ids: list[string]
+    needs_follow_up: boolean
 ```
 
-Types are the structured values your host app passes into the agent and expects
-back from it. Keep the first type small. You can add fields after the first
-contract compiles.
+These types are the source of truth for tool and agent outputs.
 
-## Write One Agent
+## 3. Define the Tool
 
-Create `agent_contracts/agents/support_responder.contract`:
+Create `agent_contracts/capabilities/support.contract`:
 
 ```contract
-agent SupportResponder(
-    ticket: SupportTicket
-) -> SupportReply:
+tool knowledge.search(query: string) -> KnowledgeResult:
+    description = "Search the approved support knowledge base."
+    side_effect = false
+```
 
-    goal = "Answer the support ticket clearly and flag follow-up when needed."
+The contract says what the tool does. The Python implementation comes next.
 
-    policy = [
-        "answer only from available ticket details",
-        "flag follow_up_needed when the request requires account-specific action",
-        "do not claim that account state changed",
-    ]
+## 4. Define the Agent
 
-    guards = [
-        require(output conforms SupportReply),
-    ]
+Create `agent_contracts/agents/support.contract`:
 
-    assertions = [
-        expect(output conforms SupportReply),
+```contract
+agent SupportResponder(question: string) -> SupportReply:
+    use knowledge.search:
+        availability = enabled
+        authorization = preapproved
+        execution = host
+
+    goal = "Answer the support question from approved evidence."
+    description = "Handles first-line support questions."
+    guidance = [
+        "Use the knowledge tool before answering.",
+        "Include the source IDs behind the answer.",
+        "Set needs_follow_up when the evidence is insufficient.",
     ]
 ```
 
-This is not the agent implementation. Your SDK app still owns models, tools,
-credentials, workflow, and execution. The contract records the callable boundary
-and the behavior you want humans, CI, and adapters to inspect.
+The `use` block grants this agent access to the shared tool. The authorization
+decision lives here, not in Python or provider configuration.
 
-## Run The Local Loop
+## 5. Implement and Bind the Tool
 
-From your application repo root:
+Create `your_app/tools.py`:
+
+```python
+def search_knowledge(query: str) -> dict[str, object]:
+    return {
+        "answer": "Orders normally leave the warehouse within two business days.",
+        "source_ids": ["shipping-policy-2026"],
+    }
+```
+
+Create `agent_contracts/contract4agents.targets.toml`:
+
+```toml
+schema_version = "1"
+
+[targets.openai]
+adapter = "openai"
+
+[targets.openai.tools."knowledge.search"]
+python = "your_app.tools:search_knowledge"
+
+[targets.openai.profiles.development]
+default_model = "gpt-5.6-luna"
+```
+
+The binding connects the portable tool name to this application's Python
+function. It also chooses the model for this target profile.
+
+## 6. Check and Plan
+
+From `your-app/`, run:
 
 ```bash
 contract4agents check agent_contracts
 contract4agents compile agent_contracts --out .contract/build
-contract4agents visualize agent_contracts --out .contract/build/visualization
+contract4agents plan agent_contracts --target openai --profile development \
+  --out .contract/build/development-plan.json
 ```
 
-Open or inspect:
+The plan is the useful checkpoint: it shows the exact model and tool binding
+that Contract4Agents will materialize, and it fails early if something required
+is missing or unsupported.
 
-- `.contract/build/instructions/SupportResponder.md`
-- `.contract/build/schemas/SupportReply.json`
-- `.contract/build/manifests/SupportResponder.json`
-- `.contract/build/visualization/index.html`
+## 7. Run the Agent
 
-Generated artifacts are disposable. The `.contract` source files are durable.
-Keep `.contract/build` ignored unless your team intentionally reviews generated
-artifacts in pull requests.
-
-## Consume The Artifacts From Python
-
-Your app can compile the same project at build time or startup:
+Create `your_app/run_agent.py`:
 
 ```python
-from pathlib import Path
+import asyncio
 
-from contract4agents.compiler import compile_project
+from agents import Runner
+from contract4agents import materialize
 
-artifacts = compile_project(Path("agent_contracts"))
-manifest = artifacts["manifests"]["SupportResponder"]
-instructions = artifacts["instructions"]["SupportResponder"]
-schema = artifacts["schemas"]["SupportReply"]
+
+async def main() -> None:
+    system = materialize(
+        "agent_contracts",
+        target="openai",
+        profile="development",
+    )
+    agent = system.agents["SupportResponder"]
+    result = await Runner.run(agent, input="When will my order ship?")
+    print(result.final_output)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
-Use the instructions with your SDK agent, use the schema to align structured
-outputs, and use the manifest to inspect declared tools, context, guards, and
-assertions.
+Set `OPENAI_API_KEY` in your environment, then run:
 
-## OpenAI Agents SDK Sketch
-
-If your host app uses the OpenAI Agents SDK, the adapter can plan and build SDK
-agents from compiled artifacts. This is a docs-only sketch; your app still
-supplies the model choice, real tools, approval handling, and runtime workflow.
-
-```python
-from pathlib import Path
-
-from contract4agents.adapters.openai import (
-    build_openai_agents_from_plan,
-    plan_openai_agents_from_contracts,
-)
-from contract4agents.compiler import compile_project
-
-artifacts = compile_project(Path("agent_contracts"))
-
-plan = plan_openai_agents_from_contracts(
-    artifacts,
-    output_type_registry={"SupportReply": SupportReplyModel},
-    model_registry={"SupportResponder": config.support_model},
-)
-
-factory_result = build_openai_agents_from_plan(plan)
-support_agent = factory_result.agents["SupportResponder"]
+```bash
+pdm run python -m your_app.run_agent
 ```
 
-For contracts with host tools, pass a `tool_registry`. For hosted provider tools,
-pass a `hosted_tool_registry`. For output types, either pass explicit SDK/Pydantic
-models or use the adapter's generated output type support. The detailed adapter
-surface is documented in [OpenAI Adapter Reference](../reference/openai-adapter.md).
+`materialize` compiles the contract, resolves the development profile, builds
+the native OpenAI agent and tool, and verifies the result against the plan.
 
-## What To Add Next
+## 8. Run One Deterministic Eval
 
-After one contract compiles, add only the next layer you need:
+Create `agent_contracts/evals/support.eval`:
 
-1. Add one `.eval` for the most important scenario.
-2. Add a specialist agent or a host tool declaration.
-3. Use `contract4agents.registry.json` and `--strict-drift` when CI should compare contracts with host-code surfaces.
-4. Capture normalized traces and run monitors when you have real or staged runs.
+```contract
+eval answers_shipping_question for SupportResponder:
+    given question = "When will my order ship?"
+    expect output conforms SupportReply
+    expect trace.tool_called(knowledge.search)
+```
 
-For the deeper integration path, continue with
-[Using Contract4Agents With An Agent App](using-contract4agents-with-an-agent-app.md).
-Use [Contract4Agents Language](../language/contract-language.md) when you need
-exact syntax, [CLI Reference](../reference/cli.md) for command behavior, and
-[Incident Command](../../examples/incident-command/README.md) for a complete
-offline example.
+Create `agent_contracts/eval-data.json`:
+
+```json
+{
+  "schema_version": "1",
+  "cases": {
+    "eval:SupportResponder:answers_shipping_question": {
+      "inputs": {"question": "When will my order ship?"},
+      "trials": [
+        {
+          "output": {
+            "answer": "Orders normally leave within two business days.",
+            "source_ids": ["shipping-policy-2026"],
+            "needs_follow_up": false
+          },
+          "events": [
+            {
+              "event_type": "agent.started",
+              "semantic": {"agent_id": "agent:SupportResponder"}
+            },
+            {
+              "event_type": "tool.completed",
+              "semantic": {
+                "agent_id": "agent:SupportResponder",
+                "capability_id": "tool:knowledge.search"
+              }
+            },
+            {
+              "event_type": "output.accepted",
+              "semantic": {"agent_id": "agent:SupportResponder"}
+            },
+            {
+              "event_type": "agent.completed",
+              "semantic": {"agent_id": "agent:SupportResponder"}
+            }
+          ],
+          "metrics": {"latency_ms": 12.0, "cost_usd": 0.0}
+        }
+      ]
+    }
+  }
+}
+```
+
+Now run the eval:
+
+```bash
+contract4agents eval agent_contracts --target openai --profile development
+```
+
+This first eval is deliberately offline and repeatable. It proves that the
+declared output and expected tool call are assessed correctly before you connect
+the same contract to live or recorded executions.
+
+## Next Step
+
+You now have the complete loop: contract, binding, plan, materialized agent, and
+eval. When you need multiple agents, context providers, approvals, or production
+traces, continue with [the application guide](using-contract4agents-with-an-agent-app.md).

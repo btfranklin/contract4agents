@@ -1,0 +1,15 @@
+control evidence_required for IncidentCommander:
+    severity = high
+    required = true
+    audience = [host, evaluator, reviewer]
+    assessment = post_run
+    require = trace.agent_called(LogInvestigator) and trace.agent_called(DeployAnalyst) and trace.agent_called(MetricsAnalyst)
+    expected_evidence = [composition.completed, tool.completed]
+
+quality concise_operational_summary for IncidentCommander:
+    rubric = "The summary names the affected service and symptom, the likely cause is backed by at least two evidence categories, and next actions are concrete."
+    audience = [evaluator, reviewer]
+
+operational_control incident_latency for IncidentCommander:
+    severity = medium
+    require = trace.duration < 60s

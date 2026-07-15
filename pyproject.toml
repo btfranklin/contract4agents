@@ -66,30 +66,32 @@ excludes = ["editors/**", "examples/**", "tests/**"]
 test = "pytest"
 "test:unit" = "pytest tests/unit --cov=contract4agents --cov-report=term-missing --cov-fail-under=90"
 "test:integration" = "pytest tests/integration"
-"test:openai-live" = "pytest tests/integration/test_openai_live.py"
-"test:agent-fixture" = "pytest tests/integration/test_ops_desk_fixture.py"
-"test:openai-agent-live" = "pytest tests/integration/test_openai_agent_live.py"
-docs-check = "python -m contract4agents docs-check"
+"test:openai-live" = "pytest -m live tests/integration/test_openai_live.py"
+"test:editor" = "npm --prefix editors/vscode test"
+docs-check = "python scripts/docs_check.py"
 lint = "ruff check src tests examples"
 typecheck = "mypy src"
-validate = {composite = ["lint", "typecheck", "docs-check", "test:unit", "test:integration"]}
+validate = {composite = ["lint", "typecheck", "docs-check", "test:editor", "test:unit", "test:integration"]}
 "smoke:cli" = {composite = [
     "contract4agents --help",
     "contract4agents check examples/incident-command",
-    "contract4agents check examples/incident-command --strict-drift",
+    "contract4agents plan examples/incident-command --target openai --profile test --out .contract/build/incident-command/plan.json",
     "contract4agents compile examples/incident-command --out .contract/build/incident-command",
-    "contract4agents visualize examples/incident-command --out .contract/build/incident-command/visualization",
-    "contract4agents eval examples/incident-command",
+    "contract4agents generate examples/incident-command --out .contract/build/incident-command/generated",
+    "contract4agents visualize examples/incident-command --target openai --profile test --out .contract/build/incident-command/visualization",
+    "contract4agents eval examples/incident-command --target openai --profile test --out .contract/build/incident-command/eval-results.json",
+    "contract4agents assure examples/incident-command --target openai --profile test --eval-results .contract/build/incident-command/eval-results.json --out .contract/build/incident-command/assurance",
+    "contract4agents diff examples/incident-command examples/incident-command --out .contract/build/incident-command/diff.json",
     "contract4agents check examples/multi-lens-research",
-    "contract4agents check examples/multi-lens-research --strict-drift",
+    "contract4agents plan examples/multi-lens-research --target openai --profile test --out .contract/build/multi-lens-research/plan.json",
     "contract4agents compile examples/multi-lens-research --out .contract/build/multi-lens-research",
-    "contract4agents visualize examples/multi-lens-research --out .contract/build/multi-lens-research/visualization",
-    "contract4agents eval examples/multi-lens-research",
+    "contract4agents visualize examples/multi-lens-research --target openai --profile test --out .contract/build/multi-lens-research/visualization",
+    "contract4agents eval examples/multi-lens-research --target openai --profile test --out .contract/build/multi-lens-research/eval-results.json",
     "contract4agents check examples/market-research-brief",
-    "contract4agents check examples/market-research-brief --strict-drift",
+    "contract4agents plan examples/market-research-brief --target openai --profile test --out .contract/build/market-research-brief/plan.json",
     "contract4agents compile examples/market-research-brief --out .contract/build/market-research-brief",
-    "contract4agents visualize examples/market-research-brief --out .contract/build/market-research-brief/visualization",
-    "contract4agents eval examples/market-research-brief",
+    "contract4agents visualize examples/market-research-brief --target openai --profile test --out .contract/build/market-research-brief/visualization",
+    "contract4agents eval examples/market-research-brief --target openai --profile test --out .contract/build/market-research-brief/eval-results.json",
 ]}
 contract4agents = "python -m contract4agents"
 
@@ -97,6 +99,7 @@ contract4agents = "python -m contract4agents"
 testpaths = ["tests"]
 markers = [
     "integration: tests that may require optional services or credentials",
+    "live: opt-in tests that call provider APIs",
 ]
 
 [tool.ruff]

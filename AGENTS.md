@@ -6,12 +6,14 @@ This repository is the design and implementation home for Contract4Agents, a typ
 
 - `README.md` is the public/user front door; this file is the coding-agent operating map.
 - Start with `VISION.md` for the product and architecture intent.
+- Use `docs/architecture/v2-semantic-model.md` for the accepted V2
+  implementation decisions.
 - Use `docs/index.md` as the documentation entry point.
 - Language syntax and semantics live in `docs/language/contract-language.md`.
 - Practical adoption guidance lives in `docs/tutorials/using-contract4agents-with-an-agent-app.md`.
 - Runtime context and datasource design live in `docs/runtime/context-and-datasources.md`.
 - Compiler outputs and static checks live in `docs/compiler/compiler-outputs.md`.
-- Eval, assertion, and monitor design lives in `docs/evaluation/evals-assertions-monitors.md`.
+- Eval, control, and assurance design lives in `docs/evaluation/evals-controls-assurance.md`.
 - Validation, release checks, and live-test boundaries live in `docs/quality/validation.md`.
 - Current SDK research lives in `docs/research/agent-sdk-pattern-survey.md`.
 - VS Code syntax-highlighting extension guidance lives in `docs/reference/vscode-extension.md`.
@@ -46,4 +48,8 @@ This repository is the design and implementation home for Contract4Agents, a typ
 
 ## Current State
 
-- This repository has a usable local V1 implementation: package, parser, semantic analyzer, compiler, runtime, eval and monitor runners, CLI, local fixtures, and a first OpenAI adapter.
+- This repository implements the contract-first V2 path: canonical IR, target
+  bindings and planning, portable type generation, native OpenAI
+  materialization, multidimensional isolation planning, contract-bound traces,
+  eval campaigns, shared control assessment, assurance bundles, semantic diffs,
+  visualization, and the public CLI.

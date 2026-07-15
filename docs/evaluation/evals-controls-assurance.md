@@ -1,0 +1,138 @@
+# Evals, Controls, and Assurance
+
+Contract4Agents evaluates declared intent against observed evidence. The same
+stable contract identities and control assessor are used for controlled eval
+runs and imported production traces.
+
+## Three Different Concerns
+
+- A **control** is a required or advisory behavioral requirement with a named
+  assessment mode and expected evidence.
+- A **quality** declaration is a qualitative rubric assessed by a named judge
+  or reviewer.
+- An **operational control** is a latency, cost, retry, volume, or cross-run
+  concern that is not derivable from a behavioral requirement.
+
+These are not interchangeable. Model guidance is not an enforced control, and
+a missing judge result is not a passing quality result.
+
+```contract
+control evidence_before_publish for IncidentCommander:
+    severity = high
+    required = true
+    audience = [host, evaluator, reviewer]
+    assessment = post_run
+    when = trace.tool_called(status.publish)
+    require = trace.agent_called(LogInvestigator)
+    expected_evidence = [approval.completed, composition.completed]
+
+quality operational_summary for IncidentCommander:
+    rubric = "The summary is concise, evidence-backed, and operationally useful."
+    audience = [evaluator, reviewer]
+
+operational_control latency for IncidentCommander:
+    severity = medium
+    require = trace.duration < 30s
+```
+
+Approval-required grants and typed agent outputs create derived controls. They
+must not be re-declared as separate behavioral monitoring rules.
+
+## Result Semantics
+
+Every assurance result is one of:
+
+- `passed`: sufficient evidence demonstrates the requirement.
+- `violated`: sufficient evidence demonstrates the requirement failed.
+- `unverified`: the evidence is missing, incomplete, malformed, or unable to
+  establish the claim.
+
+The distinction is deliberately asymmetric. Positive events may prove a
+positive claim. Event absence proves a negative claim only when the trace also
+proves the relevant instrumentation covered the complete run.
+
+## Eval Scenarios
+
+`.eval` files declare cases against named agents:
+
+```contract
+eval identifies_checkout_cause for IncidentCommander:
+    given request = IncidentReportRequest.fixture("checkout_latency")
+    expect output conforms IncidentBrief
+    expect trace.tool_called(logs.search)
+    expect trace.agent_called(LogInvestigator)
+    expect trace.not_called(status.publish)
+    expect quality(operational_summary)
+```
+
+The compiler derives the runtime inventory from the canonical IR and the
+materialization plan. The eval case does not repeat agent factories, tool
+registries, permissions, output types, or expected agent counts.
+
+## Campaign Execution
+
+The public eval path selects the same target and profile used for planning:
+
+```bash
+contract4agents eval agent_contracts --target openai --profile test
+```
+
+An eval provider supplies scenario inputs, external context, datasource/tool
+behavior, approval decisions, execution, and semantic judge decisions. The
+built-in file provider reads `eval-data.json` for deterministic offline runs.
+Custom providers implement the `EvalProvider` protocol for live, replayed, or
+application-integrated execution.
+
+Campaigns support repeated trials, pass/violation/unverified rates, Wilson
+uncertainty intervals, latency and cost summaries, thresholds, and baseline
+comparisons. Provider and judge failures produce unverified trials rather than
+disappearing or becoming passes.
+
+## Shared Assessment
+
+`assess_controls(ir, plan, trace)` is the common provider-neutral assessor. It
+uses the plan's requested mechanisms and expected telemetry when evaluating
+contract controls. Eval campaigns call this assessor directly; production
+monitoring should call the same API after loading a normalized trace.
+
+This prevents the offline and production interpretations of a control from
+drifting apart.
+
+## Assurance Bundles
+
+An assurance bundle is a deterministic evidence package containing:
+
+- canonical contract IR and contract digest;
+- materialization plan and plan digest;
+- normalized trace JSONL;
+- control results whose reasons and evidence reflect trace completeness;
+- eval campaign summaries when available;
+- semantic contract or plan diffs when available;
+- explicit diagnostics for absent or inconsistent evidence.
+
+Bundle verification checks internal digest references and records missing
+evidence. A bundle is review evidence, not a claim that a legal or regulatory
+standard has been certified.
+
+## Semantic Diffs
+
+Structural text diffs are insufficient for high-reliability agent changes.
+Contract4Agents semantic diffs identify changes in:
+
+- capability access and authorization;
+- schemas and context exposure;
+- isolation requirements;
+- control requiredness, audience, and assessment;
+- model selection and enforcement outcomes when the Python API receives both
+  previous and candidate plans;
+- quality and eval coverage.
+
+Reviewers can therefore distinguish a harmless wording edit from expanded tool
+access, weakened approval, degraded isolation, or lost evidence coverage.
+
+## Audience Safety
+
+Controls and quality rubrics have explicit audiences. Evaluator-only criteria,
+fraud thresholds, hidden trip conditions, and reviewer material are not inserted
+into model instructions unless their audience explicitly includes `model`.
+Trace exports apply audience-specific redaction before events leave the process.

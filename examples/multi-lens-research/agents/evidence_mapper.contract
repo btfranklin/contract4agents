@@ -2,27 +2,29 @@ agent EvidenceMapper(
     question: ResearchQuestion
 ) -> EvidenceMap:
 
-    use tool sources.search from tools.sources preapproved
-    use tool sources.fetch from tools.sources preapproved
-    use tool evidence.score from tools.evidence preapproved
-    use tool citation.format from tools.citation preapproved
+    use sources.search:
+        availability = enabled
+        authorization = preapproved
+        execution = host
+    use sources.fetch:
+        availability = enabled
+        authorization = preapproved
+        execution = host
+    use evidence.score:
+        availability = enabled
+        authorization = preapproved
+        execution = host
+    use citation.format:
+        availability = enabled
+        authorization = preapproved
+        execution = host
 
     goal = "Map the strongest source evidence before any recommendation is made."
 
     description = "Searches the seeded research corpus, fetches source records, scores evidence quality, and formats citations."
 
-    policy = [
+    guidance = [
         "prefer source-backed claims over broad synthesis",
         "separate technical, policy, safety, and counterargument evidence",
         "do not treat low-quality evidence as decisive",
-    ]
-
-    success = [
-        "claims identify their source ids",
-        "citations are formatted for later use",
-        "quality notes distinguish strong and weak evidence",
-    ]
-
-    guards = [
-        require(output conforms EvidenceMap),
     ]

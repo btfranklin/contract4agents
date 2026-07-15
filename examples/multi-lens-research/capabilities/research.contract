@@ -1,0 +1,19 @@
+tool sources.search(query: string, lens: string) -> SourceSearchResults:
+    description = "Search the seeded research corpus for one specialist lens."
+    side_effect = false
+
+tool sources.fetch(source_id: string) -> SourceRecord:
+    description = "Fetch one source record by stable source ID."
+    side_effect = false
+
+tool evidence.score(source_id: string, claim: string) -> EvidenceScore:
+    description = "Score how strongly a source supports a specific claim."
+    side_effect = false
+
+tool citation.format(source_id: string, claim: string) -> FormattedCitation:
+    description = "Format a stable source citation for a claim."
+    side_effect = false
+
+tool expert_review.request(topic: string, summary: string) -> ExpertReviewRequest:
+    description = "Request an external expert review."
+    side_effect = true

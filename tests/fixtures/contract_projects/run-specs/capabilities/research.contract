@@ -1,0 +1,7 @@
+tool quality.audit(section: SectionResearchBrief) -> VerificationReport:
+    description = "Audit one section research brief."
+    side_effect = false
+
+tool web.search(query: string) -> SectionResearchBrief:
+    description = "Search the current public web for section evidence."
+    side_effect = false

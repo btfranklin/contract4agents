@@ -8,20 +8,20 @@ from contract4agents.visualization._html import render_html
 from contract4agents.visualization._mermaid import render_agent_mermaid, render_mermaid
 from contract4agents.visualization._types import (
     VisualizationAgentDetail,
-    VisualizationAgentEval,
-    VisualizationAgentMonitor,
     VisualizationEdge,
     VisualizationGraph,
     VisualizationNode,
+    VisualizationSummary,
+    VisualizationTruth,
 )
 
 __all__ = [
     "VisualizationAgentDetail",
-    "VisualizationAgentEval",
-    "VisualizationAgentMonitor",
     "VisualizationEdge",
     "VisualizationGraph",
     "VisualizationNode",
+    "VisualizationSummary",
+    "VisualizationTruth",
     "build_visualization_graph",
     "render_agent_mermaid",
     "render_html",

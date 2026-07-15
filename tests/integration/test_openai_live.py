@@ -5,62 +5,92 @@ from pathlib import Path
 
 import pytest
 
-from contract4agents.adapters.openai import OpenAIAdapterUnavailable, OpenAISemanticJudge
+from contract4agents import materialize
+from contract4agents.ir import semantic_id
+from contract4agents.materialization import RecordingRuntimeTraceSink
+from contract4agents.tracing import OpenAINormalizedTraceProcessor
+from examples.incident_command_imports.seed import seed_incident_data
 
 ROOT = Path(__file__).resolve().parents[2]
-
-
-def _load_env_var_from_dotenv(name: str) -> None:
-    if os.getenv(name):
-        return
-    env_path = ROOT / ".env"
-    if not env_path.exists():
-        return
-    for raw_line in env_path.read_text().splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        if key.strip() != name:
-            continue
-        cleaned = value.strip().strip('"').strip("'")
-        if cleaned and cleaned != "replace-me":
-            os.environ[name] = cleaned
-        return
+PROJECT = ROOT / "examples" / "incident-command"
+PROMPT = ROOT / "tests" / "fixtures" / "prompts" / "openai-live-incident.md"
 
 
 @pytest.mark.integration
+@pytest.mark.live
 @pytest.mark.asyncio
-async def test_openai_semantic_judge_live_incident_brief() -> None:
-    if os.getenv("CONTRACT4AGENTS_RUN_OPENAI_LIVE") != "1":
-        pytest.skip("set CONTRACT4AGENTS_RUN_OPENAI_LIVE=1 to run live OpenAI API checks")
+async def test_contract_first_incident_graph_runs_through_openai(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if os.environ.get("CONTRACT4AGENTS_RUN_OPENAI_LIVE") != "1":
+        pytest.skip("set CONTRACT4AGENTS_RUN_OPENAI_LIVE=1 to run the live OpenAI smoke test")
+    if not os.environ.get("OPENAI_API_KEY"):
+        pytest.skip("OPENAI_API_KEY is not configured")
 
-    _load_env_var_from_dotenv("OPENAI_API_KEY")
-    if not os.getenv("OPENAI_API_KEY"):
-        pytest.skip("OPENAI_API_KEY is not set")
+    from agents import RunConfig, Runner, set_trace_processors
 
-    judge = OpenAISemanticJudge(model=os.getenv("CONTRACT4AGENTS_OPENAI_JUDGE_MODEL", "gpt-5.5"))
-    incident_brief = {
-        "summary": "Checkout errors are most likely tied to deploy 8f31c2 changing checkout cache behavior.",
-        "likely_cause": "deploy 8f31c2",
-        "impact": "Checkout returned elevated 503 responses for api-checkout during the incident window.",
-        "evidence": [
-            "logs.search found repeated api-checkout 503 errors after the deploy window",
-            "deploys.list identified deploy 8f31c2 as the only checkout deploy near the regression",
-            "metrics.query showed checkout error rate rising after the deploy",
-        ],
-        "next_actions": ["roll back deploy 8f31c2", "keep status page in draft until approval"],
+    database = seed_incident_data(tmp_path / "incident.sqlite")
+    monkeypatch.setenv("CONTRACT4AGENTS_INCIDENT_DB", str(database))
+    runtime_events = RecordingRuntimeTraceSink()
+    system = materialize(
+        PROJECT,
+        target="openai",
+        profile="production",
+        runtime_trace_sink=runtime_events,
+    )
+    run_id = "openai-live-incident"
+    invocation = {
+        "request": {
+            "service": "checkout-api",
+            "start": "2026-05-01T10:00:00Z",
+            "end": "2026-05-01T11:00:00Z",
+            "symptom": "Checkout latency and timeout spike",
+        },
+        "service": {"id": "checkout-api", "name": "Checkout API", "owner": "payments"},
+        "window": {"start": "2026-05-01T10:00:00Z", "end": "2026-05-01T11:00:00Z"},
     }
+    context = await system.context.resolve_agent("IncidentCommander", invocation, run_id=run_id)
+    rendered_context = "\n\n".join(
+        f"### {name}\n\n{value.rendered}" for name, value in context.items()
+    )
 
-    try:
-        passed = await judge.judge(
-            output=incident_brief,
-            criterion=(
-                "The output should identify deploy 8f31c2 as the likely cause, cite concrete evidence, "
-                "describe customer impact, and avoid claiming that a status-page update was already published."
-            ),
-        )
-    except OpenAIAdapterUnavailable as exc:
-        pytest.skip(str(exc))
+    processor = OpenAINormalizedTraceProcessor(
+        system.context.ir,
+        system.plan,
+        run_id=run_id,
+    )
+    set_trace_processors([processor])
+    prompt = PROMPT.read_text(encoding="utf-8").replace("{{CONTEXT}}", rendered_context)
+    result = await Runner.run(
+        system.agents["IncidentCommander"],
+        prompt,
+        max_turns=12,
+        run_config=RunConfig(
+            workflow_name="Contract4Agents live Incident Command",
+            trace_include_sensitive_data=False,
+        ),
+    )
 
-    assert passed
+    assert result.final_output is not None
+    assert result.final_output.summary
+    assert result.final_output.evidence
+    trace = processor.normalized_trace()
+    event_types = {event.event_type for event in trace.events}
+    completed_agents = {
+        event.semantic.agent_id
+        for event in trace.events
+        if event.event_type == "agent.completed"
+    }
+    assert {"agent.started", "agent.completed", "output.accepted"} <= event_types
+    assert {
+        semantic_id("agent", "IncidentCommander"),
+        semantic_id("agent", "LogInvestigator"),
+        semantic_id("agent", "DeployAnalyst"),
+        semantic_id("agent", "MetricsAnalyst"),
+    } <= completed_agents
+    assert "composition.completed" in event_types
+    assert {event.event_type for event in runtime_events.events} == {
+        "context.resolved",
+        "datasource.resolved",
+    }

@@ -1,140 +1,198 @@
 # CLI Reference
 
-The CLI command is `contract4agents`. `ROOT` defaults to the current directory for every command that accepts it.
-
-All contract parse, semantic, and compile failures are printed as Contract4Agents diagnostics with a stable code, message, source location when available, and optional hint. The command exits non-zero after printing diagnostics.
+All project commands accept an optional `ROOT`, defaulting to the current
+directory. Development examples in this repository add the `pdm run` prefix.
 
 ## `check [ROOT]`
 
-Parses `.contract` and `.eval` files under `ROOT` and runs semantic validation.
-This includes static child-agent context satisfiability across required parent
-parameters, declared `host_context`, parent datasource chains, and run spec
-stage and trace references.
+Parse portable source and run semantic analysis. This command writes nothing,
+loads no target bindings, and imports no application code.
 
-- Default root: `.`
-- Options: `--allow-python-imports`, `--strict-drift`, `--registry PATH`
-- Writes: nothing
-- Success message: `Contract4Agents check passed`
-- Failure message: diagnostics followed by `Contract4Agents check failed`,
-  `Contract4Agents capability registry check failed`, or
-  `Contract4Agents strict drift check failed`
-- Side effects: none
+```bash
+contract4agents check agent_contracts
+```
 
-By default, `check` validates Pydantic-backed type declarations without
-importing host code. Use `--allow-python-imports` to import configured Pydantic
-models and verify schema derivation.
-
-If `ROOT/contract4agents.registry.json` exists, `check` validates the registry
-shape without importing host code or requiring complete coverage. Use
-`--strict-drift` to require the registry and compare declared tools, hosted
-tools, agents, Pydantic output types, prompt assets, and `host_context` markers
-against explicitly configured host-code surfaces. `--registry PATH` overrides
-the default registry path and fails if the requested file is missing.
-
-Capability registry diagnostics use `CAP###` codes. See
-[Capability Registry Reference](capability-registry.md) for the file shape and
-strict drift rules.
+Success prints `Contract4Agents check passed`.
 
 ## `compile [ROOT]`
 
-Generates provider-neutral artifacts from a valid project.
+Compile provider-neutral canonical IR and artifacts.
 
-- Default root: `.`
-- Default output: `.contract/build`
-- Options: `--out PATH`, `--check`, `--allow-python-imports`
-- Writes without `--check`: schemas, type bindings, manifests, instructions, eval packs, monitor packs, run specs, guard plan, adapter capability matrix, and generated docs under `PATH`
-- Writes with `--check`: nothing
-- Success message: `Contract4Agents compile passed`
-- Failure shape: diagnostics; stale generated files use `COMPILE001`, unsafe output paths use `COMPILE002`
-- Side effects: creates parent directories for generated files unless `--check` is used
+```bash
+contract4agents compile agent_contracts --out .contract/build
+contract4agents compile agent_contracts --out .contract/build --check
+```
 
-When `--check` fails with `COMPILE001`, rerun the same compile command without `--check` to refresh generated artifacts.
-Relative `--out` paths are resolved from the current working directory, not
-from `ROOT`. The compiler refuses output paths that are the project root, the
-current working directory, or paths inside obvious source-owned top-level
-directories under either location, including `docs`, `src`, `tests`,
-`examples`, `agents`, `types`, `evals`, `monitors`, and `datasources`. Prefer a
-generated directory such as `.contract/build`.
+Options:
 
-Projects that declare `type Name from python "module:Model"` require
-`--allow-python-imports` for compile, because schema generation imports host
-code. The generated `types/type-bindings.json` records the import path and schema
-hash for each type.
+- `--out PATH`: output root; default `.contract/build`.
+- `--check`: write nothing and fail if managed artifacts are stale.
+
+Managed output includes canonical IR and digest, JSON Schemas, audience-safe
+instructions, Pydantic/TypeScript/Zod source, and generated reviewer docs.
+`COMPILE001` reports stale files; `COMPILE002` reports an unsafe destination.
+
+## `generate [ROOT]`
+
+Write only disposable language artifacts derived from canonical IR.
+
+```bash
+contract4agents generate agent_contracts --out .contract/generated
+contract4agents generate agent_contracts --out .contract/generated --check
+```
+
+Options:
+
+- `--out PATH`: output root; default `.contract/generated`.
+- `--check`: fail when generated source is missing, modified, extra, or stale.
+
+## `plan [ROOT]`
+
+Resolve a target/profile plan without constructing native agents or executing
+business code.
+
+```bash
+contract4agents plan agent_contracts \
+  --target openai \
+  --profile production \
+  --out .contract/build/production-plan.json
+```
+
+Options:
+
+- `--target NAME`: required adapter target.
+- `--profile NAME`: required complete profile.
+- `--bindings PATH`: optional binding document override; default
+  `ROOT/contract4agents.targets.toml`.
+- `--out PATH`: write JSON; otherwise print to stdout.
+
+Planning validates target-binding coverage and inspectable callable shape, then
+resolves models, implementations, grants, composition, controls, isolation,
+host obligations, caveats, and expected telemetry. Required degraded or
+unsupported guarantees fail the command.
 
 ## `visualize [ROOT]`
 
-Builds a static review graph from parsed contracts and compiler artifacts.
+Write a static declared, planned, observed, and assured review graph from the
+evidence supplied.
 
-- Default root: `.`
-- Default output: `.contract/build/visualization`
-- Options: `--out PATH`, `--allow-python-imports`
-- Writes: `graph.json`, `graph.mmd`, and `index.html`
-- Success message: `Contract4Agents visualization written to PATH`
-- Failure shape: diagnostics from parsing, semantic analysis, or unsafe output path validation
-- Side effects: creates the output directory
+```bash
+contract4agents visualize agent_contracts \
+  --target openai \
+  --profile production \
+  --trace run.trace.jsonl \
+  --out .contract/build/visualization
+```
 
-Relative `--out` paths are resolved from the current working directory. The
-same source-owned output guard used by `compile` applies here; prefer
-`.contract/build/visualization`.
+Options:
 
-Use `--allow-python-imports` for projects with Pydantic-backed contract types.
+- `--target NAME` and `--profile NAME`: optional together; add planned truth.
+- `--bindings PATH`: optional binding override for planned truth.
+- `--trace PATH`: optional normalized trace; add observed truth. With a plan,
+  the command also assesses controls for the assured layer.
+- `--out PATH`: default `.contract/build/visualization`.
+
+The command writes deterministic graph data, Mermaid source, and standalone
+HTML. Missing layers remain visibly unavailable rather than inferred.
 
 ## `eval [ROOT]`
 
-Runs the local deterministic fixture project declared by `ROOT/fixture.json`.
-
-- Default root: `.`
-- Options: `--allow-python-imports`, `--fail-on-skipped-semantic`
-- Writes: `ROOT/.contract/runs/last`
-- Success message: fixture summary with per-start `PASS` or `PARTIAL` lines
-- Failure shape: Click error `Contract4Agents fixture eval failed: ...` for runner failures, `Contract4Agents eval skipped semantic checks` when `--fail-on-skipped-semantic` is used, or `Contract4Agents eval failed` after a completed failing report
-- Side effects: compiles the fixture, seeds fixture data, writes traces and reports, and cleans transient build/data/trace artifacts only after successful runs unless `CONTRACT4AGENTS_KEEP_FIXTURE_ARTIFACTS=1`
-
-Use `--allow-python-imports` when a fixture project declares Pydantic-backed
-contract types.
-
-Completed reports separate eval failures, assertion failures, monitor violations,
-and skipped semantic checks. `PARTIAL` means deterministic checks passed but at
-least one semantic expectation was skipped because no semantic judge was
-configured.
-
-Failed eval runs keep generated artifacts and traces in `ROOT/.contract/runs/last` for debugging.
-
-## `monitor [ROOT] --trace TRACE_JSONL`
-
-Runs project monitors against a recorded trace JSONL file using the canonical
-versioned trace envelope from [Trace Schema Reference](trace-schema.md).
-
-- Default root: `.`
-- Required options: `--trace TRACE_JSONL`
-- Other options: `--run-id RUN_ID`, `--allow-python-imports`
-- Writes: nothing
-- Success message: `Contract4Agents monitor passed`
-- Failure shape: monitor violations printed as `SEVERITY rule: message`, followed by `Contract4Agents monitor failed`; invalid trace files fail with a Click error that includes line-numbered trace diagnostics
-- Side effects: none
-
-`monitor --trace` accepts only canonical JSONL with `schema_version`,
-`event_id`, `event_type`, and `timestamp`. Legacy recorder JSONL with top-level
-`type` is rejected. If the trace contains events from multiple `run_id` values,
-pass `--run-id RUN_ID`; otherwise monitor evaluation fails closed.
-
-Use `--allow-python-imports` when monitor setup needs schemas derived from
-Pydantic-backed contract types.
-
-## `docs-check [ROOT]`
-
-Checks required repository documentation files and local markdown links.
-
-- Default root: `.`
-- Writes: nothing
-- Success message: `Docs check passed`
-- Failure shape: diagnostics followed by `Docs check failed`
-- Side effects: none
-
-## Development Invocation
-
-Use PDM during development:
+Run a target/profile eval campaign using normalized contract-bound evidence.
 
 ```bash
-pdm run contract4agents --help
+contract4agents eval agent_contracts \
+  --target openai \
+  --profile test \
+  --trials 5 \
+  --min-pass-rate 0.8 \
+  --max-violation-rate 0.1 \
+  --out .contract/eval-results.json
 ```
+
+Options:
+
+- `--target NAME`: required.
+- `--profile NAME`: required.
+- `--bindings PATH`: optional target-binding override.
+- `--data PATH`: file-backed eval data; default `ROOT/eval-data.json`.
+- `--trials N`: trials per eval case; default `1`.
+- `--min-pass-rate RATE`: optional campaign threshold from `0` to `1`.
+- `--max-violation-rate RATE`: optional threshold from `0` to `1`.
+- `--out PATH`: default `ROOT/.contract/eval-results.json`.
+
+The command compiles, plans, derives the runtime inventory, runs every canonical
+eval case through `FileEvalProvider`, assesses trace completeness, expectations,
+controls, and quality, and writes a deterministic JSON report. Any violated or
+unverified trial or failed threshold produces a nonzero exit.
+
+## `monitor [ROOT]`
+
+Apply the same contract control assessor to an existing normalized trace.
+
+```bash
+contract4agents monitor agent_contracts \
+  --target openai \
+  --profile production \
+  --trace run.trace.jsonl
+```
+
+Options:
+
+- `--target NAME`, `--profile NAME`: required.
+- `--bindings PATH`: optional binding override.
+- `--trace PATH`: required normalized trace V2 JSONL.
+- `--run-id ID`: optional run selection.
+
+Every control result is printed. Violated or unverified controls produce a
+nonzero exit. Monitoring derives behavioral requirements from contracts; there
+is no separate behavioral rule file.
+
+## `assure [ROOT]`
+
+Assemble a deterministic assurance bundle from declared, planned, and available
+observed evidence.
+
+```bash
+contract4agents assure agent_contracts \
+  --target openai \
+  --profile production \
+  --trace run.trace.jsonl \
+  --eval-results .contract/eval-results.json \
+  --provenance provenance.json \
+  --out .contract/assurance
+```
+
+Options:
+
+- `--target NAME`, `--profile NAME`: required.
+- `--bindings PATH`: optional binding override.
+- `--trace PATH`: optional normalized trace.
+- `--eval-results PATH`: optional eval report JSON.
+- `--provenance PATH`: optional provenance JSON.
+- `--out PATH`: default `.contract/assurance`.
+
+Missing optional evidence is recorded as an explicit bundle diagnostic. It is
+never synthesized into a passing result.
+
+## `diff BEFORE AFTER`
+
+Report assurance-relevant semantic changes between two contract projects.
+
+```bash
+contract4agents diff approved-contracts candidate-contracts \
+  --out .contract/semantic-diff.json
+```
+
+Without `--out`, JSON is printed to stdout. The diff classifies changes in
+capability access, authorization, schemas, context, isolation,
+controls, audiences, quality, and eval coverage.
+
+## Exit and Error Behavior
+
+Commands emit structured diagnostics to stderr where available and use nonzero
+exit status for parse/semantic errors, binding failures, unsupported required
+guarantees, invalid traces, violated/unverified control gates, failed eval
+campaigns, stale generated output, and unsafe output paths.
+
+Repository documentation validation is available as `pdm run docs-check`; it is
+not an installed Contract4Agents command.

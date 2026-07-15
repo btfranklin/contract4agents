@@ -1,214 +1,179 @@
-# Context And Datasources
+# Context and Datasources
 
-Contract4Agents treats agent parameters as typed context slots. Host integrations use runtime primitives to build, resolve, render, and trace those slots.
+Every value supplied to an agent has an explicit origin. Contracts define the
+portable interface and provenance category; target bindings select the runtime
+implementation where one is needed.
 
-## Typed Context Slots
+## Origin Categories
 
-An agent signature defines required context:
+- `invocation`: a value passed to an entry agent parameter.
+- `parent`: a typed value mapped from a delegating parent.
+- `handoff`: a typed value carried by a handoff edge.
+- `stage`: a previous host-owned run-spec stage output.
+- `datasource`: the result of a declared typed resolver.
+- `external`: a named value supplied by a target-bound host provider.
 
-```contract
-agent SupportAgent(
-    user_message: UserMessage,
-    customer_profile: CustomerProfile,
-    problem_summary: AccountRejectionStatus
-) -> SupportResult:
-```
+There is no generic “the host will somehow provide this” marker.
 
-The host integration must produce a context frame containing each required slot before the agent can run.
+## Invocation and Edge Inputs
 
-For child-agent dependencies, the compiler checks that required child context is
-available from the parent agent's required parameters, explicit `host_context`,
-or datasources declared on the parent. `host_context` marks typed intermediate
-values that host orchestration supplies between agent calls; it does not define
-workflow control flow.
-
-## Context Value Envelope
-
-Runtime primitives preserve more than the string rendered to the model.
-
-```python
-@dataclass(frozen=True)
-class ContextValue:
-    type_name: str
-    value: object
-    rendered: str
-    source: str
-    provenance: dict[str, object]
-    sensitive: bool = False
-```
-
-`value` is for host logic, validation, caching, and adapters. `rendered` is for the model. This keeps the system practical while avoiding premature loss of structure.
-
-Some context is intentionally hidden from the model. Hidden context should still be available to tools, guards, callbacks, and datasources when the contract allows it.
-
-```python
-@dataclass(frozen=True)
-class RuntimeStateValue:
-    type_name: str
-    value: object
-    source: str
-    provenance: dict[str, object]
-    sensitive: bool = True
-```
-
-This distinction maps to SDK patterns such as OpenAI runner context, Google ADK session state, Claude session/options state, and Strands invocation state.
-
-## Datasource Interface
-
-Datasources are Python resolvers for typed context slots. They should be ordinary Python code following a small interface.
-
-Function-style interface:
-
-```python
-@datasource(
-    produces="AccountRejectionStatus",
-    requires=["CustomerProfile"],
-    render="markdown",
-    cache="run",
-)
-async def resolve_account_rejection_status(ctx: DatasourceContext) -> ContextValue:
-    customer_profile = ctx.get("CustomerProfile")
-    status = await lookup_account_status(customer_profile.value["id"])
-    return ctx.value(
-        type_name="AccountRejectionStatus",
-        value=status,
-        rendered=render_status(status),
-        source="account_status.lookup",
-        provenance={"customer_id": customer_profile.value["id"]},
-    )
-```
-
-## Datasource Context
-
-`DatasourceContext` should expose:
-
-- `get(type_name)`: fetch an already resolved context value.
-- `value(...)`: create a `ContextValue` with normalized metadata.
-- `trace(...)`: emit datasource trace events.
-- `cache`: scoped cache for run-level reuse.
-- `redact(...)`: helper for safe rendered output.
-
-## Resolution Algorithm
-
-When an agent requires a context slot:
-
-1. Use the value passed directly to the invocation if present.
-2. Use the value already present in the parent frame if present.
-3. Find datasources allowed by the agent contract that produce the required type.
-4. For each candidate datasource, recursively prove that its required context slots are already present or can be resolved by a deterministic datasource chain.
-5. If exactly one candidate is valid, execute it.
-6. If zero candidates are valid, fail with a missing context error.
-7. If multiple candidates are valid, fail with an ambiguous datasource error unless the contract chooses one.
-8. Store the resolved value in the frame.
-9. Record datasource start, success, failure, cache hit, and redaction events in the trace.
-
-This algorithm should be deterministic. Silent best guesses are not acceptable.
-V1 also detects datasource dependency cycles and fails with a structured
-`DatasourceResolutionCycle`.
-
-## Resolution Policy
-
-The default policy should be:
-
-- Resolve missing required slots automatically only from datasources explicitly allowed by the agent.
-- Hosts should pass the compiled manifest's datasource names as the runtime allowlist when resolving context.
-- Hosts should populate manifest `host_context` entries explicitly when they
-  wire child-agent calls that consume host-orchestrated intermediate values.
-- Projects that use strict drift checks should also mark those host-provided
-  types in `contract4agents.registry.json` so CI can distinguish intentional
-  host ownership from missing context wiring.
-- Do not search arbitrary installed Python modules.
-- Do not resolve sensitive context unless the agent is allowed to receive its rendered form.
-- Allow sensitive context to remain hidden runtime state when tools or guards need it but the model should not see it.
-- Fail if resolution would require an unapproved tool or datasource.
-- Fail on ambiguity.
-
-Disambiguation syntax can be added when needed:
+Agent signature parameters are invocation inputs for an entry agent:
 
 ```contract
-resolve problem_summary using AccountRejectionStatus.from_customer_profile
+agent IncidentCommander(
+    request: IncidentRequest,
+    service: ServiceRecord
+) -> IncidentBrief:
 ```
 
-## Rendering
+A composition edge explicitly maps every required child input:
 
-Each context value has a rendered representation. Rendering must be explicit enough for safety and debugging.
-
-Rendered context should include:
-
-- Type name.
-- Human-readable value.
-- Provenance summary when useful.
-- Redaction markers for omitted sensitive fields.
-
-Rendered context should not include:
-
-- Raw secrets.
-- Provider tokens.
-- Internal IDs that the agent contract forbids exposing.
-- Large unbounded blobs without summarization.
-
-`RuntimeContext.rendered_context()` returns a stable markdown block containing
-only non-sensitive `ContextValue` entries. OpenAI adapter run helpers append
-that rendered text to the model input when a `RuntimeContext` is supplied, while
-leaving `RuntimeContext.hidden` and sensitive values outside the prompt for host
-tools, callbacks, or other runtime code.
-
-## Trace Events
-
-Datasource resolution should emit trace events such as:
-
-```json
-{
-  "schema_version": "1",
-  "run_id": "run-123",
-  "event_id": "evt-004",
-  "event_type": "datasource.resolved",
-  "timestamp": 42.0,
-  "datasource": "AccountRejectionStatus",
-  "data": {
-    "produces": "AccountRejectionStatus",
-    "requires": ["CustomerProfile"],
-    "duration_ms": 42,
-    "cache": "miss"
-  },
-  "provider": {}
-}
+```contract
+composition investigate from IncidentCommander to LogInvestigator:
+    mode = delegate
+    description = "Investigate when log evidence is needed."
+    history = none
+    map request = input.request
+    map service = input.service
 ```
 
-Trace data powers eval spies, monitor rules, debugging, and safety review.
+Semantic analysis rejects missing target-input mappings.
 
-## Error Types
+## Datasource Interfaces
 
-Runtime primitives use structured errors:
+A datasource is a portable typed resolver, not an implementation path:
 
-- `MissingContextSlot`
-- `AmbiguousDatasource`
-- `DatasourcePermissionDenied`
-- `DatasourceResolutionCycle`
-- `DatasourceExecutionFailed`
+```contract
+datasource incident.timeline(
+    incident: IncidentRecord
+) -> IncidentTimeline:
+    description = "Resolve the current incident timeline."
+    render = markdown
+    cache = run
+```
 
-Each error should include the agent name, missing or failing type, source location when available, and a suggested fix.
+An agent maps each resolver input from its typed invocation or an earlier
+context slot:
+
+```contract
+context incident: IncidentRecord from external current_incident
+context timeline: IncidentTimeline from datasource incident.timeline:
+    map incident = context.incident
+```
+
+Mappings are part of canonical IR and are type-checked. The runtime does not
+ask the model or host to reconstruct resolver arguments implicitly.
+
+The target binding supplies the implementation:
+
+```toml
+[targets.openai.datasources."incident.timeline"]
+python = "incident_app.context:resolve_timeline"
+```
+
+The contract can change targets without changing the datasource interface.
+Planning validates binding coverage and records the selected implementation
+identity without executing it.
+
+## External Context
+
+External context names a host-owned value and its portable handling metadata:
+
+```contract
+external_context current_incident -> IncidentRecord:
+    description = "The incident selected by the authenticated host session."
+    sensitivity = confidential
+    render = markdown
+```
+
+An agent declares exactly how it receives that value:
+
+```contract
+context incident: IncidentRecord from external current_incident
+```
+
+The target binding supplies the provider:
+
+```toml
+[targets.openai.external_context.current_incident]
+python = "incident_app.context:current_incident"
+```
+
+The materialization plan retains the context semantic ID, provider locator,
+type, sensitivity, rendering, and host obligation.
+
+## Rendering and Sensitivity
+
+Portable render modes are `markdown`, `json`, and `text`. Sensitivity values
+are `public`, `internal`, `confidential`, and `restricted`.
+
+Structured host values should remain structured for validation, tools, and
+application logic until an audience-safe renderer creates model-visible text.
+Secrets, provider tokens, forbidden internal identifiers, and unbounded blobs
+must not be copied into model instructions or general trace payloads.
+
+Trace provenance records the provider and safe references to supplied values.
+Audience redaction rules determine which trace consumers may see sensitive
+fields.
 
 ## Caching
 
-Initial cache scopes:
+Datasource cache modes are portable runtime expectations:
 
-- `none`: never cache.
-- `run`: reuse within the current `RuntimeContext`.
-- `thread`: reuse through `RuntimeContext(thread_cache=shared_mapping)`.
+- `none`: resolve every time.
+- `run`: reuse within one normalized run.
+- `thread`: reuse only through explicit thread-scoped state supplied by the
+  runtime provider.
 
-Thread caching is explicit. A host that wants conversation-level or task-level
-reuse should create one shared cache mapping and pass it to each
-`RuntimeContext` that belongs to that thread. Separate runtime contexts without
-the same host-provided mapping do not share `cache="thread"` datasource values.
-Datasource resolvers receive the active cache mapping as `DatasourceContext.cache`.
+The plan reports how the selected target implements the requested cache mode.
+A required unsupported semantic fails closed.
 
-## Security
+## Materialization and Resolution
 
-Datasources are code execution boundaries. Runtime primitives should:
+During planning and materialization Contract4Agents:
 
-- Require explicit datasource registration.
-- Avoid importing arbitrary strings from untrusted contracts.
-- Keep secrets out of rendered context.
-- Record provenance for all resolved values.
-- Allow projects to mark datasource output as sensitive.
+1. verifies that every referenced datasource and external context exists;
+2. verifies input and output types;
+3. requires a compatible target binding;
+4. safely inspects callable shape when the binding supports it;
+5. records the provider, provenance, rendering, caching, and sensitivity in the
+   immutable plan;
+6. wires the implementation into the native graph;
+7. emits materialization evidence with stable semantic IDs.
+
+During execution, the runtime or host resolves declared values, validates the
+result shape, applies rendering and redaction, records cache behavior, and emits
+normalized context/datasource events. Resolution never scans arbitrary installed
+modules or invents an undeclared provider.
+
+The materialized graph exposes this runtime directly:
+
+```python
+from contract4agents.materialization import RecordingRuntimeTraceSink
+
+trace_sink = RecordingRuntimeTraceSink()
+system = materialize(
+    "agent_contracts",
+    target="openai",
+    profile="production",
+    runtime_trace_sink=trace_sink,
+)
+context = await system.context.resolve_agent(
+    "SupportAgent",
+    {"request": request},
+    run_id=run_id,
+    thread_id=thread_id,
+)
+```
+
+The result contains typed values plus audience-safe rendered forms. Run and
+thread cache scopes are enforced by the resolver, and every resolution emits a
+normalized event carrying the contract, plan, agent, context, and datasource
+identities without copying the resolved value into generic trace data.
+
+## Failures
+
+Missing providers, type mismatches, ambiguous origins, binding import failures,
+unsupported rendering/caching guarantees, and sensitive-value exposure are
+failures or explicit plan caveats according to requiredness. They are never
+silently treated as resolved context.

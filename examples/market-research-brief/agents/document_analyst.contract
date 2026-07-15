@@ -2,20 +2,25 @@ agent DocumentAnalyst(
     question: MarketResearchQuestion
 ) -> DocumentEvidence:
 
-    use tool documents.search from tools.documents preapproved
-    use tool documents.fetch from tools.documents preapproved
-    use tool citation.format from tools.citation preapproved
+    use documents.search:
+        availability = enabled
+        authorization = preapproved
+        execution = host
+    use documents.fetch:
+        availability = enabled
+        authorization = preapproved
+        execution = host
+    use citation.format:
+        availability = enabled
+        authorization = preapproved
+        execution = host
 
     goal = "Extract the strongest internal document evidence for the market research question."
 
     description = "Reads seeded internal product, customer, and sales documents without treating them as current external truth."
 
-    policy = [
+    guidance = [
         "mark internal claims as internal evidence",
         "do not describe an internal claim as current market truth",
         "prefer specific cited claims over broad summaries",
-    ]
-
-    guards = [
-        require(output conforms DocumentEvidence),
     ]

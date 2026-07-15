@@ -1,0 +1,28 @@
+schema_version = "1"
+
+[targets.openai]
+adapter = "openai"
+
+[targets.openai.tools."logs.search"]
+python = "examples.incident_command_imports.logs:search"
+
+[targets.openai.tools."deploys.list"]
+python = "examples.incident_command_imports.deploys:list"
+
+[targets.openai.tools."metrics.query"]
+python = "examples.incident_command_imports.metrics:query"
+
+[targets.openai.tools."status_page.draft_update"]
+python = "examples.incident_command_imports.status_page:draft_update"
+
+[targets.openai.datasources."incident.service"]
+python = "examples.incident_command_imports.context:service"
+
+[targets.openai.external_context.active_incident]
+python = "examples.incident_command_imports.context:active_incident"
+
+[targets.openai.profiles.test]
+default_model = "test-model"
+
+[targets.openai.profiles.production]
+default_model = "gpt-5.2"

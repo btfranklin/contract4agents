@@ -2,21 +2,29 @@ agent CurrentTruthScout(
     question: MarketResearchQuestion
 ) -> CurrentFactEvidence:
 
-    use tool current_facts.search from tools.current_facts preapproved
-    use tool current_facts.fetch from tools.current_facts preapproved
-    use tool citation.format from tools.citation preapproved
-    use hosted_tool openai.web_search context_size "medium"
+    use current_facts.search:
+        availability = enabled
+        authorization = preapproved
+        execution = host
+    use current_facts.fetch:
+        availability = enabled
+        authorization = preapproved
+        execution = host
+    use citation.format:
+        availability = enabled
+        authorization = preapproved
+        execution = host
+    use web.search:
+        availability = enabled
+        authorization = preapproved
+        execution = provider_hosted
 
     goal = "Check seeded current-world facts before the report states market claims."
 
     description = "Reviews dated external-fact snapshots and keeps freshness visible."
 
-    policy = [
+    guidance = [
         "cite the date and source of every current-world claim",
         "do not use stale internal documents as current facts",
         "surface freshness limits in the final report",
-    ]
-
-    guards = [
-        require(output conforms CurrentFactEvidence),
     ]

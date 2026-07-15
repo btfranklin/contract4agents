@@ -1,100 +1,85 @@
-# Examples
+# Public Examples
 
-Examples are the best next place to understand Contract4Agents after the
-[first-contract tutorial](../docs/tutorials/first-contract-project.md). Each
-example is a small contract project that shows what a user writes, what the tool
-checks, and what generated artifacts mean.
-
-Examples are repository learning material. They are not included in the installed
-Python package.
-
-## Current Example
-
-- `incident-command/`: a production incident investigation team. It shows typed
-  inputs and outputs, one coordinating agent, specialist subagents, tool
-  permissions, eval expectations, monitor rules, fake local tools, and generated
-  review artifacts.
-- `multi-lens-research/`: a high-stakes research brief team. It shows focused
-  expert lenses, source-backed synthesis, counterargument handling, approval
-  guardrails, evals, monitors, and a run spec for citation invariants.
-- `market-research-brief/`: a document-driven market research team. It shows
-  internal document review, dated current-fact snapshots, competitor signals,
-  customer-signal analysis, an OpenAI hosted web-search declaration, evals, and
-  monitors.
-
-Start with [incident-command/README.md](incident-command/README.md) for the first
-complete offline example.
-
-## What Users Write
-
-A Contract4Agents example should make these pieces visible:
-
-- `types/`: shared data shapes. These are the nouns the agents pass around.
-- `agents/`: agent contracts. These define inputs, output type, tools,
-  subagents, policies, guards, assertions, and success criteria.
-- `evals/`: expectations for a scenario. These describe what a successful run
-  should produce and what should appear in the trace.
-- `monitors/`: trace rules for behavior that should be watched after a run.
-- `run_specs/`: post-run stage checks and declared derived-value invariants for
-  host-owned workflows.
-- `data/`: optional local seed data for deterministic fake tools.
-- `contract4agents.registry.json`: optional capability registry for strict
-  host-code drift checks.
-- importable Python helpers: optional local tools or harness code used by tests
-  and demos.
-- `README.md`: the human explanation of the example.
-
-## What The Tool Generates
-
-The source files are the files under the example directory. Commands write
-generated artifacts to `.contract/build`, which is disposable local output.
-
-Common generated files:
-
-- `schemas/*.json`: JSON Schemas for the declared types.
-- `manifests/*.json`: machine-readable agent contracts.
-- `instructions/*.md`: instruction text derived from each agent contract.
-- `evals/evals.json`: compiled eval expectations.
-- `monitors/monitors.json`: compiled monitor rules.
-- `run-specs/run-specs.json`: compiled run specs for host-owned workflow checks.
-- `guards/guard-plan.json`: host and adapter enforcement metadata for guards.
-- `adapters/capability-matrix.json`: what each adapter can support directly,
-  partially, or with caveats.
-- `docs/summary.md`: generated project review summary.
-- `docs/agents/*.md`: generated per-agent review pages.
-- `visualization/index.html`: static graph for human review.
-
-## Reusable Example Pattern
-
-Future examples should use this shape unless there is a strong reason not to:
+Every public example follows the same contract-first structure:
 
 ```text
-examples/example-name/
-  README.md
-  types/
-    domain.contract
-  agents/
-    coordinator.contract
-    specialist.contract
-  evals/
-    scenario.eval
-  monitors/
-    behavior.monitors.contract
-  run_specs/
-    scenario_run.contract
-  contract4agents.registry.json
-  data/
-    seed.py
+example-name/
+  agents/                         portable agent definitions and grants
+  capabilities/                   shared tools, datasources, external context
+  types/                          portable structural types
+  evals/                          named scenarios and expectations
+  assurance.contract              controls, quality, operational controls
+  composition.contract            named delegation and handoff edges
+  contract4agents.targets.toml     target implementations and profiles
+  eval-data.json                   deterministic offline provider data
 ```
 
-The README for each example should answer these questions in plain language:
+The contract project is canonical for semantic behavior. Target bindings do
+not repeat agents, prompts, authorization, output types, controls, or
+composition. Eval data supplies run evidence; it does not restate the expected
+runtime inventory.
 
-1. What real-world situation does this model?
-2. What would I write if I were using Contract4Agents?
-3. Which source file should I read first?
-4. What does each source file do?
-5. Which commands should I run?
-6. What generated artifacts will I see, and what do they mean?
+## Common Local Loop
 
-Keep examples small enough to read, deterministic enough to run offline, and
-specific enough that the generated artifacts have a clear meaning.
+From the repository root, substitute the example directory for `ROOT`:
+
+```bash
+pdm run python ROOT/data/seed.py
+pdm run contract4agents check ROOT
+pdm run contract4agents compile ROOT --out .contract/build/example
+pdm run contract4agents generate ROOT --out .contract/generated/example
+pdm run contract4agents plan ROOT --target openai --profile test \
+  --out .contract/build/example/plan.json
+pdm run contract4agents eval ROOT --target openai --profile test
+pdm run contract4agents visualize ROOT --target openai --profile test \
+  --out .contract/build/example/visualization
+```
+
+The `test` profile and file-backed eval data require no provider credentials.
+Generated `.contract/` output is disposable.
+
+## Incident Command
+
+[Incident Command](incident-command/README.md) is the recommended first example.
+It demonstrates:
+
+- a shared tool granted to different agents with different authorization;
+- explicit datasource and external-context origins;
+- approval-derived controls;
+- generated specialist delegations;
+- post-run, quality, and operational assurance declarations.
+
+## Multi-Lens Research
+
+[Multi-Lens Research](multi-lens-research/README.md) demonstrates:
+
+- a larger typed delegation graph;
+- result mappings between specialist stages;
+- an explicit multidimensional isolation profile;
+- a run spec for host-owned deterministic workflow;
+- source-backed synthesis controls.
+
+## Market Research Brief
+
+[Market Research Brief](market-research-brief/README.md) demonstrates:
+
+- reusable document, current-fact, competitor, and citation tools;
+- a provider-native web-search target binding;
+- evaluator-only rubrics that do not leak into model instructions;
+- freshness controls for claims drawn from dated documents.
+
+## Reusing the Pattern
+
+Copy semantic declarations, not provider wiring. For a new project:
+
+1. define types and shared capabilities;
+2. define agents and explicit per-agent grants;
+3. define named composition edges and value mappings;
+4. declare only controls and rubrics with clear assessment ownership;
+5. create a target binding for the selected runtime;
+6. inspect the plan before materialization;
+7. collect normalized traces and assess them against the same plan.
+
+Host code should contain the real implementations, credentials, approval UI,
+persistence, and deterministic workflow. It should not reconstruct the agent
+configuration already present in the contracts.

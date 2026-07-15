@@ -1,4 +1,0 @@
-monitor current_claims_need_current_facts for MarketResearchLead:
-    severity = "high"
-    when trace.tool_called(documents.fetch)
-    expect trace.tool_called(current_facts.fetch)

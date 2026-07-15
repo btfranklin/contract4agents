@@ -1,7 +1,0 @@
-agent BillingReviewer(request: WorkRequest) -> WorkResult:
-    use tool tools.billing.lookup from ./tools/billing preapproved
-    use tool tools.billing.credit from ./tools/billing requires approval
-    goal = "Review billing evidence before any credit action."
-    guards = [
-        forbid(tool.tools.billing.credit unless approved_by_human),
-    ]

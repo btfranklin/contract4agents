@@ -1,158 +1,101 @@
 # System Design
 
-Contract4Agents is a source-to-artifacts system for agent contracts. A project contains `.contract` files, `.eval` files, Python tools, Python datasources, and generated outputs.
-
-## Architecture
+Contract4Agents is a source-to-evidence system for contract-first agent teams.
 
 ```mermaid
-graph TD
-    Source[".contract and .eval source files"] --> Parser["Parser and AST"]
-    Parser --> Semantics["Semantic analyzer"]
-    Semantics --> CapabilityGraph["Capability and context graph"]
-    CapabilityGraph --> Compiler["Compiler"]
-    Compiler --> Instructions["Agent instructions"]
-    Compiler --> Manifest["Provider-neutral manifest"]
-    Compiler --> EvalPack["Eval suite"]
-    Compiler --> MonitorPack["Monitor rules"]
-    Compiler --> RunSpecPack["Run specs"]
-    Manifest --> Host["Host app or SDK adapter"]
-    Instructions --> Host
-    Host --> Trace["Normalized trace"]
-    EvalPack --> EvalRunner["Eval runner"]
-    Trace --> EvalRunner
-    MonitorPack --> MonitorRunner["Monitor runner"]
-    Trace --> MonitorRunner
-    RunSpecPack --> Host
-    Trace --> Host
+flowchart LR
+    Source["Portable contracts and evals"] --> Compile["Compile canonical IR"]
+    Compile --> Plan["Plan target and profile"]
+    Bindings["Target bindings"] --> Plan
+    Plan --> Materialize["Materialize native graph"]
+    Materialize --> Run["Host and SDK run"]
+    Run --> Trace["Normalize and correlate traces"]
+    Trace --> Assure["Assess controls and assemble evidence"]
+    Compile --> Assure
+    Plan --> Assure
 ```
 
-## Source Inputs
+## Authorities
 
-Contract4Agents projects have four primary source inputs:
+There are exactly two authored authorities:
 
-- `.contract` files define agents, shared types, datasource declarations, guards, assertions, monitor declarations, and run specs.
-- `.eval` files define offline test and eval cases against agents.
-- Python modules implement tools, datasources, adapters, and application-specific runtime code.
-- Project configuration declares artifact destinations and host integration policy.
+1. Portable `.contract` and `.eval` source owns semantic intent.
+2. `contract4agents.targets.toml` owns target-specific implementations,
+   provider selections, environment providers, models, and options.
 
-## Core Components
+Canonical IR, generated code, instructions, plans, native objects, trace views,
+eval reports, visualizations, diffs, and assurance bundles are derived.
 
-### Parser And AST
+## Compile
 
-The parser reads `.contract` and `.eval` files with Lark grammars, then transforms the parse trees into a typed AST. It preserves source spans for diagnostics and generated documentation.
+The parser produces a syntax-oriented AST with source spans. Semantic analysis
+resolves names, types, grants, origins, mappings, controls, rubrics, isolation,
+evals, and run specs. The IR builder then emits immutable, deterministic,
+kind-qualified semantic entities.
 
-The AST should be syntax-oriented. It should not perform semantic resolution while parsing.
+The compiler consumes only canonical IR and produces JSON Schema,
+audience-specific instructions, Pydantic/TypeScript/Zod code, reviewer docs,
+and the contract digest. It never imports a Python model to discover portable
+schema authority.
 
-Parser internals are split by responsibility: source grammar, source transformer, source value helpers, expression grammar, expression runtime evaluation, and expression reference extraction. `contract4agents.parser` and `contract4agents.expressions` remain the public facades; Lark trees stay internal and AST dataclasses remain the compiler-facing representation.
+## Plan
 
-### Semantic Analyzer
+Planning joins canonical IR to one complete target profile and validates target
+binding coverage. The provider-neutral plan resolves:
 
-The semantic analyzer resolves names and checks contract validity:
+- models and provider options;
+- tool, datasource, external-context, and environment bindings;
+- grants, authorization, and execution boundaries;
+- delegation and handoff mappings;
+- explicit and derived controls;
+- isolation mechanisms by dimension;
+- host obligations, caveats, and expected telemetry.
 
-- Imported tools, agents, types, and datasources exist.
-- Agent parameter types are defined.
-- Agent return types are defined.
-- Tool, agent, datasource, guard, assertion, and eval references resolve.
-- Required context slots can be supplied or resolved.
-- Eval expectations reference real output fields and trace events.
-- Guards are distinguishable from assertions and semantic evals.
+Every mapping is exact, host-enforced, emulated, degraded, or unsupported.
+Required degraded or unsupported semantics stop the lifecycle before execution.
 
-### Capability And Context Graph
+## Materialize
 
-The compiler builds a graph of callable agents, tools, datasources, typed context slots, and required approvals.
+A target provider constructs normal framework-native objects from the immutable
+plan. Two-pass graph construction handles forward and cyclic references without
+source-order dependence. Native models, instructions, output types, tools,
+approvals, composition, context hooks, and isolation mechanisms are validated
+against the plan before the graph is returned.
 
-This graph answers questions such as:
+## Run
 
-- Can `CustomerGreeter` call `SupportAgent`?
-- If `SupportAgent` requires `AccountRejectionStatus`, can it be resolved from available context?
-- Which tools are available to an agent?
-- Which tools require approval?
-- Which constraints must be available to the host or adapter before tool execution?
+The selected framework and host execute the native graph. The host owns
+credentials, approval decisions, persistence, external services, deployment,
+and deterministic workflow. Named contract composition supplies model-selected
+delegations and handoffs; it does not become general programming-language
+control flow.
 
-### Compiler
+## Trace
 
-The compiler turns source contracts into artifacts:
+Normalized schema V2 preserves contract and plan digests, stable semantic IDs,
+causal relationships, provider-native correlation, provenance, evidence links,
+and audience-safe redaction. It supplements provider trace systems rather than
+replacing them.
 
-- LLM instructions.
-- Provider-neutral manifests.
-- Guard plans for host and adapter enforcement metadata.
-- Adapter capability metadata.
-- Eval packs.
-- Monitor packs.
-- Run spec artifacts for host-owned workflow trace and stage-output expectations.
-- Generated human docs.
+Completeness is measured against plan telemetry. Event absence cannot prove a
+negative claim when instrumentation coverage is incomplete.
 
-The compiler should be deterministic. If source files and configuration do not change, generated artifacts should be stable.
+## Assure
 
-### Runtime Primitives And Host Integration
-
-Runtime primitives and host integration code consume compiled manifests. Together they support:
-
-- Building the typed context frame.
-- Resolving missing context through allowed datasources.
-- Rendering context for the model.
-- Carrying tool permissions and approval metadata into the host or adapter layer.
-- Preserving structured output metadata.
-- Capturing trace events.
-- Checking run assertions where execution traces and outputs are available.
-- Checking run specs where execution traces and stage outputs are available.
-
-`contract4agents.runtime` is the canonical public runtime import surface. Runtime implementation details are split into private modules for trace recording, trace JSONL loading, datasource resolution, fake tools, runtime errors, and small import/async utilities. Applications and examples should continue to import runtime primitives from `contract4agents.runtime`.
-
-### Eval Runner
-
-The eval runner executes `.eval` cases against fixture-backed runs. It checks:
-
-- Structured output fields.
-- Trace spy assertions.
-- Assertion outcomes.
-- Optional semantic rubric judgments.
-- Regression snapshots where appropriate.
-
-### Monitor Runner
-
-The monitor runner applies monitor rules to recorded traces. It reports contract violations using the same concepts as development evals.
-
-## Host Integration Flow
-
-1. The caller invokes an agent with typed context values.
-2. The host application or adapter loads the compiled manifest for the agent.
-3. Supplied parameters are validated against the agent signature.
-4. Missing required context slots are resolved through allowed datasources.
-5. Context slots are rendered for model input.
-6. The agent model receives compiled instructions, rendered context, tools, and output schema.
-7. Tool calls and subagent calls are checked against manifest permissions before execution.
-8. Tool and subagent results are recorded as typed trace events.
-9. The final output is validated against the return type.
-10. Assertions are checked where their required trace and output data is available.
-11. Run specs are checked where their required trace and stage output data is available.
-12. The trace can be used for evals, monitors, debugging, and audit.
+The common assessor compares normalized evidence to controls and reports
+passed, violated, or unverified. Eval campaigns add controlled scenarios,
+repeated trials, semantic judges, metrics, uncertainty, and baseline comparison.
+Assurance bundles combine declared, planned, observed, and assessed truth for
+release review or incident investigation.
 
 ## Boundaries
 
-Contract4Agents should own:
+Contract4Agents does not:
 
-- Agent contract syntax.
-- Static validation.
-- Generated agent instructions.
-- Provider-neutral manifests.
-- Context resolution rules.
-- Eval and trace assertion semantics.
-- Run spec stage-output and trace verification.
-- Trace event schema.
-
-Contract4Agents should not own:
-
-- Business-specific data fetching logic.
-- Provider-specific SDK behavior beyond adapter boundaries.
-- Secrets management beyond runtime interfaces and redaction contracts.
-- Full programming language control flow.
-- Host workflow execution, branching, retries, checkpointing, and recovery.
-
-## Design Constraints
-
-- Do not make `.contract` files a disguised imperative language.
-- Keep datasources and tools in Python.
-- Preserve structured runtime values as long as possible, even though the model ultimately sees rendered text.
-- Treat traces as first-class behavior, not debug logs.
-- Classify each constraint by enforceability before code generation.
+- implement arbitrary application branching, retries, loops, or checkpoints;
+- invent tool implementations, credentials, approval decisions, or storage;
+- erase meaningful provider differences;
+- claim filesystem or network isolation without an enforcing provider;
+- treat model-facing guidance as enforced policy;
+- treat missing evidence as success;
+- replace trace storage, dashboards, or a legal certification authority.

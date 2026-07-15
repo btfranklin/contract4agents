@@ -82,28 +82,6 @@ def parse_semantic_expectation(expression: str) -> ParsedExpression:
     return _parse_lark_expression(value, "semantic_expr")
 
 
-def parse_monitor_condition(expression: str) -> ParsedExpression | None:
-    """Parse a monitor `when` expression."""
-    value = expression.strip()
-    if not value:
-        return None
-    parsed = _parse_lark_expression(value, "trace_expr")
-    if parsed.kind != "trace":
-        raise ExpressionError(f"Unsupported monitor condition: {expression}")
-    return parsed
-
-
-def parse_monitor_expectation(expression: str) -> ParsedExpression | None:
-    """Parse a monitor `expect` expression."""
-    value = expression.strip()
-    if not value:
-        return None
-    parsed = _parse_lark_expression(value, "trace_expr")
-    if parsed.kind != "trace":
-        raise ExpressionError(f"Unsupported monitor expectation: {expression}")
-    return parsed
-
-
 def parse_contract_expression(expression: str) -> list[ContractExpression]:
     """Parse guard/assertion forms enough for static validation."""
     value = expression.strip()

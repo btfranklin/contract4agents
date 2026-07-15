@@ -1,0 +1,15 @@
+control specialist_evidence_before_synthesis for ResearchDirector:
+    severity = high
+    required = true
+    audience = [host, evaluator, reviewer]
+    assessment = post_run
+    require = trace.called_before(EvidenceMapper, SynthesisWriter) and trace.called_before(CounterargumentAnalyst, SynthesisWriter)
+    expected_evidence = [composition.completed]
+
+quality balanced_source_backed_brief for ResearchDirector:
+    rubric = "The recommendation is supported by multiple lenses, preserves counterarguments, states uncertainty, and proposes scoped next actions."
+    audience = [evaluator, reviewer]
+
+operational_control research_latency for ResearchDirector:
+    severity = medium
+    require = trace.duration < 120s

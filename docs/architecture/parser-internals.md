@@ -1,38 +1,51 @@
 # Parser Internals
 
-Contract4Agents parsing is Lark-driven, but Lark parse trees are not the stable internal representation. The parser lifecycle is:
+The source pipeline is intentionally simple:
 
 ```text
-.contract/.eval source -> Lark parse tree -> AST dataclasses -> semantic analysis -> compiler/runtime/evals
+.contract/.eval -> Lark parse tree -> AST -> semantic analysis -> canonical IR
 ```
 
-The AST dataclasses in `contract4agents.ast` remain the compiler-facing boundary. Semantic analysis, schema generation, compiler artifacts, eval execution, monitor execution, and docs generation should consume AST objects rather than Lark trees.
+Lark trees are private parser detail. AST dataclasses are syntax-oriented and
+preserve source spans; canonical IR is the immutable semantic boundary consumed
+by compilation, planning, materialization, visualization, tracing, evals, and
+assurance.
 
 ## Source Parser Modules
 
-The source parser is intentionally split by responsibility:
+- `contract4agents.parser` is the public `parse_project` and `parse_file`
+  facade and converts syntax failures to structured `ContractError` diagnostics.
+- `contract4agents.parser._grammar` owns the indentation-aware module grammar.
+- `contract4agents.parser._transformer` converts Lark trees to AST declarations.
+- `contract4agents.parser._values` owns scalar and collection value helpers.
 
-- `contract4agents.parser` owns the public API: `parse_project`, `parse_file`, source discovery, and conversion of Lark syntax failures into `ContractError`.
-- `contract4agents.parser._grammar` owns the module grammar, indentation handling, and Lark parser instance for `.contract` and `.eval` files.
-- `contract4agents.parser._transformer` owns conversion from Lark trees into `TypeDef`, `DatasourceDef`, `AgentDef`, `EvalCase`, `MonitorDef`, and `ContractModule` objects.
-- `contract4agents.parser._values` owns scalar, default, quoted-string, and list-value helpers used by the transformer.
+The transformer validates only what is necessary to construct a coherent AST.
+Name resolution, ownership rules, type compatibility, grant conflicts, edge
+mappings, and assurance semantics belong in semantic analysis.
 
-The source transformer may emit parse-family diagnostics when the syntax parses but cannot produce a valid AST node, such as a datasource declaration without a Python reference.
+## Expression Modules
 
-## Expression Parser Modules
+Eval expectations, control expressions, operational-control expressions, and
+run-spec relations share one fail-closed expression subsystem:
 
-Eval expectations, monitor rules, guards, and assertions share one expression parser surface:
+- `contract4agents.expressions` is the public facade.
+- `_grammar` parses supported expressions.
+- `_model` owns parsed-expression values and errors.
+- `_refs` extracts semantic references for static checks.
+- `_eval` evaluates supported output, trace, hidden-truth, and derived-value
+  relations against normalized inputs.
 
-- `contract4agents.expressions` is the canonical public facade for expression parsing, evaluation, and reference helpers.
-- `contract4agents.expressions._model` owns `ParsedExpression`, `ExpressionError`, and expression type aliases used by expression internals.
-- `contract4agents.expressions._grammar` owns expression grammar, Lark parser construction, and parse entrypoints.
-- `contract4agents.expressions._eval` owns runtime checks against outputs, hidden truth, and traces.
-- `contract4agents.expressions._refs` owns semantic-analysis reference extraction.
+Unsupported syntax must fail semantic analysis or become an explicit
+unverified runtime result. It must never be silently treated as truthy.
 
-Unsupported expression syntax must continue to fail closed. Parser entrypoints raise `ExpressionError`; semantic analysis reports diagnostics; eval execution records unsupported failures; monitor execution records invalid-rule violations.
+## Maintenance Rules
 
-## Boundaries
-
-Do not add parser base classes, plugin registries, or a second AST model unless a concrete new syntax family requires it. The current parser architecture is meant to keep grammar, transformation, and semantic/runtime behavior separate without hiding the simple V1 flow.
-
-Parser golden tests cover both real-world fixture projects and synthetic parser-pressure projects. Real-world goldens protect representative package behavior; synthetic goldens deliberately stress source syntax, expression parsing, datasource declarations, duplicate declaration visibility, and large multi-agent module layout.
+- Do not add a second AST or hand-authored IR.
+- Do not import target implementations during parsing or portable semantic
+  analysis.
+- Keep stable kind-qualified IDs in the IR, not in source parsing heuristics.
+- Extend one grammar, transformer, semantic rule set, IR mapping, and golden
+  surface together.
+- Use representative public examples plus small syntax-pressure fixtures.
+- When syntax is removed, delete its parser path and fixtures instead of adding
+  aliases.

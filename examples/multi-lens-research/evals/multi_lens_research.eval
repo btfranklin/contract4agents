@@ -14,4 +14,4 @@ eval staged_rollout_research for ResearchDirector:
     expect trace.agent_called(CounterargumentAnalyst)
     expect trace.agent_called(SynthesisWriter)
     expect trace.not_called(expert_review.request)
-    expect semantic(output, "The brief is balanced, source-backed, and preserves counterarguments.")
+    expect quality(balanced_source_backed_brief)

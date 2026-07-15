@@ -4,26 +4,30 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, NoReturn, cast
+from typing import Any, Literal, cast
 
 from lark import Token, Transformer
 
 from contract4agents.ast import (
     AgentDef,
+    CompositionDef,
+    ContextRequirement,
     ContractModule,
+    ControlDef,
     DatasourceDef,
     EvalCase,
+    ExternalContextDef,
     FieldDef,
-    MonitorDef,
-    Permission,
+    GrantDef,
+    IsolationDef,
+    OperationalControlDef,
+    QualityDef,
     RunSpecDef,
     SourceSpan,
+    ToolDef,
     TypeDef,
-    UseDecl,
-    UseKind,
 )
-from contract4agents.diagnostics import ContractError, Diagnostic
-from contract4agents.parser._values import clean_list_item, coerce_name_list, split_csv, split_default, unquote
+from contract4agents.parser._values import clean_list_item, split_csv, split_default, unquote
 
 
 class _ModuleTransformer(Transformer[Any, Any]):
@@ -36,14 +40,26 @@ class _ModuleTransformer(Transformer[Any, Any]):
         for item in items:
             if isinstance(item, TypeDef):
                 module.types.append(item)
+            elif isinstance(item, ToolDef):
+                module.tools.append(item)
             elif isinstance(item, DatasourceDef):
                 module.datasources.append(item)
+            elif isinstance(item, ExternalContextDef):
+                module.external_contexts.append(item)
             elif isinstance(item, AgentDef):
                 module.agents.append(item)
+            elif isinstance(item, CompositionDef):
+                module.compositions.append(item)
+            elif isinstance(item, IsolationDef):
+                module.isolations.append(item)
+            elif isinstance(item, ControlDef):
+                module.controls.append(item)
+            elif isinstance(item, QualityDef):
+                module.qualities.append(item)
+            elif isinstance(item, OperationalControlDef):
+                module.operational_controls.append(item)
             elif isinstance(item, EvalCase):
                 module.evals.append(item)
-            elif isinstance(item, MonitorDef):
-                module.monitors.append(item)
             elif isinstance(item, RunSpecDef):
                 module.run_specs.append(item)
         return module
@@ -52,10 +68,6 @@ class _ModuleTransformer(Transformer[Any, Any]):
         name = _token(items[0])
         fields = _type_fields(items[1:])
         return TypeDef(str(name), fields, _span(self.path, name))
-
-    def python_type_def(self, items: list[Any]) -> TypeDef:
-        name = _token(items[0])
-        return TypeDef(str(name), [], _span(self.path, name), source="python", python_ref=unquote(str(items[1])))
 
     def field_block(self, items: list[Any]) -> list[FieldDef]:
         return [item for item in items if isinstance(item, FieldDef)]
@@ -66,41 +78,105 @@ class _ModuleTransformer(Transformer[Any, Any]):
         nullable = type_name.endswith("?")
         return FieldDef(str(name), type_name.rstrip("?").strip(), nullable, default, _span(self.path, name))
 
+    def tool_def(self, items: list[Any]) -> ToolDef:
+        parts = _callable_parts(items)
+        attrs = _assignment_attrs(parts.body)
+        return ToolDef(
+            name=str(parts.name),
+            parameters=parts.params,
+            return_type=str(parts.return_type),
+            description=unquote(str(attrs.get("description", '""'))),
+            side_effect=_optional_bool_attr(attrs, "side_effect"),
+            span=_span(self.path, parts.name),
+        )
+
     def datasource_def(self, items: list[Any]) -> DatasourceDef:
-        name = _token(items[0])
-        attrs = _assignment_attrs(items[1:])
-        required = coerce_name_list(attrs.get("requires", []))
-        python_ref = unquote(str(attrs.get("python", "")))
-        produces = str(attrs.get("produces", name)).strip()
-        if not python_ref:
-            _raise(
-                "PARSE005",
-                "Datasource requires a python reference",
-                self.path,
-                name.line or 1,
-                column=name.column or 1,
-            )
+        parts = _callable_parts(items)
+        attrs = _assignment_attrs(parts.body)
+        return_type = str(parts.return_type)
         return DatasourceDef(
-            name=str(name),
-            python=python_ref,
-            requires=required,
-            produces=produces,
-            render=unquote(str(attrs.get("render", '"markdown"'))),
-            cache=unquote(str(attrs.get("cache", '"run"'))),
-            span=_span(self.path, name),
+            name=str(parts.name),
+            parameters=parts.params,
+            return_type=return_type,
+            description=unquote(str(attrs.get("description", '""'))),
+            render=unquote(str(attrs.get("render", "markdown"))),
+            cache=unquote(str(attrs.get("cache", "run"))),
+            span=_span(self.path, parts.name),
         )
 
     def assignment_block(self, items: list[Any]) -> list[Any]:
         return items
 
+    def external_context_def(self, items: list[Any]) -> ExternalContextDef:
+        name = _token(items[0])
+        attrs = _assignment_attrs(items[2:])
+        return ExternalContextDef(
+            name=str(name),
+            type_name=str(items[1]),
+            description=unquote(str(attrs.get("description", '""'))),
+            sensitivity=unquote(str(attrs.get("sensitivity", "internal"))),
+            render=unquote(str(attrs.get("render", "markdown"))),
+            span=_span(self.path, name),
+        )
+
+    def isolation_def(self, items: list[Any]) -> IsolationDef:
+        name = _token(items[0])
+        dimensions = {key: unquote(str(value)) for key, value in _assignment_attrs(items[1:]).items()}
+        return IsolationDef(str(name), dimensions, _span(self.path, name))
+
+    def composition_def(self, items: list[Any]) -> CompositionDef:
+        name = _token(items[0])
+        attrs = _assignment_attrs(items[3:])
+        mappings = _mapping_attrs(items[3:])
+        return CompositionDef(
+            name=str(name),
+            source_agent=str(items[1]),
+            target_agent=str(items[2]),
+            mode=unquote(str(attrs.get("mode", ""))),
+            description=unquote(str(attrs.get("description", '""'))),
+            history=unquote(str(attrs.get("history", "none"))),
+            mappings=mappings,
+            isolation=_optional_unquoted(attrs.get("isolation")),
+            span=_span(self.path, name),
+        )
+
+    def composition_block(self, items: list[Any]) -> list[Any]:
+        return items
+
+    def map_stmt(self, items: list[Any]) -> _Mapping:
+        name = _token(items[0])
+        return _Mapping(str(name), str(items[1]).strip(), _span(self.path, name))
+
+    def control_def(self, items: list[Any]) -> ControlDef:
+        name = _token(items[0])
+        return ControlDef(str(name), str(items[1]), _assignment_attrs(items[2:]), _span(self.path, name))
+
+    def quality_def(self, items: list[Any]) -> QualityDef:
+        name = _token(items[0])
+        attrs = _assignment_attrs(items[2:])
+        return QualityDef(
+            str(name),
+            str(items[1]),
+            unquote(str(attrs.get("rubric", '""'))),
+            _list_attr(attrs, "audience"),
+            _span(self.path, name),
+        )
+
+    def operational_control_def(self, items: list[Any]) -> OperationalControlDef:
+        name = _token(items[0])
+        return OperationalControlDef(str(name), str(items[1]), _assignment_attrs(items[2:]), _span(self.path, name))
+
     def agent_def(self, items: list[Any]) -> AgentDef:
         agent_parts = _agent_parts(items)
-        uses: list[UseDecl] = []
+        grants: list[GrantDef] = []
+        context: list[ContextRequirement] = []
         attributes: dict[str, Any] = {}
         attribute_spans: dict[str, SourceSpan] = {}
         for item in agent_parts.body:
-            if isinstance(item, UseDecl):
-                uses.append(item)
+            if isinstance(item, GrantDef):
+                grants.append(item)
+            elif isinstance(item, ContextRequirement):
+                context.append(item)
             elif isinstance(item, _Assignment):
                 attributes[item.key] = item.value
                 attribute_spans[item.key] = item.span
@@ -108,10 +184,11 @@ class _ModuleTransformer(Transformer[Any, Any]):
             str(agent_parts.name),
             agent_parts.params,
             str(agent_parts.return_type),
-            uses,
             attributes,
             _span(self.path, agent_parts.name),
             attribute_spans,
+            grants,
+            context,
         )
 
     def agent_block(self, items: list[Any]) -> list[Any]:
@@ -125,42 +202,36 @@ class _ModuleTransformer(Transformer[Any, Any]):
         raw_type = str(items[1])
         return FieldDef(str(name), raw_type.rstrip("?"), raw_type.endswith("?"), span=_span(self.path, name))
 
-    def use_stmt(self, items: list[Any]) -> UseDecl:
-        kind = cast(UseKind, str(items[0]))
-        name = _token(items[1])
-        source = str(items[2])
-        permission = cast(Permission, str(items[3])) if len(items) > 3 else "available"
-        return UseDecl(kind, str(name), source, permission, _span(self.path, name))
-
-    def hosted_use_stmt(self, items: list[Any]) -> UseDecl:
+    def grant_stmt(self, items: list[Any]) -> GrantDef:
         name = _token(items[0])
-        config: dict[str, str] = {}
-        permission: Permission = "available"
-        for item in items[1:]:
-            if isinstance(item, tuple):
-                key, value = cast(tuple[str, str], item)
-                config[key] = value
-            elif isinstance(item, str):
-                permission = cast(Permission, item)
-        return UseDecl("hosted_tool", str(name), "", permission, _span(self.path, name), config)
+        attrs = _assignment_attrs(items[1:])
+        return GrantDef(
+            capability=str(name),
+            availability=_optional_unquoted(attrs.get("availability")),
+            authorization=_optional_unquoted(attrs.get("authorization")),
+            execution=_optional_unquoted(attrs.get("execution")),
+            isolation=_optional_unquoted(attrs.get("isolation")),
+            span=_span(self.path, name),
+        )
 
-    def hosted_option(self, items: list[Any]) -> tuple[str, str]:
-        return str(items[0]), unquote(str(items[1]))
+    def context_stmt(self, items: list[Any]) -> ContextRequirement:
+        name = _token(items[0])
+        source = next(
+            (str(item) for item in items[3:] if isinstance(item, Token)),
+            None,
+        )
+        mappings = _mapping_attrs(items[3:])
+        return ContextRequirement(
+            name=str(name),
+            type_name=str(items[1]),
+            origin=str(items[2]),
+            source=source,
+            mappings=mappings,
+            span=_span(self.path, name),
+        )
 
-    def preapproved(self, _items: list[Any]) -> str:
-        return "preapproved"
-
-    def denied(self, _items: list[Any]) -> str:
-        return "denied"
-
-    def available(self, _items: list[Any]) -> str:
-        return "available"
-
-    def sandboxed(self, _items: list[Any]) -> str:
-        return "sandboxed"
-
-    def requires_approval(self, _items: list[Any]) -> str:
-        return "requires_approval"
+    def context_block(self, items: list[Any]) -> list[Any]:
+        return items
 
     def assignment(self, items: list[Any]) -> _Assignment:
         name = _token(items[0])
@@ -197,7 +268,7 @@ class _ModuleTransformer(Transformer[Any, Any]):
         for item in _eval_statements(items[2:]):
             if item.kind == "given" and item.key:
                 givens[item.key] = item.value
-            elif item.value.startswith("semantic("):
+            elif item.value.startswith(("semantic(", "quality(")):
                 semantic.append(item.value)
             else:
                 expects.append(item.value)
@@ -211,33 +282,6 @@ class _ModuleTransformer(Transformer[Any, Any]):
 
     def expect_stmt(self, items: list[Any]) -> _EvalStatement:
         return _EvalStatement("expect", "", str(items[0]).strip())
-
-    def monitor_def(self, items: list[Any]) -> MonitorDef:
-        name = _token(items[0])
-        agent = str(items[1])
-        severity = "medium"
-        condition = ""
-        expectation = ""
-        for item in _monitor_statements(items[2:]):
-            if item.kind == "severity":
-                severity = unquote(item.value)
-            elif item.kind == "when":
-                condition = item.value
-            elif item.kind == "expect":
-                expectation = item.value
-        return MonitorDef(str(name), agent, severity, condition, expectation, _span(self.path, name))
-
-    def monitor_block(self, items: list[Any]) -> list[Any]:
-        return items
-
-    def severity_stmt(self, items: list[Any]) -> _MonitorStatement:
-        return _MonitorStatement("severity", str(items[0]).strip())
-
-    def when_stmt(self, items: list[Any]) -> _MonitorStatement:
-        return _MonitorStatement("when", str(items[0]).strip())
-
-    def monitor_expect_stmt(self, items: list[Any]) -> _MonitorStatement:
-        return _MonitorStatement("expect", str(items[0]).strip())
 
     def run_spec_def(self, items: list[Any]) -> RunSpecDef:
         name = _token(items[0])
@@ -265,6 +309,14 @@ class _AgentParts:
 
 
 @dataclass(frozen=True)
+class _CallableParts:
+    name: Token
+    params: list[FieldDef]
+    return_type: Token
+    body: list[Any]
+
+
+@dataclass(frozen=True)
 class _Assignment:
     key: str
     value: Any
@@ -272,15 +324,16 @@ class _Assignment:
 
 
 @dataclass(frozen=True)
-class _EvalStatement:
-    kind: Literal["given", "expect"]
+class _Mapping:
     key: str
     value: str
+    span: SourceSpan
 
 
 @dataclass(frozen=True)
-class _MonitorStatement:
-    kind: Literal["severity", "when", "expect"]
+class _EvalStatement:
+    kind: Literal["given", "expect"]
+    key: str
     value: str
 
 
@@ -294,6 +347,17 @@ def _agent_parts(items: list[Any]) -> _AgentParts:
         cursor += 1
     return_type = _token(payload[cursor])
     return _AgentParts(name, params, return_type, payload[cursor + 1 :])
+
+
+def _callable_parts(items: list[Any]) -> _CallableParts:
+    name = _token(items[0])
+    cursor = 1
+    params: list[FieldDef] = []
+    if cursor < len(items) and _is_field_list(items[cursor]):
+        params = cast(list[FieldDef], items[cursor])
+        cursor += 1
+    return_type = _token(items[cursor])
+    return _CallableParts(name, params, return_type, items[cursor + 1 :])
 
 
 def _type_fields(items: list[Any]) -> list[FieldDef]:
@@ -326,6 +390,16 @@ def _assignment_spans(items: list[Any]) -> dict[str, SourceSpan]:
     return spans
 
 
+def _mapping_attrs(items: list[Any]) -> dict[str, str]:
+    mappings: dict[str, str] = {}
+    for item in items:
+        if isinstance(item, list):
+            mappings.update(_mapping_attrs(item))
+        elif isinstance(item, _Mapping):
+            mappings[item.key] = item.value
+    return mappings
+
+
 def _agent_payload_items(items: list[Any]) -> list[Any]:
     result: list[Any] = []
     for item in items:
@@ -346,16 +420,6 @@ def _eval_statements(items: list[Any]) -> list[_EvalStatement]:
     return statements
 
 
-def _monitor_statements(items: list[Any]) -> list[_MonitorStatement]:
-    statements: list[_MonitorStatement] = []
-    for item in items:
-        if isinstance(item, list):
-            statements.extend(_monitor_statements(item))
-        elif isinstance(item, _MonitorStatement):
-            statements.append(item)
-    return statements
-
-
 def _is_field_list(value: Any) -> bool:
     return isinstance(value, list) and all(isinstance(item, FieldDef) for item in value)
 
@@ -363,6 +427,24 @@ def _is_field_list(value: Any) -> bool:
 def _list_attr(attributes: dict[str, Any], key: str) -> list[str]:
     value = attributes.get(key, [])
     return value if isinstance(value, list) else []
+
+
+def _optional_unquoted(value: Any) -> str | None:
+    if value is None:
+        return None
+    return unquote(str(value))
+
+
+def _optional_bool_attr(attributes: dict[str, Any], key: str) -> bool | None:
+    value = attributes.get(key)
+    if value is None:
+        return None
+    normalized = unquote(str(value)).lower()
+    if normalized == "true":
+        return True
+    if normalized == "false":
+        return False
+    return None
 
 
 def _token(value: Any) -> Token:
@@ -373,14 +455,3 @@ def _token(value: Any) -> Token:
 
 def _span(path: Path, token: Token) -> SourceSpan:
     return SourceSpan(path, token.line or 1, token.column or 1)
-
-
-def _raise(
-    code: str,
-    message: str,
-    path: Path,
-    line: int,
-    hint: str | None = None,
-    column: int = 1,
-) -> NoReturn:
-    raise ContractError([Diagnostic(code, message, span=SourceSpan(path, line, column), hint=hint)])

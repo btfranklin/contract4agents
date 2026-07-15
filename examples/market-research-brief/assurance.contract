@@ -1,0 +1,20 @@
+control current_claims_need_current_facts for MarketResearchLead:
+    severity = high
+    required = true
+    audience = [host, evaluator, reviewer]
+    assessment = post_run
+    when = trace.tool_called(documents.fetch)
+    require = trace.tool_called(current_facts.fetch)
+    expected_evidence = [tool.completed]
+
+quality clear_market_thesis for MarketResearchLead:
+    rubric = "The report states a clear market thesis that directly answers the decision question."
+    audience = [evaluator, reviewer]
+
+quality separates_evidence_sources for MarketResearchLead:
+    rubric = "The report clearly separates current external facts from internal documents and preserves citations and freshness notes."
+    audience = [evaluator, reviewer]
+
+quality balanced_recommendation for MarketResearchLead:
+    rubric = "Both competitor positioning and customer signals materially influence the recommendation."
+    audience = [evaluator, reviewer]

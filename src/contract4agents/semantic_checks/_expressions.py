@@ -1,14 +1,14 @@
-"""Eval, monitor, and expression-reference semantic checks."""
+"""Eval and expression-reference semantic checks."""
 
 from __future__ import annotations
 
-from contract4agents.ast import MonitorDef, SourceSpan
+import re
+
+from contract4agents.ast import SourceSpan
 from contract4agents.diagnostics import Diagnostic
 from contract4agents.expressions._grammar import (
     parse_contract_expression,
     parse_expectation,
-    parse_monitor_condition,
-    parse_monitor_expectation,
     parse_semantic_expectation,
 )
 from contract4agents.expressions._model import (
@@ -20,6 +20,8 @@ from contract4agents.expressions._model import (
 from contract4agents.expressions._refs import referenced_output_fields, referenced_trace_targets, referenced_type
 from contract4agents.expressions._trace_ops import TRACE_OPS
 from contract4agents.semantic_checks._index import ProjectIndex
+
+_QUALITY_EXPECTATION = re.compile(r"quality\(([A-Za-z_][A-Za-z0-9_]*)\)")
 
 
 def check_eval(
@@ -34,7 +36,6 @@ def check_eval(
     diagnostics: list[Diagnostic] = []
     reachable_agent_names = index.reachable_agent_names(agent.name)
     reachable_tools = index.reachable_tools(agent.name)
-    reachable_hosted_tools = index.reachable_hosted_tools(agent.name)
     reachable_datasource_targets = index.reachable_datasource_targets(agent.name)
     for expression in expects:
         diagnostics.extend(
@@ -44,7 +45,6 @@ def check_eval(
                 agent.return_type,
                 index,
                 reachable_tools,
-                reachable_hosted_tools,
                 span=agent.span,
                 contract_expression=False,
                 agent_names=reachable_agent_names,
@@ -52,51 +52,22 @@ def check_eval(
             )
         )
     for expression in semantic_expects:
+        quality_match = _QUALITY_EXPECTATION.fullmatch(expression)
+        if quality_match is not None:
+            quality_name = quality_match.group(1)
+            if (agent_name, quality_name) not in index.quality_ids:
+                diagnostics.append(
+                    Diagnostic(
+                        "SEM056",
+                        f"Eval references unknown quality rubric `{quality_name}` for agent `{agent_name}`",
+                        span=agent.span,
+                    )
+                )
+            continue
         try:
             parse_semantic_expectation(expression)
         except ExpressionError as exc:
             diagnostics.append(Diagnostic("SEM056", str(exc), span=agent.span))
-    return diagnostics
-
-
-def check_monitor(
-    rule: MonitorDef,
-    index: ProjectIndex,
-) -> list[Diagnostic]:
-    diagnostics: list[Diagnostic] = []
-    agent = index.agent_defs.get(rule.agent)
-    if agent is None:
-        diagnostics.append(Diagnostic("SEM030", f"Monitor references unknown agent `{rule.agent}`", span=rule.span))
-        reachable_agent_names: set[str] = set()
-        reachable_tools: set[str] = set()
-        reachable_hosted_tools: set[str] = set()
-        reachable_datasource_targets: set[str] = set()
-    else:
-        reachable_agent_names = index.reachable_agent_names(agent.name)
-        reachable_tools = index.reachable_tools(agent.name)
-        reachable_hosted_tools = index.reachable_hosted_tools(agent.name)
-        reachable_datasource_targets = index.reachable_datasource_targets(agent.name)
-    for expression, parser in [
-        (rule.condition, parse_monitor_condition),
-        (rule.expectation, parse_monitor_expectation),
-    ]:
-        try:
-            parsed = parser(expression)
-        except ExpressionError as exc:
-            diagnostics.append(Diagnostic("SEM052", str(exc), span=rule.span))
-            continue
-        if parsed:
-            diagnostics.extend(
-                check_trace_refs(
-                    parsed,
-                    index,
-                    reachable_tools,
-                    reachable_hosted_tools,
-                    rule.span,
-                    agent_names=reachable_agent_names,
-                    datasource_targets=reachable_datasource_targets,
-                )
-            )
     return diagnostics
 
 
@@ -106,7 +77,6 @@ def check_expression_refs(
     return_type_name: str,
     index: ProjectIndex,
     tool_names: set[str],
-    hosted_tool_names: set[str],
     *,
     span: SourceSpan,
     contract_expression: bool,
@@ -131,7 +101,6 @@ def check_expression_refs(
                 return_type_name,
                 index,
                 tool_names,
-                hosted_tool_names,
                 span,
                 agent_names,
                 datasource_targets,
@@ -147,7 +116,6 @@ def _check_parsed_expression(
     return_type_name: str,
     index: ProjectIndex,
     tool_names: set[str],
-    hosted_tool_names: set[str],
     span: SourceSpan,
     agent_names: set[str] | None,
     datasource_targets: set[str] | None,
@@ -166,7 +134,7 @@ def _check_parsed_expression(
     if type_name and type_name not in index.type_defs:
         diagnostics.append(Diagnostic("SEM002", f"Unknown type `{type_name}` in expression", span=span))
     return_type = index.type_defs.get(return_type_name)
-    if return_type and return_type.source == "native":
+    if return_type:
         output_fields = {field.name for field in return_type.fields}
         for field in referenced_output_fields(parsed):
             if field not in output_fields:
@@ -182,7 +150,6 @@ def _check_parsed_expression(
             parsed,
             index,
             tool_names,
-            hosted_tool_names,
             span,
             agent_names=agent_names,
             datasource_targets=datasource_targets,
@@ -196,7 +163,6 @@ def check_trace_refs(
     parsed: ParsedExpression,
     index: ProjectIndex,
     tool_names: set[str],
-    hosted_tool_names: set[str],
     span: SourceSpan,
     *,
     agent_names: set[str] | None = None,
@@ -215,7 +181,7 @@ def check_trace_refs(
         agent_target, tool_target = targets
         if agent_target not in allowed_agent_names:
             diagnostics.append(Diagnostic("SEM051", f"Expression references unknown agent `{agent_target}`", span=span))
-        if tool_target not in (tool_names | hosted_tool_names):
+        if tool_target not in tool_names:
             diagnostics.append(Diagnostic("SEM053", f"Expression references unknown tool `{tool_target}`", span=span))
         return diagnostics
     for target in targets:
@@ -225,10 +191,6 @@ def check_trace_refs(
             diagnostics.append(Diagnostic("SEM051", f"Expression references unknown agent `{target}`", span=span))
         elif spec.target_kind == "tool" and target not in tool_names:
             diagnostics.append(Diagnostic("SEM053", f"Expression references unknown tool `{target}`", span=span))
-        elif spec.target_kind == "hosted_tool" and target not in hosted_tool_names:
-            diagnostics.append(
-                Diagnostic("SEM055", f"Expression references unknown hosted tool `{target}`", span=span)
-            )
         elif spec.target_kind == "approval_tool" and target not in tool_names:
             diagnostics.append(
                 Diagnostic("SEM053", f"Expression references approval for unknown tool `{target}`", span=span)
@@ -241,7 +203,6 @@ def check_trace_refs(
             known_targets = (
                 allowed_agent_names
                 | tool_names
-                | hosted_tool_names
                 | allowed_datasource_targets
                 | allowed_stage_targets
             )
@@ -262,4 +223,4 @@ def _iter_parsed_expressions(items: list[ContractExpression]) -> list[ParsedExpr
     return parsed
 
 
-__all__ = ["check_eval", "check_expression_refs", "check_monitor", "check_trace_refs"]
+__all__ = ["check_eval", "check_expression_refs", "check_trace_refs"]

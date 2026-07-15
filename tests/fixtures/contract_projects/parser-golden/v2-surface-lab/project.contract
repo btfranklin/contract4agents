@@ -1,0 +1,75 @@
+type Request:
+    incident_id: string
+
+type Evidence:
+    entries: list[string]
+
+type Decision:
+    summary: string
+    publish: boolean
+
+tool evidence.search(request: Request) -> Evidence:
+    description = "Search evidence."
+    side_effect = false
+
+datasource evidence.current(request: Request) -> Evidence:
+    description = "Resolve current evidence."
+    render = markdown
+    cache = run
+
+external_context current_evidence -> Evidence:
+    description = "Current host-owned evidence."
+    sensitivity = confidential
+    render = markdown
+
+isolation FreshWorker:
+    context = explicit_only
+    capabilities = declared_only
+    state = fresh
+    filesystem = none
+    network = denied
+    secrets = none
+    return = final_output_only
+
+agent Worker(request: Request) -> Evidence:
+    use evidence.search:
+        availability = enabled
+        authorization = preapproved
+        execution = host
+    context current: Evidence from external current_evidence
+    goal = "Find evidence."
+    guidance = ["Cite evidence."]
+
+agent Coordinator(request: Request) -> Decision:
+    goal = "Make a decision."
+    guidance = ["Delegate evidence collection."]
+
+composition collect_evidence from Coordinator to Worker:
+    mode = delegate
+    description = "Collect evidence before deciding."
+    history = none
+    map request = input.request
+    isolation = FreshWorker
+
+control evidence_required for Coordinator:
+    severity = high
+    required = true
+    audience = [host, evaluator, reviewer]
+    assessment = post_run
+    require = trace.agent_called(Worker)
+
+quality evidence_backed for Coordinator:
+    rubric = "The decision is supported by evidence."
+    audience = [evaluator, reviewer]
+
+operational_control latency for Coordinator:
+    severity = medium
+    require = trace.duration < 10s
+
+eval delegates_for_evidence for Coordinator:
+    given request = Request.fixture("default")
+    expect trace.agent_called(Worker)
+
+run_spec EvidenceRun:
+    stages = [decision: Coordinator -> Decision]
+    assertions = [expect(trace.called(decision))]

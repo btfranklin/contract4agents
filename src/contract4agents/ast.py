@@ -6,8 +6,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from contract4agents.type_refs import canonical_type_name
-
 
 @dataclass(frozen=True)
 class SourceSpan:
@@ -29,7 +27,7 @@ class FieldDef:
 
     @property
     def normalized_type(self) -> str:
-        return canonical_type_name(self.type_name)
+        return self.type_name.strip()
 
 
 @dataclass(frozen=True)
@@ -37,34 +35,64 @@ class TypeDef:
     name: str
     fields: list[FieldDef]
     span: SourceSpan
-    source: Literal["native", "python"] = "native"
-    python_ref: str | None = None
 
 
-Permission = Literal["available", "preapproved", "requires_approval", "denied", "sandboxed"]
-UseKind = Literal["tool", "agent", "datasource", "hosted_tool"]
 RunSpecStageCardinality = Literal["one", "optional", "many"]
+Availability = Literal["enabled", "denied"]
+Authorization = Literal["preapproved", "approval_required"]
+ExecutionBoundary = Literal["host", "provider_hosted", "remote"]
+ContextOrigin = Literal["invocation", "parent", "handoff", "stage", "datasource", "external"]
 
 
 @dataclass(frozen=True)
-class UseDecl:
-    kind: UseKind
-    name: str
-    source: str
-    permission: Permission = "available"
+class GrantDef:
+    capability: str
+    availability: Availability | str | None
+    authorization: Authorization | str | None
+    execution: ExecutionBoundary | str | None
+    isolation: str | None = None
     span: SourceSpan | None = None
-    config: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ContextRequirement:
+    name: str
+    type_name: str
+    origin: ContextOrigin | str
+    source: str | None = None
+    mappings: dict[str, str] = field(default_factory=dict)
+    span: SourceSpan | None = None
+
+
+@dataclass(frozen=True)
+class ToolDef:
+    name: str
+    parameters: list[FieldDef]
+    return_type: str
+    description: str
+    side_effect: bool | None
+    span: SourceSpan
 
 
 @dataclass(frozen=True)
 class DatasourceDef:
     name: str
-    python: str
-    requires: list[str]
-    produces: str
+    parameters: list[FieldDef]
+    return_type: str
+    description: str
     render: str = "markdown"
     cache: str = "run"
     span: SourceSpan | None = None
+
+
+@dataclass(frozen=True)
+class ExternalContextDef:
+    name: str
+    type_name: str
+    description: str
+    sensitivity: str
+    render: str
+    span: SourceSpan
 
 
 @dataclass(frozen=True)
@@ -72,10 +100,11 @@ class AgentDef:
     name: str
     parameters: list[FieldDef]
     return_type: str
-    uses: list[UseDecl]
     attributes: dict[str, Any]
     span: SourceSpan
     attribute_spans: dict[str, SourceSpan] = field(default_factory=dict)
+    grants: list[GrantDef] = field(default_factory=list)
+    context: list[ContextRequirement] = field(default_factory=list)
 
     def list_attr(self, key: str) -> list[str]:
         value = self.attributes.get(key, [])
@@ -97,12 +126,47 @@ class EvalCase:
 
 
 @dataclass(frozen=True)
-class MonitorDef:
+class CompositionDef:
+    name: str
+    source_agent: str
+    target_agent: str
+    mode: str
+    description: str
+    history: str
+    mappings: dict[str, str]
+    isolation: str | None
+    span: SourceSpan
+
+
+@dataclass(frozen=True)
+class IsolationDef:
+    name: str
+    dimensions: dict[str, str]
+    span: SourceSpan
+
+
+@dataclass(frozen=True)
+class ControlDef:
     name: str
     agent: str
-    severity: str
-    condition: str
-    expectation: str
+    attributes: dict[str, Any]
+    span: SourceSpan
+
+
+@dataclass(frozen=True)
+class QualityDef:
+    name: str
+    agent: str
+    rubric: str
+    audiences: list[str]
+    span: SourceSpan
+
+
+@dataclass(frozen=True)
+class OperationalControlDef:
+    name: str
+    agent: str
+    attributes: dict[str, Any]
     span: SourceSpan
 
 
@@ -123,8 +187,14 @@ class ContractModule:
     datasources: list[DatasourceDef] = field(default_factory=list)
     agents: list[AgentDef] = field(default_factory=list)
     evals: list[EvalCase] = field(default_factory=list)
-    monitors: list[MonitorDef] = field(default_factory=list)
     run_specs: list[RunSpecDef] = field(default_factory=list)
+    tools: list[ToolDef] = field(default_factory=list)
+    external_contexts: list[ExternalContextDef] = field(default_factory=list)
+    compositions: list[CompositionDef] = field(default_factory=list)
+    isolations: list[IsolationDef] = field(default_factory=list)
+    controls: list[ControlDef] = field(default_factory=list)
+    qualities: list[QualityDef] = field(default_factory=list)
+    operational_controls: list[OperationalControlDef] = field(default_factory=list)
 
 
 @dataclass
@@ -149,9 +219,33 @@ class ContractProject:
         return [item for module in self.modules for item in module.evals]
 
     @property
-    def monitors(self) -> list[MonitorDef]:
-        return [item for module in self.modules for item in module.monitors]
-
-    @property
     def run_specs(self) -> dict[str, RunSpecDef]:
         return {item.name: item for module in self.modules for item in module.run_specs}
+
+    @property
+    def tools(self) -> dict[str, ToolDef]:
+        return {item.name: item for module in self.modules for item in module.tools}
+
+    @property
+    def external_contexts(self) -> dict[str, ExternalContextDef]:
+        return {item.name: item for module in self.modules for item in module.external_contexts}
+
+    @property
+    def compositions(self) -> dict[str, CompositionDef]:
+        return {item.name: item for module in self.modules for item in module.compositions}
+
+    @property
+    def isolations(self) -> dict[str, IsolationDef]:
+        return {item.name: item for module in self.modules for item in module.isolations}
+
+    @property
+    def controls(self) -> list[ControlDef]:
+        return [item for module in self.modules for item in module.controls]
+
+    @property
+    def qualities(self) -> list[QualityDef]:
+        return [item for module in self.modules for item in module.qualities]
+
+    @property
+    def operational_controls(self) -> list[OperationalControlDef]:
+        return [item for module in self.modules for item in module.operational_controls]

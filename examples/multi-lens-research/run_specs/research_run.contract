@@ -8,8 +8,8 @@ run_spec MultiLensResearchRun:
     ]
 
     derived_values = [
-        evidence_source_ids: str[],
-        final_citation_ids: str[],
+        evidence_source_ids: list[string],
+        final_citation_ids: list[string],
     ]
 
     assertions = [

@@ -15,7 +15,7 @@ _RUN_STAGE_RE = re.compile(
 _RUN_DERIVED_VALUE_RE = re.compile(
     r"\s*(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*:\s*(?P<type>.+?)\s*"
 )
-DERIVED_VALUE_SCALAR_TYPES = frozenset({"str", "int", "float", "bool"})
+DERIVED_VALUE_SCALAR_TYPES = frozenset({"string", "integer", "float", "boolean"})
 
 
 @dataclass(frozen=True)
@@ -70,23 +70,18 @@ def normalize_derived_value_type(type_name: str) -> str | None:
     value = _compact_type_name(type_name)
     if value in DERIVED_VALUE_SCALAR_TYPES:
         return value
-    if value.endswith("[]"):
-        member_type = value[:-2]
-        if member_type in DERIVED_VALUE_SCALAR_TYPES:
-            return f"{member_type}[]"
-        return None
     if value.startswith("list[") and value.endswith("]"):
         member_type = value[5:-1]
         if member_type in DERIVED_VALUE_SCALAR_TYPES:
-            return f"{member_type}[]"
+            return f"list[{member_type}]"
     return None
 
 
 def derived_value_collection_member_type(type_name: str) -> str | None:
     normalized = normalize_derived_value_type(type_name)
-    if normalized is None or not normalized.endswith("[]"):
+    if normalized is None or not normalized.startswith("list[") or not normalized.endswith("]"):
         return None
-    return normalized[:-2]
+    return normalized[5:-1]
 
 
 def _compact_type_name(type_name: str) -> str:

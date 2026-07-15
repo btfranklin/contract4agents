@@ -1,0 +1,16 @@
+{
+  "agents": ["Coordinator", "Worker"],
+  "compositions": ["collect_evidence"],
+  "contexts": ["Worker.current:external:current_evidence"],
+  "controls": ["Coordinator.evidence_required"],
+  "datasources": ["evidence.current(Request)->Evidence"],
+  "evals": ["Coordinator.delegates_for_evidence"],
+  "external_contexts": ["current_evidence->Evidence"],
+  "grants": ["Worker:evidence.search:enabled:preapproved:host"],
+  "isolations": ["FreshWorker"],
+  "operational_controls": ["Coordinator.latency"],
+  "qualities": ["Coordinator.evidence_backed"],
+  "run_specs": ["EvidenceRun"],
+  "tools": ["evidence.search(Request)->Evidence"],
+  "types": ["Decision", "Evidence", "Request"]
+}

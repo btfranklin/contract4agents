@@ -17,8 +17,9 @@ def query(service: str, metric: str, start: str, end: str) -> dict[str, object]:
             (service, metric, start, end),
         ).fetchall()
     values = [float(row[1]) for row in rows]
+    maximum = max(values) if values else 0.0
     return {
         "metric": metric,
-        "points": [{"ts": row[0], "value": float(row[1])} for row in rows],
-        "max_value": max(values) if values else 0.0,
+        "max_value": maximum,
+        "summary": f"{metric} reached {maximum:g} across {len(values)} points.",
     }

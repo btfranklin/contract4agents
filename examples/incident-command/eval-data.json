@@ -1,0 +1,54 @@
+{
+  "schema_version": "1",
+  "cases": {
+    "eval:IncidentCommander:discovers_checkout_cause": {
+      "inputs": {
+        "hidden_truth": {
+          "likely_cause": "deploy 8f31c2 changed payment timeout handling and caused checkout payment timeouts"
+        }
+      },
+      "trials": [
+        {
+          "output": {
+            "summary": "Checkout API latency spiked after deploy 8f31c2.",
+            "likely_cause": "deploy 8f31c2 changed payment timeout handling and caused checkout payment timeouts",
+            "evidence": ["payment timeout logs", "deploy 8f31c2", "p95 latency spike"],
+            "next_actions": ["roll back deploy 8f31c2", "restore adaptive timeout handling"]
+          },
+          "events": [
+            {"event_type": "agent.started"},
+            {"event_type": "context.resolved", "semantic": {"context_id": "context:IncidentCommander:active_incident"}, "data": {"origin": "external", "sensitivity": "confidential"}},
+            {"event_type": "datasource.resolved", "semantic": {"capability_id": "datasource:incident.service", "context_id": "context:IncidentCommander:catalog_service"}, "data": {"origin": "datasource", "cache": "run"}},
+            {"event_type": "approval.requested", "semantic": {"capability_id": "tool:logs.search", "grant_id": "grant:IncidentCommander:logs.search"}},
+            {"event_type": "approval.completed", "semantic": {"capability_id": "tool:logs.search", "grant_id": "grant:IncidentCommander:logs.search"}, "data": {"approved": true}},
+            {"event_type": "tool.started", "semantic": {"agent_id": "agent:LogInvestigator", "capability_id": "tool:logs.search", "grant_id": "grant:IncidentCommander:logs.search"}},
+            {"event_type": "tool.completed", "semantic": {"agent_id": "agent:LogInvestigator", "capability_id": "tool:logs.search"}},
+            {"event_type": "output.accepted", "semantic": {"agent_id": "agent:LogInvestigator"}},
+            {"event_type": "agent.completed", "semantic": {"agent_id": "agent:LogInvestigator"}},
+            {"event_type": "tool.started", "semantic": {"agent_id": "agent:DeployAnalyst", "capability_id": "tool:deploys.list"}},
+            {"event_type": "tool.completed", "semantic": {"agent_id": "agent:DeployAnalyst", "capability_id": "tool:deploys.list"}},
+            {"event_type": "output.accepted", "semantic": {"agent_id": "agent:DeployAnalyst"}},
+            {"event_type": "agent.completed", "semantic": {"agent_id": "agent:DeployAnalyst"}},
+            {"event_type": "tool.started", "semantic": {"agent_id": "agent:MetricsAnalyst", "capability_id": "tool:metrics.query"}},
+            {"event_type": "tool.completed", "semantic": {"agent_id": "agent:MetricsAnalyst", "capability_id": "tool:metrics.query"}},
+            {"event_type": "output.accepted", "semantic": {"agent_id": "agent:MetricsAnalyst"}},
+            {"event_type": "agent.completed", "semantic": {"agent_id": "agent:MetricsAnalyst"}},
+            {"event_type": "composition.completed", "semantic": {"agent_id": "agent:IncidentCommander", "composition_id": "edge:investigate_logs"}},
+            {"event_type": "output.accepted", "semantic": {"agent_id": "agent:IncidentCommander"}},
+            {"event_type": "agent.completed", "semantic": {"agent_id": "agent:IncidentCommander"}}
+          ],
+          "judges": {
+            "quality:IncidentCommander:concise_operational_summary": {
+              "status": "passed",
+              "reason": "The brief identifies the service, evidence, cause, and concrete next actions.",
+              "score": 0.95,
+              "provider": "deterministic-example",
+              "version": "1"
+            }
+          },
+          "metrics": {"latency_ms": 24.0, "cost_usd": 0.0, "input_tokens": 0, "output_tokens": 0}
+        }
+      ]
+    }
+  }
+}

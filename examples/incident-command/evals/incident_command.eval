@@ -13,4 +13,4 @@ eval discovers_checkout_cause for IncidentCommander:
     expect trace.agent_called(DeployAnalyst)
     expect trace.agent_called(MetricsAnalyst)
     expect trace.not_called(status_page.draft_update)
-    expect semantic(output, "The brief is clear, operationally useful, and supported by evidence.")
+    expect quality(concise_operational_summary)

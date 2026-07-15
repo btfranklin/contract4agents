@@ -8,30 +8,49 @@ from lark.indenter import Indenter
 MODULE_GRAMMAR = r"""
     start: _NEWLINE* (declaration _NEWLINE*)*
 
-    ?declaration: python_type_def | type_def | datasource_def | agent_def | run_spec_def | eval_def | monitor_def
+    ?declaration: type_def
+        | tool_def
+        | datasource_def
+        | external_context_def
+        | isolation_def
+        | composition_def
+        | control_def
+        | quality_def
+        | operational_control_def
+        | agent_def
+        | run_spec_def
+        | eval_def
 
     type_def: "type" NAME ":" field_block?
-    python_type_def: "type" NAME "from" "python" ESCAPED_STRING
     field_block: _NEWLINE _INDENT field* _DEDENT
     field: NAME ":" SCALAR_VALUE _NEWLINE
 
-    datasource_def: "datasource" NAME ":" assignment_block?
+    tool_def: "tool" DOTTED_NAME _LPAR params? _RPAR "->" PARAM_TYPE ":" assignment_block?
+
+    datasource_def: "datasource" DOTTED_NAME _LPAR params? _RPAR "->" PARAM_TYPE ":" assignment_block?
     assignment_block: _NEWLINE _INDENT assignment* _DEDENT
+
+    external_context_def: "external_context" DOTTED_NAME "->" PARAM_TYPE ":" assignment_block?
+
+    isolation_def: "isolation" NAME ":" assignment_block?
+
+    composition_def: "composition" NAME "from" NAME "to" NAME ":" composition_block?
+    composition_block: _NEWLINE _INDENT composition_stmt* _DEDENT
+    ?composition_stmt: assignment | map_stmt
+    map_stmt: "map" NAME "=" SCALAR_VALUE _NEWLINE
+
+    control_def: "control" NAME "for" NAME ":" assignment_block?
+    quality_def: "quality" NAME "for" NAME ":" assignment_block?
+    operational_control_def: "operational_control" NAME "for" NAME ":" assignment_block?
 
     agent_def: "agent" NAME _LPAR params? _RPAR "->" NAME ":" agent_block?
     agent_block: _NEWLINE _INDENT agent_stmt* _DEDENT
     params: param (_COMMA _NEWLINE* param)* _COMMA?
     param: NAME ":" PARAM_TYPE
-    ?agent_stmt: hosted_use_stmt _NEWLINE | use_stmt _NEWLINE | assignment
-    use_stmt: "use" USE_KIND DOTTED_NAME "from" SOURCE permission?
-    hosted_use_stmt: "use" "hosted_tool" DOTTED_NAME hosted_option? permission?
-    hosted_option: NAME ESCAPED_STRING
-
-    permission: "preapproved" -> preapproved
-        | "denied" -> denied
-        | "available" -> available
-        | "sandboxed" -> sandboxed
-        | "requires" "approval" -> requires_approval
+    ?agent_stmt: grant_stmt | context_stmt | assignment
+    grant_stmt: "use" DOTTED_NAME ":" assignment_block?
+    context_stmt: "context" NAME ":" PARAM_TYPE "from" CONTEXT_KIND DOTTED_NAME? (":" context_block | _NEWLINE)
+    context_block: _NEWLINE _INDENT map_stmt+ _DEDENT
 
     assignment: NAME "=" assignment_value _NEWLINE
     ?assignment_value: list_value | scalar_value
@@ -47,13 +66,6 @@ MODULE_GRAMMAR = r"""
     given_stmt: "given" NAME "=" SCALAR_VALUE _NEWLINE
     expect_stmt: "expect" SCALAR_VALUE _NEWLINE
 
-    monitor_def: "monitor" NAME "for" NAME ":" monitor_block?
-    monitor_block: _NEWLINE _INDENT monitor_stmt* _DEDENT
-    ?monitor_stmt: severity_stmt | when_stmt | monitor_expect_stmt
-    severity_stmt: "severity" "=" SCALAR_VALUE _NEWLINE
-    when_stmt: "when" SCALAR_VALUE _NEWLINE
-    monitor_expect_stmt: "expect" SCALAR_VALUE _NEWLINE
-
     run_spec_def: "run_spec" NAME ":" run_spec_block?
     run_spec_block: _NEWLINE _INDENT assignment* _DEDENT
 
@@ -62,11 +74,10 @@ MODULE_GRAMMAR = r"""
     _LSQB: "["
     _RSQB: "]"
     _COMMA: ","
-    USE_KIND: "tool" | "agent" | "datasource"
-    PARAM_TYPE: /[A-Za-z_][A-Za-z0-9_?]*/
-    DOTTED_NAME: /[A-Za-z_][A-Za-z0-9_.]*/
+    CONTEXT_KIND: "invocation" | "parent" | "handoff" | "stage" | "datasource" | "external"
+    PARAM_TYPE.1: /[A-Za-z_][A-Za-z0-9_.]*(?:\[[A-Za-z0-9_.,?\[\]]+\])?\??/
+    DOTTED_NAME.2: /[A-Za-z_][A-Za-z0-9_.]*/
     NAME: /[A-Za-z_][A-Za-z0-9_]*/
-    SOURCE: /[^ \t\n]+/
     SCALAR_VALUE: /[^ \t\n\[]+[^\n]*/
     INLINE_LIST_CONTENT: /[^\]\n]+/
     BLOCK_LIST_VALUE: /[^ \t\n\]][^\n]*/

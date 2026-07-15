@@ -4,18 +4,16 @@ agent MetricsAnalyst(
     window: TimeWindow
 ) -> MetricSnapshot:
 
-    use tool metrics.query from tools.metrics preapproved
+    use metrics.query:
+        availability = enabled
+        authorization = preapproved
+        execution = host
 
     goal = "Measure the incident impact using seeded metric data."
 
     description = "Queries latency and error-rate metrics for the incident service."
 
-    policy = [
+    guidance = [
         "use metric data only from the incident window",
         "summarize impact in operational terms",
     ]
-
-    guards = [
-        require(output conforms MetricSnapshot),
-    ]
-

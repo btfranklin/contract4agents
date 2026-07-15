@@ -3,20 +3,25 @@ agent CounterargumentAnalyst(
     evidence: EvidenceMap
 ) -> CounterargumentSet:
 
-    use tool sources.search from tools.sources preapproved
-    use tool sources.fetch from tools.sources preapproved
-    use tool citation.format from tools.citation preapproved
+    use sources.search:
+        availability = enabled
+        authorization = preapproved
+        execution = host
+    use sources.fetch:
+        availability = enabled
+        authorization = preapproved
+        execution = host
+    use citation.format:
+        availability = enabled
+        authorization = preapproved
+        execution = host
 
     goal = "Find the strongest counterarguments and weak assumptions before synthesis."
 
     description = "Searches for contrary evidence and makes uncertainty visible."
 
-    policy = [
+    guidance = [
         "actively look for disconfirming evidence",
         "state weak assumptions plainly",
         "do not bury counterarguments in the final recommendation",
-    ]
-
-    guards = [
-        require(output conforms CounterargumentSet),
     ]

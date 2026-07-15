@@ -1,146 +1,151 @@
 # Trace Schema Reference
 
-Contract4Agents trace files are canonical JSONL files. Each line is one JSON
-object using trace schema version `1`.
+Contract4Agents normalized trace schema version `2` connects observed execution
+to the exact contract and materialization plan that governed it. JSONL is the
+portable storage form; provider-native spans remain available through
+correlation references.
+
+## Event Envelope
 
 ```json
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "run_id": "run-123",
-  "event_id": "evt-001",
-  "event_type": "tool.completed",
-  "timestamp": 1.0,
-  "agent": "SupportCoordinator",
-  "tool": "crm.create_note",
-  "data": {},
-  "provider": {}
+  "thread_id": "thread-1",
+  "event_id": "evt-000004",
+  "parent_event_id": "evt-000003",
+  "event_type": "approval.completed",
+  "timestamp": 1784098974.25,
+  "contract_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "plan_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "semantic": {
+    "agent_id": "agent:IncidentCommander",
+    "capability_id": "tool:status.publish",
+    "composition_id": null,
+    "context_id": null,
+    "grant_id": "grant:IncidentCommander:status.publish",
+    "isolation_id": null,
+    "quality_id": null,
+    "control_ids": ["control:IncidentCommander:approval:status.publish"]
+  },
+  "data": {"approved": true},
+  "provider": {
+    "name": "openai",
+    "run_id": "provider-run-456",
+    "span_id": "provider-span-789"
+  },
+  "evidence_refs": ["provider:openai:provider-span-789"],
+  "provenance": {"source": "approval_callback"},
+  "redaction": {"state": "safe", "applied": [], "rules": []}
 }
 ```
 
-## Envelope Fields
+## Run Identity
 
-Required fields:
+Every event repeats these immutable run fields:
 
-- `schema_version`: currently `1`.
-- `event_id`: stable event identifier within the trace.
-- `event_type`: normalized event name.
-- `timestamp`: numeric timestamp.
+- `run_id`: normalized execution identity.
+- `thread_id`: conversation or workflow thread identity.
+- `contract_digest`: SHA-256 identity of canonical IR.
+- `plan_digest`: SHA-256 identity of the reviewed materialization plan.
 
-Optional index fields:
+A loaded trace represents one run and one thread under one contract and plan.
+Mixing identities is invalid.
 
-- `run_id`: run identifier shared by events from the same run.
-- `agent`: agent name when the event belongs to an agent.
-- `tool`: host tool name for `tool.*` or `host_tool.*` events, and provider
-  hosted-tool contract name for `hosted_tool.*` events.
-- `datasource`: datasource name or type when the event belongs to datasource resolution.
-- `stage`: stage or checkpoint name.
-- `guardrail`: guardrail name.
-- `assertion`: assertion name or expression.
+## Event Identity and Causality
 
-Payload fields:
+- `event_id` is unique within the trace.
+- `parent_event_id` is either `null` or the ID of another event in the run.
+- `event_type` is a normalized dotted name such as `tool.completed`.
+- `timestamp` is a finite numeric timestamp.
 
-- `data`: event-specific object. Use this for arguments, results, approval
-  decisions, produced type names, failure reasons, and other normalized payload.
-- `provider`: provider-specific object. Use this for SDK run IDs, model names,
-  token counts, latency, and other adapter metadata.
+The loader rejects duplicate IDs, missing parents, parent cycles, cross-run
+parent references, malformed IDs, and non-finite timestamps.
 
-`TraceRecorder` writes `data` and `provider` as objects on every event. The
-loader rejects non-object `data` or `provider` values. Legacy JSONL with a
-top-level `type` field is invalid; use `event_type`.
-When `TraceRecorder(path=...)` writes to a file, the first write truncates the
-file by default. Use `TraceRecorder(path, append=True)` only when the host
-intentionally appends to an existing trace file.
+## Stable Semantic References
 
-## Known V1 Events
+`semantic` connects an event to canonical IDs:
 
-Agent events:
+- `agent_id`: `agent:<name>`
+- `capability_id`: `tool:<name>` or `datasource:<name>`
+- `composition_id`: `edge:<name>`
+- `context_id`: `context:<agent>:<slot>`
+- `grant_id`: `grant:<agent>:<capability>`
+- `isolation_id`: `isolation:<name>`
+- `quality_id`: `quality:<agent>:<rubric>`
+- `control_ids`: zero or more `control:<...>` IDs
 
-- `agent.started`
-- `agent.completed`
-- `agent.handoff`
+These references let evals, monitors, diffs, and assurance joins survive source
+file reordering and display-name ambiguity.
 
-Host tool events:
+## Provider Correlation
 
-- `tool.requested`
-- `tool.started`
-- `tool.allowed`
-- `tool.denied`
-- `tool.completed`
-- `tool.failed`
-- `host_tool.requested`
-- `host_tool.started`
-- `host_tool.completed`
-- `host_tool.failed`
+`provider.name` is required. Optional `run_id`, `trace_id`, `span_id`, and
+`request_id` preserve links to provider-native evidence. `evidence_refs` may
+also identify raw spans, host attestations, artifacts, or other immutable
+evidence that the normalized payload does not duplicate.
 
-Hosted provider tool events:
+Normalization is not intended to replace a provider's full trace representation
+or an existing observability backend.
 
-- `hosted_tool.requested`
-- `hosted_tool.started`
-- `hosted_tool.completed`
-- `hosted_tool.failed`
+For the OpenAI Agents SDK, `OpenAINormalizedTraceProcessor` implements the SDK
+tracing-processor callbacks and correlates native agent, tool, delegation, and
+handoff spans. Register one processor per logical run with
+`agents.add_trace_processor(...)`; its `normalized_trace()` result retains the
+provider IDs while excluding raw provider inputs and outputs.
 
-Hosted provider tools use the same `tool` index field as host tools, but their
-event type prefix stays `hosted_tool`. For example, an OpenAI web-search call is
-recorded with `event_type` set to `hosted_tool.completed` and `tool` set to
-`openai.web_search`.
+## Provenance and Redaction
 
-Datasource events:
+`provenance` records where the normalized evidence came from. `redaction`
+records whether the event is safe, sensitive, or already redacted and may carry
+JSON Pointer rules declaring which audiences can see particular values.
 
-- `datasource.started`
-- `datasource.resolved`
-- `datasource.failed`
+Redactable roots are `data`, `provider`, `evidence_refs`, and `provenance`.
+Audience values are `model`, `adapter`, `host`, `evaluator`, and `reviewer`.
+Redaction is applied before export. Hidden controls, thresholds, secrets, and
+sensitive context must not be copied into broadly visible trace views.
 
-Approval events:
-
-- `approval.requested`
-- `approval.completed`
-
-Approval events should carry `agent` when the approval belongs to a specific
-agent. `approval.completed` uses `data.approved` as a literal boolean; monitor
-and eval spies do not treat string values such as `"false"` as approval
-decisions.
-
-Run review events:
-
-- `stage.completed`
-- `output.accepted`
-- `output.rejected`
-- `output.schema_failed`
-- `assertion.evaluated`
-- `guardrail.rejected`
-
-Model events:
-
-- `llm.started`
-- `llm.completed`
-
-Unknown `event_type` values are warnings in diagnostic loading, not fatal
-errors. This lets future provider events be inspected while still rejecting
-malformed trace envelopes.
-
-Run specs evaluate trace assertions against these normalized events and
-validate host-supplied stage outputs separately. Tool-by-agent checks such as
-`trace.not_tool_called_by(AgentName, tool.name)` use the event `agent` and
-`tool` index fields on `tool.completed` and `hosted_tool.completed` events.
-
-## Loading
-
-Host code can load trace files directly:
+## Reading and Writing JSONL
 
 ```python
 from pathlib import Path
 
-from contract4agents.runtime import load_trace_jsonl, load_trace_jsonl_with_diagnostics
+from contract4agents.tracing import load_trace_jsonl, write_trace_jsonl
 
 trace = load_trace_jsonl(Path("run.trace.jsonl"))
-diagnostic_result = load_trace_jsonl_with_diagnostics(Path("run.trace.jsonl"))
+write_trace_jsonl(Path("normalized.trace.jsonl"), trace, audience="reviewer")
 ```
 
-`load_trace_jsonl(...)` raises `TraceFileError` for any fatal diagnostic.
-`load_trace_jsonl_with_diagnostics(...)` returns a `TraceLoadResult` with the
-loaded in-memory trace and structured `TraceDiagnostic` records.
+Use `dumps_trace_jsonl` and `loads_trace_jsonl` for in-memory data. Loading is
+strict: invalid JSON, unsupported schema versions, incomplete envelopes,
+unknown object fields, broken identity, and malformed semantic references fail.
 
-Fatal diagnostics include invalid JSON, non-object JSONL lines, missing
-`schema_version`, `event_id`, `event_type`, or `timestamp`, unsupported schema
-versions, non-object `data` or `provider`, bad timestamps, and legacy top-level
-`type`.
+## Trace Completeness
+
+```python
+from contract4agents.tracing import assess_trace_completeness
+
+result = assess_trace_completeness(trace, plan.expected_telemetry)
+```
+
+Completeness is evaluated against the plan, not against a generic event list.
+Missing required event families produce an `unverified` result with exact
+reasons. This matters especially for negative claims: the absence of a tool
+event does not prove the tool was not called unless complete tool telemetry was
+expected and present for the run.
+
+## OpenTelemetry Export
+
+`export_open_telemetry` maps normalized events to spans through a small
+structural tracer protocol. The integration has no hard OpenTelemetry package
+dependency; pass a real compatible tracer from the host application.
+
+```python
+from contract4agents.tracing import export_open_telemetry
+
+export_open_telemetry(trace, tracer, audience="reviewer")
+```
+
+Audience redaction happens before span attributes are emitted. Provider-native
+correlation IDs and contract/plan identities remain available for joining the
+export with reviewed artifacts.

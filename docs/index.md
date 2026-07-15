@@ -1,85 +1,85 @@
 # Documentation Index
 
-This directory is the system of record for Contract4Agents design and implementation guidance.
+Contract4Agents has one supported product path:
 
-## Reading Paths
+```text
+Declare -> Compile -> Plan -> Materialize -> Run -> Trace -> Assure
+```
 
-For product intent:
+Portable contracts own agent semantics. Target bindings own target-specific
+implementation choices. Generated plans, runtime objects, traces, eval reports,
+and assurance bundles are derived from those two authorities.
 
-- Read `../VISION.md`.
-- Then read `architecture/system-design.md`.
-- For the smallest practical adoption path, read
-  `tutorials/first-contract-project.md`.
-- For the deeper SDK integration guide, read
-  `tutorials/using-contract4agents-with-an-agent-app.md`.
-- To understand the project from a concrete example, read
-  `../examples/incident-command/README.md`.
+## Start Here
 
-For language implementation:
+- [First Contract Project](tutorials/first-contract-project.md) builds the
+  smallest contract-first agent from scratch.
+- [Using Contract4Agents in an Application](tutorials/using-contract4agents-with-an-agent-app.md)
+  covers materialization, host responsibilities, traces, and assurance.
+- [Incident Command](../examples/incident-command/README.md) is the complete
+  beginner-facing example.
+- [Vision](../VISION.md) explains the product thesis.
 
-- Read `language/contract-language.md`.
-- Then read `compiler/compiler-outputs.md`.
-- Use `architecture/parser-internals.md` when changing parser internals.
-- Use `research/agent-sdk-pattern-survey.md` to understand adapter targets.
-- Use `examples/demo-agent-teams.md` to choose the first parser and runtime fixtures.
-- Use examples embedded in those docs as parser fixture candidates.
+## Define and Compile
 
-For runtime implementation:
+- [Contract Language](language/contract-language.md): types, shared capabilities,
+  grants, context provenance, composition, controls, quality, isolation, evals,
+  and run specs.
+- [Compiler Outputs](compiler/compiler-outputs.md): canonical IR, schemas,
+  audience-specific instructions, generated code, and freshness checks.
+- [Context and Datasources](runtime/context-and-datasources.md): explicit value
+  origins, target bindings, provenance, rendering, caching, and evidence.
+- [Grammar](reference/grammar.md): compact implemented syntax map.
+- [Parser Internals](architecture/parser-internals.md): parser maintenance map.
 
-- Read `runtime/context-and-datasources.md`.
-- Then read `evaluation/evals-assertions-monitors.md`.
-- Use `reference/run-specs.md` for host-owned workflow expectation checks.
+## Plan, Materialize, and Run
 
-For validation and release readiness:
+- [System Design](architecture/system-design.md): lifecycle components and
+  ownership boundaries.
+- [OpenAI Target](reference/openai-adapter.md): planning and native OpenAI
+  Agents SDK materialization.
+- [CLI](reference/cli.md): public commands and their side effects.
+- [Run Specs](reference/run-specs.md): verification of host-owned deterministic
+  workflow.
 
-- Read `quality/validation.md`.
-- Read `releasing.md` before tagging or publishing a package release.
-- Use `reference/cli.md` for command behavior, `reference/test-fixtures.md` for fixture-runner behavior, and
-  `reference/vscode-extension.md` for editor-extension packaging.
+## Trace, Evaluate, and Assure
 
-For project planning:
+- [Trace Schema](reference/trace-schema.md): normalized trace V2 identity,
+  evidence, validation, redaction, and OpenTelemetry export.
+- [Eval Language](reference/eval-language.md): scenario and expectation syntax.
+- [Evals, Controls, and Assurance](evaluation/evals-controls-assurance.md):
+  repeated campaigns, shared assessment, bundles, and semantic diffs.
+- [Semantic Judges](reference/semantic-judge.md): judge evidence requirements.
+- [Visualization](reference/visualization.md): declared, planned, observed, and
+  assured review views.
+- [Deterministic Eval Data](examples/fake-tools-and-data.md): file-backed inputs,
+  traces, approval decisions, judge decisions, and metrics.
 
-- Read `decisions/open-questions.md`.
-- Resolve open questions in the relevant topical docs when implementation settles them.
+## Examples
 
-## Documents
+- [Examples Overview](../examples/README.md)
+- [Incident Command](../examples/incident-command/README.md)
+- [Multi-Lens Research](../examples/multi-lens-research/README.md)
+- [Market Research Brief](../examples/market-research-brief/README.md)
+- [Demo Team Design Notes](examples/demo-agent-teams.md)
 
-- `architecture/system-design.md`: system components, boundaries, and execution flow.
-- `architecture/parser-internals.md`: parser module boundaries and the Lark-to-AST flow.
-- `language/contract-language.md`: source file structure, declarations, syntax, and semantic rules.
-- `runtime/context-and-datasources.md`: typed context slots, Python datasource interface, resolution algorithm, and provenance.
-- `compiler/compiler-outputs.md`: compiler phases, generated artifacts, diagnostics, and static checks.
-- `evaluation/evals-assertions-monitors.md`: `.eval` files, trace spies, assertions, guards, and monitor rules.
-- `quality/validation.md`: local validation commands, packaging checks, release pipeline, generated artifacts, and live-test boundaries.
-- `tutorials/first-contract-project.md`: shortest path from one existing agent to one compiled contract project.
-- `tutorials/using-contract4agents-with-an-agent-app.md`: deeper guide for using Contract4Agents beside an existing agent SDK implementation.
-- `reference/grammar.md`: implemented V1 grammar surface.
-- `reference/manifest.md`: provider-neutral manifest reference.
-- `reference/capability-registry.md`: source-owned capability registry and strict drift checks.
-- `reference/visualization.md`: static project visualization command and artifact reference.
-- `reference/trace-schema.md`: normalized trace event reference.
-- `reference/run-specs.md`: run spec source syntax, artifacts, and runtime evaluation API.
-- `reference/eval-language.md`: deterministic, trace-spy, hidden-truth, and semantic eval syntax.
-- `reference/cli.md`: CLI command reference.
-- `reference/openai-adapter.md`: OpenAI execution adapter notes.
-- `reference/semantic-judge.md`: OpenAI semantic judge notes.
-- `reference/test-fixtures.md`: isolated multi-agent fixture runner reference.
-- `reference/vscode-extension.md`: VS Code syntax-highlighting extension install, local build, and release asset notes.
-- `research/agent-sdk-pattern-survey.md`: survey of OpenAI Agents SDK, Google ADK, Claude Agent SDK, and Strands patterns.
-- `examples/demo-agent-teams.md`: proposed realistic demo teams for fixtures and examples.
-- `examples/fake-tools-and-data.md`: local fake-tool and fake-database fixture rules.
-- `examples/incident-command-walkthrough.md`: runnable V1 fixture walkthrough.
-- `../examples/README.md`: reusable pattern for public example projects.
-- `../examples/incident-command/README.md`: beginner-facing Incident Command example guide.
-- `../examples/multi-lens-research/README.md`: multi-lens research example guide.
-- `../examples/market-research-brief/README.md`: document-driven market research example guide.
-- `releasing.md`: tag-first release notes and PyPI publishing process.
-- `decisions/open-questions.md`: decisions needed before or during the first implementation tranche.
+## Project and Contributor References
+
+- [V2 Semantic Model](architecture/v2-semantic-model.md): accepted detailed
+  implementation specification.
+- [SDK Pattern Survey](research/agent-sdk-pattern-survey.md): provider
+  differences the target layer must preserve.
+- [Validation and Quality Gates](quality/validation.md)
+- [VS Code Extension](reference/vscode-extension.md)
+- [Releasing](releasing.md)
+- [Open Questions](decisions/open-questions.md)
 
 ## Documentation Rules
 
-- Keep `AGENTS.md` as a routing map.
-- Keep `VISION.md` as product intent, not implementation detail.
-- Put concrete implementation decisions in the relevant topical document under this directory.
-- When implementation changes the design, update the relevant doc in the same change.
-- Prefer small, linked documents over a single large design note.
+- `README.md` is the public front door.
+- `AGENTS.md` is the coding-agent operating map.
+- This index is the documentation map.
+- Portable semantics belong in the language and architecture references.
+- Target-specific behavior belongs in target references.
+- Unresolved decisions belong in `decisions/open-questions.md`.
+- Documentation must not teach removed syntax or a second runtime inventory.

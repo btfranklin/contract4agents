@@ -1,41 +1,88 @@
 type MarketResearchQuestion:
-    product_area: str
-    target_segment: str
-    decision: str
-    as_of_date: str
+    product_area: string
+    target_segment: string
+    decision: string
+    as_of_date: string
 
 type DocumentEvidence:
-    document_id: str
-    title: str
-    claim: str
-    citation: str
+    document_id: string
+    title: string
+    claim: string
+    citation: string
 
 type CurrentFactEvidence:
-    fact_id: str
-    source: str
-    as_of_date: str
-    claim: str
-    citation: str
+    fact_id: string
+    source: string
+    as_of_date: string
+    claim: string
+    citation: string
 
 type CompetitorSnapshot:
-    competitor: str
-    positioning: str
-    recent_signal: str
-    citation: str
+    competitor: string
+    positioning: string
+    recent_signal: string
+    citation: string
 
 type CustomerSignalSummary:
-    pain_points: str[]
-    segments: str[]
-    citations: str[]
+    pain_points: list[string]
+    segments: list[string]
+    citations: list[string]
 
 type MarketOpportunityReport:
-    thesis: str
-    opportunity: str
-    current_facts: str[]
-    internal_evidence: str[]
-    competitor_signals: str[]
-    customer_signals: str[]
-    risks: str[]
-    recommendation: str
-    citations: str[]
-    freshness_notes: str[]
+    thesis: string
+    opportunity: string
+    current_facts: list[string]
+    internal_evidence: list[string]
+    competitor_signals: list[string]
+    customer_signals: list[string]
+    risks: list[string]
+    recommendation: string
+    citations: list[string]
+    freshness_notes: list[string]
+
+type Citation:
+    citation: string
+
+type DocumentSearchHit:
+    document_id: string
+    title: string
+    document_type: string
+    snippet: string
+
+type DocumentSearchResults:
+    results: list[DocumentSearchHit]
+
+type DocumentRecord:
+    document_id: string
+    title: string?
+    document_type: string?
+    body: string?
+    created_at: string?
+    found: boolean?
+
+type CurrentFactSearchHit:
+    fact_id: string
+    source: string
+    as_of_date: string
+    snippet: string
+
+type CurrentFactSearchResults:
+    results: list[CurrentFactSearchHit]
+
+type CurrentFactRecord:
+    fact_id: string
+    source: string?
+    as_of_date: string?
+    claim: string?
+    found: boolean?
+
+type CompetitorLookupResults:
+    competitors: list[CompetitorSnapshot]
+
+type WebSearchResult:
+    title: string
+    url: string
+    snippet: string
+
+type WebSearchResults:
+    results: list[WebSearchResult]

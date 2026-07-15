@@ -6,12 +6,7 @@ agent CustomerImpactWriter(
 
     description = "Preserves evidence while improving customer-facing clarity."
 
-    policy = [
+    guidance = [
         "do not remove technical evidence",
         "keep customer-facing impact concise",
     ]
-
-    guards = [
-        require(output conforms IncidentBrief),
-    ]
-

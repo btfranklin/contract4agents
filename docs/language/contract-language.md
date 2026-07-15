@@ -1,372 +1,270 @@
-# Contract4Agents Language
+# Contract Language
 
-The Contract4Agents language is a typed declarative language for agent interfaces, behavior contracts, capability declarations, and run-level expectations.
+Contract4Agents V2 is a portable declarative language. Contracts describe
+desired agent semantics; target bindings describe how one runtime implements
+them. Python, TypeScript, provider, SDK, and deployment details are never
+portable source authority.
 
-It is intentionally Python-adjacent without being Python. The language should be easy to read beside `.py` files, but the compiler controls its semantics.
-
-## Files
-
-- `.contract`: agents, types, datasources, guards, assertions, monitors, and run specs.
-- `.eval`: offline eval cases against agents.
-
-Eval files are separate because evals are tests, not agent implementation.
-
-## Design Principles
-
-- Function-like boundaries: agents have typed parameters and typed return values.
-- Declarative bodies: agent bodies declare capabilities, policies, success criteria, guards, and assertions.
-- Explicit capability kinds: tools, agents, datasources, and types are not interchangeable.
-- No fake imperative control flow: contract bodies describe behavior and constraints rather than executable application logic.
-- Parseable prose: free text is allowed only inside structured fields.
-
-## Type Declarations
-
-Types define semantic shapes used by agent parameters, outputs, and datasources.
+## Portable Types
 
 ```contract
-type CustomerProfile:
-    id: str
-    plan: str
-    status: "active" | "past_due" | "cancelled"
+type ResearchQuestion:
+    topic: string
+    as_of: datetime
 
-type GreetingResult:
-    message: str
-    routed_to: AgentRef? = null
-    confidence: float between 0 and 1
+type Evidence:
+    source_id: string
+    confidence: float
+    tags: list[string]
+    metadata: map[string,string]
+    note: string?
 ```
 
-JSON Schema is the canonical interchange format for Contract4Agents types. Python/Pydantic and TypeScript/Zod bindings are adapter conveniences, not the source of truth.
+The scalar types are `string`, `integer`, `float`, `boolean`, and `datetime`.
+Collections use `list[T]` and `map[string,T]`. Add `?` for nullability. Defaults
+follow the field type after `=`.
 
-When a host application already owns stable Pydantic v2 models, a contract type
-can bind to an explicit import path:
+`str`, `int`, `bool`, `T[]`, and `type ... from python` are not aliases. Code is
+generated outward from native contract types.
+
+## Shared Capabilities
+
+Tools are canonical provider-neutral interfaces:
 
 ```contract
-type ResearchPlan from python "my_app.models:ResearchPlan"
+tool sources.search(
+    query: string,
+    as_of: datetime
+) -> Evidence:
+    description = "Search dated evidence."
+    side_effect = false
 ```
 
-Python-backed types are imported only when a check or compile explicitly allows
-host-code imports. The compiler derives the same canonical JSON Schema artifacts
-from the model and preserves the import path as metadata for adapters and later
-drift checks. Imported type declarations cannot include native fields.
+The contract owns the name, signature, description, and side-effect semantics.
+Python callables, provider-hosted tool names, remote endpoints, and MCP locators
+belong in `contract4agents.targets.toml`.
 
-## Agent Declarations
-
-An agent declaration has a callable signature and a declarative body.
+A datasource is a typed context resolver rather than an agent-invoked tool:
 
 ```contract
-agent CustomerGreeter(
-    user_message: UserMessage,
-    customer_profile: CustomerProfile
-) -> GreetingResult:
+datasource account.profile(account_id: string) -> AccountProfile:
+    description = "Resolve the current account profile."
+    render = markdown
+    cache = run
+```
 
-    use tool calculate from mathlib
-    use agent BillingAgent from ./billing
-    use agent SupportAgent from ./support
-    use datasource AccountRejectionStatus from datasources.account_rejection_status
+Datasource implementations also belong in target bindings.
 
-    goal = "Greet the customer and route them to the right specialist when needed."
+## External Context
 
-    description = "Routes simple greetings, billing requests, and account-support requests."
+Host-owned values must have a named portable interface:
 
-    policy = [
-        "answer directly only when the request is simple",
-        "delegate billing questions to BillingAgent",
-        "delegate account-support questions to SupportAgent",
-        "do not invent account details",
+```contract
+external_context current_account -> AccountProfile:
+    description = "The authenticated account for this invocation."
+    sensitivity = confidential
+    render = markdown
+```
+
+Sensitivity is `public`, `internal`, `confidential`, or `restricted`. Render
+mode is `markdown`, `json`, or `text`.
+
+## Agents and Grants
+
+```contract
+agent SupportAgent(request: SupportRequest) -> SupportReply:
+    use crm.create_note:
+        availability = enabled
+        authorization = approval_required
+        execution = host
+    use web.search:
+        availability = enabled
+        authorization = preapproved
+        execution = provider_hosted
+
+    context account: AccountProfile from external current_account
+    context history: AccountHistory from datasource account.history:
+        map account_id = context.account.id
+
+    goal = "Resolve the request safely and accurately."
+    description = "Handles authenticated support requests."
+    guidance = [
+        "Distinguish verified facts from hypotheses.",
+        "Cite account evidence when making a recommendation.",
     ]
-
-    success = [
-        "message is friendly and specific",
-        "routed_to is set when delegation happens",
-        "no unsupported customer facts are asserted",
-    ]
-
-    guards = [
-        require(output conforms GreetingResult),
-    ]
-
-    assertions = [
-        expect(output conforms GreetingResult),
-        expect(output.message excludes unsupported_customer_fact),
-    ]
 ```
 
-Agent bodies accept capability declarations plus these assignment attributes:
+Agent signatures are typed invocation inputs and one typed output. A grant is a
+relationship between an agent and a shared tool declaration; it does not
+redeclare the tool.
 
-- `goal`: string.
-- `description`: string.
-- `policy`: list of text or contract expressions.
-- `success`: list of text or contract expressions.
-- `routes`: list of routing declarations.
-- `composition`: list of composition declarations.
-- `host_context`: list of typed context slots supplied by host orchestration.
-- `guards`: list of guard expressions.
-- `assertions`: list of assertion expressions.
+Grant dimensions are orthogonal:
 
-Unknown agent attributes are semantic errors. Known attributes must use the
-declared value shape; for example, `guards` and `assertions` must be lists, and
-`goal` and `description` must be strings. Misspellings such as `guard = [...]`
-fail instead of compiling to an empty guard plan.
+- `availability`: `enabled` or `denied`
+- `authorization`: `preapproved` or `approval_required`
+- `execution`: `host`, `provider_hosted`, `remote`, or a named target environment
+- optional `isolation`: a declared isolation profile
 
-## Agent Parameters
+An enabled grant requires explicit authorization and execution. A denied grant
+cannot declare authorization, execution, or isolation. `available`, `requires
+approval`, and `sandboxed` are removed permission spellings.
 
-Every agent parameter is a required typed context slot unless it is nullable or has a default.
+Context origins are `invocation`, `parent`, `handoff`, `stage`, `datasource`,
+and `external`. Agent-local context declarations use datasource or external
+origins; invocation, parent, handoff, and stage provenance is represented by
+typed signatures, composition mappings, and run specs. Datasource declarations
+map every resolver input from `input.<path>` or an earlier `context.<path>`.
+
+`goal` and `guidance` are model-visible. `description` is review and adapter
+metadata. `policy`, `success`, `host_context`, `guards`, and `assertions` are not
+agent attributes. Output conformance is derived automatically from the return
+type; behavioral invariants belong in controls or quality rubrics. Run-spec
+assertions remain available for host-owned workflow verification.
+
+## Composition
+
+Composition is a named top-level edge:
 
 ```contract
-agent SupportAgent(
-    user_message: UserMessage,
-    customer_profile: CustomerProfile,
-    problem_summary: AccountRejectionStatus
-) -> SupportResult:
+composition investigate from SupportAgent to EvidenceAnalyst:
+    mode = delegate
+    description = "Delegate focused evidence analysis when needed."
+    history = none
+    map request = input.request
+    isolation = EvidenceWorker
 ```
 
-Host integrations and runtime primitives supply parameters from:
+Mode is `delegate` or `handoff`. History is `none`, `summary`, or `full`.
+Every required target input needs one explicit `map`. The edge defines an
+available relationship; the model chooses it using the edge and target
+descriptions. Deterministic routing remains application workflow code.
 
-- The direct invocation.
-- The parent agent context.
-- Host-orchestrated intermediate context declared with `host_context`.
-- Datasources allowed by the contract.
+There is no list-valued `composition`, `routes`, or `use agent ... from` syntax.
 
-If a required context slot cannot be supplied or resolved at runtime,
-invocation fails with a deterministic error. The compiler also checks
-child-agent dependencies statically: every required child parameter must be
-satisfiable from the parent agent's required parameters, the parent's declared
-`host_context`, or a deterministic datasource chain declared on the parent.
-Nullable parent parameters do not satisfy required child parameters.
+## Isolation
 
-Host-orchestrated intermediate values are explicit metadata:
+Isolation requirements are multidimensional:
 
 ```contract
-agent ResearchDirector(question: ResearchQuestion) -> ResearchBrief:
-    use agent EvidenceMapper from ./evidence_mapper
-    use agent SynthesisWriter from ./synthesis_writer
-
-    host_context = [EvidenceMap]
+isolation EvidenceWorker:
+    context = explicit_only
+    capabilities = declared_only
+    state = fresh
+    filesystem = none
+    network = denied
+    secrets = none
+    return = final_output_only
 ```
 
-`host_context` means the host application is expected to supply that typed value
-when wiring child calls. It does not define ordering, branching, retries, or any
-other executable workflow behavior.
+Planning reports support for each dimension and fails when a required boundary
+cannot be enforced. A compiler can construct fresh context and capability
+allowlists, but an environment provider must enforce filesystem, network,
+process, and secret boundaries.
 
-## Capability Declarations
+## Guidance, Controls, and Quality
 
-Capabilities are declared inside the agent that may use them.
+Guidance is prose shown to the model. Controls are stable assessable
+requirements:
 
 ```contract
-use tool list_charges from tools.stripe
-use tool create_refund from tools.stripe requires approval
-use tool read_logs from tools.log_search preapproved
-use tool run_shell from tools.local denied
-use agent BillingAgent from ./billing
-use datasource AccountRejectionStatus from datasources.account_rejection_status
-use hosted_tool openai.web_search context_size "medium"
+control current_claims_need_current_facts for ResearchLead:
+    severity = high
+    required = true
+    audience = [host, evaluator, reviewer]
+    assessment = post_run
+    when = trace.tool_called(documents.fetch)
+    require = trace.tool_called(current_facts.fetch)
+    expected_evidence = [tool.completed]
 ```
 
-Capability kinds matter:
+Assessment is `static`, `adapter`, `runtime`, `host_attested`, `post_run`,
+`semantic`, or `advisory`. Required unsupported controls block planning.
 
-- `tool`: a deterministic or external callable capability with a schema.
-- `hosted_tool`: a provider-native capability such as OpenAI web search,
-  configured as metadata and enabled by an adapter registry.
-- `agent`: another Contract4Agents agent with its own contract and trace.
-- `datasource`: Python resolver for a typed context slot.
-- `type`: compile-time shape used for validation and schemas.
+The compiler derives output-conformance controls from agent return types and
+approval controls from `approval_required` grants. Do not repeat those rules as
+guards or monitors.
 
-Hosted provider tools are distinct from host Python tools. Core language
-semantics accept any `provider.tool` declaration. Providers with built-in
-descriptors get richer validation; the built-in OpenAI descriptor supports
-`openai.web_search` with `context_size` set to `"low"`, `"medium"`, or
-`"high"`. Unknown providers are accepted with a warning so adapters or hosts can
-own their validation.
+Quality declarations are named evaluator rubrics:
 
 ```contract
-use hosted_tool openai.web_search context_size "high"
+quality evidence_backed for ResearchLead:
+    rubric = "The recommendation is supported by current cited evidence."
+    audience = [evaluator, reviewer]
 ```
 
-Adapters may project hosted tools to SDK-native objects when host code enables
-them explicitly. The provider-specific name remains metadata; core language
-semantics do not assume every runtime has OpenAI web search.
-
-Tool permission state should be explicit. The surveyed SDKs do not all use the same meaning for "allowed." Contract4Agents should distinguish:
-
-- `available`: visible to the model or runtime but not automatically approved.
-- `preapproved`: executable without an approval callback.
-- `requires approval`: must pause for approval before execution.
-- `denied`: cannot execute even if an adapter has a broader permission mode.
-- `sandboxed`: can execute only inside a declared sandbox.
-
-## Datasource Declarations
-
-Datasources can be declared in `.contract` files and implemented in Python.
+Operational controls cover behavior that cannot be derived from one run's
+contract semantics:
 
 ```contract
-datasource AccountRejectionStatus:
-    python = "contract_app.datasources.account_rejection_status:resolve"
-    requires = [CustomerProfile]
-    produces = AccountRejectionStatus
-    render = "markdown"
-    cache = "run"
+operational_control latency for ResearchLead:
+    severity = medium
+    require = trace.duration < 30s
 ```
 
-The datasource declaration tells the compiler what the resolver can produce and what context it needs. The Python function handles real data loading.
+Standalone V1 `monitor` declarations are not source syntax.
 
-## Guards
+## Audiences
 
-Guards describe safety constraints for adapters and host runtimes.
+Audience values are `model`, `adapter`, `host`, `evaluator`, and `reviewer`.
+The compiler creates separate views and never pastes hidden control expressions,
+rubrics, thresholds, or reviewer-only content into model instructions.
+
+Defaults are:
+
+- goal and guidance: model, reviewer
+- tool/composition descriptions: model, adapter, host, reviewer
+- control: adapter, host, evaluator, reviewer
+- quality and operational control: evaluator, reviewer
+
+## Evals
+
+`.eval` files declare cases against an agent:
 
 ```contract
-guards = [
-    require(output conforms RefundDecision),
-    forbid(tool.stripe.create_refund unless approved_by_human),
-    forbid(tool.github.merge_pull_request),
-]
+eval cites_current_evidence for ResearchLead:
+    given question = ResearchQuestion.fixture("current_market")
+    expect output conforms ResearchBrief
+    expect trace.tool_called(current_facts.fetch)
+    expect quality(evidence_backed)
 ```
 
-The compiler preserves guard intent in generated instructions and manifests so integrations can apply it at the relevant boundary.
-It also emits a structured guard plan for currently supported mappings:
-output conformance, approval-required tools, and denied tools. Unsupported
-guard expressions remain explicit in the plan rather than becoming hidden
-instructions-only behavior.
-
-## Assertions
-
-Assertions are run-level invariants checked during or after execution.
-
-```contract
-assertions = [
-    expect(output conforms GreetingResult),
-    expect(output.message excludes unsupported_customer_fact),
-    when(trace.called(BillingAgent), expect(output.routed_to == BillingAgent)),
-]
-```
-
-Assertions should not contain one-off fixtures. A condition like `when user_message == "Hi"` belongs in a `.eval` file.
+Stable eval and quality IDs allow comparison across contract versions, targets,
+models, and production traces.
 
 ## Run Specs
 
-Run specs declare expectations for a host-owned multi-agent run. They verify
-the observable sequence of stage outputs and trace events without deciding what
-happens next.
+Run specs verify host-owned workflow results without implementing workflow
+control flow:
 
 ```contract
-run_spec CompendiumResearch:
+run_spec ResearchRun:
     stages = [
-        plan: PlannerAgent -> ResearchPlan,
-        section_research+: SectionResearchAgent -> SectionResearchBrief,
-        verification?: VerifierAgent -> VerificationReport,
-        synthesis: SynthesisAgent -> CompendiumPayload,
+        evidence: EvidenceAgent -> Evidence,
+        synthesis: ResearchLead -> ResearchBrief,
     ]
-
-    derived_values = [
-        ledger_cited_ids: str[],
-        synthesis_citation_ids: str[],
-    ]
-
     assertions = [
-        expect(trace.called_before(PlannerAgent, SectionResearchAgent)),
-        expect(trace.max_calls(VerifierAgent, 2)),
-        expect(trace.not_tool_called_by(SynthesisAgent, openai.web_search)),
-        expect(value.synthesis_citation_ids subset_of value.ledger_cited_ids),
+        expect(trace.called_before(EvidenceAgent, ResearchLead)),
     ]
 ```
 
-Stage suffixes define expected host-provided output cardinality: no suffix means
-exactly one output, `?` means zero or one output, and `+` means one or more
-outputs. Run spec assertions are trace expressions over the normalized trace or
-derived-value data relations over values supplied by the host. Branching, loops,
-retries, checkpointing, recovery, stage execution, and any filtering or
-flattening needed to produce derived values belong in host Python code, not in
-`.contract` files.
-
-The optional `derived_values` block documents and validates the runtime values
-available through `value.<name>`. Supported declaration types are `str`, `int`,
-`float`, `bool`, and collection forms such as `str[]` and `list[str]`. When the
-block is present, relation assertions that reference undeclared `value.*` names
-fail semantic analysis.
-
-Derived-value assertions compare scalar sequences already prepared by the host:
-
-```contract
-expect(value.synthesis_citation_ids subset_of value.ledger_cited_ids)
-```
-
-This is the intended first-pass shape for invariants such as "every final
-citation ID must be backed by a cited source ledger ID." Direct `stage.*`
-projections, JSONPath-style filters, `where` clauses, and host function calls
-are not part of the run spec language.
-
-## Policies And Success Criteria
-
-Policies and success criteria are model-facing text, but they remain structured fields.
-
-```contract
-policy = [
-    "prefer evidence over speculation",
-    "ask a human only when account ownership is ambiguous",
-    "do not expose internal provider IDs to customers",
-]
-
-success = [
-    "decision is supported by evidence",
-    "customer reply is concise and non-technical",
-    "no irreversible action occurs without approval",
-]
-```
-
-The compiler uses these fields to generate instructions and semantic eval rubrics.
-
-## Routing
-
-Routing declares expected delegation behavior. The compiler preserves routes in the manifest, generated instructions, eval material, and adapter metadata where supported.
-
-Preferred declarative form:
-
-```contract
-routes = [
-    when(intent == "billing", call(BillingAgent)),
-    when(intent == "account_support", call(SupportAgent)),
-]
-```
-
-Adapter support may vary: some targets can map routes to handoffs or agent tools; others may carry them as instructions plus trace expectations.
-
-## Composition Declarations
-
-Contract4Agents can preserve declared composition preferences while leaving execution mechanics to adapters and host code.
-
-```contract
-composition = [
-    agent_as_tool(ResearchAgent),
-    handoff(SupportAgent),
-    isolated_subagent(LogInvestigator),
-]
-```
-
-Common semantic modes:
-
-- `agent_as_tool`: the current agent stays in control and calls another agent like a tool.
-- `handoff`: control transfers to a specialist agent.
-- `isolated_subagent`: the child agent has an isolated context and returns only a final result to the parent.
-
-Composition declarations must use one of these function forms and target a known
-agent declared with `use agent` on the current agent.
+Branching, loops, retries, checkpoints, and deterministic routing remain in
+application code.
 
 ## Static Checks
 
-The compiler currently rejects:
+Semantic analysis rejects:
 
-- Unknown types.
-- Unknown agents, tools, or datasources.
-- Duplicate names in the same module scope.
-- Ambiguous datasource resolution.
-- Child-agent parameters that cannot be satisfied from parent context,
-  `host_context`, or parent datasource chains.
-- Datasource requirement cycles while proving child-agent context.
-- Guards that reference unavailable tools.
-- Assertions that reference unavailable trace events.
-- Run specs that reference unknown agents, output types, stage names, tools,
-  or executable workflow semantics.
-- Eval cases and monitors that reference missing fields or capabilities outside
-  the scoped agent's declared dependency closure.
-- Return types that cannot produce an output schema.
-- Missing, misspelled, or drifted host-code surfaces when
-  `contract4agents check --strict-drift` is run with a capability registry.
+- invalid or unknown portable types;
+- duplicate declarations and fields;
+- unknown capabilities, agents, datasources, external contexts, or isolation
+  profiles;
+- incomplete or contradictory grants;
+- context requirements with unresolved named origins;
+- composition edges with missing target-input mappings;
+- invalid isolation dimensions;
+- controls without a valid assessment or requirement;
+- expressions that reference unavailable output fields or trace targets;
+- evals and run specs with unknown agents, stages, types, or capabilities.
+
+Target implementation coverage and callable signature conformance are checked by
+`plan` and `materialize`, not by portable source parsing.

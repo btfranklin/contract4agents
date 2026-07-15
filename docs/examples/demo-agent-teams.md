@@ -2,7 +2,10 @@
 
 The customer-support and revenue-resolution examples started as brainstorming sketches. The current public demo surface is stronger and exercises the patterns found in the SDK survey.
 
-These three teams are current because together they cover read-only evidence gathering, approval-gated side effects, hosted-tool declarations, multi-agent composition, structured outputs, hidden context, semantic evals, trace spies, and monitor rules.
+These three teams are current because together they cover shared capabilities,
+different authorization grants, provider-native bindings, typed composition,
+explicit context origins, structured outputs, hidden eval truth, semantic
+quality, contract-bound traces, and assurance controls.
 
 ## Team 1: Incident Command
 
@@ -44,9 +47,10 @@ Contract4Agents features exercised:
 - Read-only tools.
 - Parallel specialist agents.
 - Evidence citation requirements.
-- Monitor rule for unsupported cause claims.
+- Control requiring specialist evidence before the final cause claim.
 - Semantic eval for whether the final brief is clear and operationally useful.
-- Trace assertions that `status_page.draft_update` is not called without approval.
+- Eval expectations proving `status_page.draft_update` was not called without
+  approval under complete telemetry.
 
 Why it is a good fixture:
 
@@ -91,7 +95,7 @@ Contract4Agents features exercised:
 - Approval-gated review requests.
 - Structured intermediate outputs.
 - Semantic evals for balanced, source-backed synthesis.
-- Monitor rule for final-output evidence quality.
+- Control requiring specialist evidence before synthesis.
 
 Why it is a good fixture:
 
@@ -107,7 +111,8 @@ Agents:
 
 - `MarketResearchLead`: owns the final report and delegates specialist work.
 - `DocumentAnalyst`: reads seeded internal documents.
-- `CurrentTruthScout`: checks dated current-fact snapshots and declares hosted web search.
+- `CurrentTruthScout`: checks dated current-fact snapshots and can use the
+  portable `web.search` capability.
 - `CompetitorAnalyst`: compares seeded competitor records.
 - `CustomerSignalAnalyst`: extracts customer-signal evidence.
 - `ReportWriter`: writes the final structured report.
@@ -129,20 +134,22 @@ Tools:
 - `current_facts.fetch`
 - `competitors.lookup`
 - `citation.format`
-- Hosted tool declaration: `openai.web_search`
+- Portable capability `web.search`, bound to OpenAI provider-native web search
+  for the OpenAI target.
 
 
 Contract4Agents features exercised:
 
-- Hosted-tool metadata in artifacts and visualization.
+- Provider-native binding metadata in the materialization plan.
 - Separation between internal documents and current facts.
 - Structured output with citations and freshness notes.
 - Semantic evals for source freshness and claim support.
-- Monitor rule for final-output evidence requirements.
+- Control requiring current facts for claims based on dated documents.
 
 Why it is a good fixture:
 
-- It proves hosted tools can be declared without making the offline fixture call the network.
+- It proves a portable capability can select a provider-native implementation
+  without making the offline eval campaign call the network.
 - It makes freshness and source category visible in outputs.
 - It validates richer public examples with the same `eval` command as Incident Command.
 
@@ -162,7 +169,7 @@ This order gives implementation a useful progression from read-only investigatio
 
 Every demo team should include local fake tools backed by fake local data. These tools should be real Python modules that execute through runtime primitives and emit normal traces, but they should not call remote connectors, vendor APIs, or live credentials.
 
-Use `docs/examples/fake-tools-and-data.md` as the fixture contract.
+Use `docs/examples/fake-tools-and-data.md` as the deterministic eval-data guide.
 
 Recommended approach:
 
@@ -176,9 +183,10 @@ Recommended approach:
 
 - Keep fixtures realistic enough to expose weak abstractions.
 - Keep data fake and local.
-- Back fixtures with local Python fake tools.
+- Bind test profiles to local Python fake tools or deterministic normalized
+  eval data.
 - Use hidden seeded truth to validate scenario discovery.
 - Make traces part of expected behavior.
 - Include at least one semantic eval in every team.
-- Include adapter caveat tests where they clarify real OpenAI behavior.
+- Include target-plan caveat tests where they clarify real OpenAI behavior.
 - Avoid turning demo data into a toy chatbot benchmark.

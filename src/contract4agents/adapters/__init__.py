@@ -1,55 +1,6 @@
-"""Adapter public API exports."""
+"""Target adapter capability descriptors."""
 
-from contract4agents.adapters.openai import (
-    OpenAIAdapterPlan,
-    OpenAIAdapterResult,
-    OpenAIAdapterUnavailable,
-    OpenAIAgentFactoryCaveat,
-    OpenAIAgentFactoryError,
-    OpenAIAgentFactoryResult,
-    OpenAIAgentPlan,
-    OpenAIApprovalRequest,
-    OpenAICompositionPlan,
-    OpenAIContractRunResult,
-    OpenAIHostedToolPlan,
-    OpenAISemanticJudge,
-    OpenAIToolPlan,
-    OpenAIToolRegistration,
-    OpenAITraceHooks,
-    build_openai_agent,
-    build_openai_agents_from_contracts,
-    build_openai_agents_from_plan,
-    build_openai_output_type_registry,
-    contract_tool_name,
-    openai_tool_name,
-    plan_openai_agents_from_contracts,
-    run_openai_agent,
-    run_openai_agent_with_contract,
-)
+from contract4agents.adapters._openai_names import contract_tool_name, openai_tool_name
+from contract4agents.adapters._openai_v2 import openai_planner_capabilities
 
-__all__ = [
-    "OpenAIAdapterPlan",
-    "OpenAIAdapterResult",
-    "OpenAIAdapterUnavailable",
-    "OpenAIAgentFactoryCaveat",
-    "OpenAIAgentFactoryError",
-    "OpenAIAgentFactoryResult",
-    "OpenAIAgentPlan",
-    "OpenAIApprovalRequest",
-    "OpenAICompositionPlan",
-    "OpenAIContractRunResult",
-    "OpenAIHostedToolPlan",
-    "OpenAISemanticJudge",
-    "OpenAIToolPlan",
-    "OpenAIToolRegistration",
-    "OpenAITraceHooks",
-    "build_openai_agent",
-    "build_openai_agents_from_contracts",
-    "build_openai_agents_from_plan",
-    "build_openai_output_type_registry",
-    "contract_tool_name",
-    "openai_tool_name",
-    "plan_openai_agents_from_contracts",
-    "run_openai_agent",
-    "run_openai_agent_with_contract",
-]
+__all__ = ["contract_tool_name", "openai_planner_capabilities", "openai_tool_name"]

@@ -1,9 +1,0 @@
-monitor ticket_update_requires_approval for TeamCoordinator:
-    severity = "high"
-    when trace.tool_called(tools.ticket.update)
-    expect trace.approval_granted(tools.ticket.update)
-
-monitor audit_written for TeamCoordinator:
-    severity = "low"
-    when trace.agent_called(AuditLogger)
-    expect trace.tool_called(tools.audit.write)

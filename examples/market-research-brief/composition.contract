@@ -1,0 +1,35 @@
+composition analyze_documents from MarketResearchLead to DocumentAnalyst:
+    mode = delegate
+    description = "Delegate extraction of cited internal evidence without treating it as current market truth."
+    history = none
+    map question = input.question
+
+composition check_current_facts from MarketResearchLead to CurrentTruthScout:
+    mode = delegate
+    description = "Delegate verification of dated external facts before stating current market claims."
+    history = none
+    map question = input.question
+
+composition analyze_competitors from MarketResearchLead to CompetitorAnalyst:
+    mode = delegate
+    description = "Delegate competitor positioning analysis grounded in the verified current-fact result."
+    history = none
+    map question = input.question
+    map current_fact = result.check_current_facts
+
+composition analyze_customer_signals from MarketResearchLead to CustomerSignalAnalyst:
+    mode = delegate
+    description = "Delegate customer pain-point analysis grounded in the cited internal-document result."
+    history = none
+    map question = input.question
+    map document_evidence = result.analyze_documents
+
+composition write_market_report from MarketResearchLead to ReportWriter:
+    mode = delegate
+    description = "Delegate final synthesis after internal, current, competitor, and customer evidence is available."
+    history = none
+    map question = input.question
+    map document_evidence = result.analyze_documents
+    map current_fact = result.check_current_facts
+    map competitor = result.analyze_competitors
+    map customer_signals = result.analyze_customer_signals

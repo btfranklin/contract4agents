@@ -119,8 +119,8 @@ def _parse_derived_values(
                     f"Malformed run spec derived value declaration `{raw_declaration}` on `{run_spec.name}`",
                     span=span,
                     hint=(
-                        "Expected `name: str`, `name: int`, `name: float`, `name: bool`, "
-                        "or a `[]`/`list[...]` collection."
+                        "Expected `name: string`, `name: integer`, `name: float`, `name: boolean`, "
+                        "or a `list[...]` collection."
                     ),
                 )
             )
@@ -142,8 +142,8 @@ def _parse_derived_values(
                     f"`{declaration.type_name}`",
                     span=span,
                     hint=(
-                        "Supported derived value types are `str`, `int`, `float`, `bool`, "
-                        "and their `[]`/`list[...]` forms."
+                        "Supported derived value types are `string`, `integer`, `float`, `boolean`, "
+                        "and their `list[...]` forms."
                     ),
                 )
             )
@@ -190,10 +190,8 @@ def _check_run_assertions(
     staged_agents = {stage.agent for stage in stages}
     stage_names = {stage.name for stage in stages}
     reachable_tools: set[str] = set()
-    reachable_hosted_tools: set[str] = set()
     for agent in staged_agents:
         reachable_tools.update(index.reachable_tools(agent))
-        reachable_hosted_tools.update(index.reachable_hosted_tools(agent))
     span = run_spec.attribute_spans.get("assertions", run_spec.span)
     declared_value_names = {value.name for value in derived_values}
     for expression in run_spec.assertions:
@@ -221,7 +219,6 @@ def _check_run_assertions(
                     parsed,
                     index,
                     reachable_tools,
-                    reachable_hosted_tools,
                     span,
                     agent_names=staged_agents,
                     datasource_targets=set(),

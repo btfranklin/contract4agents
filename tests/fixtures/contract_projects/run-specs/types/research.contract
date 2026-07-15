@@ -1,15 +1,15 @@
 type ResearchPlan:
-    topic: str
-    sections: list[str]
+    topic: string
+    sections: list[string]
 
 type SectionResearchBrief:
-    section: str
-    findings: list[str]
+    section: string
+    findings: list[string]
 
 type VerificationReport:
-    accepted: bool
-    notes: str
+    accepted: boolean
+    notes: string
 
 type CompendiumPayload:
-    title: str
-    sections: list[str]
+    title: string
+    sections: list[string]

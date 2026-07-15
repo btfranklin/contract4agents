@@ -1,33 +1,82 @@
 # Visualization Reference
 
-The visualization command generates static review artifacts for a Contract4Agents project.
+Visualization is a read-only review surface over derived Contract4Agents
+artifacts. It never becomes a second source of truth.
 
 ```bash
-pdm run contract4agents visualize [ROOT] --out .contract/build/visualization
+contract4agents visualize agent_contracts \
+  --target openai --profile production \
+  --trace run.trace.jsonl \
+  --out .contract/build/visualization
 ```
 
-For projects that import Pydantic-backed contract types, add
-`--allow-python-imports` from a trusted host-code environment so visualization
-can compile the same schema artifacts as `compile`.
+The static output contains:
 
-Outputs:
+- `graph.json`: deterministic review data.
+- `graph.mmd`: Mermaid source.
+- `index.html`: standalone interactive review page.
 
-- `graph.json`: deterministic project graph data.
-- `graph.mmd`: Mermaid flowchart source.
-- `index.html`: static HTML page with Mermaid rendering, agent detail drill-in, and focused agent diagrams.
+## Layered CLI View
 
-Visualization is read-only generated output. The source of truth remains the `.contract` and `.eval` files.
+With source alone, the page renders declared canonical structure:
 
-V1 renders configured/static relationships only:
+- agents, capabilities, grants, and composition;
+- input/output types and context sources;
+- controls, quality, and isolation requirements.
 
-- agent-to-agent capability declarations
-- agent-to-tool capability declarations
-- agent-to-hosted-provider-tool declarations
-- agent-to-datasource declarations
-- datasource required and produced types
-- agent input and output types
-- eval and monitor targets
+Add `--target` and `--profile` together for planned mappings. Add `--trace` for
+observed events; when both plan and trace are present, controls are assessed for
+the assured layer. Use `diff` for change-review artifacts. Every layer preserves
+the same semantic IDs and digests.
 
-Route and composition metadata is shown in agent details, but V1 does not infer natural-language routing strings into graph edges.
+## Layered Python API
 
-Selecting an agent in the HTML page swaps the overview diagram for a pre-rendered focused diagram. Focused diagrams include the selected agent, directly declared neighbors, and datasource type dependencies for datasources adjacent to the selected agent.
+The graph builder also accepts reviewed plan, normalized trace, and control
+results to construct all four truth layers without collapsing them:
+
+```python
+from contract4agents import compile_project
+from contract4agents.visualization import build_visualization_graph
+
+artifacts = compile_project("agent_contracts")
+
+graph = build_visualization_graph(
+    artifacts.ir,
+    project_root="agent_contracts",
+    plan=plan,
+    trace=trace,
+    control_results=control_results,
+)
+```
+
+The layered graph separates:
+
+- **declared** contract structure;
+- **planned** models, bindings, mechanisms, obligations, and caveats;
+- **observed** normalized events and provider correlation;
+- **assured** passed, violated, and unverified control status.
+
+Omitted inputs remain visibly unavailable. A planned or assessed value never
+overwrites what was declared, and missing runtime evidence never becomes an
+observed fact.
+
+## Semantic Joins
+
+Nodes and edges use kind-qualified semantic IDs, contract digest, and plan
+digest. This prevents a display label or filename from being mistaken for
+identity and makes contract/plan changes visible across layers.
+
+High-value review highlights include:
+
+- capability access and authorization changes;
+- approval enforcement and evidence gaps;
+- context exposure and audience changes;
+- delegation versus handoff behavior;
+- isolation requested versus actually enforced;
+- degraded or unsupported plan mappings;
+- controls that are violated or unverified;
+- missing expected telemetry.
+
+The underlying source remains `.contract` and `.eval` files plus target
+bindings. Generated plans, traces, and assurance results are evidence inputs,
+not editable configuration.

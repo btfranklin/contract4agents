@@ -1,0 +1,42 @@
+tool logs.search(
+    service: string,
+    start: datetime,
+    end: datetime,
+    query: string
+) -> LogEvidenceBundle:
+    description = "Search incident logs within a bounded time window."
+    side_effect = false
+
+tool deploys.list(
+    service: string,
+    start: datetime,
+    end: datetime
+) -> RecentDeploys:
+    description = "List deploys made near an incident window."
+    side_effect = false
+
+tool metrics.query(
+    service: string,
+    metric: string,
+    start: datetime,
+    end: datetime
+) -> MetricSnapshot:
+    description = "Query one service metric within an incident window."
+    side_effect = false
+
+tool status_page.draft_update(
+    incident_id: string,
+    message: string
+) -> StatusPageDraft:
+    description = "Create a status-page draft without publishing it."
+    side_effect = true
+
+datasource incident.service(service_id: string) -> ServiceCatalogEntry:
+    description = "Resolve the service catalog record for the active incident."
+    render = markdown
+    cache = run
+
+external_context active_incident -> IncidentReportRequest:
+    description = "The host-owned active incident selected for this run."
+    sensitivity = confidential
+    render = markdown

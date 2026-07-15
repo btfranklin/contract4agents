@@ -1,95 +1,114 @@
 # Eval Language Reference
 
-Eval files define fixture-based behavior checks outside agent definitions.
+`.eval` files declare scenarios against canonical agent IDs. The selected
+target plan supplies the runtime inventory and expected telemetry; eval source
+contains only case inputs and outcome expectations.
 
-Eval expectations, assertion expressions, guard expressions, and monitor conditions share the same Lark-backed expression parser. Runtime evaluation and semantic reference extraction are separate implementation steps so unsupported syntax can fail closed consistently.
+```contract
+eval answers_from_current_evidence for ResearchLead:
+    given question = ResearchQuestion.fixture("current_market")
+    expect output conforms ResearchBrief
+    expect trace.tool_called(current_facts.fetch)
+    expect trace.agent_called(CurrentTruthScout)
+    expect trace.not_called(status.publish)
+    expect output discovers hidden_truth.market_driver
+    expect quality(evidence_backed)
+```
 
-Supported deterministic expectations:
+## Givens
+
+`given <name> = <value>` supplies an agent input or named eval-provider value.
+`TypeName.fixture("name")` requests a provider-owned fixture whose result must
+conform to the named contract type. `hidden_truth` values are evaluator-only
+and must not enter model instructions or ordinary runtime context.
+
+The built-in `FileEvalProvider` resolves these values from `eval-data.json`.
+Other `EvalProvider` implementations may supply live application inputs,
+replayed data, external context, datasources, approvals, and judge decisions.
+
+## Deterministic Expectations
+
+Supported output expectations include:
 
 - `output conforms TypeName`
 - `output.field == value`
 - `output.field != value`
 - `output.field contains value`
 - `output.field excludes value`
-- `trace.called(name)`
-- `trace.not_called(name)`
-- `trace.called_once(name)`
-- `trace.called_times(name, n)`
-- `trace.called_before(a, b)`
-- `trace.called_after(a, b)`
-- `trace.max_calls(name, n)`
-- `trace.tool_called(name)`
-- `trace.hosted_tool_called(name)`
-- `trace.agent_called(Name)`
-- `trace.datasource_resolved(TypeName)`
-- `trace.approval_requested(name)`
-- `trace.approval_granted(name)`
-- `trace.approval_denied(name)`
-- `trace.guardrail_rejected(name)`
-- `trace.contains("text")`
 - `output discovers hidden_truth.field_name`
 
-Trace expressions evaluate over in-memory `TraceRecorder` events. When events
-come from disk, load them from canonical schema-versioned trace JSONL using
-`load_trace_jsonl(...)`; legacy top-level `type` JSONL is invalid.
-Typed trace spies match normalized target fields, not arbitrary payload values:
-tool and approval spies match `tool`, agent spies match `agent`, datasource
-spies match `datasource` or `produces`, and guardrail spies match `guardrail`.
-Use `trace.contains("text")` when a check intentionally searches payload text.
-Single-run traces can be evaluated without an explicit run scope. Multi-run
-traces require the host or CLI to pass a `run_id`, otherwise evaluation raises a
-scope error instead of combining events from separate runs.
+Supported trace expectations include:
 
-Agent assertions in `.contract` files use the same deterministic expression
-surface, wrapped as contract assertions:
+- `trace.called(name)` and `trace.not_called(name)`
+- `trace.called_once(name)` and `trace.called_times(name, n)`
+- `trace.called_before(a, b)` and `trace.called_after(a, b)`
+- `trace.max_calls(name, n)`
+- `trace.tool_called(capability.name)`
+- `trace.agent_called(AgentName)`
+- `trace.datasource_resolved(datasource.name)`
+- `trace.approval_requested(capability.name)`
+- `trace.approval_granted(capability.name)`
+- `trace.approval_denied(capability.name)`
+- `trace.contains("text")`
 
-- `expect(output conforms TypeName)`
-- `expect(output.field == value)`
-- `expect(trace.tool_called(name))`
-- `expect(trace.hosted_tool_called(openai.web_search))`
-- `when(trace.tool_called(name), expect(output.field == value))`
+Expressions are resolved against canonical semantic IDs and normalized trace
+schema V2. Unsupported expressions fail closed during semantic analysis or
+produce an explicit unverified result if unchecked input reaches an assessor.
 
-Run spec assertions also support derived-value data relations for post-run
-invariants over values supplied by the host application:
+## Negative Claims
 
-- `expect(value.left subset_of value.right)`
-- `expect(value.left contains_all value.right)`
-- `expect(value.left equals_set value.right)`
-- `expect(value.left intersects value.right)`
-- `expect(value.left disjoint_from value.right)`
+`trace.not_called(...)` can pass only when trace completeness proves the
+relevant instrumentation covered the complete run. An absent event in an
+incomplete trace produces `unverified`, not `passed`.
 
-Data relations are run-spec-only. They are not valid in agent assertions, eval
-expectations, guards, or monitors. They compare scalar values or scalar
-sequences already prepared by host code; they do not support JSONPath, `where`,
-or host function calls. Run specs can optionally declare the referenced
-host-supplied values with `derived_values = [name: str[], ...]`; when that block
-is present, unknown `value.*` names are rejected during semantic analysis and
-runtime evaluation validates the declared scalar or collection shape.
+## Quality Expectations
 
-Unsupported deterministic expectations fail closed. Semantic analysis reports
-unsupported expressions in source files, and the eval runner reports an
-`unsupported` failure defensively if an unchecked expression reaches runtime.
-The host-callable assertion API follows the same fail-closed rule for unchecked
-assertion text.
+`expect quality(name)` references a named `quality` declaration for the eval's
+agent. The eval provider supplies a `JudgeDecision` containing:
 
-Hidden-truth values may be scalar strings, which use a loose keyword heuristic,
-or explicit matchers such as:
+- passed or violated status;
+- reason and optional score;
+- judge provider and version;
+- evidence references.
+
+Judge absence, errors, malformed output, or missing provenance produce an
+unverified quality result. Quality rubrics are evaluator/reviewer-visible by
+default and do not enter the model prompt.
+
+## Hidden Truth
+
+Hidden truth may use scalar values or explicit matcher objects in deterministic
+eval data:
 
 ```json
-{"contains_all": ["invoice", "credit"]}
-{"contains_any": ["rollback", "revert"]}
+{"contains_all": ["rollback", "checkout-api"]}
 ```
 
-Semantic expectations are parsed separately from deterministic expectations. They
-use:
-
-```contract
-expect semantic(output, "Criterion text")
+```json
+{"contains_any": ["revert", "disable"]}
 ```
 
-When no semantic judge is configured, semantic expectations are reported as skipped.
-The CLI marks those starts as `PARTIAL` while keeping the default eval exit code
-successful; use `contract4agents eval --fail-on-skipped-semantic` when CI should
-fail on skipped semantic checks.
-Malformed semantic expectation syntax fails semantic analysis instead of being
-reported as a skipped semantic check.
+The hidden-truth loader and assessor are evaluation concerns. Hidden values
+must be omitted from runtime inputs and audience views that include the model.
+
+## Campaign Results
+
+Each trial finishes as `passed`, `violated`, or `unverified`. Campaign reports
+separate deterministic expectations, contract control results, quality results,
+trace completeness, and provider failures. Repeated campaigns add rates,
+uncertainty intervals, latency/cost/token summaries, threshold checks, and
+baseline comparisons.
+
+## Run-Spec Relations
+
+Run specs use the same expression parser for trace relations and additionally
+support host-supplied derived-value relations:
+
+- `value.left subset_of value.right`
+- `value.left contains_all value.right`
+- `value.left equals_set value.right`
+- `value.left intersects value.right`
+- `value.left disjoint_from value.right`
+
+These relations validate deterministic host workflow after execution. They are
+not valid inside agent guidance, controls, or normal eval expectations.

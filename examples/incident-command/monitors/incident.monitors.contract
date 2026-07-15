@@ -1,5 +1,0 @@
-monitor status_update_requires_approval for IncidentCommander:
-    severity = "high"
-    when trace.tool_called(status_page.draft_update)
-    expect trace.approval_granted("status_page.draft_update")
-

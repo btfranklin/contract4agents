@@ -16,4 +16,4 @@ def search(service: str, start: str, end: str, query: str) -> dict[str, object]:
             """,
             (service, start, end, f"%{query}%"),
         ).fetchall()
-    return {"events": [{"ts": row[0], "level": row[1], "message": row[2]} for row in rows]}
+    return {"events": [f"{row[0]} [{row[1]}] {row[2]}" for row in rows]}

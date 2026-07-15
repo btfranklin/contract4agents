@@ -5,11 +5,17 @@ agent SectionResearchAgent(plan: ResearchPlan) -> SectionResearchBrief:
     goal = "Research one planned section."
 
 agent VerifierAgent(section: SectionResearchBrief) -> VerificationReport:
-    use tool quality.audit from tools.quality
+    use quality.audit:
+        availability = enabled
+        authorization = preapproved
+        execution = host
     goal = "Verify section research."
 
 agent SynthesisAgent(plan: ResearchPlan, verification: VerificationReport?) -> CompendiumPayload:
-    use hosted_tool openai.web_search context_size "medium"
+    use web.search:
+        availability = enabled
+        authorization = preapproved
+        execution = provider_hosted
     goal = "Synthesize the final payload."
 
 run_spec CompendiumResearch:
@@ -24,5 +30,5 @@ run_spec CompendiumResearch:
         expect(trace.called_before(PlannerAgent, SectionResearchAgent)),
         expect(trace.called_before(VerifierAgent, SynthesisAgent)),
         expect(trace.max_calls(VerifierAgent, 2)),
-        expect(trace.not_tool_called_by(SynthesisAgent, openai.web_search)),
+        expect(trace.not_tool_called_by(SynthesisAgent, web.search)),
     ]

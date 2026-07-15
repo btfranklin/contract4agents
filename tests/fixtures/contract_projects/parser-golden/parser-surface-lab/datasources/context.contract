@@ -1,6 +1,0 @@
-datasource SurfaceContextSource:
-    python = "tests.fixtures.parser_golden:surface_context"
-    requires = [SurfaceInput]
-    produces = SurfaceContext
-    render = "markdown"
-    cache = "none"

@@ -2,22 +2,40 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import sys
 from pathlib import Path
 
 import click
 
-from contract4agents.capability_registry import check_capability_drift, load_capability_registry
-from contract4agents.compiler import build_artifacts, compile_project
+from contract4agents.assurance import (
+    assemble_assurance_bundle,
+    assess_controls,
+    semantic_diff,
+    write_assurance_bundle,
+)
+from contract4agents.codegen import CodeGenerationError, generate_code, write_generated_code
+from contract4agents.compiler import compile_project
 from contract4agents.diagnostics import ContractError, Diagnostic, raise_if_errors
-from contract4agents.docscheck import check_docs
-from contract4agents.fixtures import FixtureReport, run_fixture_project_sync
-from contract4agents.monitor import MonitorRule, run_monitors
+from contract4agents.eval_campaigns import CampaignConfig, CampaignThresholds, FileEvalProvider, run_campaign
+from contract4agents.ir import CanonicalIR, build_canonical_ir
 from contract4agents.output_paths import validate_output_dir
 from contract4agents.parser import parse_project
-from contract4agents.runtime import TraceFileError, TraceScopeError, load_trace_jsonl
+from contract4agents.planning import (
+    MaterializationPlan,
+    PlannerCapabilities,
+    PlanningError,
+    materialization_plan_data,
+    plan_materialization,
+)
 from contract4agents.semantics import analyze_project
-from contract4agents.visualization import build_visualization_graph, write_visualization_artifacts
+from contract4agents.target_bindings import (
+    TargetBindings,
+    load_target_bindings,
+    validate_target_binding_conformance,
+)
+from contract4agents.tracing import TraceLoadError, dumps_trace_jsonl, load_trace_jsonl
 
 
 @click.group()
@@ -27,16 +45,7 @@ def main() -> None:
 
 @main.command()
 @click.argument("root", type=click.Path(path_type=Path), default=".", required=False)
-@click.option("--allow-python-imports", is_flag=True, help="Import configured Python model types during checks.")
-@click.option("--strict-drift", is_flag=True, help="Require and validate the project capability registry.")
-@click.option(
-    "--registry",
-    "registry_path",
-    type=click.Path(path_type=Path),
-    default=None,
-    help="Capability registry path.",
-)
-def check(root: Path, allow_python_imports: bool, strict_drift: bool, registry_path: Path | None) -> None:
+def check(root: Path) -> None:
     """Parse and semantically validate a Contract4Agents project."""
     try:
         project = parse_project(root)
@@ -44,22 +53,6 @@ def check(root: Path, allow_python_imports: bool, strict_drift: bool, registry_p
         _print_diagnostics(result.diagnostics)
         if not result.ok:
             raise click.ClickException("Contract4Agents check failed")
-        registry_load = load_capability_registry(
-            project.root,
-            registry_path,
-            required=strict_drift or registry_path is not None,
-        )
-        _print_diagnostics(registry_load.diagnostics)
-        if _has_errors(registry_load.diagnostics):
-            raise click.ClickException("Contract4Agents capability registry check failed")
-        if strict_drift:
-            artifacts = build_artifacts(project, allow_python_imports=allow_python_imports)
-            drift_diagnostics = check_capability_drift(project, artifacts, registry_load.registry)
-            _print_diagnostics(drift_diagnostics)
-            if _has_errors(drift_diagnostics):
-                raise click.ClickException("Contract4Agents strict drift check failed")
-        elif allow_python_imports:
-            build_artifacts(project, allow_python_imports=True)
         click.echo("Contract4Agents check passed")
     except ContractError as exc:
         _print_contract_error(exc)
@@ -75,18 +68,103 @@ def check(root: Path, allow_python_imports: bool, strict_drift: bool, registry_p
     help="Generated artifact directory. Relative paths are resolved from the current working directory.",
 )
 @click.option("--check", "check_mode", is_flag=True, help="Fail if generated artifacts are stale.")
-@click.option("--allow-python-imports", is_flag=True, help="Import configured Python model types during compile.")
-def compile_cmd(root: Path, output_dir: Path, check_mode: bool, allow_python_imports: bool) -> None:
+def compile_cmd(root: Path, output_dir: Path, check_mode: bool) -> None:
     """Compile a Contract4Agents project into provider-neutral artifacts."""
     try:
-        compile_project(root, output_dir, check=check_mode, allow_python_imports=allow_python_imports)
+        compile_project(root, output_dir, check=check_mode)
         click.echo("Contract4Agents compile passed")
     except ContractError as exc:
         _print_contract_error(exc)
 
 
+@main.command("generate")
+@click.argument("root", type=click.Path(path_type=Path), default=".", required=False)
+@click.option(
+    "--out",
+    "output_dir",
+    type=click.Path(path_type=Path),
+    default=".contract/generated",
+    help="Generated language-artifact directory.",
+)
+@click.option("--check", "check_mode", is_flag=True, help="Fail if generated source is stale.")
+def generate_cmd(root: Path, output_dir: Path, check_mode: bool) -> None:
+    """Generate Pydantic, TypeScript, and Zod types from canonical V2 contracts."""
+
+    try:
+        artifacts = compile_project(root)
+        # Generated models are application source artifacts by design. The
+        # writer owns only its fixed generated files and supports freshness
+        # checks, so explicit source-tree destinations are valid here.
+        output_path = output_dir if output_dir.is_absolute() else Path.cwd() / output_dir
+        write_generated_code(generate_code(artifacts.ir), output_path, check=check_mode)
+        click.echo("Contract4Agents generate passed")
+    except ContractError as exc:
+        _print_contract_error(exc)
+    except CodeGenerationError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
+@main.command("plan")
+@click.argument("root", type=click.Path(path_type=Path), default=".", required=False)
+@click.option("--target", required=True, help="Target adapter name.")
+@click.option("--profile", required=True, help="Complete target profile name.")
+@click.option(
+    "--bindings",
+    "bindings_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Target-binding TOML path.",
+)
+@click.option(
+    "--out",
+    "output_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Write the materialization plan to a JSON file instead of stdout.",
+)
+def plan_cmd(
+    root: Path,
+    target: str,
+    profile: str,
+    bindings_path: Path | None,
+    output_path: Path | None,
+) -> None:
+    """Resolve a native-object-free materialization plan without constructing agents."""
+
+    try:
+        _ir, plan, _bindings = _resolve_plan(root, target, profile, bindings_path)
+        rendered = json.dumps(materialization_plan_data(plan), indent=2, sort_keys=True) + "\n"
+        if output_path is None:
+            click.echo(rendered, nl=False)
+        else:
+            destination = output_path if output_path.is_absolute() else Path.cwd() / output_path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text(rendered)
+            click.echo(f"Contract4Agents plan written to {destination}")
+    except ContractError as exc:
+        _print_contract_error(exc)
+    except PlanningError as exc:
+        for issue in exc.issues:
+            click.echo(issue.format(), err=True)
+        raise click.ClickException("Contract4Agents planning failed") from exc
+
+
+def _planner_capabilities(target: str, adapter: str) -> PlannerCapabilities:
+    if adapter == "openai":
+        from contract4agents.adapters.openai import openai_planner_capabilities
+
+        return openai_planner_capabilities()
+    raise click.ClickException(
+        f"Target `{target}` selects adapter `{adapter}`, which has no installed planner"
+    )
+
+
 @main.command("visualize")
 @click.argument("root", type=click.Path(path_type=Path), default=".", required=False)
+@click.option("--target", default=None, help="Optional target adapter for the planned layer.")
+@click.option("--profile", default=None, help="Optional target profile for the planned layer.")
+@click.option("--bindings", "bindings_path", type=click.Path(path_type=Path), default=None)
+@click.option("--trace", "trace_path", type=click.Path(path_type=Path), default=None)
 @click.option(
     "--out",
     "output_dir",
@@ -94,18 +172,39 @@ def compile_cmd(root: Path, output_dir: Path, check_mode: bool, allow_python_imp
     default=".contract/build/visualization",
     help="Generated visualization directory. Relative paths are resolved from the current working directory.",
 )
-@click.option("--allow-python-imports", is_flag=True, help="Import configured Python model types during visualization.")
-def visualize_cmd(root: Path, output_dir: Path, allow_python_imports: bool) -> None:
+def visualize_cmd(
+    root: Path,
+    target: str | None,
+    profile: str | None,
+    bindings_path: Path | None,
+    trace_path: Path | None,
+    output_dir: Path,
+) -> None:
     """Generate static HTML visualization artifacts.
 
     ROOT defaults to the current directory. The default output directory is
     .contract/build/visualization.
     """
     try:
+        from contract4agents.visualization import build_visualization_graph, write_visualization_artifacts
+
+        if (target is None) != (profile is None):
+            raise click.ClickException("--target and --profile must be supplied together")
         project = parse_project(root)
         raise_if_errors(analyze_project(project).diagnostics)
-        artifacts = build_artifacts(project, allow_python_imports=allow_python_imports)
-        graph = build_visualization_graph(project, artifacts)
+        ir = build_canonical_ir(project)
+        plan = None
+        if target is not None and profile is not None:
+            _planned_ir, plan, _bindings = _resolve_plan(root, target, profile, bindings_path)
+        trace = load_trace_jsonl(trace_path) if trace_path is not None else None
+        results = assess_controls(ir, plan, trace) if plan is not None and trace is not None else ()
+        graph = build_visualization_graph(
+            ir,
+            project_root=project.root,
+            plan=plan,
+            trace=trace,
+            control_results=results,
+        )
         output_path = validate_output_dir(project.root, output_dir, artifact_label="visualization artifacts")
         write_visualization_artifacts(graph, output_path)
         click.echo(f"Contract4Agents visualization written to {output_path}")
@@ -115,111 +214,208 @@ def visualize_cmd(root: Path, output_dir: Path, allow_python_imports: bool) -> N
 
 @main.command("eval")
 @click.argument("root", type=click.Path(path_type=Path), default=".", required=False)
-@click.option("--allow-python-imports", is_flag=True, help="Import configured Python model types during fixture eval.")
-@click.option(
-    "--fail-on-skipped-semantic",
-    is_flag=True,
-    help="Treat skipped semantic expectations as eval failures.",
-)
-def eval_cmd(root: Path, allow_python_imports: bool, fail_on_skipped_semantic: bool) -> None:
-    """Run local evals for a fixture.json project."""
-    if not (root / "fixture.json").exists():
-        raise click.ClickException("Contract4Agents eval requires ROOT/fixture.json")
-    run_root = root / ".contract" / "runs" / "last"
+@click.option("--target", required=True, help="Target adapter name.")
+@click.option("--profile", required=True, help="Complete test profile name.")
+@click.option("--bindings", "bindings_path", type=click.Path(path_type=Path), default=None)
+@click.option("--data", "data_path", type=click.Path(path_type=Path), default=None, help="Eval-data JSON file.")
+@click.option("--trials", type=click.IntRange(min=1), default=1, show_default=True)
+@click.option("--min-pass-rate", type=click.FloatRange(min=0, max=1), default=None)
+@click.option("--max-violation-rate", type=click.FloatRange(min=0, max=1), default=None)
+@click.option("--out", "output_path", type=click.Path(path_type=Path), default=None)
+def eval_cmd(
+    root: Path,
+    target: str,
+    profile: str,
+    bindings_path: Path | None,
+    data_path: Path | None,
+    trials: int,
+    min_pass_rate: float | None,
+    max_violation_rate: float | None,
+    output_path: Path | None,
+) -> None:
+    """Run contract-derived eval cases with a target profile and data provider."""
     try:
-        report = run_fixture_project_sync(
-            project_root=root,
-            run_root=run_root,
-            allow_python_imports=allow_python_imports,
+        ir, plan, _bindings = _resolve_plan(root, target, profile, bindings_path)
+        provider_path = data_path or Path(root) / "eval-data.json"
+        provider = FileEvalProvider.load(provider_path)
+        report = asyncio.run(
+            run_campaign(
+                ir,
+                plan,
+                provider,
+                CampaignConfig(
+                    campaign_id=f"{target}:{profile}",
+                    trial_count=trials,
+                    thresholds=CampaignThresholds(
+                        min_pass_rate=min_pass_rate,
+                        max_violation_rate=max_violation_rate,
+                    ),
+                ),
+            )
         )
-    except Exception as exc:
-        raise click.ClickException(
-            f"Contract4Agents fixture eval failed: {exc}\n"
-            f"Debug report and traces, when available, are kept under {run_root}"
-        ) from exc
-    _print_fixture_report(report)
-    if fail_on_skipped_semantic and report.has_skipped_semantic:
-        raise click.ClickException("Contract4Agents eval skipped semantic checks")
-    if not report.passed:
-        raise click.ClickException("Contract4Agents eval failed")
-
-
-def _print_fixture_report(report: FixtureReport) -> None:
-    if report.passed and report.has_skipped_semantic:
-        headline = "completed with skipped semantic checks"
-    else:
-        headline = "passed" if report.passed else "failed"
-    click.echo(f"Fixture eval {headline}: {len(report.starts)} starts")
-    for start in report.starts:
-        if not start.passed or start.monitor_violations:
-            status = "FAIL"
-        elif start.skipped_semantic:
-            status = "PARTIAL"
-        else:
-            status = "PASS"
-        click.echo(f"{status} {start.start_id}")
-        for failure in start.failures:
-            click.echo(f"  {failure}")
-        for failure in start.assertion_failures:
-            click.echo(f"  assertion: {failure}")
-        for violation in start.monitor_violations:
-            click.echo(f"  monitor: {violation}")
-        for skipped in start.skipped_semantic:
-            click.echo(f"  semantic skipped: {skipped}")
-
-
-@main.command()
-@click.argument("root", type=click.Path(path_type=Path), default=".", required=False)
-@click.option("--trace", "trace_path", type=click.Path(path_type=Path), required=True, help="Trace JSONL file.")
-@click.option("--run-id", type=str, default=None, help="Run ID to evaluate when the trace contains multiple runs.")
-@click.option("--allow-python-imports", is_flag=True, help="Import configured Python model types during monitor setup.")
-def monitor(root: Path, trace_path: Path, run_id: str | None, allow_python_imports: bool) -> None:
-    """Run project monitors against a trace JSONL file."""
-    try:
-        artifacts = compile_project(root, allow_python_imports=allow_python_imports)
+        rendered = json.dumps(report.to_dict(), indent=2, sort_keys=True) + "\n"
+        destination = output_path or Path(root) / ".contract" / "eval-results.json"
+        destination = destination if destination.is_absolute() else Path.cwd() / destination
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(rendered)
+        rates = report.summary.rates
+        click.echo(
+            f"Eval campaign: {rates.passed} passed, {rates.violated} violated, "
+            f"{rates.unverified} unverified ({rates.total} trials)"
+        )
+        click.echo(f"Results written to {destination}")
+        failed_comparisons = tuple(
+            item
+            for item in report.threshold_results + report.regression_results
+            if item.status != "passed"
+        )
+        if rates.violated or rates.unverified or failed_comparisons:
+            raise click.ClickException("Contract4Agents eval failed")
     except ContractError as exc:
         _print_contract_error(exc)
-    try:
-        trace = load_trace_jsonl(trace_path)
-    except TraceFileError as exc:
-        raise click.ClickException(str(exc)) from exc
-    rules = [
-        MonitorRule(item["name"], item["agent"], item["severity"], item["when"], item["expect"])
-        for item in artifacts["monitors"]
-    ]
-    try:
-        violations = run_monitors(rules, trace, run_id=run_id)
-    except TraceScopeError as exc:
-        raise click.ClickException(str(exc)) from exc
-    for violation in violations:
-        click.echo(f"{violation.severity.upper()} {violation.rule}: {violation.message}")
-    if violations:
-        raise click.ClickException("Contract4Agents monitor failed")
-    click.echo("Contract4Agents monitor passed")
+    except PlanningError as exc:
+        for issue in exc.issues:
+            click.echo(issue.format(), err=True)
+        raise click.ClickException("Contract4Agents planning failed") from exc
+    except Exception as exc:
+        if isinstance(exc, click.ClickException):
+            raise
+        raise click.ClickException(f"Contract4Agents eval failed: {exc}") from exc
 
 
-@main.command("docs-check")
+@main.command("monitor")
 @click.argument("root", type=click.Path(path_type=Path), default=".", required=False)
-def docs_check(root: Path) -> None:
-    """Check required documentation files and local markdown links.
+@click.option("--target", required=True)
+@click.option("--profile", required=True)
+@click.option("--bindings", "bindings_path", type=click.Path(path_type=Path), default=None)
+@click.option("--trace", "trace_path", type=click.Path(path_type=Path), required=True)
+@click.option("--run-id", default=None)
+def monitor_cmd(
+    root: Path,
+    target: str,
+    profile: str,
+    bindings_path: Path | None,
+    trace_path: Path,
+    run_id: str | None,
+) -> None:
+    """Assess contract-derived controls against a normalized trace."""
+    try:
+        ir, plan, _bindings = _resolve_plan(root, target, profile, bindings_path)
+        results = assess_controls(ir, plan, load_trace_jsonl(trace_path), run_id=run_id)
+        for result in results:
+            click.echo(f"{result.status.upper()} {result.control_id}: {result.reason}")
+        if any(result.status != "passed" for result in results):
+            raise click.ClickException("Contract4Agents monitor found violated or unverified controls")
+        click.echo("Contract4Agents monitor passed")
+    except TraceLoadError as exc:
+        raise click.ClickException(f"Invalid normalized trace `{trace_path}`: {exc}") from exc
 
-    ROOT defaults to the current directory.
-    """
-    diagnostics = check_docs(root)
-    for diagnostic in diagnostics:
-        click.echo(diagnostic.format(), err=True)
-    if diagnostics:
-        raise click.ClickException("Docs check failed")
-    click.echo("Docs check passed")
+
+@main.command("assure")
+@click.argument("root", type=click.Path(path_type=Path), default=".", required=False)
+@click.option("--target", required=True)
+@click.option("--profile", required=True)
+@click.option("--bindings", "bindings_path", type=click.Path(path_type=Path), default=None)
+@click.option("--trace", "trace_path", type=click.Path(path_type=Path), default=None)
+@click.option("--eval-results", type=click.Path(path_type=Path), default=None)
+@click.option("--provenance", type=click.Path(path_type=Path), default=None)
+@click.option("--out", "output_dir", type=click.Path(path_type=Path), default=".contract/assurance")
+def assure_cmd(
+    root: Path,
+    target: str,
+    profile: str,
+    bindings_path: Path | None,
+    trace_path: Path | None,
+    eval_results: Path | None,
+    provenance: Path | None,
+    output_dir: Path,
+) -> None:
+    """Assemble a deterministic declared/planned/observed assurance bundle."""
+    ir, plan, _bindings = _resolve_plan(root, target, profile, bindings_path)
+    trace = load_trace_jsonl(trace_path) if trace_path is not None else None
+    results = assess_controls(ir, plan, trace) if trace is not None else None
+    bundle = assemble_assurance_bundle(
+        ir,
+        plan,
+        normalized_trace_jsonl=dumps_trace_jsonl(trace) if trace is not None else None,
+        control_results=results,
+        eval_results=_load_json_file(eval_results),
+        provenance=_load_json_file(provenance),
+    )
+    destination = output_dir if output_dir.is_absolute() else Path.cwd() / output_dir
+    write_assurance_bundle(bundle, destination)
+    click.echo(f"Assurance bundle written to {destination}")
+    for diagnostic in bundle.diagnostics:
+        click.echo(f"UNVERIFIED {diagnostic.code}: {diagnostic.message}")
+
+
+@main.command("diff")
+@click.argument("before", type=click.Path(path_type=Path, exists=True))
+@click.argument("after", type=click.Path(path_type=Path, exists=True))
+@click.option("--out", "output_path", type=click.Path(path_type=Path), default=None)
+def diff_cmd(before: Path, after: Path, output_path: Path | None) -> None:
+    """Report assurance-relevant semantic changes between two contract projects."""
+    before_ir = compile_project(before).ir
+    after_ir = compile_project(after).ir
+    result = semantic_diff(before_ir, after_ir)
+    rendered = json.dumps(result.to_dict(), indent=2, sort_keys=True) + "\n"
+    if output_path is None:
+        click.echo(rendered, nl=False)
+    else:
+        destination = output_path if output_path.is_absolute() else Path.cwd() / output_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(rendered)
+        click.echo(f"Semantic diff written to {destination}")
+
+
+def _resolve_plan(
+    root: Path,
+    target: str,
+    profile: str,
+    bindings_path: Path | None,
+) -> tuple[CanonicalIR, MaterializationPlan, TargetBindings]:
+    project = parse_project(root)
+    raise_if_errors(analyze_project(project).diagnostics)
+    ir = build_canonical_ir(project)
+    loaded = load_target_bindings(project.root, bindings_path, required=True)
+    _print_diagnostics(list(loaded.diagnostics))
+    if not loaded.ok or loaded.bindings is None:
+        raise click.ClickException("Contract4Agents target-binding load failed")
+    conformance = validate_target_binding_conformance(
+        ir,
+        loaded.bindings,
+        target,
+        project_root=Path.cwd(),
+    )
+    _print_diagnostics(list(conformance.diagnostics))
+    if not conformance.ok:
+        raise click.ClickException("Contract4Agents target-binding conformance failed")
+    target_binding = loaded.bindings.targets.get(target)
+    if target_binding is None:
+        raise click.ClickException(f"Target bindings do not declare `{target}`")
+    plan = plan_materialization(
+        ir,
+        loaded.bindings,
+        target=target,
+        profile=profile,
+        capabilities=_planner_capabilities(target, target_binding.adapter),
+    )
+    return ir, plan, loaded.bindings
+
+
+def _load_json_file(path: Path | None) -> object | None:
+    if path is None:
+        return None
+    try:
+        value: object = json.loads(path.read_text())
+        return value
+    except (OSError, json.JSONDecodeError) as exc:
+        raise click.ClickException(f"Could not load JSON `{path}`: {exc}") from exc
 
 
 def _print_diagnostics(diagnostics: list[Diagnostic]) -> None:
     for diagnostic in diagnostics:
         click.echo(diagnostic.format(), err=diagnostic.severity == "error")
-
-
-def _has_errors(diagnostics: list[Diagnostic]) -> bool:
-    return any(diagnostic.severity == "error" for diagnostic in diagnostics)
 
 
 def _print_contract_error(exc: ContractError) -> None:
