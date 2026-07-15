@@ -185,7 +185,7 @@ Contract4Agents succeeds when:
 - materialization constructs and validates the complete native graph;
 - Python and TypeScript types derive from the same contract IR;
 - traces prove which contract and plan produced observed behavior;
-- eval and production monitoring share controls and result semantics;
+- eval and production assessment share controls and result semantics;
 - release reviewers can see semantic changes, regressions, violations, and
   unverifiable claims without reconstructing the system by hand.
 

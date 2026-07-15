@@ -30,7 +30,7 @@ Declare -> Compile -> Plan -> Materialize -> Run -> Trace -> Assure
 
 The contract is the canonical semantic source. Target bindings are canonical
 only for target-specific implementation choices. Plans, generated code,
-instructions, monitors, and assurance obligations are derived artifacts.
+instructions, assessment results, and assurance bundles are derived artifacts.
 
 ## Stable terminology
 
@@ -61,8 +61,9 @@ runtime, trace, and assurance layers:
 - **Evidence:** a normalized trace event, provider reference, host attestation,
   deterministic check, or semantic judgment supporting an assurance result.
 
-Do not use `policy` for unclassified prose, `success` for unverified wishes,
-`registry` for target bindings, or `isolated` for context separation alone.
+Guidance is model-facing prose; controls and qualities state assessable
+requirements. Target bindings connect portable semantics to implementations,
+and isolation profiles state each required boundary explicitly.
 
 ## Source model
 
@@ -261,8 +262,8 @@ materialization.
 
 Some controls are derived rather than written. An `approval_required` grant
 creates a stable derived control requiring the runtime approval chain. Output
-types create output-conformance controls. Users do not repeat those as guards,
-assertions, or monitors.
+types create output-conformance controls. Each derived requirement appears once
+in the control inventory and feeds planning, tracing, and assessment.
 
 Quality rubrics are named and evaluator-facing by default:
 
@@ -603,8 +604,8 @@ model = "gpt-5.6-luna"
 ```
 
 The target-binding validator rejects keys that duplicate contract authority,
-including `permission`, `authorization`, `guidance`, `control`, `prompt`,
-`output_type`, and agent factory declarations.
+including `availability`, `authorization`, `execution`, `goal`, `guidance`,
+`control`, `quality`, `audience`, and `isolation`.
 
 Python and TypeScript implementation locators are target-specific string values
 resolved by their adapters. Loading bindings may import configured callables to
@@ -710,8 +711,9 @@ Materialization uses two passes:
    agent-as-tool objects.
 
 After construction, the adapter validates the native graph against the plan.
-There is no normal host-supplied agent factory, prompt override, output-type
-registry, agent-tool registry, or handoff registry.
+The materializer owns agent construction, generated output types, capability
+attachment, and composition wiring; the host supplies only declared bindings
+and application workflow.
 
 ## Trace identity and evidence
 
@@ -791,8 +793,9 @@ contract4agents eval agent_contracts --target openai --profile test
 
 The test profile binds deterministic tool, datasource, external-context,
 approval, and judge providers. `.eval` cases supply scenario inputs and
-expectations. The contract and plan supply agent, capability, permission,
-control, and telemetry inventory; no fixture repeats them.
+expectations. The contract and plan supply agent, capability grant,
+authorization, control, and telemetry inventory; no test-data provider repeats
+them.
 
 An eval campaign records:
 
@@ -806,7 +809,8 @@ An eval campaign records:
 - Baseline digest and regression results when configured.
 
 The same control assessor is used for offline eval traces and production trace
-monitoring.
+assessment. Continuous monitoring is an external operational pattern that
+repeats this assessment as complete traces arrive.
 
 ## Assurance bundle and semantic diff
 
@@ -843,7 +847,7 @@ compile
 generate
 plan
 eval
-monitor
+assess
 assure
 diff
 visualize
@@ -853,7 +857,7 @@ Repository documentation validation remains `pdm run docs-check`; it is not an
 installed `contract4agents` command. Materialization is primarily a library API,
 not a command that serializes in-memory SDK objects.
 
-## Migration invariants
+## System invariants
 
 Every implementation phase must preserve these invariants:
 
@@ -866,7 +870,6 @@ Every implementation phase must preserve these invariants:
 7. Every trace run identifies its exact contract and plan.
 8. Missing telemetry never becomes a passing assurance claim.
 9. Deterministic host workflow stays outside the DSL.
-10. Removed V1 surfaces are deleted, not retained as aliases.
 
 ## Phase 0 resolution
 
@@ -878,7 +881,7 @@ This specification resolves the Phase 0 choices as follows:
 - Composition uses named `delegate` and `handoff` edges.
 - Agent grants use orthogonal availability, authorization, and execution fields.
 - `guidance`, `control`, `quality`, and `operational_control` replace ambiguous
-  prose and duplicate monitoring surfaces.
+  prose and duplicate assessment surfaces.
 - Stable semantic IDs are deterministic kind-qualified names.
 - SHA-256 over canonical JSON defines contract and plan digests.
 - `materialize(...)` is the primary runtime-construction API.

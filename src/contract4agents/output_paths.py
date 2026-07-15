@@ -13,7 +13,6 @@ SOURCE_OWNED_OUTPUT_DIRS = frozenset(
         "docs",
         "evals",
         "examples",
-        "monitors",
         "src",
         "tests",
         "types",

@@ -118,7 +118,6 @@ def check_v2_agent(agent: AgentDef, index: ProjectIndex) -> list[Diagnostic]:
             )
         if (
             grant.execution is None
-            or grant.execution == "sandboxed"
             or _EXECUTION_BOUNDARY.fullmatch(grant.execution) is None
         ):
             diagnostics.append(

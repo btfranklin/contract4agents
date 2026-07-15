@@ -47,5 +47,4 @@ unverified runtime result. It must never be silently treated as truthy.
 - Extend one grammar, transformer, semantic rule set, IR mapping, and golden
   surface together.
 - Use representative public examples plus small syntax-pressure fixtures.
-- When syntax is removed, delete its parser path and fixtures instead of adding
-  aliases.
+- Keep one current grammar surface without compatibility aliases.

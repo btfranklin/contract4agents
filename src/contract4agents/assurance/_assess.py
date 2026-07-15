@@ -1,4 +1,4 @@
-"""One control assessor shared by offline evals and production monitoring."""
+"""One control assessor shared by offline evals and production assessment."""
 
 from __future__ import annotations
 

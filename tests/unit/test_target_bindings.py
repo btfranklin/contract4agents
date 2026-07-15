@@ -146,16 +146,16 @@ def test_reports_structured_shape_and_toml_diagnostics(
     ("suffix", "forbidden_path"),
     [
         (
-            '[targets.openai.tools."status.publish"]\npython = "app.tools:publish"\npermission = "preapproved"\n',
-            "targets.openai.tools.status.publish.permission",
+            '[targets.openai.tools."status.publish"]\npython = "app.tools:publish"\navailability = "enabled"\n',
+            "targets.openai.tools.status.publish.availability",
         ),
         (
-            '[targets.openai.datasources.timeline]\npython = "app.data:timeline"\noutput_type = "Timeline"\n',
-            "targets.openai.datasources.timeline.output_type",
+            '[targets.openai.datasources.timeline]\npython = "app.data:timeline"\nguidance = "Use current data"\n',
+            "targets.openai.datasources.timeline.guidance",
         ),
         (
-            '[targets.openai.profiles.production.agents.Commander]\nmodel = "model"\nfactory = "app:agent"\n',
-            "targets.openai.profiles.production.agents.Commander.factory",
+            '[targets.openai.profiles.production.agents.Commander]\nmodel = "model"\ngoal = "Coordinate work"\n',
+            "targets.openai.profiles.production.agents.Commander.goal",
         ),
         (
             '[targets.openai.tools.search.options]\nguidance = "Search carefully"\n',
@@ -185,7 +185,7 @@ def test_rejects_contract_owned_keys_at_every_binding_depth(
 def test_rejects_contract_owned_keys_at_document_root(tmp_path: Path) -> None:
     content = (
         'schema_version = "1"\n'
-        'permission = "preapproved"\n'
+        'control = "must be enforced"\n'
         '[targets.openai]\n'
         'adapter = "openai"\n'
     )
@@ -195,7 +195,7 @@ def test_rejects_contract_owned_keys_at_document_root(tmp_path: Path) -> None:
 
     assert result.bindings is None
     assert [item.code for item in result.diagnostics] == ["TGT004"]
-    assert "target-binding document.permission" in result.diagnostics[0].message
+    assert "target-binding document.control" in result.diagnostics[0].message
 
 
 def test_deterministic_serialization_sorts_names_and_excludes_local_path(tmp_path: Path) -> None:

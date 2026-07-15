@@ -47,10 +47,10 @@ def test_docs_check_supports_anchor_line_and_angle_markdown_links(tmp_path: Path
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("# ok\n")
     (tmp_path / "docs" / "index.md").write_text(
-        "- `reference/cli.md#monitor-root-trace-trace-jsonl`\n"
+        "- `reference/cli.md#assess-root-trace-trace-jsonl`\n"
         "- [Trace](<reference/trace-schema.md:12>)\n"
     )
-    (tmp_path / "README.md").write_text("[CLI](<docs/reference/cli.md#monitor-root-trace-trace-jsonl>)\n")
+    (tmp_path / "README.md").write_text("[CLI](<docs/reference/cli.md#assess-root-trace-trace-jsonl>)\n")
 
     assert check_docs(tmp_path) == []
 

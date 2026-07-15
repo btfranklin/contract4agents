@@ -10,7 +10,6 @@ from contract4agents.semantic_checks._types import check_type_ref
 TEXT_AGENT_ATTRIBUTES = {"description", "goal"}
 LIST_AGENT_ATTRIBUTES = {"guidance"}
 AGENT_ATTRIBUTES = TEXT_AGENT_ATTRIBUTES | LIST_AGENT_ATTRIBUTES
-COMMON_AGENT_ATTRIBUTE_MISSPELLINGS: dict[str, str] = {}
 
 
 def check_agent(
@@ -30,13 +29,16 @@ def _check_agent_attributes(agent: AgentDef) -> list[Diagnostic]:
     for key, value in agent.attributes.items():
         span = agent.attribute_spans.get(key, agent.span)
         if key not in AGENT_ATTRIBUTES:
-            hint = _unknown_agent_attribute_hint(key)
             diagnostics.append(
                 Diagnostic(
                     "SEM070",
                     f"Unknown agent attribute `{key}` on `{agent.name}`",
                     span=span,
-                    hint=hint,
+                    hint=(
+                        "Accepted agent attributes are: "
+                        + ", ".join(f"`{item}`" for item in sorted(AGENT_ATTRIBUTES))
+                        + "."
+                    ),
                 )
             )
             continue
@@ -57,13 +59,5 @@ def _check_agent_attributes(agent: AgentDef) -> list[Diagnostic]:
                 )
             )
     return diagnostics
-
-
-def _unknown_agent_attribute_hint(key: str) -> str:
-    expected = COMMON_AGENT_ATTRIBUTE_MISSPELLINGS.get(key)
-    if expected:
-        return f"Use `{expected}`."
-    return "Accepted agent attributes are: " + ", ".join(f"`{item}`" for item in sorted(AGENT_ATTRIBUTES)) + "."
-
 
 __all__ = ["check_agent"]

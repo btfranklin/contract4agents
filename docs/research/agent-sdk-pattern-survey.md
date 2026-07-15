@@ -131,7 +131,7 @@ Important patterns for Contract4Agents:
 
 Contract4Agents implication:
 
-- Contract4Agents must separate "available", "allowed", "pre-approved", "denied", and "requires approval." A single `tools = [...]` list is not precise enough.
+- Contract4Agents must keep capability availability, authorization, and execution boundary orthogonal. A single `tools = [...]` list is not precise enough.
 - Contract4Agents' trace schema needs to represent tool calls, tool results, approvals, final output, and dimension-specific isolation evidence.
 - Contract4Agents should model subagent context isolation separately from manager-style agent calls.
 
@@ -210,7 +210,7 @@ copying any one framework's object model:
   controls are distinct constructs.
 - Normalized traces join provider evidence to contract and plan digests and
   stable semantic IDs.
-- Eval and production monitoring use the same control assessor and report
+- Eval and production assessment use the same control assessor and report
   missing evidence as unverified.
 
 ## Target Strategy

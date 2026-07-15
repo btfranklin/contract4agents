@@ -1,4 +1,4 @@
-"""Core expression model types used by parser, eval, and monitor internals."""
+"""Core expression model types used by parser, eval, and assessment internals."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ ExpressionWrapper = Literal["expect", "require", "forbid"]
 
 
 class ExpressionError(ValueError):
-    """Raised when a Contract4Agents expression is not part of the supported V1 surface."""
+    """Raised when a Contract4Agents expression is outside the supported surface."""
 
 
 @dataclass(frozen=True)

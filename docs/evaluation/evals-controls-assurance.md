@@ -8,6 +8,9 @@ runs and imported production traces.
 
 - A **control** is a required or advisory behavioral requirement with a named
   assessment mode and expected evidence.
+- An **assessment** compares available evidence with one or more controls.
+- An **assessor** is the implementation or named identity that performs an
+  assessment.
 - A **quality** declaration is a qualitative rubric assessed by a named judge
   or reviewer.
 - An **operational control** is a latency, cost, retry, volume, or cross-run
@@ -36,7 +39,7 @@ operational_control latency for IncidentCommander:
 ```
 
 Approval-required grants and typed agent outputs create derived controls. They
-must not be re-declared as separate behavioral monitoring rules.
+must not be re-declared as separate behavioral assessment rules.
 
 ## Result Semantics
 
@@ -92,8 +95,13 @@ disappearing or becoming passes.
 
 `assess_controls(ir, plan, trace)` is the common provider-neutral assessor. It
 uses the plan's requested mechanisms and expected telemetry when evaluating
-contract controls. Eval campaigns call this assessor directly; production
-monitoring should call the same API after loading a normalized trace.
+contract controls. Eval campaigns and production trace assessment call this
+same API.
+
+Continuous monitoring is an operational pattern outside the contract language:
+a scheduler, trace pipeline, or observability service repeatedly invokes the
+assessor as complete traces arrive. Contract4Agents performs assessments; it
+does not itself watch a live system.
 
 This prevents the offline and production interpretations of a control from
 drifting apart.

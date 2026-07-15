@@ -243,6 +243,25 @@ def test_binding_mechanisms_distinguish_provider_hosted_and_remote() -> None:
     assert plan.bindings[semantic_id("datasource", "incident.timeline")].execution == "remote"
 
 
+def test_named_execution_boundary_must_be_declared_by_the_target() -> None:
+    with pytest.raises(PlanningError) as caught:
+        plan_materialization(
+            _sample_ir(execution="clean_room"),
+            _bindings(),
+            target="openai",
+            profile="production",
+            capabilities=_capabilities(),
+        )
+
+    issue = next(
+        item
+        for item in caught.value.issues
+        if item.semantic_id == semantic_id("grant", "IncidentCommander", "status.publish")
+    )
+    assert issue.code == "PLN009"
+    assert "target environment `clean_room` is not declared" in issue.message
+
+
 def test_materialization_plan_is_deeply_immutable() -> None:
     plan = plan_materialization(
         _sample_ir(), _bindings(), target="openai", profile="production", capabilities=_capabilities()
@@ -327,6 +346,7 @@ def _bindings() -> TargetBindings:
 def _sample_ir(
     *,
     network: str = "inherited",
+    execution: str = "host",
     extra_control: ControlIR | None = None,
 ) -> CanonicalIR:
     request = TypeIR(
@@ -389,7 +409,7 @@ def _sample_ir(
         capability_id=tool.id,
         availability="enabled",
         authorization="approval_required",
-        execution="host",
+        execution=execution,
         isolation_id=isolation.id,
     )
     commander = AgentIR(

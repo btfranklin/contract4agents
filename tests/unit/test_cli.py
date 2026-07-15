@@ -23,11 +23,13 @@ def test_cli_help_and_check() -> None:
     eval_help = runner.invoke(main, ["eval", "--help"])
 
     assert help_result.exit_code == 0
-    assert {"assure", "compile", "diff", "eval", "generate", "monitor", "plan"} <= set(help_result.output.split())
+    assert {"assess", "assure", "compile", "diff", "eval", "generate", "plan"} <= set(
+        help_result.output.split()
+    )
+    assert "through assurance" in help_result.output
     assert check_result.exit_code == 0
     assert "passed" in check_result.output
     assert "target profile" in eval_help.output
-    assert "fixture.json" not in eval_help.output
 
 
 def test_cli_contract_first_workflow(tmp_path: Path) -> None:
@@ -64,10 +66,10 @@ def test_cli_contract_first_workflow(tmp_path: Path) -> None:
     assert eval_run.exit_code == 0, eval_run.output
     assert "1 passed, 0 violated, 0 unverified" in eval_run.output
 
-    monitor = runner.invoke(
+    assessment = runner.invoke(
         main,
         [
-            "monitor",
+            "assess",
             str(EXAMPLE),
             "--target",
             "openai",
@@ -77,7 +79,8 @@ def test_cli_contract_first_workflow(tmp_path: Path) -> None:
             str(trace),
         ],
     )
-    assert monitor.exit_code == 0, monitor.output
+    assert assessment.exit_code == 0, assessment.output
+    assert "assessment passed" in assessment.output
 
     provenance = tmp_path / "provenance.json"
     provenance.write_text(json.dumps({"source": "unit-test"}))
@@ -108,20 +111,6 @@ def test_cli_contract_first_workflow(tmp_path: Path) -> None:
     assert '"contract_changes": []' in diff.output
 
 
-def test_cli_rejects_removed_v1_flags(tmp_path: Path) -> None:
-    runner = CliRunner()
-    invocations = [
-        ["check", str(EXAMPLE), "--allow-python-imports"],
-        ["check", str(EXAMPLE), "--strict-drift"],
-        ["check", str(EXAMPLE), "--registry", str(tmp_path / "registry.json")],
-        ["eval", str(EXAMPLE), "--fixture", str(tmp_path / "fixture.json")],
-    ]
-    for args in invocations:
-        result = runner.invoke(main, args)
-        assert result.exit_code != 0
-        assert "No such option" in result.output
-
-
 def test_cli_reports_invalid_normalized_trace(tmp_path: Path) -> None:
     trace_path = tmp_path / "bad.jsonl"
     trace_path.write_text("{bad\n")
@@ -129,7 +118,7 @@ def test_cli_reports_invalid_normalized_trace(tmp_path: Path) -> None:
     result = CliRunner().invoke(
         main,
         [
-            "monitor",
+            "assess",
             str(EXAMPLE),
             "--target",
             "openai",

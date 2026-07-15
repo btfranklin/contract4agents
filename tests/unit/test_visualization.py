@@ -37,8 +37,6 @@ def test_declared_graph_is_ir_native_and_represents_v2_semantics() -> None:
 
     node_ids = {node["id"] for node in graph["nodes"]}
     edge_kinds = {edge["kind"] for edge in graph["edges"]}
-    encoded = json.dumps(graph, sort_keys=True)
-
     assert graph["version"] == "2"
     assert graph["ir_version"] == "2"
     assert graph["contract_digest"] == contract_digest(ir)
@@ -52,9 +50,6 @@ def test_declared_graph_is_ir_native_and_represents_v2_semantics() -> None:
     assert all(any(layer.get("present") is True for layer in edge["truth"].values()) for edge in graph["edges"])
     assert graph["summary"]["declared"] > 0
     assert graph["summary"]["planned"] == graph["summary"]["observed"] == 0
-    assert "hosted_tool" not in encoded
-    assert '"policy"' not in encoded
-    assert '"success"' not in encoded
     commander = graph["agents"]["IncidentCommander"]
     assert commander["grants"][0]["authorization"] == "approval_required"
     assert {item["direction"] for item in commander["composition"]} == {"outgoing"}

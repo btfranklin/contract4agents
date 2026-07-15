@@ -676,15 +676,13 @@ def test_control_assessor_prefers_explicit_results_and_handles_output_failures()
     assert next(item for item in failed if item.control_id.endswith("output_conformance")).status == "violated"
 
 
-def test_openai_tool_names_round_trip_and_reject_malformed_encodings() -> None:
+def test_openai_tool_names_round_trip_and_validate_prefixed_encodings() -> None:
     contract_name = "crm.create_note"
     encoded = openai_tool_name(contract_name)
 
     assert encoded == "c4a_3_crm11_create_note"
     assert contract_tool_name(encoded) == contract_name
     assert contract_tool_name("ordinary_tool") == "ordinary_tool"
-    with pytest.raises(ValueError, match="ambiguous legacy"):
-        contract_tool_name("crm__create_note")
     for malformed in ("c4a_bad", "c4a__bad", "c4a_x_bad", "c4a_9_short"):
         with pytest.raises(ValueError, match="not valid"):
             contract_tool_name(malformed)

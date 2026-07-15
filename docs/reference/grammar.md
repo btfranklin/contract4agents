@@ -21,19 +21,6 @@ Implementation locators are never contract syntax. Python, TypeScript,
 provider-hosted, remote, datasource, and external-context implementations belong
 in target bindings.
 
-Removed pre-contract-first forms are intentionally invalid and have no
-compatibility aliases:
-
-- `type ... from python`
-- implementation-bearing datasource bodies
-- `use tool|agent|datasource ... from ...`
-- `use hosted_tool ...`
-- agent-level `policy`, `success`, `host_context`, `guards`, `assertions`, and
-  list-valued `composition`
-- standalone `monitor` declarations
-- `available`, `requires approval`, and `sandboxed` permission states
-- `str`, `int`, `bool`, and `T[]` type spellings
-
-The parser rejects removed structural forms. Generic assignment syntax is
-parsed first so semantic analysis can report an exact unknown-attribute
-diagnostic for removed agent attributes.
+Generic assignment syntax is parsed before semantic analysis. Semantic checks
+then validate each declaration against the attributes defined by the current
+language surface and report unknown attributes with the accepted set.

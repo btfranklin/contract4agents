@@ -117,5 +117,4 @@ Useful deterministic campaigns include:
 - latency/cost threshold failure;
 - a baseline regression.
 
-The negative data should test retained assurance behavior. Do not add cases whose
-only purpose is to prove removed syntax no longer exists.
+Negative data should test current assurance behavior, not product history.

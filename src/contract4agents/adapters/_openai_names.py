@@ -13,10 +13,6 @@ def openai_tool_name(contract_name: str) -> str:
 def contract_tool_name(openai_name: str) -> str:
     """Convert a generated OpenAI tool name back into the Contract4Agents capability name."""
     if not openai_name.startswith(_OPENAI_TOOL_NAME_PREFIX):
-        if "__" in openai_name:
-            raise ValueError(
-                f"OpenAI tool name `{openai_name}` uses ambiguous legacy Contract4Agents encoding"
-            )
         return openai_name
 
     encoded = openai_name[len(_OPENAI_TOOL_NAME_PREFIX) :]

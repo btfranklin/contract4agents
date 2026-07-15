@@ -106,8 +106,8 @@ Grant dimensions are orthogonal:
 - optional `isolation`: a declared isolation profile
 
 An enabled grant requires explicit authorization and execution. A denied grant
-cannot declare authorization, execution, or isolation. `available`, `requires
-approval`, and `sandboxed` are removed permission spellings.
+cannot declare authorization, execution, or isolation. Named execution
+boundaries must be declared by the selected target.
 
 Context origins are `invocation`, `parent`, `handoff`, `stage`, `datasource`,
 and `external`. Agent-local context declarations use datasource or external
@@ -116,10 +116,9 @@ typed signatures, composition mappings, and run specs. Datasource declarations
 map every resolver input from `input.<path>` or an earlier `context.<path>`.
 
 `goal` and `guidance` are model-visible. `description` is review and adapter
-metadata. `policy`, `success`, `host_context`, `guards`, and `assertions` are not
-agent attributes. Output conformance is derived automatically from the return
-type; behavioral invariants belong in controls or quality rubrics. Run-spec
-assertions remain available for host-owned workflow verification.
+metadata. Output conformance is derived automatically from the return type;
+behavioral invariants belong in controls or quality rubrics. Run-spec assertions
+remain available for host-owned workflow verification.
 
 ## Composition
 
@@ -181,8 +180,8 @@ Assessment is `static`, `adapter`, `runtime`, `host_attested`, `post_run`,
 `semantic`, or `advisory`. Required unsupported controls block planning.
 
 The compiler derives output-conformance controls from agent return types and
-approval controls from `approval_required` grants. Do not repeat those rules as
-guards or monitors.
+approval controls from `approval_required` grants. Each derived requirement
+appears once in the control inventory and feeds every assessment surface.
 
 Quality declarations are named evaluator rubrics:
 
@@ -200,8 +199,6 @@ operational_control latency for ResearchLead:
     severity = medium
     require = trace.duration < 30s
 ```
-
-Standalone V1 `monitor` declarations are not source syntax.
 
 ## Audiences
 

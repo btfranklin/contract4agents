@@ -40,7 +40,7 @@ from contract4agents.tracing import TraceLoadError, dumps_trace_jsonl, load_trac
 
 @click.group()
 def main() -> None:
-    """Compile, validate, and evaluate Contract4Agents projects."""
+    """Build and review contract-first agent systems through assurance."""
 
 
 @main.command()
@@ -283,14 +283,14 @@ def eval_cmd(
         raise click.ClickException(f"Contract4Agents eval failed: {exc}") from exc
 
 
-@main.command("monitor")
+@main.command("assess")
 @click.argument("root", type=click.Path(path_type=Path), default=".", required=False)
 @click.option("--target", required=True)
 @click.option("--profile", required=True)
 @click.option("--bindings", "bindings_path", type=click.Path(path_type=Path), default=None)
 @click.option("--trace", "trace_path", type=click.Path(path_type=Path), required=True)
 @click.option("--run-id", default=None)
-def monitor_cmd(
+def assess_cmd(
     root: Path,
     target: str,
     profile: str,
@@ -305,8 +305,10 @@ def monitor_cmd(
         for result in results:
             click.echo(f"{result.status.upper()} {result.control_id}: {result.reason}")
         if any(result.status != "passed" for result in results):
-            raise click.ClickException("Contract4Agents monitor found violated or unverified controls")
-        click.echo("Contract4Agents monitor passed")
+            raise click.ClickException(
+                "Contract4Agents assessment found violated or unverified controls"
+            )
+        click.echo("Contract4Agents assessment passed")
     except TraceLoadError as exc:
         raise click.ClickException(f"Invalid normalized trace `{trace_path}`: {exc}") from exc
 

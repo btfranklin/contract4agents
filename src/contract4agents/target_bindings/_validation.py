@@ -18,27 +18,22 @@ _AGENT_PROFILE_KEYS = frozenset({"model", "options"})
 _PROFILE_INHERITANCE_KEYS = frozenset({"base_profile", "extends", "inherits", "parent"})
 _CONTRACT_OWNED_KEYS = frozenset(
     {
-        "agent_factories",
-        "agent_factory",
         "audience",
-        "audiences",
+        "assessment",
         "authorization",
         "availability",
         "composition",
         "control",
         "controls",
-        "factory",
+        "execution",
+        "goal",
         "guidance",
         "isolation",
-        "output_type",
-        "output_types",
-        "permission",
-        "permissions",
-        "prompt",
-        "prompts",
-        "schema",
-        "schemas",
-        "success",
+        "operational_control",
+        "operational_controls",
+        "qualities",
+        "quality",
+        "rubric",
     }
 )
 
@@ -199,8 +194,8 @@ def _forbidden_keys(value: Mapping[str, object], path: str) -> list[Diagnostic]:
             "TGT004",
             f"Target binding `{path}.{key}` duplicates contract-owned semantics",
             hint=(
-                "Move permissions, schemas, prompts, controls, audiences, and agent definitions "
-                "into `.contract` source."
+                "Move authorization, goals, guidance, controls, qualities, audiences, and isolation "
+                "requirements into `.contract` source."
             ),
         )
         for key in sorted(value)

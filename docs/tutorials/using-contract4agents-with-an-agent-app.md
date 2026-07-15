@@ -169,20 +169,24 @@ them into the normalized schema for portable assessment, and export normalized
 events through the OpenTelemetry integration when useful. Contract4Agents does
 not require its own trace backend.
 
-## Evals and Production Monitoring
+## Evals and Production Assessment
 
 Use `.eval` scenarios and a test profile for controlled campaigns. A campaign
 provider may use deterministic files, replayed traces, or a live application.
 The plan supplies the expected runtime inventory, so there is no separate
 hand-maintained description of agents and permissions.
 
-For production monitoring:
+For production assessment:
 
 1. load and validate a complete normalized trace;
 2. validate completeness against the reviewed plan;
 3. call the shared control assessor;
 4. store or export the results with their contract and plan digests;
 5. treat incomplete evidence as `unverified`.
+
+A continuous monitoring service can repeat this process whenever a complete
+trace arrives. Contract4Agents performs the assessment; the surrounding
+application or observability platform owns the continuous watch.
 
 Operational controls cover cost, latency, retry, volume, and cross-run rules.
 They do not duplicate behavioral controls.

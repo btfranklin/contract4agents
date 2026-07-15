@@ -82,4 +82,4 @@ and assurance bundles are derived from those two authorities.
 - Portable semantics belong in the language and architecture references.
 - Target-specific behavior belongs in target references.
 - Unresolved decisions belong in `decisions/open-questions.md`.
-- Documentation must not teach removed syntax or a second runtime inventory.
+- Documentation describes the current syntax and one canonical runtime inventory.

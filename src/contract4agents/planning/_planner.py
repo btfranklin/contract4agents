@@ -250,12 +250,16 @@ def _resolve_grants(
                 continue
             outcome = binding.outcome
             mechanism = binding.mechanism
-            if grant.execution in {"host", "provider_hosted", "remote"} and grant.execution != binding.execution:
-                outcome = "degraded"
-                mechanism = f"binding execution `{binding.execution}` does not satisfy `{grant.execution}`"
+            if grant.execution in {"host", "provider_hosted", "remote"}:
+                if grant.execution != binding.execution:
+                    outcome = "degraded"
+                    mechanism = f"binding execution `{binding.execution}` does not satisfy `{grant.execution}`"
             elif grant.execution is not None and grant.execution in target.environments:
                 outcome = _combine_outcomes(outcome, "host_enforced")
                 mechanism = f"{mechanism}+environment:{grant.execution}"
+            elif grant.execution is not None:
+                outcome = "unsupported"
+                mechanism = f"target environment `{grant.execution}` is not declared"
             if grant.authorization == "approval_required":
                 outcome = _combine_outcomes(outcome, capabilities.approval.outcome)
                 mechanism = _combine_mechanisms(mechanism, capabilities.approval.mechanism)

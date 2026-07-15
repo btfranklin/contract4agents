@@ -125,12 +125,12 @@ eval case through `FileEvalProvider`, assesses trace completeness, expectations,
 controls, and quality, and writes a deterministic JSON report. Any violated or
 unverified trial or failed threshold produces a nonzero exit.
 
-## `monitor [ROOT]`
+## `assess [ROOT]`
 
 Apply the same contract control assessor to an existing normalized trace.
 
 ```bash
-contract4agents monitor agent_contracts \
+contract4agents assess agent_contracts \
   --target openai \
   --profile production \
   --trace run.trace.jsonl
@@ -144,8 +144,10 @@ Options:
 - `--run-id ID`: optional run selection.
 
 Every control result is printed. Violated or unverified controls produce a
-nonzero exit. Monitoring derives behavioral requirements from contracts; there
-is no separate behavioral rule file.
+nonzero exit. Assessment derives behavioral requirements from contracts; there
+is no separate behavioral rule file. A continuous monitoring service may run
+this assessment whenever a complete trace arrives, but the command itself does
+not watch a live system.
 
 ## `assure [ROOT]`
 

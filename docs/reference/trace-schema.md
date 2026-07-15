@@ -75,7 +75,7 @@ parent references, malformed IDs, and non-finite timestamps.
 - `quality_id`: `quality:<agent>:<rubric>`
 - `control_ids`: zero or more `control:<...>` IDs
 
-These references let evals, monitors, diffs, and assurance joins survive source
+These references let evals, assessments, diffs, and assurance joins survive source
 file reordering and display-name ambiguity.
 
 ## Provider Correlation
