@@ -1,0 +1,118 @@
+# Complete current Contract4Agents syntax surface.
+type ResearchRequest:
+    topic: string
+    as_of: datetime?
+    tags: list[string]
+    metadata: map[string,string]
+    limit: integer = 5
+    threshold: float = 0.75
+    current: boolean = true
+
+type ResearchResult:
+    summary: string
+    evidence_ids: list[string]
+
+tool sources.search(query: string, as_of: datetime) -> ResearchResult:
+    description = "Search current sources."
+    side_effect = false
+
+datasource accounts.profile(
+    account_id: string,
+) -> ResearchResult:
+    description = "Resolve the account profile."
+    render = markdown
+    cache = run
+
+external_context current_account -> ResearchResult:
+    description = "The current host-owned account."
+    sensitivity = confidential
+    render = json
+
+isolation EvidenceWorker:
+    context = explicit_only
+    capabilities = declared_only
+    state = fresh
+    filesystem = inherited_read_only
+    network = allowlisted
+    secrets = none
+    return = final_output_only
+
+agent EvidenceAnalyst(request: ResearchRequest) -> ResearchResult:
+    use sources.search:
+        availability = enabled
+        authorization = preapproved
+        execution = host
+    context account: ResearchResult from external current_account
+    context profile: ResearchResult from datasource accounts.profile:
+        map account_id = input.request.topic
+    goal = "Find evidence."
+    guidance = [
+        "Treat control runtime trace.tool_called as prose here.",
+    ]
+
+agent ResearchLead(request: ResearchRequest) -> ResearchResult:
+    use sources.search:
+        availability = enabled
+        authorization = approval_required
+        execution = provider_hosted
+        isolation = EvidenceWorker
+    goal = "Produce the final result."
+
+composition investigate from ResearchLead to EvidenceAnalyst:
+    mode = delegate
+    description = "Delegate focused evidence collection."
+    history = summary
+    map request = input.request
+    isolation = EvidenceWorker
+
+control evidence_required for ResearchLead:
+    severity = high
+    required = true
+    audience = [adapter, host, evaluator, reviewer]
+    assessment = runtime
+    when = trace.tool_called(sources.search)
+    require = trace.agent_called(EvidenceAnalyst) and trace.approval_granted(sources.search)
+    expected_evidence = [tool.completed]
+
+control approved_search_only for ResearchLead:
+    severity = high
+    required = true
+    audience = [adapter, host, evaluator, reviewer]
+    assessment = runtime
+    require = forbid(tool.sources.search unless approved_by_human)
+
+control evidence_when_searching for ResearchLead:
+    severity = medium
+    required = true
+    audience = [adapter, host, evaluator, reviewer]
+    assessment = post_run
+    require = when(trace.tool_called(sources.search), expect(output.summary contains "evidence"))
+
+quality evidence_backed for ResearchLead:
+    rubric = "The result is supported by evidence."
+    audience = [evaluator, reviewer]
+
+operational_control latency for ResearchLead:
+    severity = medium
+    window = 15m
+    require = p95(trace.duration) < 10s
+
+eval current_evidence for ResearchLead:
+    given request = ResearchRequest.fixture("current")
+    expect output conforms ResearchResult
+    expect quality(evidence_backed)
+
+run_spec ResearchRun:
+    stages = [
+        evidence: EvidenceAnalyst -> ResearchResult,
+        optional_review?: EvidenceAnalyst -> ResearchResult,
+        repeated_checks+: EvidenceAnalyst -> ResearchResult,
+        synthesis: ResearchLead -> ResearchResult,
+    ]
+    derived_values = [
+        evidence_ids: list[string],
+    ]
+    assertions = [
+        expect(trace.called_before(EvidenceAnalyst, ResearchLead)),
+        expect(value.evidence_ids subset_of value.evidence_ids),
+    ]

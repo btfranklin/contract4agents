@@ -7,28 +7,115 @@
     {"include": "#strings"},
     {"include": "#declarations"},
     {"include": "#relationships"},
+    {"include": "#run-spec-entries"},
+    {"include": "#parameters"},
+    {"include": "#typed-members"},
     {"include": "#assignments"},
     {"include": "#expressions"},
+    {"include": "#assignment-operators"},
     {"include": "#types"},
-    {"include": "#constants"}
+    {"include": "#constants"},
+    {"include": "#punctuation"},
+    {"include": "#dotted-names"}
   ],
   "repository": {
     "comments": {
-      "patterns": [{"name": "comment.line.number-sign.contract4agents", "match": "#.*$"}]
+      "patterns": [
+        {"name": "comment.line.number-sign.contract4agents", "match": "#.*$"}
+      ]
     },
     "strings": {
-      "patterns": [{"name": "string.quoted.double.contract4agents", "match": "\"(?:[^\"\\\\]|\\\\.)*\""}]
+      "patterns": [
+        {"name": "string.quoted.double.contract4agents", "match": "\"(?:[^\"\\\\]|\\\\.)*\""}
+      ]
     },
     "declarations": {
       "patterns": [
         {
-          "name": "meta.declaration.contract4agents",
-          "match": "^\\s*(type|tool|datasource|external_context|agent|composition|isolation|control|quality|operational_control|eval|run_spec)\\s+([A-Za-z_][A-Za-z0-9_.]*)(?:\\s+(for|from|to)\\s+([A-Za-z_][A-Za-z0-9_]*))?",
+          "name": "meta.declaration.type.contract4agents",
+          "match": "^\\s*(type)\\s+([A-Za-z_][A-Za-z0-9_]*)(\\s*:)",
           "captures": {
-            "1": {"name": "keyword.declaration.contract4agents"},
+            "1": {"name": "keyword.declaration.type.contract4agents"},
             "2": {"name": "entity.name.type.contract4agents"},
+            "3": {"name": "punctuation.definition.block.contract4agents"}
+          }
+        },
+        {
+          "name": "meta.declaration.capability.contract4agents",
+          "match": "^\\s*(tool|datasource)\\s+([A-Za-z_][A-Za-z0-9_.]*)(?=\\s*\\()",
+          "captures": {
+            "1": {"name": "keyword.declaration.capability.contract4agents"},
+            "2": {"name": "entity.name.function.capability.contract4agents"}
+          }
+        },
+        {
+          "name": "meta.declaration.external-context.contract4agents",
+          "match": "^\\s*(external_context)\\s+([A-Za-z_][A-Za-z0-9_.]*)\\s*(->)",
+          "captures": {
+            "1": {"name": "keyword.declaration.external-context.contract4agents"},
+            "2": {"name": "entity.name.function.context.contract4agents"},
+            "3": {"name": "keyword.operator.arrow.contract4agents"}
+          }
+        },
+        {
+          "name": "meta.declaration.agent.contract4agents",
+          "match": "^\\s*(agent)\\s+([A-Za-z_][A-Za-z0-9_]*)(?=\\s*\\()",
+          "captures": {
+            "1": {"name": "keyword.declaration.agent.contract4agents"},
+            "2": {"name": "entity.name.type.agent.contract4agents"}
+          }
+        },
+        {
+          "name": "meta.declaration.composition.contract4agents",
+          "match": "^\\s*(composition)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+(from)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+(to)\\s+([A-Za-z_][A-Za-z0-9_]*)(\\s*:)",
+          "captures": {
+            "1": {"name": "keyword.declaration.composition.contract4agents"},
+            "2": {"name": "entity.name.function.composition.contract4agents"},
             "3": {"name": "keyword.control.relationship.contract4agents"},
-            "4": {"name": "entity.name.type.agent.contract4agents"}
+            "4": {"name": "entity.name.type.agent.contract4agents"},
+            "5": {"name": "keyword.control.relationship.contract4agents"},
+            "6": {"name": "entity.name.type.agent.contract4agents"},
+            "7": {"name": "punctuation.definition.block.contract4agents"}
+          }
+        },
+        {
+          "name": "meta.declaration.isolation.contract4agents",
+          "match": "^\\s*(isolation)\\s+([A-Za-z_][A-Za-z0-9_]*)(\\s*:)",
+          "captures": {
+            "1": {"name": "keyword.declaration.isolation.contract4agents"},
+            "2": {"name": "entity.name.type.isolation.contract4agents"},
+            "3": {"name": "punctuation.definition.block.contract4agents"}
+          }
+        },
+        {
+          "name": "meta.declaration.assurance.contract4agents",
+          "match": "^\\s*(control|quality|operational_control)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+(for)\\s+([A-Za-z_][A-Za-z0-9_]*)(\\s*:)",
+          "captures": {
+            "1": {"name": "keyword.declaration.assurance.contract4agents"},
+            "2": {"name": "entity.name.function.assurance.contract4agents"},
+            "3": {"name": "keyword.control.relationship.contract4agents"},
+            "4": {"name": "entity.name.type.agent.contract4agents"},
+            "5": {"name": "punctuation.definition.block.contract4agents"}
+          }
+        },
+        {
+          "name": "meta.declaration.eval.contract4agents",
+          "match": "^\\s*(eval)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+(for)\\s+([A-Za-z_][A-Za-z0-9_]*)(\\s*:)",
+          "captures": {
+            "1": {"name": "keyword.declaration.eval.contract4agents"},
+            "2": {"name": "entity.name.function.eval.contract4agents"},
+            "3": {"name": "keyword.control.relationship.contract4agents"},
+            "4": {"name": "entity.name.type.agent.contract4agents"},
+            "5": {"name": "punctuation.definition.block.contract4agents"}
+          }
+        },
+        {
+          "name": "meta.declaration.run-spec.contract4agents",
+          "match": "^\\s*(run_spec)\\s+([A-Za-z_][A-Za-z0-9_]*)(\\s*:)",
+          "captures": {
+            "1": {"name": "keyword.declaration.run-spec.contract4agents"},
+            "2": {"name": "entity.name.function.run-spec.contract4agents"},
+            "3": {"name": "punctuation.definition.block.contract4agents"}
           }
         }
       ]
@@ -46,14 +133,21 @@
         },
         {
           "name": "meta.relationship.context.contract4agents",
-          "match": "^\\s*(context)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(:)\\s*([^\\s]+)\\s+(from)\\s+(invocation|parent|handoff|stage|datasource|external)(?:\\s+([A-Za-z_][A-Za-z0-9_.]*))?",
+          "match": "^\\s*(context)\\s+([A-Za-z_][A-Za-z0-9_]*)(\\s*:)",
           "captures": {
             "1": {"name": "keyword.control.context.contract4agents"},
             "2": {"name": "variable.other.context.contract4agents"},
-            "4": {"name": "entity.name.type.contract4agents"},
-            "5": {"name": "keyword.control.relationship.contract4agents"},
-            "6": {"name": "constant.language.origin.contract4agents"},
-            "7": {"name": "support.function.capability.contract4agents"}
+            "3": {"name": "punctuation.separator.type.contract4agents"}
+          }
+        },
+        {
+          "name": "meta.relationship.context-origin.contract4agents",
+          "match": "\\b(from)\\s+(invocation|parent|handoff|stage|datasource|external)(?:\\s+([A-Za-z_][A-Za-z0-9_.]*))?(\\s*:)?",
+          "captures": {
+            "1": {"name": "keyword.control.relationship.contract4agents"},
+            "2": {"name": "constant.language.origin.contract4agents"},
+            "3": {"name": "support.function.capability.contract4agents"},
+            "4": {"name": "punctuation.definition.block.contract4agents"}
           }
         },
         {
@@ -66,6 +160,63 @@
             "4": {"name": "support.variable.mapping.contract4agents"},
             "5": {"name": "punctuation.accessor.contract4agents"},
             "6": {"name": "variable.other.mapping.contract4agents"}
+          }
+        },
+        {
+          "name": "meta.statement.given.contract4agents",
+          "match": "^\\s*(given)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(=)",
+          "captures": {
+            "1": {"name": "keyword.control.given.contract4agents"},
+            "2": {"name": "variable.other.assignment.contract4agents"},
+            "3": {"name": "keyword.operator.assignment.contract4agents"}
+          }
+        }
+      ]
+    },
+    "run-spec-entries": {
+      "patterns": [
+        {
+          "name": "meta.run-spec.stage.contract4agents",
+          "match": "^\\s*([A-Za-z_][A-Za-z0-9_]*)([?+])?(\\s*:)\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(->)\\s*([A-Za-z_][A-Za-z0-9_]*)(?=\\s*,?\\s*(?:#|$))",
+          "captures": {
+            "1": {"name": "entity.name.function.stage.contract4agents"},
+            "2": {"name": "storage.modifier.cardinality.contract4agents"},
+            "3": {"name": "punctuation.separator.type.contract4agents"},
+            "4": {"name": "entity.name.type.agent.contract4agents"},
+            "5": {"name": "keyword.operator.arrow.contract4agents"},
+            "6": {"name": "entity.name.type.contract4agents"}
+          }
+        }
+      ]
+    },
+    "parameters": {
+      "patterns": [
+        {
+          "name": "meta.parameter.contract4agents",
+          "match": "^\\s*([A-Za-z_][A-Za-z0-9_]*)(\\s*:)(?=\\s*[A-Za-z_][A-Za-z0-9_.]*(?:\\[[A-Za-z0-9_.,?\\[\\]]+\\])?\\??\\s*,)",
+          "captures": {
+            "1": {"name": "variable.parameter.contract4agents"},
+            "2": {"name": "punctuation.separator.type.contract4agents"}
+          }
+        },
+        {
+          "name": "meta.parameter.contract4agents",
+          "match": "([A-Za-z_][A-Za-z0-9_]*)(\\s*:)(?=\\s*[A-Za-z_][A-Za-z0-9_.]*(?:\\[[A-Za-z0-9_.,?\\[\\]]+\\])?\\??\\s*(?:,|\\)))",
+          "captures": {
+            "1": {"name": "variable.parameter.contract4agents"},
+            "2": {"name": "punctuation.separator.type.contract4agents"}
+          }
+        }
+      ]
+    },
+    "typed-members": {
+      "patterns": [
+        {
+          "name": "meta.field.contract4agents",
+          "match": "^\\s*([A-Za-z_][A-Za-z0-9_]*)(\\s*:)(?=\\s*[A-Za-z_][A-Za-z0-9_.]*(?:\\[[A-Za-z0-9_.,?\\[\\]]+\\])?\\??)",
+          "captures": {
+            "1": {"name": "variable.other.member.contract4agents"},
+            "2": {"name": "punctuation.separator.type.contract4agents"}
           }
         }
       ]
@@ -82,32 +233,78 @@
         }
       ]
     },
+    "assignment-operators": {
+      "patterns": [
+        {"name": "keyword.operator.assignment.contract4agents", "match": "(?<![=!<>])=(?!=)"}
+      ]
+    },
     "expressions": {
       "patterns": [
         {
           "name": "meta.function.trace.contract4agents",
-          "match": "\\b(trace)(\\.)(called|not_called|called_once|called_times|called_before|called_after|max_calls|not_tool_called_by|tool_called|agent_called|datasource_resolved|approval_requested|approval_granted|approval_denied|contains)\\b",
+          "match": "\\b(trace)(\\.)(called|not_called|called_once|called_times|called_before|called_after|max_calls|not_tool_called_by|tool_called|agent_called|datasource_resolved|approval_requested|approval_granted|approval_denied|guardrail_rejected|contains)\\b",
           "captures": {
             "1": {"name": "support.variable.expression.contract4agents"},
             "2": {"name": "punctuation.accessor.contract4agents"},
             "3": {"name": "support.function.trace.contract4agents"}
           }
         },
-        {"name": "keyword.control.expression.contract4agents", "match": "\\b(expect|require|when|quality)\\b"},
-        {"name": "keyword.operator.expression.contract4agents", "match": "\\b(conforms|contains|excludes|discovers|subset_of|contains_all|equals_set|intersects|disjoint_from)\\b|==|!="}
+        {
+          "name": "meta.reference.expression.contract4agents",
+          "match": "\\b(output|value|hidden_truth|tool)(\\.)([A-Za-z_][A-Za-z0-9_.]*)\\b",
+          "captures": {
+            "1": {"name": "support.variable.expression.contract4agents"},
+            "2": {"name": "punctuation.accessor.contract4agents"},
+            "3": {"name": "variable.other.member.contract4agents"}
+          }
+        },
+        {
+          "name": "meta.reference.trace-property.contract4agents",
+          "match": "\\b(trace)(\\.)(duration)\\b",
+          "captures": {
+            "1": {"name": "support.variable.expression.contract4agents"},
+            "2": {"name": "punctuation.accessor.contract4agents"},
+            "3": {"name": "variable.other.member.contract4agents"}
+          }
+        },
+        {"name": "support.function.fixture.contract4agents", "match": "\\bfixture(?=\\s*\\()"},
+        {"name": "support.function.expression.contract4agents", "match": "\\b(semantic|quality|p95)(?=\\s*\\()"},
+        {"name": "keyword.control.expression.contract4agents", "match": "\\b(expect|require|forbid|when|unless)\\b"},
+        {"name": "constant.language.approval.contract4agents", "match": "\\bapproved_by_human\\b"},
+        {"name": "keyword.operator.expression.contract4agents", "match": "\\b(conforms|contains|excludes|discovers|subset_of|contains_all|equals_set|intersects|disjoint_from)\\b|==|!=|<=|>=|<|>"},
+        {"name": "keyword.operator.logical.contract4agents", "match": "\\band\\b"},
+        {"name": "support.variable.expression.contract4agents", "match": "\\b(output|trace|value|hidden_truth|tool)\\b"}
       ]
     },
     "types": {
       "patterns": [
-        {"name": "support.type.primitive.contract4agents", "match": "\\b(string|integer|float|boolean|datetime|list|map)\\b"},
-        {"name": "entity.name.type.contract4agents", "match": "\\b[A-Z][A-Za-z0-9_]*\\b"}
+        {"name": "storage.type.collection.contract4agents", "match": "\\b(list|map)(?=\\s*\\[)"},
+        {"name": "support.type.primitive.contract4agents", "match": "\\b(string|integer|float|boolean|datetime)\\b"},
+        {"name": "entity.name.type.contract4agents", "match": "\\b[A-Z][A-Za-z0-9_]*\\b"},
+        {"name": "storage.modifier.nullable.contract4agents", "match": "\\?"}
       ]
     },
     "constants": {
       "patterns": [
         {"name": "constant.language.boolean.contract4agents", "match": "\\b(true|false|null)\\b"},
-        {"name": "constant.language.enum.contract4agents", "match": "\\b(enabled|denied|preapproved|approval_required|host|provider_hosted|remote|delegate|handoff|model|adapter|host_attested|post_run|semantic|advisory|reviewer|evaluator)\\b"},
+        {"name": "constant.language.enum.contract4agents", "match": "(?<![A-Za-z0-9_.])(enabled|denied|preapproved|approval_required|host|provider_hosted|remote|delegate|handoff|none|summary|full|markdown|json|text|run|thread|public|internal|confidential|restricted|model|adapter|evaluator|reviewer|static|runtime|host_attested|post_run|semantic|advisory|low|medium|high|critical|explicit_only|inherited|declared_only|fresh|shared|ephemeral|inherited_read_only|allowlisted|final_output_only|full_trace)(?![A-Za-z0-9_.])"},
+        {"name": "constant.other.duration.contract4agents", "match": "\\b[0-9]+(?:\\.[0-9]+)?(?:ms|s|m|h)\\b"},
         {"name": "constant.numeric.contract4agents", "match": "\\b[0-9]+(?:\\.[0-9]+)?\\b"}
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {"name": "keyword.operator.arrow.contract4agents", "match": "->"},
+        {"name": "punctuation.section.group.contract4agents", "match": "[()]"},
+        {"name": "punctuation.section.sequence.contract4agents", "match": "[\\[\\]]"},
+        {"name": "punctuation.separator.sequence.contract4agents", "match": ","},
+        {"name": "punctuation.separator.type.contract4agents", "match": ":"},
+        {"name": "punctuation.accessor.contract4agents", "match": "\\."}
+      ]
+    },
+    "dotted-names": {
+      "patterns": [
+        {"name": "support.function.dotted.contract4agents", "match": "\\b[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)+\\b"}
       ]
     }
   }

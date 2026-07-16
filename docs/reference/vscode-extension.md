@@ -4,6 +4,12 @@ Contract4Agents ships a repo-owned VS Code extension for syntax highlighting.
 It colors `.contract` and `.eval` files only. Diagnostics, completions, hover
 help, and language-server behavior are future work.
 
+The extension recognizes the complete portable language surface: types,
+capabilities, external context, agents and grants, composition, isolation,
+controls, quality, operational controls, evals, run specs, and expressions.
+Target-binding TOML and generated JSON artifacts use VS Code's native language
+support.
+
 ## Install From A Release
 
 Install the latest VSIX from GitHub Releases:
@@ -30,11 +36,27 @@ code --install-extension editors/vscode/dist/contract4agents-vscode-*.vsix
 ```
 
 Generated `.vsix` files are local build output. Do not commit them.
+The tokenizer suite uses full-surface `.contract` and `.eval` fixtures and
+asserts the most specific scope visible to editor themes.
+
+To verify a local package without replacing your installed extension, use
+temporary VS Code state:
+
+```bash
+tmpdir="$(mktemp -d)"
+code --user-data-dir "$tmpdir/user-data" \
+  --extensions-dir "$tmpdir/extensions" \
+  --install-extension editors/vscode/dist/contract4agents-vscode-*.vsix \
+  --force
+code --user-data-dir "$tmpdir/user-data" \
+  --extensions-dir "$tmpdir/extensions" \
+  --list-extensions --show-versions
+```
 
 ## Release Asset
 
-The extension version follows the repository tag. A tag such as `v0.4.0`
-produces `contract4agents-vscode-0.4.0.vsix`.
+The extension version follows the repository tag. A tag such as `vX.Y.Z`
+produces `contract4agents-vscode-X.Y.Z.vsix`.
 
 The tag-triggered `Draft Release Notes` workflow builds the VSIX and attaches it
 to the draft GitHub Release. The Python package publishing workflow remains

@@ -3,8 +3,11 @@
 Syntax highlighting for Contract4Agents `.contract` and `.eval` files.
 
 This repo-first extension recognizes the Contract4Agents source files used by
-the Python toolchain. It provides coloring only; diagnostics, completions,
-hover help, and language-server behavior are future work.
+the Python toolchain. The grammar covers portable types and capabilities,
+agents and grants, context, composition, isolation, controls, quality, evals,
+run specs, and their expression vocabulary. It provides coloring only;
+diagnostics, completions, hover help, and language-server behavior are future
+work.
 
 ## Install From A GitHub Release
 
@@ -25,6 +28,10 @@ from VSIX...** in VS Code.
 
 ```bash
 npm ci
+npm test
 npm run package
 code --install-extension dist/contract4agents-vscode-*.vsix
 ```
+
+Grammar tests tokenize the full current `.contract` and `.eval` surface and
+assert the most specific TextMate scopes exposed to VS Code themes.

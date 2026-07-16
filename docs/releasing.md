@@ -37,6 +37,20 @@ git push origin v0.1.0
    `contract4agents-vscode-X.Y.Z.vsix` as a release asset.
 6. Publish the GitHub Release.
 7. Confirm the `Upload Python Package` workflow completes.
+8. Download the published VSIX into temporary VS Code state, install it, and
+   confirm the reported extension version matches the release tag:
+
+```bash
+tmpdir="$(mktemp -d)"
+gh release download vX.Y.Z --repo btfranklin/contract4agents \
+  --pattern "contract4agents-vscode-X.Y.Z.vsix" --dir "$tmpdir"
+code --user-data-dir "$tmpdir/user-data" \
+  --extensions-dir "$tmpdir/extensions" \
+  --install-extension "$tmpdir/contract4agents-vscode-X.Y.Z.vsix" --force
+code --user-data-dir "$tmpdir/user-data" \
+  --extensions-dir "$tmpdir/extensions" \
+  --list-extensions --show-versions
+```
 
 ## Workflow Boundaries
 

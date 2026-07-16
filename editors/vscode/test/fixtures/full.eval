@@ -1,0 +1,15 @@
+# Complete current eval syntax surface.
+eval evaluates_research for ResearchLead:
+    given request = ResearchRequest.fixture("current")
+    given expected_status = ready
+    given expected_summary = "ready"
+    expect output conforms ResearchResult
+    expect output.summary == "ready"
+    expect output.summary != "blocked"
+    expect output.summary contains "evidence"
+    expect output.summary excludes "speculation"
+    expect output discovers hidden_truth.answer
+    expect trace.tool_called(sources.search)
+    expect trace.guardrail_rejected(safety.output)
+    expect quality(evidence_backed)
+    expect semantic(output, "Evidence is current and well supported.")
