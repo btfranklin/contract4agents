@@ -108,6 +108,20 @@ does not itself watch a live system.
 This prevents the offline and production interpretations of a control from
 drifting apart.
 
+Run specs have a separate post-run assessor:
+
+```python
+assess_run_spec(ir, plan, trace, "ResearchRun", run_spec_evidence)
+```
+
+The host still executes stages, computes derived values, and decides when its
+workflow is terminal. `RunSpecEvidence` supplies typed stage observations and
+an explicit complete, incomplete, or unverified workflow-evidence status.
+`assess_run_spec(...)` validates cardinality, agent and output-type conformance,
+derived values, and declared assertions. It does not execute stages or make
+retry and recovery decisions. A passing control result is not a passing
+run-spec result, and the two result types remain distinct.
+
 ## Assurance Bundles
 
 An assurance bundle is a deterministic evidence package containing:
@@ -116,6 +130,8 @@ An assurance bundle is a deterministic evidence package containing:
 - materialization plan and plan digest;
 - normalized trace JSONL;
 - control results whose reasons and evidence reflect trace completeness;
+- run-spec results for contracts whose selected workflow is declared by a run
+  spec;
 - eval campaign summaries when available;
 - semantic contract or plan diffs when available;
 - explicit diagnostics for absent or inconsistent evidence.
@@ -123,6 +139,12 @@ An assurance bundle is a deterministic evidence package containing:
 Bundle verification checks internal digest references and records missing
 evidence. A bundle is review evidence, not a claim that a legal or regulatory
 standard has been certified.
+
+Run-spec bundle input includes explicit `RunSpecSelection` evidence for every
+run. A selection may name one declared run spec or state that none applied.
+Results are accepted only when their contract, plan, run, and run-spec identity
+matches that selection; their canonical evidence digest binds the exact stage
+outputs and derived values that were assessed.
 
 ## Semantic Diffs
 

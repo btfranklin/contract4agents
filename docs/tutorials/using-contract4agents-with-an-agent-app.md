@@ -84,7 +84,10 @@ registries.
 
 Deterministic branches, loops, retries, checkpoints, stage ordering, and data
 transforms remain ordinary application code. A `run_spec` can verify that
-workflow's stages and trace relations without becoming a switching language.
+workflow's stages, cardinalities, typed outputs, derived values, and trace
+relations without becoming a switching language. The host supplies explicit
+workflow-completeness evidence to `assess_run_spec(...)`; control assessment
+remains a separate operation.
 
 ## Context and Datasources
 

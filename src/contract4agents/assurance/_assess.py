@@ -10,6 +10,7 @@ from contract4agents.ir import CanonicalIR, ControlIR, SemanticId
 from contract4agents.planning import MaterializationPlan
 from contract4agents.tracing import (
     NormalizedTrace,
+    TraceAttempt,
     TraceEvent,
     assess_trace_completeness,
     validate_trace_conformance,
@@ -129,6 +130,106 @@ def _assess_output(control: ControlIR, trace: NormalizedTrace, trace_complete: b
         if event.semantic.agent_id == control.agent_id
         and event.event_type in {"output.accepted", "output.schema_failed"}
     )
+    output_invocations = {
+        TraceAttempt.from_dict(event.data["attempt"]).invocation_id
+        for event in events
+        if event.data.get("attempt") is not None
+    }
+    terminal = tuple(
+        event
+        for event in trace.events
+        if event.event_type == "attempt.selected"
+        and (
+            event.semantic.agent_id == control.agent_id
+            or TraceAttempt.from_dict(event.data.get("attempt")).invocation_id
+            in output_invocations
+        )
+    )
+    if output_invocations and not terminal:
+        return _result(
+            control,
+            "unverified",
+            "Attempt-scoped output evidence requires an explicit terminal-attempt selection.",
+            events,
+        )
+    if terminal:
+        evidence = events + terminal
+        unscoped = tuple(event for event in events if event.data.get("attempt") is None)
+        if unscoped:
+            return _result(
+                control,
+                "unverified",
+                "Output evidence without attempt identity cannot be attributed to the selected terminal attempt.",
+                evidence,
+            )
+        selections: dict[str, list[tuple[TraceAttempt, TraceEvent]]] = {}
+        for event in terminal:
+            attempt = TraceAttempt.from_dict(event.data.get("attempt"))
+            selections.setdefault(attempt.invocation_id, []).append((attempt, event))
+        if any(len(items) != 1 for items in selections.values()):
+            return _result(
+                control,
+                "unverified",
+                "Each invocation must select exactly one terminal attempt.",
+                evidence,
+            )
+        attributed = tuple(
+            (TraceAttempt.from_dict(event.data["attempt"]), event) for event in events
+        )
+        observed_invocations = {attempt.invocation_id for attempt, _ in attributed}
+        if not observed_invocations.issubset(selections):
+            return _result(
+                control,
+                "unverified",
+                "Every invocation with output evidence must select a terminal attempt.",
+                evidence,
+            )
+        assessed_evidence: list[TraceEvent] = []
+        for invocation_id, items in selections.items():
+            selected, selection_event = items[0]
+            selected_events = tuple(
+                event
+                for attempt, event in attributed
+                if attempt.invocation_id == invocation_id
+                and attempt.attempt_id == selected.attempt_id
+            )
+            selected_evidence = selected_events + (selection_event,)
+            assessed_evidence.extend(selected_evidence)
+            outcome = selection_event.data.get("outcome")
+            if outcome not in {"succeeded", "failed"}:
+                return _result(
+                    control,
+                    "unverified",
+                    "A selected terminal attempt has no valid outcome.",
+                    selected_evidence,
+                )
+            if any(event.event_type == "output.schema_failed" for event in selected_events):
+                return _result(
+                    control,
+                    "violated",
+                    "Output schema validation failed for a selected terminal attempt.",
+                    selected_evidence,
+                )
+            if outcome == "failed":
+                return _result(
+                    control,
+                    "unverified",
+                    "A selected terminal attempt failed without output-schema evidence.",
+                    selected_evidence,
+                )
+            if not any(event.event_type == "output.accepted" for event in selected_events):
+                return _result(
+                    control,
+                    "unverified",
+                    "A selected terminal attempt has no output validation evidence.",
+                    selected_evidence,
+                )
+        return _result(
+            control,
+            "passed",
+            "Every selected terminal attempt matched the canonical output schema.",
+            tuple(assessed_evidence),
+        )
     if any(event.event_type == "output.schema_failed" for event in events):
         return _result(control, "violated", "Output schema validation failed.", events)
     if any(event.event_type == "output.accepted" for event in events):

@@ -36,6 +36,61 @@ class TraceRunContext:
         _require_digest("plan_digest", self.plan_digest)
 
 
+@dataclass(frozen=True, order=True)
+class TraceAttempt:
+    """Portable identity for one host-owned attempt within a logical run."""
+
+    invocation_id: str
+    attempt_id: str
+    number: int
+    retry_of: str | None = None
+
+    def __post_init__(self) -> None:
+        _require_text("attempt.invocation_id", self.invocation_id)
+        _require_text("attempt.attempt_id", self.attempt_id)
+        if isinstance(self.number, bool) or not isinstance(self.number, int):
+            raise TypeError("attempt.number must be an integer")
+        if self.number < 1:
+            raise ValueError("attempt.number must be at least 1")
+        if self.retry_of is not None:
+            _require_text("attempt.retry_of", self.retry_of)
+            if self.retry_of == self.attempt_id:
+                raise ValueError("attempt.retry_of must identify an earlier attempt")
+        if self.number == 1 and self.retry_of is not None:
+            raise ValueError("The first attempt cannot retry an earlier attempt")
+        if self.number > 1 and self.retry_of is None:
+            raise ValueError("A retry attempt must identify retry_of")
+
+    def to_dict(self) -> dict[str, object]:
+        result: dict[str, object] = {
+            "attempt_id": self.attempt_id,
+            "invocation_id": self.invocation_id,
+            "number": self.number,
+        }
+        if self.retry_of is not None:
+            result["retry_of"] = self.retry_of
+        return result
+
+    @classmethod
+    def from_dict(cls, value: object) -> TraceAttempt:
+        payload = _require_object("attempt", value)
+        _require_exact_keys(
+            "attempt",
+            payload,
+            required={"attempt_id", "invocation_id", "number"},
+            optional={"retry_of"},
+        )
+        number = payload["number"]
+        if isinstance(number, bool) or not isinstance(number, int):
+            raise TypeError("attempt.number must be an integer")
+        return cls(
+            invocation_id=_require_string("attempt.invocation_id", payload["invocation_id"]),
+            attempt_id=_require_string("attempt.attempt_id", payload["attempt_id"]),
+            number=number,
+            retry_of=_optional_string("attempt.retry_of", payload.get("retry_of")),
+        )
+
+
 @dataclass(frozen=True)
 class TraceSemanticRefs:
     """Stable contract identities associated with an event."""
@@ -263,6 +318,14 @@ class TraceEvent:
         if not math.isfinite(self.timestamp) or self.timestamp < 0:
             raise ValueError("timestamp must be a finite non-negative number")
         object.__setattr__(self, "timestamp", float(self.timestamp))
+        attempt = self.data.get("attempt")
+        if attempt is not None:
+            TraceAttempt.from_dict(attempt)
+        if self.event_type == "attempt.selected":
+            if attempt is None:
+                raise ValueError("attempt.selected requires attempt identity")
+            if self.data.get("outcome") not in {"succeeded", "failed"}:
+                raise ValueError("attempt.selected requires a succeeded or failed outcome")
         object.__setattr__(self, "data", _freeze_object("data", self.data))
         object.__setattr__(self, "provenance", _freeze_object("provenance", self.provenance))
         object.__setattr__(self, "evidence_refs", _normalized_text_set("evidence_refs", self.evidence_refs))
@@ -382,6 +445,10 @@ class NormalizedTrace:
 def _validate_trace(events: tuple[TraceEvent, ...]) -> None:
     by_id: dict[str, TraceEvent] = {}
     contexts: dict[str, TraceRunContext] = {}
+    attempts: dict[tuple[str, str], TraceAttempt] = {}
+    numbers: dict[tuple[str, str, int], str] = {}
+    observed_attempts: set[tuple[str, str]] = set()
+    selections: dict[tuple[str, str], list[TraceAttempt]] = {}
     for event in events:
         if event.event_id in by_id:
             raise ValueError(f"Duplicate trace event_id `{event.event_id}`")
@@ -393,16 +460,56 @@ def _validate_trace(events: tuple[TraceEvent, ...]) -> None:
             raise ValueError(f"Run `{event.context.run_id}` contains mixed plan digests")
         if event.context.thread_id != existing.thread_id:
             raise ValueError(f"Run `{event.context.run_id}` contains mixed thread IDs")
+        attempt_payload = event.data.get("attempt")
+        if attempt_payload is not None:
+            attempt = TraceAttempt.from_dict(attempt_payload)
+            attempt_key = (event.context.run_id, attempt.attempt_id)
+            previous = attempts.setdefault(attempt_key, attempt)
+            if previous != attempt:
+                raise ValueError(
+                    f"Attempt `{attempt.attempt_id}` has inconsistent identity within the trace"
+                )
+            number_key = (event.context.run_id, attempt.invocation_id, attempt.number)
+            numbered = numbers.setdefault(number_key, attempt.attempt_id)
+            if numbered != attempt.attempt_id:
+                raise ValueError(
+                    f"Invocation `{attempt.invocation_id}` has multiple attempt IDs for number {attempt.number}"
+                )
+            if event.event_type == "attempt.selected":
+                selection_key = (event.context.run_id, attempt.invocation_id)
+                selections.setdefault(selection_key, []).append(attempt)
+            else:
+                observed_attempts.add(attempt_key)
+
+    for (run_id, _), attempt in attempts.items():
+        if attempt.retry_of is None:
+            continue
+        parent = attempts.get((run_id, attempt.retry_of))
+        if parent is None:
+            raise ValueError(
+                f"Attempt `{attempt.attempt_id}` references missing retry_of `{attempt.retry_of}`"
+            )
+        if parent.invocation_id != attempt.invocation_id or parent.number + 1 != attempt.number:
+            raise ValueError(
+                f"Attempt `{attempt.attempt_id}` must retry the preceding attempt in its invocation"
+            )
+    for (run_id, invocation_id), selected in selections.items():
+        if len(selected) != 1:
+            raise ValueError(f"Invocation `{invocation_id}` selects multiple terminal attempts")
+        if (run_id, selected[0].attempt_id) not in observed_attempts:
+            raise ValueError(
+                f"Invocation `{invocation_id}` selects an attempt without observed execution evidence"
+            )
 
     for event in events:
         if event.parent_event_id is None:
             continue
-        parent = by_id.get(event.parent_event_id)
-        if parent is None:
+        parent_event = by_id.get(event.parent_event_id)
+        if parent_event is None:
             raise ValueError(
                 f"Event `{event.event_id}` references missing parent_event_id `{event.parent_event_id}`"
             )
-        if parent.context.run_id != event.context.run_id:
+        if parent_event.context.run_id != event.context.run_id:
             raise ValueError(
                 f"Event `{event.event_id}` references a parent from a different run"
             )
@@ -607,6 +714,7 @@ __all__ = [
     "RedactionRule",
     "RedactionState",
     "TraceEvent",
+    "TraceAttempt",
     "TraceRunContext",
     "TraceSemanticRefs",
 ]

@@ -24,12 +24,14 @@ from contract4agents.tracing._models import (
     RedactionMetadata,
     RedactionRule,
     RedactionState,
+    TraceAttempt,
     TraceEvent,
     TraceRunContext,
     TraceSemanticRefs,
 )
 from contract4agents.tracing._openai import (
     OpenAINormalizedTraceProcessor,
+    normalize_openai_exception_responses,
     normalize_openai_response_events,
     resolve_provider_tool_grant,
 )
@@ -59,6 +61,7 @@ __all__ = [
     "RedactionMetadata",
     "RedactionRule",
     "RedactionState",
+    "TraceAttempt",
     "TraceEvent",
     "TraceCompletenessResult",
     "TraceCompletenessStatus",
@@ -72,6 +75,7 @@ __all__ = [
     "export_open_telemetry",
     "load_trace_jsonl",
     "loads_trace_jsonl",
+    "normalize_openai_exception_responses",
     "normalize_openai_response_events",
     "resolve_provider_tool_grant",
     "validate_trace_conformance",

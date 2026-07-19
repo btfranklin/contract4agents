@@ -82,11 +82,14 @@ negative claim when instrumentation coverage is incomplete.
 
 ## Assure
 
-The common assessor compares normalized evidence to controls and reports
-passed, violated, or unverified. Eval campaigns add controlled scenarios,
-repeated trials, semantic judges, metrics, uncertainty, and baseline comparison.
-Assurance bundles combine declared, planned, observed, and assessed truth for
-release review or incident investigation.
+The control assessor compares normalized evidence to controls. A distinct
+run-spec assessor compares host-supplied stage observations, derived values,
+workflow-completeness evidence, and normalized traces to one selected run spec.
+Both report passed, violated, or unverified without executing workflow. Eval
+campaigns add controlled scenarios, repeated trials, semantic judges, metrics,
+uncertainty, and baseline comparison. Assurance bundles keep control and
+run-spec results in separate artifacts while combining declared, planned,
+observed, and assessed truth for release review or incident investigation.
 
 ## Boundaries
 

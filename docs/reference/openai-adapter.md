@@ -216,7 +216,10 @@ processor = OpenAINormalizedTraceProcessor(
 )
 add_trace_processor(processor)
 
-# Run the native graph, then obtain strict normalized evidence.
+# Route only this SDK run to this globally registered processor.
+with processor.capture():
+    result = await Runner.run(agent, input=prompt)
+
 trace = processor.normalized_trace()
 ```
 
@@ -224,6 +227,37 @@ The processor maps native agent, function-tool, delegation, and handoff spans
 to stable contract IDs, adds output-validation evidence for successful agent
 spans, and preserves provider trace/span correlation. It intentionally does not
 copy raw provider inputs or outputs into normalized payloads.
+
+For a retried host invocation, bind portable attempt identity around each
+runner call. The binding annotates evidence but does not catch, retry, or select
+an attempt:
+
+```python
+from contract4agents.tracing import TraceAttempt
+
+attempt = TraceAttempt("planner:1", "planner:attempt:1", 1)
+with processor.bind_attempt(attempt):
+    result = await Runner.run(planner, input=prompt)
+
+processor.normalize_response_events(
+    result.raw_responses,
+    agent="Planner",
+    attempt=attempt,
+)
+```
+
+If the runner raises, call
+`processor.normalize_exception_responses(exception, agent=..., attempt=...)`
+before retrying or reraising so provider-hosted call evidence preserved in
+`exception.run_data.raw_responses` is not lost. This helper is deliberately
+duck-typed and does not classify a general Agents SDK exception as an output
+schema failure.
+
+The host may record its narrower validation and terminal-selection decisions
+with `record_output_schema_failure(...)` and `record_terminal_attempt(...)`.
+Output controls assess the explicitly selected attempt for each invocation;
+earlier failed attempts remain auditable. Contract4Agents does not decide when
+an attempt is terminal or whether a retry is allowed.
 
 After a run that may use an OpenAI-hosted tool, normalize the SDK model
 responses into the same processor:
@@ -236,14 +270,25 @@ processor.normalize_response_events(
 trace = processor.normalized_trace()
 ```
 
-OpenAI `web_search_call` items are matched fail-closed against the reviewed
-plan. Exactly one enabled provider-hosted grant must match the agent plus the
-`openai:web_search` locator. A successful match emits canonical
-`tool.completed` evidence; zero or multiple matches emit
-`capability.undeclared`, which trace conformance rejects before assurance or
-eval scoring. Provider response/request/call correlation and model metadata are
-preserved when available, while provider prompts, search actions, and results
+OpenAI provider-hosted call items are matched fail-closed against the reviewed
+plan. The currently materialized `web_search_call` must match exactly one
+enabled provider-hosted grant for the agent plus the `openai:web_search`
+locator. A successful match emits canonical `tool.completed` evidence; zero or
+multiple matches, other recognized hosted calls, and unknown call-like items
+emit `capability.undeclared`, which trace conformance rejects before assurance
+or eval scoring. Provider response/request/call correlation and model metadata
+are preserved when available, while provider prompts, actions, and results
 remain outside the normalized payload.
+
+Supported hosted-call status is preserved: completed or succeeded calls emit
+`tool.completed`, failed, cancelled, or incomplete calls emit `tool.failed`,
+and other nonterminal statuses emit `tool.started`. Hosted MCP discovery items
+such as `mcp_list_tools` are recognized as unsupported evidence rather than
+silently discarded.
+
+Function, custom-tool, computer, shell, and patch calls are dispatched by the
+host or SDK and therefore remain on their existing span or host-evidence paths.
+Messages, reasoning, and other non-call output items are intentionally ignored.
 
 ## Offline and Live Validation
 

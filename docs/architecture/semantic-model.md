@@ -333,8 +333,11 @@ objects. A provider-specific callback is an explicit nonportable target binding,
 not portable composition source.
 
 Deterministic ordering, branches, loops, retries, checkpoints, and data
-transformations remain host code. `run_spec` verifies that host-owned workflow;
-it does not execute it.
+transformations remain host code. `run_spec` verifies supplied evidence from
+that host-owned workflow through a distinct post-run assessment API; it does
+not execute the workflow. The host must explicitly attest whether its workflow
+evidence is complete. Missing stages are violations only for complete workflow
+evidence and are otherwise unverified.
 
 ### Isolation
 

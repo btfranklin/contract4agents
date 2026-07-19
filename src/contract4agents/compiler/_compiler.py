@@ -193,11 +193,7 @@ def _instructions(agent: AgentIR, ir: CanonicalIR) -> str:
     guidance = [item.text for item in agent.guidance if "model" in item.audience]
     if guidance:
         lines.extend(["", "## Guidance", "", *(f"- {item}" for item in guidance)])
-    edges = [
-        edge
-        for edge in ir.composition.values()
-        if edge.source_agent_id == agent.id and "model" in edge.audience
-    ]
+    edges = [edge for edge in ir.composition.values() if edge.source_agent_id == agent.id and "model" in edge.audience]
     if edges:
         lines.extend(["", "## Available delegation", ""])
         for edge in edges:
@@ -205,9 +201,7 @@ def _instructions(agent: AgentIR, ir: CanonicalIR) -> str:
             label = "Hand off to" if edge.mode == "handoff" else "Delegate to"
             lines.append(f"- {label} `{target.name}`: {edge.description}")
     model_controls = [
-        control
-        for control in ir.controls.values()
-        if control.agent_id == agent.id and "model" in control.audience
+        control for control in ir.controls.values() if control.agent_id == agent.id and "model" in control.audience
     ]
     if model_controls:
         lines.extend(["", "## Required controls", ""])
@@ -235,18 +229,21 @@ def _generated_docs(ir: CanonicalIR, digest: str) -> FrozenMap[PurePosixPath, st
             values = ", ".join(f"`{value}`" for value in declaration.values)
             summary.append(f"- `{declaration.name}` enum: {values}")
         else:
-            fields = ", ".join(
-                f"`{field.name}: {format_type_ref(field.type_ref)}`" for field in declaration.fields
-            )
+            fields = ", ".join(f"`{field.name}: {format_type_ref(field.type_ref)}`" for field in declaration.fields)
             summary.append(f"- `{declaration.name}`: {fields or 'empty object'}")
     summary.extend(["", "## Capabilities", ""])
     for capability in ir.capabilities.values():
         summary.append(f"- `{capability.id}` ({capability.kind})")
     summary.extend(["", "## Controls", ""])
     for control in ir.controls.values():
-        summary.append(
-            f"- `{control.id}` ({'required' if control.required else 'advisory'}, {control.assessment})"
-        )
+        summary.append(f"- `{control.id}` ({'required' if control.required else 'advisory'}, {control.assessment})")
+    if ir.run_specs:
+        summary.extend(["", "## Run specs", ""])
+        for run_spec in ir.run_specs.values():
+            stages = ", ".join(f"`{stage.name}` ({stage.cardinality})" for stage in run_spec.stages)
+            summary.append(f"- `{run_spec.id}` stages: {stages or 'none'}")
+            for value in run_spec.derived_values:
+                summary.append(f"  - derived `value.{value.name}: {value.type_name}`")
     docs: list[tuple[PurePosixPath, str]] = [(PurePosixPath("summary.md"), "\n".join(summary) + "\n")]
     for agent in ir.agents.values():
         docs.append((PurePosixPath(f"agents/{agent.name}.md"), _agent_doc(agent, ir, digest)))

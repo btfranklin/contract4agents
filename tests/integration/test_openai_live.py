@@ -68,15 +68,16 @@ async def test_contract_first_incident_graph_runs_through_openai(
     )
     set_trace_processors([processor])
     prompt = PROMPT.read_text(encoding="utf-8").replace("{{CONTEXT}}", rendered_context)
-    result = await Runner.run(
-        system.agents["IncidentCommander"],
-        prompt,
-        max_turns=12,
-        run_config=RunConfig(
-            workflow_name="Contract4Agents live Incident Command",
-            trace_include_sensitive_data=False,
-        ),
-    )
+    with processor.capture():
+        result = await Runner.run(
+            system.agents["IncidentCommander"],
+            prompt,
+            max_turns=12,
+            run_config=RunConfig(
+                workflow_name="Contract4Agents live Incident Command",
+                trace_include_sensitive_data=False,
+            ),
+        )
 
     assert result.final_output is not None
     assert result.final_output.summary
@@ -124,15 +125,16 @@ async def test_openai_hosted_web_search_normalizes_to_exact_grant() -> None:
     # The SDK only attaches the provider response (including its model field)
     # when data capture is enabled. Our sole processor deliberately retains
     # correlation and model metadata while excluding response input/output.
-    result = await Runner.run(
-        system.agents["CurrentTruthScout"],
-        WEB_SEARCH_PROMPT.read_text(encoding="utf-8"),
-        max_turns=4,
-        run_config=RunConfig(
-            workflow_name="Contract4Agents live hosted web search",
-            trace_include_sensitive_data=True,
-        ),
-    )
+    with processor.capture():
+        result = await Runner.run(
+            system.agents["CurrentTruthScout"],
+            WEB_SEARCH_PROMPT.read_text(encoding="utf-8"),
+            max_turns=4,
+            run_config=RunConfig(
+                workflow_name="Contract4Agents live hosted web search",
+                trace_include_sensitive_data=True,
+            ),
+        )
     processor.normalize_response_events(
         result.raw_responses,
         agent="CurrentTruthScout",

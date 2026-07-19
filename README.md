@@ -164,6 +164,12 @@ stable semantic IDs, provider-native correlation, provenance, and audience-safe
 redaction metadata. The same control assessor is used for controlled evals and
 imported production traces.
 
+Run specs have a separate post-run assessor for host-supplied stage outputs,
+derived values, cardinality, assertions, and explicit workflow-completeness
+evidence. Controls and run specs remain distinct assurance results. Retried
+invocations can carry portable attempt identity and an explicit selected
+terminal attempt without moving retry or recovery decisions out of host code.
+
 `.eval` files name scenarios and expectations. The target/profile eval workflow
 derives its agent, capability, grant, control, and telemetry inventory from the
 contract and plan; users do not restate the runtime in a fixture manifest.
@@ -198,6 +204,7 @@ See [the examples guide](examples/README.md) for the common project structure.
 - [CLI Reference](docs/reference/cli.md)
 - [OpenAI Target Reference](docs/reference/openai-adapter.md)
 - [Trace Schema](docs/reference/trace-schema.md)
+- [Run Specs](docs/reference/run-specs.md)
 - [Evals, Controls, and Assurance](docs/evaluation/evals-controls-assurance.md)
 - [Documentation Index](docs/index.md)
 - [Vision](VISION.md)

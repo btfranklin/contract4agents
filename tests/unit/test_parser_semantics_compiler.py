@@ -120,6 +120,72 @@ def test_build_artifacts_accepts_canonical_ir_only() -> None:
     assert "summary.md" in {str(path) for path in artifacts.docs}
 
 
+def test_run_spec_ir_retains_derived_values_and_checks_agent_output_signature(tmp_path: Path) -> None:
+    (tmp_path / "run.contract").write_text(
+        """\
+type Expected:
+    value: string
+
+type Wrong:
+    value: string
+
+agent Worker() -> Expected:
+    goal = "Return a value."
+
+run_spec Run:
+    stages = [
+        work: Worker -> Wrong,
+    ]
+    derived_values = [
+        allowed_ids: list[string],
+    ]
+"""
+    )
+
+    project = parse_project(tmp_path)
+    result = analyze_project(project)
+
+    assert [(item.code, item.message) for item in result.diagnostics] == [
+        (
+            "SEM092",
+            "Run spec `Run` stage `work` output type `Wrong` does not match agent `Worker` output type `Expected`",
+        )
+    ]
+
+    project.run_specs["Run"].stages[0] = "work: Worker -> Expected"
+    ir = build_canonical_ir(project)
+    run_spec = next(iter(ir.run_specs.values()))
+
+    assert [(item.name, item.type_name) for item in run_spec.derived_values] == [("allowed_ids", "list[string]")]
+    artifacts = build_artifacts(ir)
+    summary_path = next(path for path in artifacts.docs if str(path) == "summary.md")
+    assert "derived `value.allowed_ids: list[string]`" in artifacts.docs[summary_path]
+
+
+def test_run_spec_data_relations_require_declared_derived_values(tmp_path: Path) -> None:
+    (tmp_path / "run.contract").write_text(
+        """\
+type Expected:
+    value: string
+
+agent Worker() -> Expected:
+    goal = "Return a value."
+
+run_spec Run:
+    stages = [
+        work: Worker -> Expected,
+    ]
+    assertions = [
+        expect(value.observed_ids subset_of value.allowed_ids),
+    ]
+"""
+    )
+
+    diagnostics = analyze_project(parse_project(tmp_path)).diagnostics
+
+    assert [item.code for item in diagnostics] == ["SEM091", "SEM091"]
+
+
 def test_compiler_emits_standalone_and_referenced_enum_schemas(tmp_path: Path) -> None:
     (tmp_path / "enum.contract").write_text(
         """\

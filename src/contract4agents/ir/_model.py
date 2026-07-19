@@ -11,7 +11,7 @@ from contract4agents.ir._collections import FrozenJsonValue, FrozenMap, freeze_j
 from contract4agents.ir._ids import SemanticId, SemanticKind
 from contract4agents.ir._type_refs import TypeRef
 
-IR_VERSION = "2"
+IR_VERSION = "3"
 
 Audience = Literal["model", "adapter", "host", "evaluator", "reviewer"]
 CapabilityKind = Literal["tool", "datasource"]
@@ -388,16 +388,32 @@ class RunSpecStageIR:
 
 
 @dataclass(frozen=True)
+class RunSpecDerivedValueIR:
+    name: str
+    type_name: str
+
+    def __post_init__(self) -> None:
+        _require_name(self.name, "run-spec derived value")
+        if not self.type_name:
+            raise ValueError("Run-spec derived-value type cannot be empty")
+
+
+@dataclass(frozen=True)
 class RunSpecIR:
     id: SemanticId = field(metadata={"canonical": False})
     name: str
     stages: tuple[RunSpecStageIR, ...]
+    derived_values: tuple[RunSpecDerivedValueIR, ...] = ()
     assertions: tuple[str, ...] = ()
     span: SourceSpan | None = field(default=None, metadata={"canonical": False})
 
     def __post_init__(self) -> None:
         _validate_identity(self.id, "run_spec", self.name)
         _unique_names((stage.name for stage in self.stages), f"run spec `{self.name}` stages")
+        _unique_names(
+            (value.name for value in self.derived_values),
+            f"run spec `{self.name}` derived values",
+        )
 
 
 class _Entity(Protocol):
@@ -546,6 +562,7 @@ __all__ = [
     "ParameterIR",
     "QualityIR",
     "RunSpecIR",
+    "RunSpecDerivedValueIR",
     "RunSpecStageIR",
     "Severity",
     "SourceSpan",

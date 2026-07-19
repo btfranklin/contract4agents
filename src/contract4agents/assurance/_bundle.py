@@ -11,10 +11,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from contract4agents.assurance._models import ControlResult
+from contract4agents.assurance._run_specs import RunSpecResult, RunSpecSelection
 from contract4agents.ir import CanonicalIR, FrozenMap, canonical_ir_data, contract_digest
 from contract4agents.planning import MaterializationPlan, materialization_plan_data
+from contract4agents.tracing import loads_trace_jsonl
 
-BUNDLE_VERSION = "1"
+BUNDLE_VERSION = "2"
 
 
 @dataclass(frozen=True)
@@ -48,14 +50,14 @@ def assemble_assurance_bundle(
     control_results: tuple[ControlResult, ...] | None,
     eval_results: object | None,
     provenance: object | None,
+    run_spec_results: tuple[RunSpecResult, ...] | None = None,
+    run_spec_selections: tuple[RunSpecSelection, ...] | None = None,
 ) -> AssuranceBundle:
     """Assemble all declared, planned, observed, and assessed evidence without timestamps."""
 
     expected_digest = contract_digest(contract)
     if plan.contract_digest != expected_digest:
-        raise ValueError(
-            f"Plan contract digest `{plan.contract_digest}` does not match contract `{expected_digest}`"
-        )
+        raise ValueError(f"Plan contract digest `{plan.contract_digest}` does not match contract `{expected_digest}`")
     diagnostics: list[BundleDiagnostic] = []
     trace = _required_text(
         "normalized-trace.jsonl",
@@ -72,6 +74,70 @@ def assemble_assurance_bundle(
         controls = {"results": [], "status": "unverified"}
     else:
         controls = {"results": [item.to_dict() for item in control_results]}
+    declared_ids = {str(item.id) for item in contract.run_specs.values()}
+    selections = tuple(run_spec_selections or ())
+    results = tuple(run_spec_results or ())
+    selection_runs = [item.run_id for item in selections]
+    if len(selection_runs) != len(set(selection_runs)):
+        raise ValueError("Run-spec selections must have unique run_id values")
+    trace_run_ids: set[str] = set()
+    if contract.run_specs and trace:
+        trace_run_ids = set(loads_trace_jsonl(trace).run_ids)
+    selection_coverage_incomplete = bool(contract.run_specs) and (
+        run_spec_selections is None or set(selection_runs) != trace_run_ids
+    )
+    if selection_coverage_incomplete:
+        diagnostics.append(
+            BundleDiagnostic(
+                "BUNDLE013",
+                "Run-spec selection evidence must identify one selection for every run in the normalized trace.",
+                "run-spec-results.json",
+            )
+        )
+    unknown_selections = sorted(
+        item.run_spec_id
+        for item in selections
+        if item.run_spec_id is not None and item.run_spec_id not in declared_ids
+    )
+    if unknown_selections:
+        raise ValueError(
+            f"Run-spec selections reference undeclared IDs: {', '.join(unknown_selections)}"
+        )
+    for result in results:
+        if result.contract_digest != expected_digest or result.plan_digest != plan.plan_digest:
+            raise ValueError(
+                f"Run-spec result `{result.run_spec_id}` does not match the bundle contract and plan"
+            )
+        if result.run_spec_id not in declared_ids:
+            raise ValueError(
+                f"Run-spec assurance result references undeclared ID: {result.run_spec_id}"
+            )
+    selected_keys = {
+        (item.run_id, item.run_spec_id)
+        for item in selections
+        if item.run_spec_id is not None
+    }
+    result_keys = [(item.run_id, item.run_spec_id) for item in results]
+    if len(result_keys) != len(set(result_keys)):
+        raise ValueError("Run-spec assurance results must be unique per run and run_spec_id")
+    unexpected_results = sorted(set(result_keys) - selected_keys)
+    if unexpected_results:
+        raise ValueError("Run-spec assurance results were supplied without matching selection evidence")
+    missing_results = sorted(selected_keys - set(result_keys))
+    if missing_results:
+        diagnostics.append(
+            BundleDiagnostic(
+                "BUNDLE014",
+                "Assessment evidence is missing for one or more selected run specs.",
+                "run-spec-results.json",
+            )
+        )
+    run_specs: dict[str, object] = {
+        "results": [item.to_dict() for item in results],
+        "selections": [item.to_dict() for item in selections],
+    }
+    if selection_coverage_incomplete or missing_results:
+        run_specs["status"] = "unverified"
     if eval_results is None:
         diagnostics.append(BundleDiagnostic("BUNDLE003", "Eval evidence is missing.", "eval-results.json"))
         eval_results = {"campaigns": [], "status": "unverified"}
@@ -84,10 +150,17 @@ def assemble_assurance_bundle(
         "materialization-plan.json": _pretty_json(materialization_plan_data(plan)),
         "normalized-trace.jsonl": trace,
         "control-results.json": _pretty_json(controls),
+        "run-spec-results.json": _pretty_json(run_specs),
         "eval-results.json": _pretty_json(eval_results),
         "provenance.json": _pretty_json(provenance),
     }
-    files["summary.html"] = _summary_html(contract, plan, control_results or (), diagnostics)
+    files["summary.html"] = _summary_html(
+        contract,
+        plan,
+        control_results or (),
+        run_spec_results or (),
+        diagnostics,
+    )
     attestation = {
         "bundle_version": BUNDLE_VERSION,
         "complete": not diagnostics,
@@ -178,14 +251,18 @@ def _summary_html(
     contract: CanonicalIR,
     plan: MaterializationPlan,
     results: tuple[ControlResult, ...],
+    run_spec_results: tuple[RunSpecResult, ...],
     diagnostics: list[BundleDiagnostic],
 ) -> str:
     counts = {"passed": 0, "violated": 0, "unverified": 0}
     for result in results:
         counts[result.status] += 1
+    run_spec_counts = {"passed": 0, "violated": 0, "unverified": 0}
+    for run_spec_result in run_spec_results:
+        run_spec_counts[run_spec_result.status] += 1
     missing = "".join(f"<li>{html.escape(item.message)}</li>" for item in diagnostics) or "<li>None</li>"
     return (
-        "<!doctype html>\n<html lang=\"en\"><meta charset=\"utf-8\">"
+        '<!doctype html>\n<html lang="en"><meta charset="utf-8">'
         "<title>Contract4Agents assurance summary</title>"
         "<body><main><h1>Assurance summary</h1>"
         f"<p>Contract <code>{html.escape(contract_digest(contract))}</code></p>"
@@ -193,6 +270,8 @@ def _summary_html(
         f"<p>{len(contract.agents)} agents; {len(contract.controls)} declared or derived controls.</p>"
         f"<p>Passed: {counts['passed']}; violated: {counts['violated']}; "
         f"unverified: {counts['unverified']}.</p>"
+        f"<p>Run specs passed: {run_spec_counts['passed']}; violated: "
+        f"{run_spec_counts['violated']}; unverified: {run_spec_counts['unverified']}.</p>"
         f"<h2>Missing evidence</h2><ul>{missing}</ul>"
         "</main></body></html>\n"
     )

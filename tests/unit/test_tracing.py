@@ -21,6 +21,7 @@ from contract4agents.tracing import (
     RecordingNormalizedTraceSink,
     RedactionMetadata,
     RedactionRule,
+    TraceAttempt,
     TraceCompletenessResult,
     TraceConformanceError,
     TraceEvent,
@@ -32,6 +33,7 @@ from contract4agents.tracing import (
     export_open_telemetry,
     load_trace_jsonl,
     loads_trace_jsonl,
+    normalize_openai_exception_responses,
     normalize_openai_response_events,
     resolve_provider_tool_grant,
     validate_trace_conformance,
@@ -123,6 +125,23 @@ def test_trace_round_trips_as_deterministic_jsonl(tmp_path: Path) -> None:
     assert load_trace_jsonl(path) == trace
     with pytest.raises(FrozenInstanceError):
         trace.events[0].event_id = "changed"  # type: ignore[misc]
+
+
+def test_trace_attempt_round_trips_as_validated_event_data() -> None:
+    attempt = TraceAttempt("stage:research:1", "attempt-1", 1)
+    event = _event(
+        "evt-attempt",
+        "agent.started",
+        data={"attempt": attempt.to_dict()},
+    )
+
+    assert TraceAttempt.from_dict(event.data["attempt"]) == attempt
+    assert loads_trace_jsonl(dumps_trace_jsonl(NormalizedTrace((event,)))).events[0] == event
+
+    with pytest.raises(ValueError, match="must identify retry_of"):
+        TraceAttempt("stage:research:1", "attempt-2", 2)
+    with pytest.raises(ValueError, match="first attempt cannot retry"):
+        TraceAttempt("stage:research:1", "attempt-1", 1, retry_of="attempt-0")
 
 
 def test_atomic_trace_writer_preserves_previous_file_on_replace_failure(
@@ -243,12 +262,14 @@ def test_openai_processor_correlates_native_spans_without_copying_provider_paylo
         ),
     )
 
-    processor.on_span_start(agent)
-    processor.on_span_start(tool)
-    processor.on_span_end(tool)
-    processor.on_span_end(agent)
-    processor.on_trace_start(SimpleNamespace())
-    processor.on_trace_end(SimpleNamespace())
+    with processor.capture():
+        provider_trace = SimpleNamespace(trace_id="trace-provider")
+        processor.on_trace_start(provider_trace)
+        processor.on_span_start(agent)
+        processor.on_span_start(tool)
+        processor.on_span_end(tool)
+        processor.on_span_end(agent)
+        processor.on_trace_end(provider_trace)
     processor.force_flush()
     processor.shutdown()
     trace = processor.normalized_trace()
@@ -268,6 +289,46 @@ def test_openai_processor_correlates_native_spans_without_copying_provider_paylo
     assert trace.events[1].provider.trace_id == "trace-provider"
     assert trace.events[1].parent_event_id == "openai:span-agent:started"
     assert all("sensitive" not in json.dumps(event.to_dict()) for event in trace.events)
+
+
+def test_openai_processors_capture_only_their_bound_sdk_trace() -> None:
+    project = ROOT / "examples" / "incident-command"
+    artifacts = compile_project(project)
+    system = materialize(project, "openai", "test")
+    first = OpenAINormalizedTraceProcessor(artifacts.ir, system.plan, run_id="run-first")
+    second = OpenAINormalizedTraceProcessor(artifacts.ir, system.plan, run_id="run-second")
+    processors = (first, second)
+
+    def dispatch(trace_id: str, span_id: str) -> None:
+        provider_trace = SimpleNamespace(trace_id=trace_id)
+        span = SimpleNamespace(
+            trace_id=trace_id,
+            span_id=span_id,
+            parent_id=None,
+            started_at="2026-07-15T12:00:00Z",
+            ended_at="2026-07-15T12:00:01Z",
+            error=None,
+            span_data=SimpleNamespace(type="agent", name="IncidentCommander"),
+        )
+        for item in processors:
+            item.on_trace_start(provider_trace)
+        for item in processors:
+            item.on_span_start(span)
+            item.on_span_end(span)
+        for item in processors:
+            item.on_trace_end(provider_trace)
+
+    with first.capture():
+        dispatch("trace-first", "span-first")
+    with second.capture():
+        dispatch("trace-second", "span-second")
+
+    assert {event.provider.trace_id for event in first.normalized_trace().events} == {
+        "trace-first"
+    }
+    assert {event.provider.trace_id for event in second.normalized_trace().events} == {
+        "trace-second"
+    }
 
 
 def test_openai_response_normalization_resolves_hosted_grants_and_excludes_payloads() -> None:
@@ -375,8 +436,12 @@ def test_openai_processor_retains_model_metadata_without_generation_payloads() -
         ),
     )
 
-    processor.on_span_start(generation)
-    processor.on_span_end(generation)
+    with processor.capture():
+        provider_trace = SimpleNamespace(trace_id="trace-generation")
+        processor.on_trace_start(provider_trace)
+        processor.on_span_start(generation)
+        processor.on_span_end(generation)
+        processor.on_trace_end(provider_trace)
     rendered = json.dumps(
         [event.to_dict() for event in processor.normalized_trace().events]
     )
@@ -415,8 +480,12 @@ def test_openai_processor_retains_model_from_agents_sdk_response_span() -> None:
         ),
     )
 
-    processor.on_span_start(response)
-    processor.on_span_end(response)
+    with processor.capture():
+        provider_trace = SimpleNamespace(trace_id="trace-response")
+        processor.on_trace_start(provider_trace)
+        processor.on_span_start(response)
+        processor.on_span_end(response)
+        processor.on_trace_end(provider_trace)
     events = processor.normalized_trace().events
     rendered = json.dumps([event.to_dict() for event in events])
 
@@ -460,6 +529,109 @@ def test_openai_response_normalization_emits_undeclared_evidence_and_assurance_r
         assess_controls(artifacts.ir, system.plan, trace)
 
 
+def test_openai_response_normalization_fails_closed_for_other_hosted_calls() -> None:
+    project = ROOT / "examples" / "market-research-brief"
+    artifacts = compile_project(project)
+    system = materialize(project, "openai", "test")
+    context = TraceRunContext(
+        "run-other-hosted",
+        "run-other-hosted",
+        system.plan.contract_digest,
+        system.plan.plan_digest,
+    )
+    response = {
+        "response_id": "resp_other_hosted",
+        "output": [
+            {"id": "fs_123", "type": "file_search_call", "status": "completed"},
+            {"id": "mcp_123", "type": "mcp_list_tools", "status": "completed"},
+            {"id": "future_123", "type": "future_provider_call"},
+        ],
+    }
+
+    events = normalize_openai_response_events(
+        system.plan,
+        [response],
+        agent="CurrentTruthScout",
+        context=context,
+    )
+
+    assert [event.event_type for event in events] == [
+        "capability.undeclared",
+        "capability.undeclared",
+        "capability.undeclared",
+    ]
+    assert events[0].data["provider_tool"] == "openai.file_search"
+    assert events[1].data["provider_tool"] == "openai.mcp_list_tools"
+    assert events[2].data["provider_tool"] == (
+        "openai.unrecognized:future_provider_call"
+    )
+    with pytest.raises(TraceConformanceError, match="TRC004"):
+        validate_trace_conformance(artifacts.ir, system.plan, NormalizedTrace(events))
+
+
+@pytest.mark.parametrize(
+    ("status", "event_type"),
+    [
+        ("in_progress", "tool.started"),
+        ("completed", "tool.completed"),
+        ("failed", "tool.failed"),
+        ("incomplete", "tool.failed"),
+    ],
+)
+def test_openai_response_normalization_preserves_hosted_call_status(
+    status: str,
+    event_type: str,
+) -> None:
+    project = ROOT / "examples" / "market-research-brief"
+    system = materialize(project, "openai", "test")
+    context = TraceRunContext(
+        f"run-{status}",
+        f"run-{status}",
+        system.plan.contract_digest,
+        system.plan.plan_digest,
+    )
+
+    events = normalize_openai_response_events(
+        system.plan,
+        [{"output": [{"id": f"ws-{status}", "type": "web_search_call", "status": status}]}],
+        agent="CurrentTruthScout",
+        context=context,
+    )
+
+    assert events[0].event_type == event_type
+
+
+def test_openai_response_normalization_ignores_non_hosted_response_items() -> None:
+    project = ROOT / "examples" / "market-research-brief"
+    system = materialize(project, "openai", "test")
+    context = TraceRunContext(
+        "run-non-hosted",
+        "run-non-hosted",
+        system.plan.contract_digest,
+        system.plan.plan_digest,
+    )
+    response = {
+        "response_id": "resp_non_hosted",
+        "output": [
+            {"id": "fn_123", "type": "function_call"},
+            {"id": "custom_123", "type": "custom_tool_call"},
+            {"id": "computer_123", "type": "computer_call"},
+            {"id": "msg_123", "type": "message"},
+            {"id": "reason_123", "type": "reasoning"},
+        ],
+    }
+
+    assert (
+        normalize_openai_response_events(
+            system.plan,
+            [response],
+            agent="CurrentTruthScout",
+            context=context,
+        )
+        == ()
+    )
+
+
 def test_openai_processor_can_merge_hosted_response_events_into_its_sink() -> None:
     project = ROOT / "examples" / "market-research-brief"
     artifacts = compile_project(project)
@@ -484,6 +656,291 @@ def test_openai_processor_can_merge_hosted_response_events_into_its_sink() -> No
 
     assert processor.normalized_trace() == NormalizedTrace(events)
     assert durable.events == list(events)
+
+
+def test_openai_exception_normalization_preserves_responses_and_attempt_identity() -> None:
+    project = ROOT / "examples" / "market-research-brief"
+    system = materialize(project, "openai", "test")
+    context = TraceRunContext(
+        "run-exception",
+        "run-exception",
+        system.plan.contract_digest,
+        system.plan.plan_digest,
+    )
+    attempt = TraceAttempt("planner:1", "planner-attempt-1", 1)
+    exception = RuntimeError("provider run failed")
+    exception.run_data = SimpleNamespace(  # type: ignore[attr-defined]
+        raw_responses=[
+            SimpleNamespace(
+                response_id="resp_exception",
+                output=[{"id": "ws_exception", "type": "web_search_call"}],
+            )
+        ]
+    )
+
+    events = normalize_openai_exception_responses(
+        system.plan,
+        exception,
+        agent="CurrentTruthScout",
+        context=context,
+        attempt=attempt,
+    )
+
+    assert len(events) == 1
+    assert TraceAttempt.from_dict(events[0].data["attempt"]) == attempt
+    assert events[0].provider.run_id == "resp_exception"
+    assert normalize_openai_exception_responses(
+        system.plan,
+        RuntimeError("no run data"),
+        agent="CurrentTruthScout",
+        context=context,
+    ) == ()
+
+    malformed = RuntimeError("malformed run data")
+    malformed.run_data = SimpleNamespace(raw_responses=None)  # type: ignore[attr-defined]
+    with pytest.raises(TypeError, match="raw_responses"):
+        normalize_openai_exception_responses(
+            system.plan,
+            malformed,
+            agent="CurrentTruthScout",
+            context=context,
+        )
+
+
+def test_openai_processor_binds_attempt_per_span_until_span_end() -> None:
+    project = ROOT / "examples" / "incident-command"
+    artifacts = compile_project(project)
+    system = materialize(project, "openai", "test")
+    processor = OpenAINormalizedTraceProcessor(
+        artifacts.ir,
+        system.plan,
+        run_id="run-bound-attempt",
+    )
+    attempt = TraceAttempt("commander:1", "commander-attempt-1", 1)
+    span = SimpleNamespace(
+        trace_id="trace-attempt",
+        span_id="span-attempt",
+        parent_id=None,
+        started_at="2026-07-15T12:00:00Z",
+        ended_at="2026-07-15T12:00:01Z",
+        error=None,
+        span_data=SimpleNamespace(type="agent", name="IncidentCommander"),
+    )
+
+    with processor.bind_attempt(attempt):
+        processor.on_trace_start(SimpleNamespace(trace_id="trace-attempt"))
+        processor.on_span_start(span)
+    processor.on_span_end(span)
+    processor.on_trace_end(SimpleNamespace(trace_id="trace-attempt"))
+
+    assert {
+        TraceAttempt.from_dict(event.data["attempt"])
+        for event in processor.normalized_trace().events
+    } == {attempt}
+
+
+def test_trace_rejects_missing_retry_evidence_and_unobserved_selection() -> None:
+    first = TraceAttempt("stage:1", "attempt-1", 1)
+    retry = TraceAttempt("stage:1", "attempt-2", 2, retry_of=first.attempt_id)
+    retry_event = _event(
+        "evt-retry",
+        "agent.started",
+        data={"attempt": retry.to_dict()},
+    )
+    with pytest.raises(ValueError, match="missing retry_of"):
+        NormalizedTrace((retry_event,))
+
+    selected = _event(
+        "evt-selected",
+        "attempt.selected",
+        data={"attempt": first.to_dict(), "outcome": "succeeded"},
+    )
+    with pytest.raises(ValueError, match="without observed execution evidence"):
+        NormalizedTrace((selected,))
+
+
+def test_attempt_validation_is_scoped_to_each_normalized_run() -> None:
+    attempt = TraceAttempt("stage:1", "attempt-1", 1)
+    first_context = _context(run_id="run-1", thread_id="thread-1")
+    second_context = _context(run_id="run-2", thread_id="thread-2")
+    events = (
+        _event(
+            "run-1-start",
+            "agent.started",
+            context=first_context,
+            data={"attempt": attempt.to_dict()},
+        ),
+        _event(
+            "run-1-selected",
+            "attempt.selected",
+            context=first_context,
+            data={"attempt": attempt.to_dict(), "outcome": "succeeded"},
+        ),
+        _event(
+            "run-2-start",
+            "agent.started",
+            context=second_context,
+            data={"attempt": attempt.to_dict()},
+        ),
+        _event(
+            "run-2-selected",
+            "attempt.selected",
+            context=second_context,
+            data={"attempt": attempt.to_dict(), "outcome": "succeeded"},
+        ),
+    )
+
+    trace = NormalizedTrace(events)
+
+    assert trace.run_ids == ("run-1", "run-2")
+
+
+def test_output_assurance_uses_explicit_terminal_attempt_without_erasing_failures() -> None:
+    project = ROOT / "examples" / "incident-command"
+    artifacts = compile_project(project)
+    system = materialize(project, "openai", "test")
+    first = TraceAttempt("commander:1", "commander-attempt-1", 1)
+    second = TraceAttempt(
+        "commander:1",
+        "commander-attempt-2",
+        2,
+        retry_of=first.attempt_id,
+    )
+    processor = OpenAINormalizedTraceProcessor(
+        artifacts.ir,
+        system.plan,
+        run_id="run-attempts",
+    )
+    failed = processor.record_output_schema_failure(
+        agent="IncidentCommander",
+        attempt=first,
+    )
+    accepted = TraceEvent(
+        context=processor.context,
+        event_id="host:commander-attempt-2:output-accepted",
+        parent_event_id=None,
+        event_type="output.accepted",
+        timestamp=failed.timestamp + 1,
+        semantic=TraceSemanticRefs(agent_id=semantic_id("agent", "IncidentCommander")),
+        data={"attempt": second.to_dict()},
+        provider=ProviderCorrelation("host"),
+        provenance={"source": "host-output-schema-validation"},
+    )
+    processor.emit(accepted)
+    processor.record_terminal_attempt(
+        agent="IncidentCommander",
+        attempt=second,
+        outcome="succeeded",
+    )
+
+    trace = processor.normalized_trace()
+    results = assess_controls(artifacts.ir, system.plan, trace)
+    output_result = next(
+        result
+        for result in results
+        if result.control_id == "control:IncidentCommander:output_conformance"
+    )
+
+    assert output_result.status == "passed"
+    assert failed.event_id not in output_result.evidence_event_ids
+    assert failed in trace.events
+
+
+def test_failed_selected_terminal_attempt_leaves_output_assurance_unverified() -> None:
+    project = ROOT / "examples" / "incident-command"
+    artifacts = compile_project(project)
+    system = materialize(project, "openai", "test")
+    attempt = TraceAttempt("commander:1", "commander-attempt-1", 1)
+    processor = OpenAINormalizedTraceProcessor(
+        artifacts.ir,
+        system.plan,
+        run_id="run-terminal-failure",
+    )
+    processor.emit(
+        TraceEvent(
+            context=processor.context,
+            event_id="host:commander-attempt-1:failed",
+            parent_event_id=None,
+            event_type="agent.failed",
+            timestamp=1784098974.25,
+            semantic=TraceSemanticRefs(agent_id=semantic_id("agent", "IncidentCommander")),
+            data={"attempt": attempt.to_dict()},
+            provider=ProviderCorrelation("host"),
+            provenance={"source": "host-runner"},
+        )
+    )
+    processor.record_terminal_attempt(
+        agent="IncidentCommander",
+        attempt=attempt,
+        outcome="failed",
+    )
+
+    results = assess_controls(artifacts.ir, system.plan, processor.normalized_trace())
+    output_result = next(
+        result
+        for result in results
+        if result.control_id == "control:IncidentCommander:output_conformance"
+    )
+
+    assert output_result.status == "unverified"
+    assert "failed without output-schema evidence" in output_result.reason
+
+
+def test_selected_schema_failed_attempt_violates_output_assurance() -> None:
+    project = ROOT / "examples" / "incident-command"
+    artifacts = compile_project(project)
+    system = materialize(project, "openai", "test")
+    attempt = TraceAttempt("commander:1", "commander-attempt-1", 1)
+    processor = OpenAINormalizedTraceProcessor(
+        artifacts.ir,
+        system.plan,
+        run_id="run-selected-schema-failure",
+    )
+    processor.record_output_schema_failure(
+        agent="IncidentCommander",
+        attempt=attempt,
+    )
+    processor.record_terminal_attempt(
+        agent="IncidentCommander",
+        attempt=attempt,
+        outcome="failed",
+    )
+
+    results = assess_controls(artifacts.ir, system.plan, processor.normalized_trace())
+    output_result = next(
+        result
+        for result in results
+        if result.control_id == "control:IncidentCommander:output_conformance"
+    )
+
+    assert output_result.status == "violated"
+    assert "schema validation failed" in output_result.reason
+
+
+def test_attempt_scoped_output_without_terminal_selection_is_unverified() -> None:
+    project = ROOT / "examples" / "incident-command"
+    artifacts = compile_project(project)
+    system = materialize(project, "openai", "test")
+    attempt = TraceAttempt("commander:1", "commander-attempt-1", 1)
+    processor = OpenAINormalizedTraceProcessor(
+        artifacts.ir,
+        system.plan,
+        run_id="run-missing-selection",
+    )
+    processor.record_output_schema_failure(
+        agent="IncidentCommander",
+        attempt=attempt,
+    )
+
+    results = assess_controls(artifacts.ir, system.plan, processor.normalized_trace())
+    output_result = next(
+        result
+        for result in results
+        if result.control_id == "control:IncidentCommander:output_conformance"
+    )
+
+    assert output_result.status == "unverified"
+    assert "requires an explicit terminal-attempt selection" in output_result.reason
 
 
 def test_trace_conformance_rejects_missing_unknown_disabled_and_mismatched_tool_identity() -> None:

@@ -313,6 +313,7 @@ def _add_declared(
             item.name,
             view="declared",
             assertions=list(item.assertions),
+            derived_values=[{"name": value.name, "type": value.type_name} for value in item.derived_values],
             stages=[
                 {
                     "name": stage.name,

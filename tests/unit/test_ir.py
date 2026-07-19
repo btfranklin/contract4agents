@@ -88,7 +88,7 @@ def test_canonical_ir_serialization_matches_stable_id_and_type_rules() -> None:
     types = cast(dict[str, object], data["types"])
     request = cast(dict[str, object], types["type:IncidentRequest"])
 
-    assert data["ir_version"] == IR_VERSION == "2"
+    assert data["ir_version"] == IR_VERSION == "3"
     assert list(agents) == ["agent:IncidentCommander", "agent:LogInvestigator"]
     assert commander["output_type"] == "type:IncidentDecision"
     assert commander["description"] == "Coordinates the incident response."

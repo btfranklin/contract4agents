@@ -49,7 +49,7 @@ def test_declared_graph_is_ir_native_and_represents_contract_semantics() -> None
     node_ids = {node["id"] for node in graph["nodes"]}
     edge_kinds = {edge["kind"] for edge in graph["edges"]}
     assert graph["version"] == "1"
-    assert graph["ir_version"] == "2"
+    assert graph["ir_version"] == "3"
     assert graph["contract_digest"] == contract_digest(ir)
     assert "agent:IncidentCommander" in node_ids
     assert "tool:logs.search" in node_ids

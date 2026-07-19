@@ -35,6 +35,7 @@ from contract4agents.ir._model import (
     OperationalControlIR,
     ParameterIR,
     QualityIR,
+    RunSpecDerivedValueIR,
     RunSpecIR,
     RunSpecStageIR,
     Severity,
@@ -44,10 +45,16 @@ from contract4agents.ir._model import (
 )
 from contract4agents.ir._type_refs import TypeRef, parse_type_ref
 from contract4agents.parser._values import unquote
-from contract4agents.run_specs import parse_run_spec_stage_declaration
+from contract4agents.run_specs import (
+    normalize_derived_value_type,
+    parse_run_spec_derived_value_declaration,
+    parse_run_spec_stage_declaration,
+)
 from contract4agents.semantics import analyze_project
 
 _QUALITY_EXPECTATION = re.compile(r"quality\(([A-Za-z_][A-Za-z0-9_]*)\)")
+
+
 def build_canonical_ir(project: ContractProject) -> CanonicalIR:
     """Build immutable canonical IR from semantically valid source."""
 
@@ -346,10 +353,20 @@ def _run_spec_ir(project: ContractProject, item: Any) -> RunSpecIR:
                 cardinality=stage.cardinality,
             )
         )
+    derived_values: list[RunSpecDerivedValueIR] = []
+    for raw in item.attributes.get("derived_values", []):
+        declaration = parse_run_spec_derived_value_declaration(str(raw))
+        if declaration is None:
+            raise AssertionError("Invalid run spec derived value passed semantic validation")
+        normalized_type = normalize_derived_value_type(declaration.type_name)
+        if normalized_type is None:
+            raise AssertionError("Unsupported run spec derived value passed semantic validation")
+        derived_values.append(RunSpecDerivedValueIR(declaration.name, normalized_type))
     return RunSpecIR(
         id=semantic_id("run_spec", item.name),
         name=item.name,
         stages=tuple(stages),
+        derived_values=tuple(derived_values),
         assertions=tuple(item.assertions),
         span=_span(project, item.span),
     )

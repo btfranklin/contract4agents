@@ -91,8 +91,55 @@ or an existing observability backend.
 For the OpenAI Agents SDK, `OpenAINormalizedTraceProcessor` implements the SDK
 tracing-processor callbacks and correlates native agent, tool, delegation, and
 handoff spans. Register one processor per logical run with
-`agents.add_trace_processor(...)`; its `normalized_trace()` result retains the
-provider IDs while excluding raw provider inputs and outputs.
+`agents.add_trace_processor(...)`, then wrap the matching SDK run in
+`processor.capture()`. Agents SDK processors are global; the capture scope lets
+each processor claim only provider traces created for its logical run. Its
+`normalized_trace()` result retains the provider IDs while excluding raw
+provider inputs and outputs.
+
+## Attempts and retries
+
+The host still owns retries. Contract4Agents supplies `TraceAttempt` so every
+event from one attempt can carry validated `data.attempt` identity:
+
+```python
+from contract4agents.tracing import TraceAttempt
+
+attempt = TraceAttempt(
+    invocation_id="research-section:1",
+    attempt_id="research-section:1:attempt:2",
+    number=2,
+    retry_of="research-section:1:attempt:1",
+)
+
+with processor.bind_attempt(attempt):
+    result = await Runner.run(agent, input=prompt)
+```
+
+The processor uses context-local binding and remembers the attempt active when
+each span starts, including when the span ends after the binding scope exits.
+Response normalization also accepts an explicit `attempt=` argument.
+
+After the host has decided that no further retry will replace an attempt, it
+records that decision explicitly:
+
+```python
+processor.record_terminal_attempt(
+    agent="SectionResearcher",
+    attempt=attempt,
+    outcome="succeeded",
+)
+```
+
+One `attempt.selected` event is allowed per invocation. Retry chains must be
+complete, ordered, and confined to that invocation, and a selected attempt must
+have other observed execution evidence. Output-conformance assessment uses only
+the selected attempt for each invocation. Earlier failed attempts remain in the
+trace; they do not silently disappear or permanently poison a later accepted
+terminal output. A selected `output.schema_failed` violates output conformance,
+while a general selected attempt failure without schema evidence is
+`unverified`. A separate operational control may impose a stricter policy such
+as allowing no failed attempts.
 
 Provider-hosted tools are also visible in Agents SDK model responses. Normalize
 those response items after each run:
@@ -101,15 +148,47 @@ those response items after each run:
 events = processor.normalize_response_events(
     result.raw_responses,
     agent="CurrentTruthScout",
+    attempt=attempt,
 )
 ```
 
+Agents SDK exceptions may retain model responses on
+`exception.run_data.raw_responses`. Normalize them before the host retries or
+reraises:
+
+```python
+events = processor.normalize_exception_responses(
+    exception,
+    agent="CurrentTruthScout",
+    attempt=attempt,
+)
+```
+
+`normalize_openai_exception_responses(...)` is the standalone equivalent. It
+does not catch exceptions, decide retries, emit a generic agent failure, or
+infer that an SDK exception was a schema failure. Host-side canonical output
+validation can record the narrower fact through
+`processor.record_output_schema_failure(...)`.
+
 `normalize_openai_response_events(...)` is the corresponding standalone API.
-For `web_search_call` items it resolves exactly one enabled `provider_hosted`
-grant whose plan locator matches the agent, `provider = "openai"`, and
-`tool = "web_search"`. It emits `tool.completed` evidence with canonical
-capability/grant IDs. Missing or ambiguous matches instead emit
-`capability.undeclared`; they are never silently assigned to a capability.
+For recognized provider-hosted call items it resolves exactly one enabled
+`provider_hosted` grant whose plan locator matches the agent, provider, and
+tool. The currently materialized OpenAI tool is `web_search_call`, matched to
+`provider = "openai"` and `tool = "web_search"`. It emits `tool.completed`
+evidence with canonical capability/grant IDs. Missing or ambiguous matches,
+recognized hosted calls that the adapter cannot materialize, and unknown
+call-like response items instead emit `capability.undeclared`; they are never
+silently assigned to a capability or discarded.
+
+For a supported hosted call, provider status selects `tool.started`,
+`tool.completed`, or `tool.failed`; an observed failed call is never rewritten
+as a completion. Hosted MCP discovery items such as `mcp_list_tools` are
+recognized even though their names do not end in `_call`.
+
+Function, custom-tool, computer, shell, and patch calls are host-dispatched,
+not provider-hosted evidence. Response normalization leaves those items to SDK
+spans or host instrumentation. Messages, reasoning, and other non-call output
+items are intentionally ignored.
 Only provider status, model metadata when exposed by the SDK, response/request
 correlation, and call IDs are retained. Queries, actions, prompts, and results
 are not copied into normalized events.

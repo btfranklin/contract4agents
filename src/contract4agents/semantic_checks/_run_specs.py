@@ -25,9 +25,8 @@ def check_run_spec(run_spec: RunSpecDef, index: ProjectIndex) -> list[Diagnostic
     diagnostics.extend(_check_attributes(run_spec))
     stages = _parse_stages(run_spec, diagnostics)
     derived_values = _parse_derived_values(run_spec, diagnostics)
-    strict_derived_value_refs = isinstance(run_spec.attributes.get("derived_values"), list)
     diagnostics.extend(_check_stage_refs(run_spec, stages, index))
-    diagnostics.extend(_check_run_assertions(run_spec, stages, derived_values, strict_derived_value_refs, index))
+    diagnostics.extend(_check_run_assertions(run_spec, stages, derived_values, index))
     return diagnostics
 
 
@@ -80,8 +79,7 @@ def _parse_stages(run_spec: RunSpecDef, diagnostics: list[Diagnostic]) -> list[R
                     f"Malformed run spec stage declaration `{raw_stage}` on `{run_spec.name}`",
                     span=span,
                     hint=(
-                        "Expected `stage_name: AgentName -> OutputType`, with optional `?` or `+` "
-                        "after the stage name."
+                        "Expected `stage_name: AgentName -> OutputType`, with optional `?` or `+` after the stage name."
                     ),
                 )
             )
@@ -176,6 +174,16 @@ def _check_stage_refs(
                     span=span,
                 )
             )
+        agent = index.agent_defs.get(stage.agent)
+        if agent is not None and stage.output_type in index.type_defs and stage.output_type != agent.return_type:
+            diagnostics.append(
+                Diagnostic(
+                    "SEM092",
+                    f"Run spec `{run_spec.name}` stage `{stage.name}` output type `{stage.output_type}` "
+                    f"does not match agent `{stage.agent}` output type `{agent.return_type}`",
+                    span=span,
+                )
+            )
     return diagnostics
 
 
@@ -183,7 +191,6 @@ def _check_run_assertions(
     run_spec: RunSpecDef,
     stages: list[RunSpecStageDeclaration],
     derived_values: list[RunSpecDerivedValueDeclaration],
-    strict_derived_value_refs: bool,
     index: ProjectIndex,
 ) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
@@ -202,8 +209,9 @@ def _check_run_assertions(
             continue
         for parsed in _iter_run_spec_assertion_items(parsed_items):
             if parsed.kind == "data_relation":
-                if strict_derived_value_refs:
-                    diagnostics.extend(_check_data_relation_refs(run_spec, parsed, declared_value_names, span))
+                diagnostics.extend(
+                    _check_data_relation_refs(run_spec, parsed, declared_value_names, span)
+                )
                 continue
             if parsed.kind != "trace":
                 diagnostics.append(
@@ -243,8 +251,7 @@ def _check_data_relation_refs(
                     f"Run spec `{run_spec.name}` assertion references undeclared derived value `value.{ref}`",
                     span=span,
                     hint=(
-                        "Declare the value in `derived_values` or remove the `derived_values` block "
-                        "to keep runtime-only names."
+                        "Declare the value in the run spec's `derived_values` block."
                     ),
                 )
             )
