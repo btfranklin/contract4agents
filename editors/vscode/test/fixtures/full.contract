@@ -1,4 +1,8 @@
 # Complete current Contract4Agents syntax surface.
+enum ResearchStatus:
+    "draft"
+    "ready"
+
 type ResearchRequest:
     topic: string
     as_of: datetime?
@@ -11,6 +15,7 @@ type ResearchRequest:
 type ResearchResult:
     summary: string
     evidence_ids: list[string]
+    status: ResearchStatus = "draft"
 
 tool sources.search(query: string, as_of: datetime) -> ResearchResult:
     description = "Search current sources."

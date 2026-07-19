@@ -39,6 +39,7 @@ from contract4agents.planning import (
     GrantMappingPlan,
     MaterializationPlan,
 )
+from contract4agents.tracing import TraceConformanceError
 
 
 def _ir(*, missing_judge: bool = False, negative_expectation: bool = False) -> CanonicalIR:
@@ -375,6 +376,29 @@ async def test_missing_telemetry_and_judge_results_are_unverified(tmp_path: Path
         CampaignConfig("incomplete-negative"),
     )
     assert incomplete.cases[0].trials[0].expectations[1].status == "unverified"
+
+
+@pytest.mark.asyncio
+async def test_campaign_rejects_nonconforming_trace_before_scoring(tmp_path: Path) -> None:
+    ir = _ir(missing_judge=True)
+    plan = _plan(ir)
+    provider = _write_eval_data(
+        tmp_path / "undeclared.json",
+        trials=[
+            {
+                "output": {"status": "ok", "message": "Published"},
+                "events": [
+                    {
+                        "event_type": "capability.undeclared",
+                        "data": {"provider_tool": "openai.web_search"},
+                    }
+                ],
+            }
+        ],
+    )
+
+    with pytest.raises(TraceConformanceError, match="TRC004"):
+        await run_campaign(ir, plan, provider, CampaignConfig("nonconforming"))
 
 
 @pytest.mark.asyncio

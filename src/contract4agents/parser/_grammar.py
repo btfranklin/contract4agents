@@ -9,6 +9,7 @@ MODULE_GRAMMAR = r"""
     start: _NEWLINE* (declaration _NEWLINE*)*
 
     ?declaration: type_def
+        | enum_def
         | tool_def
         | datasource_def
         | external_context_def
@@ -24,6 +25,10 @@ MODULE_GRAMMAR = r"""
     type_def: "type" NAME ":" field_block?
     field_block: _NEWLINE _INDENT field* _DEDENT
     field: NAME ":" SCALAR_VALUE _NEWLINE
+
+    enum_def: "enum" NAME ":" _NEWLINE enum_block?
+    enum_block: _INDENT enum_value* _DEDENT
+    enum_value: ESCAPED_STRING _NEWLINE
 
     tool_def: "tool" DOTTED_NAME _LPAR params? _RPAR "->" PARAM_TYPE ":" assignment_block?
 

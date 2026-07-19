@@ -114,8 +114,8 @@ def _validate_environments(value: object, path: str) -> list[Diagnostic]:
 
 
 def _validate_profiles(value: object, path: str) -> list[Diagnostic]:
-    if not isinstance(value, dict):
-        return [_invalid(f"`{path}` must be a table")]
+    if not isinstance(value, dict) or not value:
+        return [_invalid(f"`{path}` must be a non-empty table")]
     diagnostics: list[Diagnostic] = []
     for name in sorted(value):
         profile = value[name]
@@ -208,7 +208,10 @@ def _profile_inheritance(value: Mapping[str, object], path: str) -> list[Diagnos
         Diagnostic(
             "TGT005",
             f"Target profile `{path}` cannot declare inheritance key `{key}`",
-            hint="Profiles are complete and do not inherit in target-binding schema version 1.",
+            hint=(
+                f"Profiles are complete and do not inherit in target-binding schema version "
+                f"{TARGET_BINDINGS_SCHEMA_VERSION}."
+            ),
         )
         for key in sorted(value)
         if key in _PROFILE_INHERITANCE_KEYS

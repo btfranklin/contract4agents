@@ -7,7 +7,7 @@ from pathlib import PurePosixPath
 
 from contract4agents.ir import FrozenMap
 
-GENERATOR_VERSION = "1"
+GENERATOR_VERSION = "2"
 PYDANTIC_MODELS_PATH = PurePosixPath("python/models.py")
 TYPESCRIPT_TYPES_PATH = PurePosixPath("typescript/types.ts")
 ZOD_SCHEMAS_PATH = PurePosixPath("typescript/schemas.ts")

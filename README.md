@@ -84,7 +84,7 @@ Bind the portable name to one target implementation in
 `contract4agents.targets.toml`:
 
 ```toml
-schema_version = "1"
+schema_version = "2"
 
 [targets.openai]
 adapter = "openai"
@@ -99,8 +99,11 @@ default_model = "test-model"
 default_model = "gpt-5.2"
 ```
 
-The binding does not repeat prompts, permissions, schemas, agent factories, or
-controls. Those remain contract-owned.
+Every target declares at least one named profile. Each profile is complete: a
+`default_model` or explicit per-agent model selects a model for every canonical
+agent, and stale agent overrides are rejected. The binding does not repeat
+prompts, permissions, schemas, agent factories, or controls. Those remain
+contract-owned.
 
 ## Inspect Before Construction
 
@@ -114,6 +117,8 @@ contract4agents plan agent_contracts --target openai --profile production \
   --out .contract/build/production-plan.json
 ```
 
+`check` remains provider-neutral when no target-binding file exists. When the
+file is present, it also validates every declared target and named profile.
 Compilation produces deterministic canonical IR, its digest, JSON Schemas,
 audience-safe instructions, reviewer documentation, and generated Pydantic,
 TypeScript, and Zod types. `compile --check` and `generate --check` make stale

@@ -3,10 +3,7 @@
 from contract4agents.materialization._context import (
     ContextResolutionError,
     ContextRuntime,
-    NoOpRuntimeTraceSink,
-    RecordingRuntimeTraceSink,
     ResolvedContextValue,
-    RuntimeTraceSink,
 )
 from contract4agents.materialization._entrypoint import materialize
 from contract4agents.materialization._errors import MaterializationError, MaterializationIssue
@@ -42,13 +39,10 @@ __all__ = [
     "NativeAgentDescription",
     "NativeAgentGraph",
     "NoOpTraceSink",
-    "NoOpRuntimeTraceSink",
     "OpenAIMaterializationProvider",
     "OpenAISDK",
     "RecordingTraceSink",
-    "RecordingRuntimeTraceSink",
     "ResolvedContextValue",
-    "RuntimeTraceSink",
     "TraceSink",
     "materialize",
 ]

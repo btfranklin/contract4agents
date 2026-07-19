@@ -17,6 +17,7 @@ from contract4agents.ir import (
     Authorization,
     CanonicalIR,
     CapabilityIR,
+    EnumIR,
     GrantIR,
     ParameterIR,
     TypeFieldIR,
@@ -47,6 +48,22 @@ def test_contract_diff_flags_new_access_weakened_approval_and_breaking_schema() 
     grant = next(item for item in access_added if item.area == "capability_access")
     assert grant.change == "added"
     assert grant.impact == "security_critical"
+
+
+def test_contract_diff_classifies_enum_membership_changes() -> None:
+    before = CanonicalIR.create(
+        types=(EnumIR(semantic_id("type", "Status"), "Status", ("accepted", "failed")),)
+    )
+    after = CanonicalIR.create(
+        types=(EnumIR(semantic_id("type", "Status"), "Status", ("accepted", "follow_up")),)
+    )
+
+    changes = diff_contracts(before, after)
+
+    assert [(item.change, item.impact, item.semantic_id) for item in changes] == [
+        ("removed", "breaking", "type:Status:failed"),
+        ("added", "review", "type:Status:follow_up"),
+    ]
 
 
 def test_assurance_bundle_is_deterministic_verified_and_explicit_about_missing_evidence(

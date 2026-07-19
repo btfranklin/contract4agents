@@ -5,8 +5,12 @@ directory. Development examples in this repository add the `pdm run` prefix.
 
 ## `check [ROOT]`
 
-Parse portable source and run semantic analysis. This command writes nothing,
-loads no target bindings, and imports no application code.
+Parse portable source and run semantic analysis. If
+`ROOT/contract4agents.targets.toml` exists, also validate its schema, every
+declared target's canonical binding coverage and callable shape, and every named
+profile's canonical-agent coverage. Inspectable Python locators may be imported,
+but application functions are never called. Without a target-binding file, the
+check remains provider-neutral.
 
 ```bash
 contract4agents check agent_contracts
@@ -147,7 +151,9 @@ Every control result is printed. Violated or unverified controls produce a
 nonzero exit. Assessment derives behavioral requirements from contracts; there
 is no separate behavioral rule file. A continuous monitoring service may run
 this assessment whenever a complete trace arrives, but the command itself does
-not watch a live system.
+not watch a live system. Evidence that does not conform to the selected
+contract and plan—such as digest mismatches, undeclared capabilities, or tool
+events without exact grant identity—is rejected before controls are assessed.
 
 ## `assure [ROOT]`
 

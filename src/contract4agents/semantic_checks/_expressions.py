@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from contract4agents.ast import SourceSpan
+from contract4agents.ast import SourceSpan, TypeDef
 from contract4agents.diagnostics import Diagnostic
 from contract4agents.expressions._grammar import (
     parse_contract_expression,
@@ -134,7 +134,7 @@ def _check_parsed_expression(
     if type_name and type_name not in index.type_defs:
         diagnostics.append(Diagnostic("SEM002", f"Unknown type `{type_name}` in expression", span=span))
     return_type = index.type_defs.get(return_type_name)
-    if return_type:
+    if isinstance(return_type, TypeDef):
         output_fields = {field.name for field in return_type.fields}
         for field in referenced_output_fields(parsed):
             if field not in output_fields:

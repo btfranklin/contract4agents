@@ -10,7 +10,7 @@ from typing import TypeVar
 from contract4agents.diagnostics import Diagnostic
 
 DEFAULT_TARGET_BINDINGS_FILENAME = "contract4agents.targets.toml"
-TARGET_BINDINGS_SCHEMA_VERSION = "1"
+TARGET_BINDINGS_SCHEMA_VERSION = "2"
 
 
 @dataclass(frozen=True)
@@ -59,6 +59,8 @@ class TargetBinding:
     profiles: dict[str, TargetProfile] | MappingProxyType[str, TargetProfile] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        if not self.profiles:
+            raise ValueError("A target binding must declare at least one named profile")
         object.__setattr__(self, "tools", _freeze_typed_mapping(dict(self.tools)))
         object.__setattr__(self, "datasources", _freeze_typed_mapping(dict(self.datasources)))
         object.__setattr__(self, "external_context", _freeze_typed_mapping(dict(self.external_context)))

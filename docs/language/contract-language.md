@@ -18,6 +18,14 @@ type Evidence:
     tags: list[string]
     metadata: map[string,string]
     note: string?
+
+enum VerificationStatus:
+    "accepted"
+    "follow_up"
+    "failed"
+
+type Verification:
+    status: VerificationStatus
 ```
 
 The scalar types are `string`, `integer`, `float`, `boolean`, and `datetime`.
@@ -26,6 +34,11 @@ follow the field type after `=`.
 
 `str`, `int`, `bool`, `T[]`, and `type ... from python` are not aliases. Code is
 generated outward from native contract types.
+
+String enums declare a closed set of one or more quoted, nonempty, unique
+values. Enums and structural types share one name namespace and may be used
+anywhere a named type is accepted, including nullable, list, and map fields.
+Defaults must conform to enum membership at compile time.
 
 ## Shared Capabilities
 

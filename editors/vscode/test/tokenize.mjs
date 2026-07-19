@@ -35,6 +35,9 @@ const evalTokens = tokenize(evalGrammar, await fixtureLines("full.eval"));
 
 const contractExpectations = [
   ["# Complete", "# Complete", "comment.line.number-sign.contract4agents"],
+  ["enum ResearchStatus", "enum", "keyword.declaration.enum.contract4agents"],
+  ["enum ResearchStatus", "ResearchStatus", "entity.name.type.enum.contract4agents"],
+  ["    \"draft\"", "\"draft\"", "constant.other.enum-member.contract4agents"],
   ["type ResearchRequest", "type", "keyword.declaration.type.contract4agents"],
   ["type ResearchRequest", "ResearchRequest", "entity.name.type.contract4agents"],
   ["topic: string", "topic", "variable.other.member.contract4agents"],

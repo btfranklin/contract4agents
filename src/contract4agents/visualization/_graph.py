@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from contract4agents.assurance import ControlResult
-from contract4agents.ir import CanonicalIR, SemanticId, TypeRef, contract_digest, format_type_ref
+from contract4agents.ir import CanonicalIR, EnumIR, SemanticId, TypeRef, contract_digest, format_type_ref
 from contract4agents.planning import MaterializationPlan
 from contract4agents.tracing import NormalizedTrace
 from contract4agents.visualization._types import (
@@ -87,6 +87,17 @@ def _add_declared(
     edges: dict[str, VisualizationEdge],
 ) -> None:
     for item in ir.types.values():
+        if isinstance(item, EnumIR):
+            add_node(
+                nodes,
+                str(item.id),
+                "type",
+                item.name,
+                view="declared",
+                description=item.description,
+                enum_values=list(item.values),
+            )
+            continue
         add_node(
             nodes,
             str(item.id),

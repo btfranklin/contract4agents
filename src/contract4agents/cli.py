@@ -16,7 +16,7 @@ from contract4agents.assurance import (
     write_assurance_bundle,
 )
 from contract4agents.codegen import CodeGenerationError, generate_code, write_generated_code
-from contract4agents.compiler import compile_project
+from contract4agents.compiler import artifact_digests, compile_project
 from contract4agents.diagnostics import ContractError, Diagnostic, raise_if_errors
 from contract4agents.eval_campaigns import CampaignConfig, CampaignThresholds, FileEvalProvider, run_campaign
 from contract4agents.ir import CanonicalIR, build_canonical_ir
@@ -35,7 +35,12 @@ from contract4agents.target_bindings import (
     load_target_bindings,
     validate_target_binding_conformance,
 )
-from contract4agents.tracing import TraceLoadError, dumps_trace_jsonl, load_trace_jsonl
+from contract4agents.tracing import (
+    TraceConformanceError,
+    TraceLoadError,
+    dumps_trace_jsonl,
+    load_trace_jsonl,
+)
 
 
 @click.group()
@@ -46,12 +51,25 @@ def main() -> None:
 @main.command()
 @click.argument("root", type=click.Path(path_type=Path), default=".", required=False)
 def check(root: Path) -> None:
-    """Parse and semantically validate a Contract4Agents project."""
+    """Validate portable contracts and any discovered target bindings."""
     try:
         project = parse_project(root)
         result = analyze_project(project)
-        _print_diagnostics(result.diagnostics)
-        if not result.ok:
+        diagnostics = list(result.diagnostics)
+        loaded = load_target_bindings(project.root)
+        diagnostics.extend(loaded.diagnostics)
+        if result.ok and loaded.bindings is not None:
+            ir = build_canonical_ir(project)
+            for target_name in loaded.bindings.targets:
+                conformance = validate_target_binding_conformance(
+                    ir,
+                    loaded.bindings,
+                    target_name,
+                    project_root=project.root,
+                )
+                diagnostics.extend(conformance.diagnostics)
+        _print_diagnostics(diagnostics)
+        if any(item.severity == "error" for item in diagnostics):
             raise click.ClickException("Contract4Agents check failed")
         click.echo("Contract4Agents check passed")
     except ContractError as exc:
@@ -151,9 +169,9 @@ def plan_cmd(
 
 def _planner_capabilities(target: str, adapter: str) -> PlannerCapabilities:
     if adapter == "openai":
-        from contract4agents.adapters.openai import openai_planner_capabilities
+        from contract4agents.materialization import OpenAIMaterializationProvider
 
-        return openai_planner_capabilities()
+        return OpenAIMaterializationProvider().planner_capabilities(None)
     raise click.ClickException(
         f"Target `{target}` selects adapter `{adapter}`, which has no installed planner"
     )
@@ -311,6 +329,8 @@ def assess_cmd(
         click.echo("Contract4Agents assessment passed")
     except TraceLoadError as exc:
         raise click.ClickException(f"Invalid normalized trace `{trace_path}`: {exc}") from exc
+    except TraceConformanceError as exc:
+        raise click.ClickException(f"Nonconforming normalized trace `{trace_path}`: {exc}") from exc
 
 
 @main.command("assure")
@@ -376,10 +396,9 @@ def _resolve_plan(
     profile: str,
     bindings_path: Path | None,
 ) -> tuple[CanonicalIR, MaterializationPlan, TargetBindings]:
-    project = parse_project(root)
-    raise_if_errors(analyze_project(project).diagnostics)
-    ir = build_canonical_ir(project)
-    loaded = load_target_bindings(project.root, bindings_path, required=True)
+    artifacts = compile_project(root)
+    ir = artifacts.ir
+    loaded = load_target_bindings(Path(root).resolve(), bindings_path, required=True)
     _print_diagnostics(list(loaded.diagnostics))
     if not loaded.ok or loaded.bindings is None:
         raise click.ClickException("Contract4Agents target-binding load failed")
@@ -401,6 +420,7 @@ def _resolve_plan(
         target=target,
         profile=profile,
         capabilities=_planner_capabilities(target, target_binding.adapter),
+        artifact_digests=artifact_digests(artifacts),
     )
     return ir, plan, loaded.bindings
 

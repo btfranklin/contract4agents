@@ -6,8 +6,9 @@ The implemented language is the portable surface documented in
 
 Top-level declarations are:
 
-- Native `type` declarations using `string`, `integer`, `float`, `boolean`,
-  `datetime`, nullable `T?`, `list[T]`, and `map[string,T]`.
+- Native structural `type` declarations and closed string `enum` declarations,
+  using `string`, `integer`, `float`, `boolean`, `datetime`, nullable `T?`,
+  `list[T]`, and `map[string,T]`.
 - Shared `tool` and typed `datasource` interfaces.
 - `external_context` and multidimensional `isolation` requirements.
 - Typed `agent` signatures with structured `use capability:` grants, explicit
@@ -24,3 +25,15 @@ in target bindings.
 Generic assignment syntax is parsed before semantic analysis. Semantic checks
 then validate each declaration against the attributes defined by the current
 language surface and report unknown attributes with the accepted set.
+
+Enum members use an indented block of quoted strings:
+
+```contract
+enum VerificationStatus:
+    "accepted"
+    "follow_up"
+    "failed"
+```
+
+An enum must contain at least one nonempty, unique member. Enum and structural
+type names occupy the same namespace.

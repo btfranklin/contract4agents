@@ -11,7 +11,7 @@ from typing import cast
 
 from contract4agents.compiler import artifact_digests, compile_project
 from contract4agents.ir import FrozenMap, SemanticId
-from contract4agents.materialization._context import ContextRuntime, RuntimeTraceSink
+from contract4agents.materialization._context import ContextRuntime
 from contract4agents.materialization._errors import MaterializationError, MaterializationIssue
 from contract4agents.materialization._models import (
     MaterializationProvider,
@@ -28,6 +28,7 @@ from contract4agents.target_bindings import (
     load_target_bindings,
     validate_target_binding_conformance,
 )
+from contract4agents.tracing import NormalizedTraceSink
 
 
 def materialize(
@@ -38,7 +39,7 @@ def materialize(
     *,
     provider: MaterializationProvider | None = None,
     trace_sink: TraceSink | None = None,
-    runtime_trace_sink: RuntimeTraceSink | None = None,
+    runtime_trace_sink: NormalizedTraceSink | None = None,
 ) -> MaterializationResult:
     """Compile, plan, construct, and validate one framework-native agent graph."""
 

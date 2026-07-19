@@ -21,6 +21,7 @@ from contract4agents.codegen import (
 )
 from contract4agents.ir import (
     CanonicalIR,
+    EnumIR,
     TypeFieldIR,
     TypeIR,
     contract_digest,
@@ -145,6 +146,33 @@ def test_typescript_and_zod_generation_cover_all_portable_type_forms() -> None:
     assert "active: z.boolean().default(true)," in zod
     assert "opened_at: z.string().datetime()," in zod
     assert ".strict()," in zod
+
+
+def test_enum_generation_is_native_and_validates_in_pydantic() -> None:
+    status = EnumIR(semantic_id("type", "Status"), "Status", ("accepted", "follow_up", "failed"))
+    result = TypeIR(
+        semantic_id("type", "Result"),
+        "Result",
+        (
+            TypeFieldIR("status", parse_type_ref("Status")),
+            TypeFieldIR("history", parse_type_ref("list[Status]"), has_default=True, default=[]),
+        ),
+    )
+    ir = CanonicalIR.create(types=(result, status))
+
+    python = generate_pydantic_models(ir)
+    typescript = generate_typescript_types(ir)
+    zod = generate_zod_schemas(ir)
+    namespace: dict[str, Any] = {"__name__": "generated_enum_models"}
+    exec(compile(python, "<generated>", "exec"), namespace)
+
+    assert "from typing import Literal" in python
+    assert "Status = Literal['accepted', 'follow_up', 'failed']" in python
+    assert "export type Status = \"accepted\" | \"follow_up\" | \"failed\";" in typescript
+    assert 'StatusSchema: z.ZodType<Status> = z.enum(["accepted", "follow_up", "failed"]);' in zod
+    assert namespace["Result"](status="accepted").status == "accepted"
+    with pytest.raises(ValueError):
+        namespace["Result"](status="unknown")
 
 
 def test_codegen_rejects_missing_named_types_and_nonportable_identifiers() -> None:

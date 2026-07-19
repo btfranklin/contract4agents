@@ -104,6 +104,32 @@ def test_unknown_target_and_profile_are_structured_errors(target: str, profile: 
     assert [issue.code for issue in caught.value.issues] == [code]
 
 
+def test_named_profiles_produce_distinct_plan_identity() -> None:
+    ir = _sample_ir()
+    bindings = _bindings()
+
+    production = plan_materialization(
+        ir,
+        bindings,
+        target="openai",
+        profile="production",
+        capabilities=_capabilities(),
+    )
+    test = plan_materialization(
+        ir,
+        bindings,
+        target="openai",
+        profile="test",
+        capabilities=_capabilities(),
+    )
+
+    assert production.profile == "production"
+    assert test.profile == "test"
+    assert production.plan_digest != test.plan_digest
+    assert production.agents[semantic_id("agent", "IncidentCommander")].model == "gpt-main"
+    assert test.agents[semantic_id("agent", "IncidentCommander")].model == "test-main"
+
+
 def test_missing_models_and_bindings_are_reported_together() -> None:
     target = TargetBinding(
         adapter="openai",
@@ -337,7 +363,11 @@ def _bindings() -> TargetBindings:
                 default_model="gpt-main",
                 agents={"LogInvestigator": AgentProfile(model="gpt-small")},
                 options={"environment": "in_process", "temperature": 0.0},
-            )
+            ),
+            "test": TargetProfile(
+                default_model="test-main",
+                options={"environment": "in_process", "temperature": 0.0},
+            ),
         },
     )
     return TargetBindings(Path("/local/not/canonical/contract4agents.targets.toml"), {"openai": target})

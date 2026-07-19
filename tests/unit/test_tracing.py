@@ -9,15 +9,20 @@ import pytest
 
 from contract4agents import compile_project, materialize
 from contract4agents.adapters._openai_names import openai_tool_name
-from contract4agents.ir import SemanticId
+from contract4agents.assurance import assess_controls
+from contract4agents.ir import FrozenMap, SemanticId, semantic_id
 from contract4agents.tracing import (
     TRACE_SCHEMA_VERSION,
+    AtomicTraceFileSink,
+    NoOpNormalizedTraceSink,
     NormalizedTrace,
     OpenAINormalizedTraceProcessor,
     ProviderCorrelation,
+    RecordingNormalizedTraceSink,
     RedactionMetadata,
     RedactionRule,
     TraceCompletenessResult,
+    TraceConformanceError,
     TraceEvent,
     TraceLoadError,
     TraceRunContext,
@@ -27,6 +32,9 @@ from contract4agents.tracing import (
     export_open_telemetry,
     load_trace_jsonl,
     loads_trace_jsonl,
+    normalize_openai_response_events,
+    resolve_provider_tool_grant,
+    validate_trace_conformance,
     write_trace_jsonl,
 )
 
@@ -117,6 +125,90 @@ def test_trace_round_trips_as_deterministic_jsonl(tmp_path: Path) -> None:
         trace.events[0].event_id = "changed"  # type: ignore[misc]
 
 
+def test_atomic_trace_writer_preserves_previous_file_on_replace_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "trace.jsonl"
+    original = NormalizedTrace((_event("evt-original", "run.started"),))
+    write_trace_jsonl(path, original)
+
+    def fail_replace(source: object, destination: object) -> None:
+        del source, destination
+        raise OSError("simulated replacement failure")
+
+    monkeypatch.setattr("contract4agents.tracing._io.os.replace", fail_replace)
+    with pytest.raises(OSError, match="simulated replacement failure"):
+        write_trace_jsonl(path, NormalizedTrace((_event("evt-new", "run.started"),)))
+
+    assert load_trace_jsonl(path) == original
+    assert list(tmp_path.glob(".trace.jsonl.*.tmp")) == []
+
+
+def test_normalized_trace_sinks_record_resume_and_fail_closed(tmp_path: Path) -> None:
+    path = tmp_path / "trace.jsonl"
+    context = _context()
+    first = _event("evt-1", "run.started", context=context)
+    second = _event("evt-2", "run.completed", context=context)
+    recording = RecordingNormalizedTraceSink()
+    recording.emit(first)
+    NoOpNormalizedTraceSink().emit(first)
+    assert recording.events == [first]
+
+    sink = AtomicTraceFileSink(path, context)
+    sink.emit(first)
+    resumed = AtomicTraceFileSink(path, context, append=True)
+    resumed.emit(second)
+    assert resumed.events == (first, second)
+    assert resumed.normalized_trace() == NormalizedTrace((first, second))
+    assert load_trace_jsonl(path) == NormalizedTrace((first, second))
+
+    with pytest.raises(ValueError, match="run context"):
+        AtomicTraceFileSink(path, _context(run_id="other"), append=True)
+    path.write_text("not-json\n", encoding="utf-8")
+    with pytest.raises(TraceLoadError, match="invalid JSON"):
+        AtomicTraceFileSink(path, context, append=True)
+
+
+def test_atomic_trace_file_sink_preserves_file_and_memory_on_candidate_failure(tmp_path: Path) -> None:
+    path = tmp_path / "trace.jsonl"
+    context = _context()
+    first = _event("evt-1", "run.started", context=context)
+    sink = AtomicTraceFileSink(path, context)
+    sink.emit(first)
+    before = path.read_bytes()
+
+    with pytest.raises(ValueError, match="Duplicate trace event_id"):
+        sink.emit(first)
+
+    assert sink.events == (first,)
+    assert path.read_bytes() == before
+
+
+def test_atomic_trace_file_sink_does_not_advance_memory_when_write_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "trace.jsonl"
+    context = _context()
+    first = _event("evt-1", "run.started", context=context)
+    second = _event("evt-2", "run.completed", context=context)
+    sink = AtomicTraceFileSink(path, context)
+    sink.emit(first)
+    before = path.read_bytes()
+
+    def fail_replace(source: object, destination: object) -> None:
+        del source, destination
+        raise OSError("simulated replacement failure")
+
+    monkeypatch.setattr("contract4agents.tracing._io.os.replace", fail_replace)
+    with pytest.raises(OSError, match="simulated replacement failure"):
+        sink.emit(second)
+
+    assert sink.events == (first,)
+    assert path.read_bytes() == before
+
+
 def test_openai_processor_correlates_native_spans_without_copying_provider_payloads() -> None:
     project = ROOT / "examples" / "incident-command"
     artifacts = compile_project(project)
@@ -176,6 +268,285 @@ def test_openai_processor_correlates_native_spans_without_copying_provider_paylo
     assert trace.events[1].provider.trace_id == "trace-provider"
     assert trace.events[1].parent_event_id == "openai:span-agent:started"
     assert all("sensitive" not in json.dumps(event.to_dict()) for event in trace.events)
+
+
+def test_openai_response_normalization_resolves_hosted_grants_and_excludes_payloads() -> None:
+    project = ROOT / "examples" / "market-research-brief"
+    artifacts = compile_project(project)
+    system = materialize(project, "openai", "test")
+    agent_id = SemanticId.parse("agent:CurrentTruthScout")
+    context = TraceRunContext(
+        "run-hosted",
+        "thread-hosted",
+        system.plan.contract_digest,
+        system.plan.plan_digest,
+    )
+    response = SimpleNamespace(
+        response_id="resp_123",
+        request_id="req_123",
+        model="gpt-observed",
+        output=[
+            SimpleNamespace(
+                id="ws_123",
+                type="web_search_call",
+                status="completed",
+                action={"query": "secret provider query", "results": ["raw output"]},
+            )
+        ],
+    )
+
+    grant = resolve_provider_tool_grant(
+        system.plan,
+        agent_id=agent_id,
+        provider="openai",
+        tool="web_search",
+    )
+    events = normalize_openai_response_events(
+        system.plan,
+        [response],
+        agent=agent_id,
+        context=context,
+    )
+
+    assert grant.id == SemanticId.parse("grant:CurrentTruthScout:web.search")
+    assert len(events) == 1
+    event = events[0]
+    assert event.event_type == "tool.completed"
+    assert event.semantic.capability_id == SemanticId.parse("tool:web.search")
+    assert event.semantic.grant_id == grant.id
+    assert event.provider.run_id == "resp_123"
+    assert event.provider.request_id == "req_123"
+    assert event.data == {
+        "provider_model": "gpt-observed",
+        "provider_tool": "openai.web_search",
+        "status": "completed",
+    }
+    assert event.evidence_refs == (
+        "provider:openai:call:ws_123",
+        "provider:openai:response:resp_123",
+    )
+    assert "secret provider query" not in json.dumps(event.to_dict())
+    assert "raw output" not in json.dumps(event.to_dict())
+    validate_trace_conformance(artifacts.ir, system.plan, NormalizedTrace(events))
+
+    with pytest.raises(ValueError, match="found 0"):
+        resolve_provider_tool_grant(
+            system.plan,
+            agent_id=agent_id,
+            provider="openai",
+            tool="file_search",
+        )
+    duplicate_id = semantic_id("grant", "CurrentTruthScout", "web.search.duplicate")
+    duplicate = replace(grant, id=duplicate_id)
+    ambiguous_plan = replace(
+        system.plan,
+        grants=FrozenMap((*system.plan.grants.items(), (duplicate_id, duplicate))),
+    )
+    with pytest.raises(ValueError, match="found 2"):
+        resolve_provider_tool_grant(
+            ambiguous_plan,
+            agent_id=agent_id,
+            provider="openai",
+            tool="web_search",
+        )
+
+
+def test_openai_processor_retains_model_metadata_without_generation_payloads() -> None:
+    project = ROOT / "examples" / "incident-command"
+    artifacts = compile_project(project)
+    system = materialize(project, "openai", "test")
+    processor = OpenAINormalizedTraceProcessor(
+        artifacts.ir,
+        system.plan,
+        run_id="run-generation",
+    )
+    generation = SimpleNamespace(
+        trace_id="trace-generation",
+        span_id="span-generation",
+        parent_id=None,
+        started_at="2026-07-15T12:00:00Z",
+        ended_at="2026-07-15T12:00:01Z",
+        error=None,
+        span_data=SimpleNamespace(
+            type="generation",
+            model="gpt-observed",
+            input=[{"secret": "provider input"}],
+            output=[{"secret": "provider output"}],
+        ),
+    )
+
+    processor.on_span_start(generation)
+    processor.on_span_end(generation)
+    rendered = json.dumps(
+        [event.to_dict() for event in processor.normalized_trace().events]
+    )
+
+    assert all(
+        event.data["provider_model"] == "gpt-observed"
+        for event in processor.normalized_trace().events
+    )
+    assert "provider input" not in rendered
+    assert "provider output" not in rendered
+
+
+def test_openai_processor_retains_model_from_agents_sdk_response_span() -> None:
+    project = ROOT / "examples" / "market-research-brief"
+    artifacts = compile_project(project)
+    system = materialize(project, "openai", "test")
+    processor = OpenAINormalizedTraceProcessor(
+        artifacts.ir,
+        system.plan,
+        run_id="run-response",
+    )
+    response = SimpleNamespace(
+        trace_id="trace-response",
+        span_id="span-response",
+        parent_id=None,
+        started_at="2026-07-15T12:00:00Z",
+        ended_at="2026-07-15T12:00:01Z",
+        error=None,
+        span_data=SimpleNamespace(
+            type="response",
+            response=SimpleNamespace(
+                model="gpt-observed",
+                output=[{"secret": "provider output"}],
+            ),
+            input=[{"secret": "provider input"}],
+        ),
+    )
+
+    processor.on_span_start(response)
+    processor.on_span_end(response)
+    events = processor.normalized_trace().events
+    rendered = json.dumps([event.to_dict() for event in events])
+
+    assert {event.data["provider_model"] for event in events} == {
+        "gpt-observed"
+    }
+    assert "provider input" not in rendered
+    assert "provider output" not in rendered
+
+
+def test_openai_response_normalization_emits_undeclared_evidence_and_assurance_rejects_it() -> None:
+    project = ROOT / "examples" / "market-research-brief"
+    artifacts = compile_project(project)
+    system = materialize(project, "openai", "test")
+    context = TraceRunContext(
+        "run-undeclared",
+        "run-undeclared",
+        system.plan.contract_digest,
+        system.plan.plan_digest,
+    )
+    response = {
+        "response_id": "resp_undeclared",
+        "output": [{"id": "ws_undeclared", "type": "web_search_call"}],
+    }
+
+    events = normalize_openai_response_events(
+        system.plan,
+        [response],
+        agent="ReportWriter",
+        context=context,
+    )
+    trace = NormalizedTrace(events)
+
+    assert events[0].event_type == "capability.undeclared"
+    with pytest.raises(TraceConformanceError, match="TRC004") as exc_info:
+        validate_trace_conformance(artifacts.ir, system.plan, trace)
+    assert exc_info.value.issues[0].event_id == (
+        "openai:hosted-tool:resp_undeclared:ws_undeclared"
+    )
+    with pytest.raises(TraceConformanceError, match="TRC004"):
+        assess_controls(artifacts.ir, system.plan, trace)
+
+
+def test_openai_processor_can_merge_hosted_response_events_into_its_sink() -> None:
+    project = ROOT / "examples" / "market-research-brief"
+    artifacts = compile_project(project)
+    system = materialize(project, "openai", "test")
+    durable = RecordingNormalizedTraceSink()
+    processor = OpenAINormalizedTraceProcessor(
+        artifacts.ir,
+        system.plan,
+        run_id="run-responses",
+        sink=durable,
+    )
+
+    events = processor.normalize_response_events(
+        [
+            SimpleNamespace(
+                response_id="resp_processor",
+                output=[{"id": "ws_processor", "type": "web_search_call"}],
+            )
+        ],
+        agent="CurrentTruthScout",
+    )
+
+    assert processor.normalized_trace() == NormalizedTrace(events)
+    assert durable.events == list(events)
+
+
+def test_trace_conformance_rejects_missing_unknown_disabled_and_mismatched_tool_identity() -> None:
+    project = ROOT / "examples" / "market-research-brief"
+    artifacts = compile_project(project)
+    system = materialize(project, "openai", "test")
+    context = TraceRunContext(
+        "run-conformance",
+        "run-conformance",
+        system.plan.contract_digest,
+        system.plan.plan_digest,
+    )
+    base = normalize_openai_response_events(
+        system.plan,
+        [{"output": [{"id": "ws-conformance", "type": "web_search_call"}]}],
+        agent="CurrentTruthScout",
+        context=context,
+    )[0]
+
+    missing = replace(base, semantic=TraceSemanticRefs(agent_id=base.semantic.agent_id))
+    with pytest.raises(TraceConformanceError, match="TRC005"):
+        validate_trace_conformance(artifacts.ir, system.plan, NormalizedTrace((missing,)))
+
+    unknown = replace(
+        base,
+        semantic=replace(
+            base.semantic,
+            grant_id=semantic_id("grant", "CurrentTruthScout", "unknown"),
+        ),
+    )
+    with pytest.raises(TraceConformanceError, match="TRC008"):
+        validate_trace_conformance(artifacts.ir, system.plan, NormalizedTrace((unknown,)))
+
+    grant_id = base.semantic.grant_id
+    assert grant_id is not None
+    disabled_grant = replace(system.plan.grants[grant_id], availability="denied")
+    disabled_plan = replace(
+        system.plan,
+        grants=FrozenMap(
+            (identifier, disabled_grant if identifier == grant_id else grant)
+            for identifier, grant in system.plan.grants.items()
+        ),
+    )
+    disabled_context = replace(context, plan_digest=disabled_plan.plan_digest)
+    disabled = replace(base, context=disabled_context)
+    with pytest.raises(TraceConformanceError, match="TRC009"):
+        validate_trace_conformance(artifacts.ir, disabled_plan, NormalizedTrace((disabled,)))
+
+    mismatched_grant = next(
+        grant
+        for grant in system.plan.grants.values()
+        if grant.agent_id == base.semantic.agent_id and grant.id != grant_id
+    )
+    mismatched = replace(base, semantic=replace(base.semantic, grant_id=mismatched_grant.id))
+    with pytest.raises(TraceConformanceError, match="TRC010"):
+        validate_trace_conformance(artifacts.ir, system.plan, NormalizedTrace((mismatched,)))
+
+    wrong_digest = replace(
+        base,
+        context=replace(context, contract_digest=f"sha256:{'c' * 64}"),
+    )
+    with pytest.raises(TraceConformanceError, match="TRC002"):
+        validate_trace_conformance(artifacts.ir, system.plan, NormalizedTrace((wrong_digest,)))
 
 
 @pytest.mark.parametrize(

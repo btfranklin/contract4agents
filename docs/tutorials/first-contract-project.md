@@ -97,7 +97,7 @@ def search_knowledge(query: str) -> dict[str, object]:
 Create `agent_contracts/contract4agents.targets.toml`:
 
 ```toml
-schema_version = "1"
+schema_version = "2"
 
 [targets.openai]
 adapter = "openai"
@@ -110,7 +110,9 @@ default_model = "gpt-5.6-luna"
 ```
 
 The binding connects the portable tool name to this application's Python
-function. It also chooses the model for this target profile.
+function. It also chooses the model for this complete named profile. Every
+declared target needs at least one profile; a profile-level default can cover all
+canonical agents, while explicit agent overrides must name canonical agents.
 
 ## 6. Check and Plan
 

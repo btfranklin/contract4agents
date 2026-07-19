@@ -9,6 +9,7 @@ from contract4agents.ast import (
     CompositionDef,
     ContractProject,
     DatasourceDef,
+    EnumDef,
     ExternalContextDef,
     IsolationDef,
     RunSpecDef,
@@ -19,7 +20,7 @@ from contract4agents.ast import (
 
 @dataclass(frozen=True)
 class ProjectIndex:
-    type_defs: dict[str, TypeDef]
+    type_defs: dict[str, TypeDef | EnumDef]
     agent_defs: dict[str, AgentDef]
     datasource_defs: dict[str, DatasourceDef]
     tool_defs: dict[str, ToolDef]
@@ -36,7 +37,7 @@ class ProjectIndex:
         agent_defs = project.agents
         datasource_defs = project.datasources
         return cls(
-            type_defs=project.types,
+            type_defs={**project.types, **project.enums},
             agent_defs=agent_defs,
             datasource_defs=datasource_defs,
             tool_defs=project.tools,

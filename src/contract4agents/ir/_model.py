@@ -11,7 +11,7 @@ from contract4agents.ir._collections import FrozenJsonValue, FrozenMap, freeze_j
 from contract4agents.ir._ids import SemanticId, SemanticKind
 from contract4agents.ir._type_refs import TypeRef
 
-IR_VERSION = "1"
+IR_VERSION = "2"
 
 Audience = Literal["model", "adapter", "host", "evaluator", "reviewer"]
 CapabilityKind = Literal["tool", "datasource"]
@@ -103,6 +103,26 @@ class TypeIR:
     def __post_init__(self) -> None:
         _validate_identity(self.id, "type", self.name)
         _unique_names((item.name for item in self.fields), f"type `{self.name}` fields")
+
+
+@dataclass(frozen=True)
+class EnumIR:
+    id: SemanticId = field(metadata={"canonical": False})
+    name: str
+    values: tuple[str, ...]
+    description: str = ""
+    span: SourceSpan | None = field(default=None, metadata={"canonical": False})
+
+    def __post_init__(self) -> None:
+        _validate_identity(self.id, "type", self.name)
+        if not self.values:
+            raise ValueError(f"Enum `{self.name}` must declare at least one value")
+        if any(not value for value in self.values):
+            raise ValueError(f"Enum `{self.name}` values cannot be empty")
+        _unique_names(self.values, f"enum `{self.name}` values")
+
+
+TypeDeclarationIR = TypeIR | EnumIR
 
 
 @dataclass(frozen=True)
@@ -393,7 +413,7 @@ class CanonicalIR:
     """The complete immutable semantic graph before target planning."""
 
     ir_version: str = field(default=IR_VERSION, init=False)
-    types: FrozenMap[SemanticId, TypeIR] = field(default_factory=FrozenMap)
+    types: FrozenMap[SemanticId, TypeDeclarationIR] = field(default_factory=FrozenMap)
     capabilities: FrozenMap[SemanticId, CapabilityIR] = field(default_factory=FrozenMap)
     external_contexts: FrozenMap[SemanticId, ExternalContextIR] = field(default_factory=FrozenMap)
     contexts: FrozenMap[SemanticId, ContextRequirementIR] = field(default_factory=FrozenMap)
@@ -426,7 +446,7 @@ class CanonicalIR:
     def create(
         cls,
         *,
-        types: Iterable[TypeIR] = (),
+        types: Iterable[TypeDeclarationIR] = (),
         capabilities: Iterable[CapabilityIR] = (),
         external_contexts: Iterable[ExternalContextIR] = (),
         contexts: Iterable[ContextRequirementIR] = (),
@@ -514,6 +534,7 @@ __all__ = [
     "ContextRequirementIR",
     "ControlIR",
     "EvalIR",
+    "EnumIR",
     "ExecutionBoundary",
     "ExternalContextIR",
     "GrantIR",
@@ -530,5 +551,6 @@ __all__ = [
     "SourceSpan",
     "StageCardinality",
     "TypeFieldIR",
+    "TypeDeclarationIR",
     "TypeIR",
 ]

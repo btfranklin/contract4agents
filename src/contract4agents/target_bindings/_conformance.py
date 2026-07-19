@@ -140,7 +140,51 @@ def validate_target_binding_conformance(
             diagnostics.extend(entry_diagnostics)
             if resolved is not None:
                 implementations.append(resolved)
+    diagnostics.extend(_profile_diagnostics(ir, target_name, target))
     return TargetBindingConformanceResult(target_name, tuple(diagnostics), tuple(implementations))
+
+
+def _profile_diagnostics(
+    ir: CanonicalIR,
+    target_name: str,
+    target: TargetBinding,
+) -> list[Diagnostic]:
+    canonical_agents = {agent.name for agent in ir.agents.values()}
+    diagnostics: list[Diagnostic] = []
+    for profile_name, profile in target.profiles.items():
+        unknown_agents = sorted(set(profile.agents) - canonical_agents)
+        diagnostics.extend(
+            Diagnostic(
+                "TGT108",
+                (
+                    f"Target `{target_name}` profile `{profile_name}` has an agent override "
+                    f"for unknown canonical agent `{agent_name}`"
+                ),
+                hint="Delete the stale agent override or add the agent to canonical contract source.",
+            )
+            for agent_name in unknown_agents
+        )
+        missing_models = sorted(
+            agent_name
+            for agent_name in canonical_agents
+            if profile.default_model is None
+            and (
+                agent_name not in profile.agents
+                or profile.agents[agent_name].model is None
+            )
+        )
+        diagnostics.extend(
+            Diagnostic(
+                "TGT109",
+                (
+                    f"Target `{target_name}` profile `{profile_name}` does not select a model "
+                    f"for canonical agent `{agent_name}`"
+                ),
+                hint="Set the profile default_model or an explicit model for every canonical agent.",
+            )
+            for agent_name in missing_models
+        )
+    return diagnostics
 
 
 def _expected_bindings(ir: CanonicalIR) -> dict[BindingSection, dict[str, CapabilityIR | SemanticId]]:

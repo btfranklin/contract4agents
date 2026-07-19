@@ -149,9 +149,9 @@ modules or invents an undeclared provider.
 The materialized graph exposes this runtime directly:
 
 ```python
-from contract4agents.materialization import RecordingRuntimeTraceSink
+from contract4agents.tracing import RecordingNormalizedTraceSink
 
-trace_sink = RecordingRuntimeTraceSink()
+trace_sink = RecordingNormalizedTraceSink()
 system = materialize(
     "agent_contracts",
     target="openai",
@@ -165,6 +165,12 @@ context = await system.context.resolve_agent(
     thread_id=thread_id,
 )
 ```
+
+`NormalizedTraceSink` is shared by context resolution, provider response
+normalization, and trace processors. Use `AtomicTraceFileSink` when normalized
+events need crash-safe single-process JSONL persistence. The host still owns
+workflow-state transactions, durable recovery policy, and multi-process
+coordination.
 
 The result contains typed values plus audience-safe rendered forms. Run and
 thread cache scopes are enforced by the resolver, and every resolution emits a

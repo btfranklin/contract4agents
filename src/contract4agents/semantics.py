@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from contract4agents.ast import ContractProject, SourceSpan
+from contract4agents.ast import ContractProject, EnumDef, SourceSpan, TypeDef
 from contract4agents.diagnostics import Diagnostic
 from contract4agents.semantic_checks._agents import check_agent
 from contract4agents.semantic_checks._contracts import (
@@ -20,7 +20,7 @@ from contract4agents.semantic_checks._contracts import (
 from contract4agents.semantic_checks._expressions import check_eval
 from contract4agents.semantic_checks._index import ProjectIndex
 from contract4agents.semantic_checks._run_specs import check_run_spec
-from contract4agents.semantic_checks._types import check_datasource, check_type
+from contract4agents.semantic_checks._types import check_datasource, check_enum, check_type
 
 
 @dataclass(frozen=True)
@@ -35,7 +35,11 @@ class SemanticResult:
 def analyze_project(project: ContractProject) -> SemanticResult:
     diagnostics: list[Diagnostic] = []
     diagnostics.extend(
-        _duplicates([(item.name, item.span) for module in project.modules for item in module.types], "type")
+        _duplicates(
+            [(item.name, item.span) for module in project.modules for item in module.types]
+            + [(item.name, item.span) for module in project.modules for item in module.enums],
+            "type",
+        )
     )
     diagnostics.extend(
         _duplicates([(item.name, item.span) for module in project.modules for item in module.agents], "agent")
@@ -98,7 +102,10 @@ def analyze_project(project: ContractProject) -> SemanticResult:
     )
     index = ProjectIndex.from_project(project)
     for type_def in index.type_defs.values():
-        diagnostics.extend(check_type(type_def, index))
+        if isinstance(type_def, TypeDef):
+            diagnostics.extend(check_type(type_def, index))
+        elif isinstance(type_def, EnumDef):
+            diagnostics.extend(check_enum(type_def))
     for datasource in index.datasource_defs.values():
         diagnostics.extend(check_datasource(datasource, index))
     for tool in index.tool_defs.values():

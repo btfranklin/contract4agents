@@ -15,6 +15,7 @@ from contract4agents.ast import (
     OperationalControlDef,
     QualityDef,
     ToolDef,
+    TypeDef,
 )
 from contract4agents.diagnostics import Diagnostic
 from contract4agents.parser._values import unquote
@@ -293,7 +294,7 @@ def _resolve_context_mapping_type(
     for name in parts[2:]:
         owner = current.rstrip("?")
         type_def = index.type_defs.get(owner)
-        if type_def is None:
+        if not isinstance(type_def, TypeDef):
             return None
         field = next((item for item in type_def.fields if item.name == name), None)
         if field is None:

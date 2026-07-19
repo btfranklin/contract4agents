@@ -11,7 +11,15 @@ from click.testing import CliRunner
 import contract4agents.visualization as visualization
 from contract4agents.assurance import AssessorIdentity, ControlResult
 from contract4agents.cli import main
-from contract4agents.ir import CanonicalIR, FrozenMap, SemanticId, build_canonical_ir, contract_digest, semantic_id
+from contract4agents.ir import (
+    CanonicalIR,
+    EnumIR,
+    FrozenMap,
+    SemanticId,
+    build_canonical_ir,
+    contract_digest,
+    semantic_id,
+)
 from contract4agents.parser import parse_project
 from contract4agents.planning import AdapterPlan, AgentPlan, MaterializationPlan
 from contract4agents.tracing import (
@@ -41,7 +49,7 @@ def test_declared_graph_is_ir_native_and_represents_contract_semantics() -> None
     node_ids = {node["id"] for node in graph["nodes"]}
     edge_kinds = {edge["kind"] for edge in graph["edges"]}
     assert graph["version"] == "1"
-    assert graph["ir_version"] == "1"
+    assert graph["ir_version"] == "2"
     assert graph["contract_digest"] == contract_digest(ir)
     assert "agent:IncidentCommander" in node_ids
     assert "tool:logs.search" in node_ids
@@ -59,6 +67,30 @@ def test_declared_graph_is_ir_native_and_represents_contract_semantics() -> None
     assert {item["direction"] for item in commander["composition"]} == {"outgoing"}
     assert commander["controls"]
     assert commander["qualities"]
+
+
+def test_declared_graph_preserves_enum_values_as_type_metadata() -> None:
+    ir = CanonicalIR.create(
+        types=(EnumIR(semantic_id("type", "Status"), "Status", ("accepted", "failed")),)
+    )
+
+    graph = build_visualization_graph(ir)
+
+    assert graph["nodes"] == [
+        {
+            "id": "type:Status",
+            "kind": "type",
+            "label": "Status",
+            "truth": {
+                "declared": {
+                    "enum_values": ["accepted", "failed"],
+                },
+                "planned": {},
+                "observed": {},
+                "assured": {},
+            },
+        }
+    ]
 
 
 def test_graph_keeps_declared_planned_observed_and_assured_truth_separate() -> None:

@@ -8,14 +8,14 @@ import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any
 
 from contract4agents.ir import CanonicalIR, FrozenMap, SemanticId, semantic_id
 from contract4agents.materialization._types import build_parameter_model, type_adapter_for
 from contract4agents.planning import MaterializationPlan
 
 if TYPE_CHECKING:
-    from contract4agents.tracing import TraceEvent, TraceSemanticRefs
+    from contract4agents.tracing import NormalizedTraceSink, TraceEvent, TraceSemanticRefs
 
 
 class ContextResolutionError(RuntimeError):
@@ -24,25 +24,6 @@ class ContextResolutionError(RuntimeError):
     def __init__(self, semantic_id: SemanticId, message: str) -> None:
         super().__init__(f"{semantic_id}: {message}")
         self.semantic_id = semantic_id
-
-
-@runtime_checkable
-class RuntimeTraceSink(Protocol):
-    def emit(self, event: TraceEvent) -> None:
-        """Accept one normalized runtime event."""
-
-
-class NoOpRuntimeTraceSink:
-    def emit(self, event: TraceEvent) -> None:
-        del event
-
-
-class RecordingRuntimeTraceSink:
-    def __init__(self) -> None:
-        self.events: list[TraceEvent] = []
-
-    def emit(self, event: TraceEvent) -> None:
-        self.events.append(event)
 
 
 @dataclass(frozen=True)
@@ -66,13 +47,15 @@ class ContextRuntime:
         implementations: FrozenMap[SemanticId, object],
         output_types: FrozenMap[str, type[object]],
         *,
-        trace_sink: RuntimeTraceSink | None = None,
+        trace_sink: NormalizedTraceSink | None = None,
     ) -> None:
+        from contract4agents.tracing import NoOpNormalizedTraceSink
+
         self.ir = ir
         self.plan = plan
         self.implementations = implementations
         self.output_types = output_types
-        self.trace_sink = trace_sink or NoOpRuntimeTraceSink()
+        self.trace_sink = trace_sink or NoOpNormalizedTraceSink()
         self._run_cache: dict[tuple[str, str, str], ResolvedContextValue] = {}
         self._thread_cache: dict[tuple[str, str, str], ResolvedContextValue] = {}
         self._event_counter = 0
@@ -387,8 +370,5 @@ def _inline(value: object) -> str:
 __all__ = [
     "ContextResolutionError",
     "ContextRuntime",
-    "NoOpRuntimeTraceSink",
-    "RecordingRuntimeTraceSink",
     "ResolvedContextValue",
-    "RuntimeTraceSink",
 ]

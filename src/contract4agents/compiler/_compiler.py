@@ -13,13 +13,14 @@ from contract4agents.diagnostics import raise_if_errors
 from contract4agents.ir import (
     AgentIR,
     CanonicalIR,
+    EnumIR,
     FrozenMap,
     ListTypeRef,
     MapTypeRef,
     NamedTypeRef,
     NullableTypeRef,
     PrimitiveTypeRef,
-    TypeIR,
+    TypeDeclarationIR,
     TypeRef,
     build_canonical_ir,
     contract_digest,
@@ -92,7 +93,15 @@ def artifact_digests(artifacts: CompilerArtifacts) -> FrozenMap[str, str]:
     return FrozenMap(values)
 
 
-def _schema_for_type(type_def: TypeIR, ir: CanonicalIR) -> dict[str, object]:
+def _schema_for_type(type_def: TypeDeclarationIR, ir: CanonicalIR) -> dict[str, object]:
+    if isinstance(type_def, EnumIR):
+        return {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": f"urn:contract4agents:type:{type_def.name}",
+            "title": type_def.name,
+            "type": "string",
+            "enum": list(type_def.values),
+        }
     required: list[str] = []
     properties: dict[str, object] = {}
     referenced: set[str] = set()
@@ -123,6 +132,13 @@ def _schema_for_type(type_def: TypeIR, ir: CanonicalIR) -> dict[str, object]:
             target = ir.types.get(semantic_id("type", name))
             if target is None:
                 raise ValueError(f"Type `{type_def.name}` references unknown type `{name}`")
+            if isinstance(target, EnumIR):
+                definitions[name] = {
+                    "title": target.name,
+                    "type": "string",
+                    "enum": list(target.values),
+                }
+                continue
             nested_refs: set[str] = set()
             nested_properties: dict[str, object] = {}
             nested_required: list[str] = []
@@ -213,6 +229,16 @@ def _generated_docs(ir: CanonicalIR, digest: str) -> FrozenMap[PurePosixPath, st
     ]
     for agent in ir.agents.values():
         summary.append(f"- [`{agent.name}`](agents/{agent.name}.md) -> `{format_type_ref(agent.output_type)}`")
+    summary.extend(["", "## Types", ""])
+    for declaration in ir.types.values():
+        if isinstance(declaration, EnumIR):
+            values = ", ".join(f"`{value}`" for value in declaration.values)
+            summary.append(f"- `{declaration.name}` enum: {values}")
+        else:
+            fields = ", ".join(
+                f"`{field.name}: {format_type_ref(field.type_ref)}`" for field in declaration.fields
+            )
+            summary.append(f"- `{declaration.name}`: {fields or 'empty object'}")
     summary.extend(["", "## Capabilities", ""])
     for capability in ir.capabilities.values():
         summary.append(f"- `{capability.id}` ({capability.kind})")

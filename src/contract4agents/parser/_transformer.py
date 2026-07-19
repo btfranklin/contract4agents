@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -15,6 +16,7 @@ from contract4agents.ast import (
     ContractModule,
     ControlDef,
     DatasourceDef,
+    EnumDef,
     EvalCase,
     ExternalContextDef,
     FieldDef,
@@ -40,6 +42,8 @@ class _ModuleTransformer(Transformer[Any, Any]):
         for item in items:
             if isinstance(item, TypeDef):
                 module.types.append(item)
+            elif isinstance(item, EnumDef):
+                module.enums.append(item)
             elif isinstance(item, ToolDef):
                 module.tools.append(item)
             elif isinstance(item, DatasourceDef):
@@ -68,6 +72,17 @@ class _ModuleTransformer(Transformer[Any, Any]):
         name = _token(items[0])
         fields = _type_fields(items[1:])
         return TypeDef(str(name), fields, _span(self.path, name))
+
+    def enum_def(self, items: list[Any]) -> EnumDef:
+        name = _token(items[0])
+        values = next((item for item in items[1:] if isinstance(item, list)), [])
+        return EnumDef(str(name), values, _span(self.path, name))
+
+    def enum_block(self, items: list[Any]) -> list[str]:
+        return [str(item) for item in items]
+
+    def enum_value(self, items: list[Any]) -> str:
+        return cast(str, json.loads(str(items[0])))
 
     def field_block(self, items: list[Any]) -> list[FieldDef]:
         return [item for item in items if isinstance(item, FieldDef)]

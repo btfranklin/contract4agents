@@ -9,19 +9,28 @@ import pytest
 from pydantic import ValidationError
 
 from contract4agents import materialize
-from contract4agents.ir import FrozenMap, SemanticId, semantic_id
+from contract4agents.ir import (
+    CanonicalIR,
+    EnumIR,
+    FrozenMap,
+    SemanticId,
+    TypeFieldIR,
+    TypeIR,
+    parse_type_ref,
+    semantic_id,
+)
 from contract4agents.materialization import (
     ContextResolutionError,
     MaterializationError,
     NativeAgentDescription,
-    NoOpRuntimeTraceSink,
     OpenAIMaterializationProvider,
-    RecordingRuntimeTraceSink,
     RecordingTraceSink,
 )
+from contract4agents.materialization._types import build_pydantic_types
 from contract4agents.planning import PlanningError
 from contract4agents.runtime import EnvironmentProvider, EnvironmentRunRequest, InProcessEnvironment
 from contract4agents.target_bindings import BindingEntry
+from contract4agents.tracing import NoOpNormalizedTraceSink, RecordingNormalizedTraceSink
 
 
 @dataclass
@@ -145,6 +154,21 @@ class FakeOpenAISDK:
         )
 
 
+def test_runtime_pydantic_types_enforce_literal_enum_membership() -> None:
+    status = EnumIR(semantic_id("type", "Status"), "Status", ("accepted", "failed"))
+    result = TypeIR(
+        semantic_id("type", "Result"),
+        "Result",
+        (TypeFieldIR("status", parse_type_ref("Status")),),
+    )
+
+    types = build_pydantic_types(CanonicalIR.create(types=(result, status)))
+
+    assert types["Result"](status="accepted").status == "accepted"
+    with pytest.raises(ValidationError):
+        types["Result"](status="unknown")
+
+
 def test_public_materialize_builds_and_validates_complete_native_graph(tmp_path: Path) -> None:
     _write_project(tmp_path)
     sdk = FakeOpenAISDK()
@@ -259,7 +283,7 @@ def test_materialization_trace_sink_receives_stable_validated_configuration_even
 @pytest.mark.asyncio
 async def test_materialized_context_runtime_maps_validates_caches_renders_and_traces(tmp_path: Path) -> None:
     _write_project(tmp_path)
-    runtime_sink = RecordingRuntimeTraceSink()
+    runtime_sink = RecordingNormalizedTraceSink()
     result = materialize(
         tmp_path,
         "openai",
@@ -298,7 +322,7 @@ async def test_materialized_context_runtime_maps_validates_caches_renders_and_tr
     assert runtime_sink.events[1].data["sensitivity"] == "internal"
     assert runtime_sink.events[0].context.plan_digest == result.plan.plan_digest
     assert all("value" not in event.data for event in runtime_sink.events)
-    NoOpRuntimeTraceSink().emit(runtime_sink.events[0])
+    NoOpNormalizedTraceSink().emit(runtime_sink.events[0])
 
     result.context.clear_run("run-1")
     third = await result.context.resolve_agent(
@@ -331,7 +355,7 @@ async def test_materialized_context_runtime_rejects_invalid_invocation_shape(tmp
 @pytest.mark.asyncio
 async def test_context_runtime_enforces_thread_cache_and_records_provider_failures(tmp_path: Path) -> None:
     _write_project(tmp_path, datasource_cache="thread", async_current=True)
-    sink = RecordingRuntimeTraceSink()
+    sink = RecordingNormalizedTraceSink()
     result = materialize(
         tmp_path,
         "openai",
@@ -357,7 +381,7 @@ async def test_context_runtime_enforces_thread_cache_and_records_provider_failur
     broken_root = tmp_path / "broken"
     broken_root.mkdir()
     _write_project(broken_root, invalid_current=True)
-    broken_sink = RecordingRuntimeTraceSink()
+    broken_sink = RecordingNormalizedTraceSink()
     broken = materialize(
         broken_root,
         "openai",
@@ -650,7 +674,7 @@ def context():
     )
     (tmp_path / "contract4agents.targets.toml").write_text(
         f"""\
-schema_version = "1"
+schema_version = "2"
 
 [targets.openai]
 adapter = "openai"

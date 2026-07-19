@@ -17,6 +17,7 @@ from contract4agents.codegen._model import (
 )
 from contract4agents.ir import (
     CanonicalIR,
+    EnumIR,
     FrozenJsonValue,
     FrozenMap,
     ListTypeRef,
@@ -25,6 +26,7 @@ from contract4agents.ir import (
     NullableTypeRef,
     PrimitiveTypeRef,
     SemanticId,
+    TypeDeclarationIR,
     TypeIR,
     TypeRef,
     contract_digest,
@@ -48,7 +50,11 @@ def generate_code(ir: CanonicalIR) -> GeneratedCode:
     return GeneratedCode(contract_digest=digest, files=files)
 
 
-def generate_pydantic_models(ir: CanonicalIR, *, ordered_types: tuple[TypeIR, ...] | None = None) -> str:
+def generate_pydantic_models(
+    ir: CanonicalIR,
+    *,
+    ordered_types: tuple[TypeDeclarationIR, ...] | None = None,
+) -> str:
     """Generate a self-contained Pydantic v2 model module."""
 
     types = ordered_types if ordered_types is not None else _ordered_types(ir)
@@ -60,14 +66,21 @@ def generate_pydantic_models(ir: CanonicalIR, *, ordered_types: tuple[TypeIR, ..
     ]
     if _uses_primitive(types, "datetime"):
         lines.extend(["from datetime import datetime", ""])
+    if any(isinstance(type_def, EnumIR) for type_def in types):
+        lines.extend(["from typing import Literal", ""])
     lines.extend(["from pydantic import BaseModel, ConfigDict", ""])
 
     for type_def in types:
-        lines.extend(_pydantic_model(type_def))
+        if isinstance(type_def, EnumIR):
+            values = ", ".join(repr(value) for value in type_def.values)
+            lines.append(f"{type_def.name} = Literal[{values}]")
+        else:
+            lines.extend(_pydantic_model(type_def))
         lines.append("")
-    if types:
-        model_names = ", ".join(type_def.name for type_def in types)
-        if len(types) == 1:
+    models = tuple(type_def for type_def in types if isinstance(type_def, TypeIR))
+    if models:
+        model_names = ", ".join(type_def.name for type_def in models)
+        if len(models) == 1:
             model_names += ","
         lines.extend(
             [
@@ -80,12 +93,20 @@ def generate_pydantic_models(ir: CanonicalIR, *, ordered_types: tuple[TypeIR, ..
     return "\n".join(lines).rstrip() + "\n"
 
 
-def generate_typescript_types(ir: CanonicalIR, *, ordered_types: tuple[TypeIR, ...] | None = None) -> str:
+def generate_typescript_types(
+    ir: CanonicalIR,
+    *,
+    ordered_types: tuple[TypeDeclarationIR, ...] | None = None,
+) -> str:
     """Generate TypeScript interfaces for serialized contract values."""
 
     types = ordered_types if ordered_types is not None else _ordered_types(ir)
     lines = [*_header("//", contract_digest(ir))]
     for type_def in types:
+        if isinstance(type_def, EnumIR):
+            values = " | ".join(json.dumps(value, ensure_ascii=False) for value in type_def.values)
+            lines.extend([f"export type {type_def.name} = {values};", ""])
+            continue
         lines.extend([f"export interface {type_def.name} {{"])
         for type_field in type_def.fields:
             optional = "?" if isinstance(type_field.type_ref, NullableTypeRef) and not type_field.has_default else ""
@@ -94,7 +115,11 @@ def generate_typescript_types(ir: CanonicalIR, *, ordered_types: tuple[TypeIR, .
     return "\n".join(lines).rstrip() + "\n"
 
 
-def generate_zod_schemas(ir: CanonicalIR, *, ordered_types: tuple[TypeIR, ...] | None = None) -> str:
+def generate_zod_schemas(
+    ir: CanonicalIR,
+    *,
+    ordered_types: tuple[TypeDeclarationIR, ...] | None = None,
+) -> str:
     """Generate forward-reference-safe Zod schemas for serialized contract values."""
 
     types = ordered_types if ordered_types is not None else _ordered_types(ir)
@@ -104,6 +129,12 @@ def generate_zod_schemas(ir: CanonicalIR, *, ordered_types: tuple[TypeIR, ...] |
         lines.append(f'import type {{ {names} }} from "./types";')
     lines.append("")
     for type_def in types:
+        if isinstance(type_def, EnumIR):
+            values = ", ".join(json.dumps(value, ensure_ascii=False) for value in type_def.values)
+            lines.extend(
+                [f"export const {type_def.name}Schema: z.ZodType<{type_def.name}> = z.enum([{values}]);", ""]
+            )
+            continue
         lines.extend([f"export const {type_def.name}Schema: z.ZodType<{type_def.name}> = z.lazy(() =>"])
         lines.append("  z")
         lines.append("    .object({")
@@ -225,10 +256,12 @@ def _plain_json(value: FrozenJsonValue) -> object:
     return value
 
 
-def _ordered_types(ir: CanonicalIR) -> tuple[TypeIR, ...]:
+def _ordered_types(ir: CanonicalIR) -> tuple[TypeDeclarationIR, ...]:
     by_id = dict(ir.types.items())
     for type_def in by_id.values():
         _validate_identifier(type_def.name, f"type `{type_def.name}`")
+        if isinstance(type_def, EnumIR):
+            continue
         for type_field in type_def.fields:
             _validate_identifier(type_field.name, f"field `{type_def.name}.{type_field.name}`")
             for dependency in _named_dependencies(type_field.type_ref):
@@ -238,7 +271,7 @@ def _ordered_types(ir: CanonicalIR) -> tuple[TypeIR, ...]:
                         f"Type `{type_def.name}` references missing contract type `{dependency.parts[0]}`",
                     )
 
-    ordered: list[TypeIR] = []
+    ordered: list[TypeDeclarationIR] = []
     state: dict[SemanticId, int] = {}
 
     def visit(type_id: SemanticId) -> None:
@@ -248,12 +281,16 @@ def _ordered_types(ir: CanonicalIR) -> tuple[TypeIR, ...]:
             return
         state[type_id] = 1
         type_def = by_id[type_id]
-        dependencies = {
-            dependency
-            for type_field in type_def.fields
-            for dependency in _named_dependencies(type_field.type_ref)
-            if dependency != type_id
-        }
+        dependencies = (
+            {
+                dependency
+                for type_field in type_def.fields
+                for dependency in _named_dependencies(type_field.type_ref)
+                if dependency != type_id
+            }
+            if isinstance(type_def, TypeIR)
+            else set()
+        )
         for dependency in sorted(dependencies, key=str):
             visit(dependency)
         state[type_id] = 2
@@ -273,10 +310,11 @@ def _named_dependencies(type_ref: TypeRef) -> Iterable[SemanticId]:
         yield from _named_dependencies(type_ref.value)
 
 
-def _uses_primitive(types: tuple[TypeIR, ...], primitive: str) -> bool:
+def _uses_primitive(types: tuple[TypeDeclarationIR, ...], primitive: str) -> bool:
     return any(
         _contains_primitive(type_field.type_ref, primitive)
         for type_def in types
+        if isinstance(type_def, TypeIR)
         for type_field in type_def.fields
     )
 

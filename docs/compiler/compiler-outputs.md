@@ -34,10 +34,13 @@ docs/
 - `ir/contract.json` is the deterministic serialized semantic model.
 - `ir/contract-digest.txt` identifies the exact contract revision used by
   plans, traces, and assurance results.
-- `schemas/` contains standalone JSON Schema derived from native contract types.
+- `schemas/` contains standalone JSON Schema derived from structural types and
+  string enums.
 - `instructions/` contains only model-visible goals, guidance, composition
   descriptions, and controls whose audience explicitly includes `model`.
 - `generated/` contains disposable Pydantic, TypeScript, and Zod artifacts.
+  String enums become Python `Literal` aliases, TypeScript string unions, and
+  Zod `z.enum` schemas.
 - `docs/` contains reviewer-facing summaries generated from the IR.
 
 Permissions and output-conformance controls already exist in canonical IR;

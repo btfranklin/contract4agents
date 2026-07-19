@@ -94,6 +94,26 @@ handoff spans. Register one processor per logical run with
 `agents.add_trace_processor(...)`; its `normalized_trace()` result retains the
 provider IDs while excluding raw provider inputs and outputs.
 
+Provider-hosted tools are also visible in Agents SDK model responses. Normalize
+those response items after each run:
+
+```python
+events = processor.normalize_response_events(
+    result.raw_responses,
+    agent="CurrentTruthScout",
+)
+```
+
+`normalize_openai_response_events(...)` is the corresponding standalone API.
+For `web_search_call` items it resolves exactly one enabled `provider_hosted`
+grant whose plan locator matches the agent, `provider = "openai"`, and
+`tool = "web_search"`. It emits `tool.completed` evidence with canonical
+capability/grant IDs. Missing or ambiguous matches instead emit
+`capability.undeclared`; they are never silently assigned to a capability.
+Only provider status, model metadata when exposed by the SDK, response/request
+correlation, and call IDs are retained. Queries, actions, prompts, and results
+are not copied into normalized events.
+
 ## Provenance and Redaction
 
 `provenance` records where the normalized evidence came from. `redaction`
@@ -119,6 +139,32 @@ write_trace_jsonl(Path("normalized.trace.jsonl"), trace, audience="reviewer")
 Use `dumps_trace_jsonl` and `loads_trace_jsonl` for in-memory data. Loading is
 strict: invalid JSON, unsupported schema versions, incomplete envelopes,
 unknown object fields, broken identity, and malformed semantic references fail.
+`write_trace_jsonl` writes a same-directory temporary file, flushes and syncs
+it, then atomically replaces the destination.
+
+For incremental single-process persistence, use an atomic normalized sink:
+
+```python
+from pathlib import Path
+
+from contract4agents.tracing import AtomicTraceFileSink, TraceRunContext
+
+context = TraceRunContext(run_id, thread_id, contract_digest, plan_digest)
+sink = AtomicTraceFileSink(Path("run.trace.jsonl"), context, append=True)
+```
+
+Resume validates the complete existing file and its exact run context. Every
+emission validates and atomically writes the complete candidate trace before
+advancing in-memory state. `RecordingNormalizedTraceSink` and
+`NoOpNormalizedTraceSink` provide in-memory and discard behavior. These sinks
+do not coordinate multiple processes or transact trace evidence with host
+workflow state; those remain host responsibilities.
+
+Before assurance or eval scoring, Contract4Agents automatically calls
+`validate_trace_conformance(ir, plan, trace)`. It rejects digest mismatches,
+explicit undeclared-capability evidence, tool events without complete semantic
+identity, and unknown, disabled, or mismatched grants through structured
+`TraceConformanceError.issues`.
 
 ## Trace Completeness
 

@@ -12,6 +12,7 @@ from contract4agents.ir import (
     CapabilityIR,
     CompositionEdgeIR,
     ControlIR,
+    EnumIR,
     FrozenMap,
     GrantIR,
     GuidanceIR,
@@ -87,7 +88,7 @@ def test_canonical_ir_serialization_matches_stable_id_and_type_rules() -> None:
     types = cast(dict[str, object], data["types"])
     request = cast(dict[str, object], types["type:IncidentRequest"])
 
-    assert data["ir_version"] == IR_VERSION == "1"
+    assert data["ir_version"] == IR_VERSION == "2"
     assert list(agents) == ["agent:IncidentCommander", "agent:LogInvestigator"]
     assert commander["output_type"] == "type:IncidentDecision"
     assert commander["description"] == "Coordinates the incident response."
@@ -158,6 +159,23 @@ def test_ir_construction_rejects_duplicate_ids_and_mismatched_names() -> None:
         CanonicalIR.create(types=(first, second))
     with pytest.raises(ValueError, match="does not match"):
         TypeIR(semantic_id("type", "A"), "B", ())
+
+
+def test_enum_ir_uses_type_identity_and_serializes_closed_values() -> None:
+    enum = EnumIR(semantic_id("type", "Status"), "Status", ("accepted", "failed"))
+    ir = CanonicalIR.create(types=(enum,))
+
+    assert canonical_ir_data(ir)["types"] == {
+        "type:Status": {
+            "description": "",
+            "name": "Status",
+            "values": ["accepted", "failed"],
+        }
+    }
+    with pytest.raises(ValueError, match="at least one value"):
+        EnumIR(semantic_id("type", "Empty"), "Empty", ())
+    with pytest.raises(ValueError, match="Duplicate enum"):
+        EnumIR(semantic_id("type", "Status"), "Status", ("accepted", "accepted"))
 
 
 def test_grant_isolation_reference_requires_an_isolation_id() -> None:

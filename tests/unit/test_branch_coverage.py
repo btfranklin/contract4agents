@@ -31,6 +31,7 @@ from contract4agents.ir import (
     QualityIR,
     TypeFieldIR,
     TypeIR,
+    contract_digest,
     parse_type_ref,
     semantic_id,
 )
@@ -95,6 +96,23 @@ def _completeness(complete: bool) -> TraceCompletenessResult:
         "complete" if complete else "unverified",
         "complete" if complete else "incomplete",
     )
+
+
+def _conforming_trace(
+    ir: CanonicalIR,
+    plan: object,
+    events: tuple[TraceEvent, ...],
+) -> NormalizedTrace:
+    from contract4agents.planning import MaterializationPlan
+
+    assert isinstance(plan, MaterializationPlan)
+    context = TraceRunContext(
+        "run-1",
+        "thread-1",
+        contract_digest(ir),
+        plan.plan_digest,
+    )
+    return NormalizedTrace(tuple(replace(event, context=context) for event in events))
 
 
 @pytest.mark.parametrize(
@@ -495,8 +513,7 @@ def test_control_assessor_handles_approval_output_and_explicit_evidence() -> Non
     plan = _plan(ir)
     approval_control = "SupportAgent:approval:status.publish"
     output_control = "SupportAgent:output_conformance"
-    trace = NormalizedTrace(
-        (
+    trace_events = (
             _event("evt-1", "approval.completed", timestamp=1, controls=(approval_control,), data={"approved": True}),
             _event("evt-2", "tool.started", timestamp=2, controls=(approval_control,)),
             _event("evt-3", "tool.completed", timestamp=3, controls=(approval_control,)),
@@ -509,8 +526,8 @@ def test_control_assessor_handles_approval_output_and_explicit_evidence() -> Non
                 controls=(output_control,),
             ),
             _event("evt-5", "approval.requested", timestamp=0, controls=(approval_control,)),
-        )
     )
+    trace = _conforming_trace(ir, plan, trace_events)
 
     results = assess_controls(ir, plan, trace)
 
@@ -543,7 +560,7 @@ def test_control_assessor_approval_failure_and_missing_evidence_branches(
         for index, event_type in enumerate(events, 1)
     ) or (_event("evt-0", "run.started", capability=None, grant=None),)
 
-    result = assess_controls(ir, plan, NormalizedTrace(trace_events))[0]
+    result = assess_controls(ir, plan, _conforming_trace(ir, plan, trace_events))[0]
 
     assert result.status == expected_status
 
@@ -599,6 +616,7 @@ def test_control_assessor_deterministic_requirement_language(
     )
     plan = replace(
         base_plan,
+        contract_digest=contract_digest(ir),
         controls=FrozenMap(
             {
                 control.id: ControlMappingPlan(
@@ -614,7 +632,7 @@ def test_control_assessor_deterministic_requirement_language(
         expected_telemetry=tuple(event.event_type for event in events),
     )
 
-    result = assess_controls(ir, plan, NormalizedTrace(events))[0]
+    result = assess_controls(ir, plan, _conforming_trace(ir, plan, events))[0]
 
     assert result.status == expected_status
 
@@ -636,12 +654,12 @@ def test_control_assessor_prefers_explicit_results_and_handles_output_failures()
     ir = replace(base, controls=FrozenMap({custom_id: custom}))
     plan = replace(
         plan,
+        contract_digest=contract_digest(ir),
         controls=FrozenMap(
             {custom_id: ControlMappingPlan(custom_id, False, "runtime", "exact", "test", ())}
         ),
     )
-    trace = NormalizedTrace(
-        (
+    trace_events = (
             _event(
                 "evt-1",
                 "control.assessed",
@@ -650,8 +668,8 @@ def test_control_assessor_prefers_explicit_results_and_handles_output_failures()
                 controls=("SupportAgent:custom",),
                 data={"status": "violated", "reason": "Explicit judge result."},
             ),
-        )
     )
+    trace = _conforming_trace(ir, plan, trace_events)
 
     explicit = assess_controls(ir, plan, trace)[0]
     assert explicit.status == "violated"
@@ -661,7 +679,9 @@ def test_control_assessor_prefers_explicit_results_and_handles_output_failures()
     failed = assess_controls(
         base,
         output_plan,
-        NormalizedTrace(
+        _conforming_trace(
+            base,
+            output_plan,
             (
                 _event(
                     "evt-2",
@@ -670,7 +690,7 @@ def test_control_assessor_prefers_explicit_results_and_handles_output_failures()
                     grant=None,
                     controls=("SupportAgent:output_conformance",),
                 ),
-            )
+            ),
         ),
     )
     assert next(item for item in failed if item.control_id.endswith("output_conformance")).status == "violated"

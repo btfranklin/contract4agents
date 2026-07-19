@@ -16,7 +16,7 @@ pdm add "contract4agents[openai]"
 `contract4agents.targets.toml` contains target-specific locators and options:
 
 ```toml
-schema_version = "1"
+schema_version = "2"
 
 [targets.openai]
 adapter = "openai"
@@ -47,9 +47,17 @@ default_model = "gpt-5.2"
 model = "gpt-5.6-luna"
 ```
 
-Profiles are complete and do not inherit. Bindings cannot contain permissions,
-prompts, controls, schemas, agent factories, output-type mappings, or
-composition registries.
+Every target has at least one named profile. Profiles are complete and do not
+inherit: `default_model` and explicit agent overrides must resolve a model for
+every canonical agent, and an override naming an unknown agent is invalid.
+Bindings cannot contain permissions, prompts, controls, schemas, agent
+factories, output-type mappings, or composition registries.
+
+Profiles own model identifiers and provider options. Environment variables own
+credentials and may select a target and profile; target-binding files never
+interpolate environment variables. Programmatic bindings remain useful for
+tests and control planes, but the resulting named plan must be persisted as the
+auditable configuration used for the run.
 
 Python locators use `module:attribute`. Planning may import a locator to inspect
 its callable signature, but it never calls application code.
@@ -217,6 +225,26 @@ to stable contract IDs, adds output-validation evidence for successful agent
 spans, and preserves provider trace/span correlation. It intentionally does not
 copy raw provider inputs or outputs into normalized payloads.
 
+After a run that may use an OpenAI-hosted tool, normalize the SDK model
+responses into the same processor:
+
+```python
+processor.normalize_response_events(
+    result.raw_responses,
+    agent="CurrentTruthScout",
+)
+trace = processor.normalized_trace()
+```
+
+OpenAI `web_search_call` items are matched fail-closed against the reviewed
+plan. Exactly one enabled provider-hosted grant must match the agent plus the
+`openai:web_search` locator. A successful match emits canonical
+`tool.completed` evidence; zero or multiple matches emit
+`capability.undeclared`, which trace conformance rejects before assurance or
+eval scoring. Provider response/request/call correlation and model metadata are
+preserved when available, while provider prompts, search actions, and results
+remain outside the normalized payload.
+
 ## Offline and Live Validation
 
 The default test suite constructs real SDK objects with deterministic local
@@ -226,9 +254,10 @@ models and no credentials. Live provider checks are opt-in:
 CONTRACT4AGENTS_RUN_OPENAI_LIVE=1 pdm run test:openai-live
 ```
 
-This single smoke test exercises contract compilation, production-profile
-planning, native graph materialization, typed context resolution, three
-agent-as-tool delegations, structured output, and SDK-span correlation.
+The live suite exercises contract compilation, production-profile planning,
+native graph materialization, typed context resolution, agent-as-tool
+delegations, structured output, SDK-span correlation, and hosted web-search
+response normalization.
 
 See [Validation and Quality Gates](../quality/validation.md) before interpreting
 a skipped live check as coverage.

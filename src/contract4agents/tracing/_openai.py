@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Iterable, Mapping
 from datetime import datetime
-from typing import Protocol
 
 from contract4agents.adapters._openai_names import contract_tool_name
 from contract4agents.ir import CanonicalIR, SemanticId, semantic_id
-from contract4agents.planning import MaterializationPlan
+from contract4agents.planning import GrantMappingPlan, MaterializationPlan
 from contract4agents.tracing._models import (
     NormalizedTrace,
     ProviderCorrelation,
@@ -18,10 +18,131 @@ from contract4agents.tracing._models import (
     TraceRunContext,
     TraceSemanticRefs,
 )
+from contract4agents.tracing._sinks import NormalizedTraceSink
 
 
-class _EventSink(Protocol):
-    def emit(self, event: TraceEvent) -> None: ...
+def resolve_provider_tool_grant(
+    plan: MaterializationPlan,
+    *,
+    agent_id: SemanticId,
+    provider: str,
+    tool: str,
+) -> GrantMappingPlan:
+    """Resolve exactly one enabled provider-hosted grant from planned locators."""
+
+    agent_id.require_kind("agent")
+    matches: list[GrantMappingPlan] = []
+    for grant in plan.grants.values():
+        if grant.agent_id != agent_id or grant.availability != "enabled":
+            continue
+        binding = plan.bindings.get(grant.capability_id)
+        if (
+            binding is None
+            or binding.kind != "tool"
+            or binding.execution != "provider_hosted"
+        ):
+            continue
+        locator_tool = _locator_tool(binding.locator)
+        if binding.locator.get("provider") == provider and locator_tool == tool:
+            matches.append(grant)
+    if len(matches) != 1:
+        raise ValueError(
+            f"Expected exactly one enabled provider-hosted grant for "
+            f"`{agent_id}` and `{provider}:{tool}`; found {len(matches)}"
+        )
+    return matches[0]
+
+
+def normalize_openai_response_events(
+    plan: MaterializationPlan,
+    responses: Iterable[object],
+    *,
+    agent: str | SemanticId,
+    context: TraceRunContext,
+    sink: NormalizedTraceSink | None = None,
+) -> tuple[TraceEvent, ...]:
+    """Normalize hosted web-search observations from Agents SDK model responses.
+
+    Only provider identity, status, model metadata, and correlation identifiers
+    are retained. Provider prompts, actions, queries, and outputs are excluded.
+    """
+
+    agent_id = agent if isinstance(agent, SemanticId) else semantic_id("agent", agent)
+    agent_id.require_kind("agent")
+    events: list[TraceEvent] = []
+    for response_index, response in enumerate(responses):
+        response_id = _field_text(response, "response_id")
+        request_id = _field_text(response, "request_id")
+        provider_model = _provider_model(response)
+        output = _field(response, "output")
+        if not isinstance(output, list | tuple):
+            continue
+        for item_index, item in enumerate(output):
+            if _field_text(item, "type") != "web_search_call":
+                continue
+            call_id = _field_text(item, "id")
+            identity = ":".join(
+                part
+                for part in (
+                    response_id or request_id or str(response_index),
+                    call_id or str(item_index),
+                )
+            )
+            event_id = f"openai:hosted-tool:{identity}"
+            data: dict[str, object] = {"provider_tool": "openai.web_search"}
+            status = _field_text(item, "status")
+            if status is not None:
+                data["status"] = status
+            if provider_model is not None:
+                data["provider_model"] = provider_model
+            evidence_refs = tuple(
+                reference
+                for reference in (
+                    f"provider:openai:response:{response_id}" if response_id else None,
+                    f"provider:openai:call:{call_id}" if call_id else None,
+                )
+                if reference is not None
+            )
+            try:
+                grant = resolve_provider_tool_grant(
+                    plan,
+                    agent_id=agent_id,
+                    provider="openai",
+                    tool="web_search",
+                )
+            except ValueError as exc:
+                event_type = "capability.undeclared"
+                semantic = TraceSemanticRefs(agent_id=agent_id)
+                data["reason"] = str(exc)
+            else:
+                event_type = "tool.completed"
+                semantic = TraceSemanticRefs(
+                    agent_id=agent_id,
+                    capability_id=grant.capability_id,
+                    grant_id=grant.id,
+                    isolation_id=grant.isolation_id,
+                )
+            event = TraceEvent(
+                context=context,
+                event_id=event_id,
+                parent_event_id=None,
+                event_type=event_type,
+                timestamp=_timestamp(_field(item, "completed_at")),
+                semantic=semantic,
+                data=data,
+                provider=ProviderCorrelation(
+                    "openai",
+                    run_id=response_id,
+                    request_id=request_id,
+                ),
+                evidence_refs=evidence_refs,
+                provenance={"source": "openai-agents-sdk-model-response"},
+                redaction=RedactionMetadata(),
+            )
+            events.append(event)
+            if sink is not None:
+                sink.emit(event)
+    return tuple(events)
 
 
 class OpenAINormalizedTraceProcessor:
@@ -40,7 +161,7 @@ class OpenAINormalizedTraceProcessor:
         *,
         run_id: str,
         thread_id: str | None = None,
-        sink: _EventSink | None = None,
+        sink: NormalizedTraceSink | None = None,
     ) -> None:
         if plan.contract_digest == "" or not run_id.strip():
             raise ValueError("plan and run_id are required")
@@ -122,6 +243,32 @@ class OpenAINormalizedTraceProcessor:
     def normalized_trace(self) -> NormalizedTrace:
         with self._lock:
             return NormalizedTrace(tuple(self.events))
+
+    def emit(self, event: TraceEvent) -> None:
+        """Accept an adjacent normalized event into this run's evidence."""
+
+        if event.context != self.context:
+            raise ValueError("Trace event does not match the OpenAI processor run context")
+        with self._lock:
+            self.events.append(event)
+            if self.sink is not None:
+                self.sink.emit(event)
+
+    def normalize_response_events(
+        self,
+        responses: Iterable[object],
+        *,
+        agent: str | SemanticId,
+    ) -> tuple[TraceEvent, ...]:
+        """Normalize hosted provider-tool calls observed in model responses."""
+
+        return normalize_openai_response_events(
+            self.plan,
+            responses,
+            agent=agent,
+            context=self.context,
+            sink=self,
+        )
 
     def _classify(self, span: object, *, completed: bool) -> tuple[str, TraceSemanticRefs]:
         data = getattr(span, "span_data", None)
@@ -211,6 +358,13 @@ class OpenAINormalizedTraceProcessor:
         trace_id = _text_attr(span, "trace_id")
         span_id = _text_attr(span, "span_id")
         span_data = getattr(span, "span_data", None)
+        provider_span_type = str(getattr(span_data, "type", "custom"))
+        data: dict[str, object] = {"error": error, "provider_span_type": provider_span_type}
+        provider_model = _field_text(span_data, "model")
+        if provider_model is None:
+            provider_model = _field_text(_field(span_data, "response"), "model")
+        if provider_model is not None:
+            data["provider_model"] = provider_model
         event = TraceEvent(
             context=self.context,
             event_id=event_id,
@@ -218,7 +372,7 @@ class OpenAINormalizedTraceProcessor:
             event_type=event_type,
             timestamp=timestamp,
             semantic=semantic,
-            data={"error": error, "provider_span_type": str(getattr(span_data, "type", "custom"))},
+            data=data,
             provider=ProviderCorrelation("openai", trace_id=trace_id, span_id=span_id),
             evidence_refs=(f"provider:openai:{trace_id}:{span_id}",),
             provenance={"source": "openai-agents-sdk-tracing-processor"},
@@ -252,4 +406,35 @@ def _timestamp(value: object) -> float:
     return time.time()
 
 
-__all__ = ["OpenAINormalizedTraceProcessor"]
+def _field(value: object, name: str) -> object:
+    if isinstance(value, Mapping):
+        return value.get(name)
+    return getattr(value, name, None)
+
+
+def _field_text(value: object, name: str) -> str | None:
+    item = _field(value, name)
+    return item if isinstance(item, str) and item else None
+
+
+def _provider_model(response: object) -> str | None:
+    for name in ("model", "model_name"):
+        value = _field_text(response, name)
+        if value is not None:
+            return value
+    return None
+
+
+def _locator_tool(locator: Mapping[str, object]) -> object:
+    tool = locator.get("tool")
+    provider_tool = locator.get("provider_tool")
+    if tool is not None and provider_tool is not None and tool != provider_tool:
+        return None
+    return tool if tool is not None else provider_tool
+
+
+__all__ = [
+    "OpenAINormalizedTraceProcessor",
+    "normalize_openai_response_events",
+    "resolve_provider_tool_grant",
+]

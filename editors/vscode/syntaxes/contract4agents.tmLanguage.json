@@ -4,6 +4,7 @@
   "scopeName": "source.contract4agents",
   "patterns": [
     {"include": "#comments"},
+    {"include": "#enum-values"},
     {"include": "#strings"},
     {"include": "#declarations"},
     {"include": "#relationships"},
@@ -29,8 +30,22 @@
         {"name": "string.quoted.double.contract4agents", "match": "\"(?:[^\"\\\\]|\\\\.)*\""}
       ]
     },
+    "enum-values": {
+      "patterns": [
+        {"name": "constant.other.enum-member.contract4agents", "match": "^\\s*(\"(?:[^\"\\\\]|\\\\.)*\")\\s*(?:#.*)?$"}
+      ]
+    },
     "declarations": {
       "patterns": [
+        {
+          "name": "meta.declaration.enum.contract4agents",
+          "match": "^\\s*(enum)\\s+([A-Za-z_][A-Za-z0-9_]*)(\\s*:)",
+          "captures": {
+            "1": {"name": "keyword.declaration.enum.contract4agents"},
+            "2": {"name": "entity.name.type.enum.contract4agents"},
+            "3": {"name": "punctuation.definition.block.contract4agents"}
+          }
+        },
         {
           "name": "meta.declaration.type.contract4agents",
           "match": "^\\s*(type)\\s+([A-Za-z_][A-Za-z0-9_]*)(\\s*:)",

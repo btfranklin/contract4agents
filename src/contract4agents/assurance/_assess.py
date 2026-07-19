@@ -8,7 +8,12 @@ from typing import cast
 from contract4agents.assurance._models import AssessorIdentity, AssuranceStatus, ControlResult
 from contract4agents.ir import CanonicalIR, ControlIR, SemanticId
 from contract4agents.planning import MaterializationPlan
-from contract4agents.tracing import NormalizedTrace, TraceEvent, assess_trace_completeness
+from contract4agents.tracing import (
+    NormalizedTrace,
+    TraceEvent,
+    assess_trace_completeness,
+    validate_trace_conformance,
+)
 
 _ASSESSOR = AssessorIdentity("contract4agents", "1")
 _CALL = re.compile(r"trace\.(?P<operation>[a-z_]+)\((?P<arguments>[^)]*)\)\Z")
@@ -24,6 +29,7 @@ def assess_controls(
     """Assess every planned control without treating absent evidence as success."""
 
     selected = _select_run(trace, run_id)
+    validate_trace_conformance(ir, plan, selected)
     completeness = assess_trace_completeness(
         selected,
         plan.expected_telemetry,

@@ -105,6 +105,7 @@ type LogFinding:
 The portable type subset includes:
 
 - Named scalar types: `string`, `integer`, `float`, `boolean`, and `datetime`.
+- Named closed string enums with quoted, nonempty, unique values.
 - Named contract types.
 - Nullable values using `?`.
 - Homogeneous `list[T]` and `map[string, T]` collections.
@@ -479,7 +480,7 @@ eval clear_incident for IncidentCommander:
 
 ### Identity
 
-The canonical IR is deterministic JSON with `ir_version = "1"`. It is generated
+The canonical IR is deterministic JSON with `ir_version = "2"`. It is generated
 only from parsed source and never hand-authored.
 
 Semantic IDs use readable, kind-qualified names:
@@ -506,7 +507,7 @@ repository-relative source paths, and all source spans removed.
 
 ```json
 {
-  "ir_version": "1",
+  "ir_version": "2",
   "agents": {
     "agent:IncidentCommander": {
       "name": "IncidentCommander",
@@ -567,14 +568,23 @@ assurance results join without display-name heuristics.
 
 ## Target bindings
 
-The default target-binding filename is `contract4agents.targets.toml`.
-Profiles are complete and do not inherit. Target-level
-bindings are shared by that target; a profile supplies model selections and
-provider options. Profiles cannot change portable grants, authorization, controls,
-schemas, audiences, composition, or isolation requirements.
+The default target-binding filename is `contract4agents.targets.toml`. Schema
+version `2` requires every declared target to contain at least one named profile.
+Profiles are complete and do not inherit. Target-level bindings are shared by
+that target; a profile supplies model selections and provider options. A profile
+must resolve a model for every canonical agent through `default_model` or an
+explicit per-agent model, and per-agent overrides may name only canonical
+agents. Profiles cannot change portable grants, authorization, controls, schemas,
+audiences, composition, or isolation requirements.
+
+Contract4Agents profiles own model identifiers and provider options. Environment
+variables own credentials and may select a target and profile, but binding files
+do not interpolate environment variables and profiles do not inherit. Tests and
+control planes may still supply bindings programmatically; the host must persist
+the resulting named materialization plan as the auditable runtime configuration.
 
 ```toml
-schema_version = "1"
+schema_version = "2"
 
 [targets.openai]
 adapter = "openai"
@@ -604,7 +614,10 @@ default_model = "gpt-5.2"
 model = "gpt-5.6-luna"
 ```
 
-The target-binding validator rejects keys that duplicate contract authority,
+`contract4agents check` discovers the default target-binding file when it is
+present and validates every target's binding coverage, callable shapes, and
+profile completeness. A project without the file remains a valid
+provider-neutral contract project. The target-binding validator rejects keys that duplicate contract authority,
 including `availability`, `authorization`, `execution`, `goal`, `guidance`,
 `control`, `quality`, `audience`, and `isolation`.
 

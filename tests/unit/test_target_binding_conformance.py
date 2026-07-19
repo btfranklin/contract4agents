@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from contract4agents.ir import (
+    AgentIR,
     CanonicalIR,
     CapabilityIR,
     ContextRequirementIR,
@@ -20,9 +21,11 @@ from contract4agents.ir import (
     semantic_id,
 )
 from contract4agents.target_bindings import (
+    AgentProfile,
     BindingEntry,
     TargetBinding,
     TargetBindings,
+    TargetProfile,
     validate_target_binding_conformance,
 )
 
@@ -173,6 +176,27 @@ def test_conformance_reports_unknown_target(tmp_path: Path) -> None:
     assert result.implementations == ()
 
 
+def test_conformance_requires_complete_profiles_without_unknown_agent_overrides(tmp_path: Path) -> None:
+    bindings = _bindings(
+        tmp_path,
+        tools={"incident.fetch_logs": None},
+        datasources={"incident.timeline": None},
+        external_context={"incident_record": None},
+        profiles={
+            "incomplete": TargetProfile(
+                agents={"RemovedAgent": AgentProfile(model="stale-model")}
+            ),
+            "complete": TargetProfile(default_model="default-model"),
+        },
+    )
+
+    result = validate_target_binding_conformance(_canonical_ir(), bindings, "openai")
+
+    assert [item.code for item in result.diagnostics] == ["TGT108", "TGT109"]
+    assert "RemovedAgent" in result.diagnostics[0].message
+    assert "IncidentCommander" in result.diagnostics[1].message
+
+
 def _canonical_ir() -> CanonicalIR:
     fetch_logs = CapabilityIR(
         id=semantic_id("tool", "incident.fetch_logs"),
@@ -243,11 +267,21 @@ def _canonical_ir() -> CanonicalIR:
         origin="external",
         origin_id=incident_record.id,
     )
+    agent = AgentIR(
+        id=semantic_id("agent", "IncidentCommander"),
+        name="IncidentCommander",
+        parameters=(),
+        output_type=parse_type_ref("string"),
+        goal="Coordinate the incident.",
+        grant_ids=(enabled_grant.id, denied_grant.id),
+        context_ids=(context.id,),
+    )
     return CanonicalIR.create(
         capabilities=(fetch_logs, denied_tool, timeline),
         external_contexts=(incident_record, unused_external),
         contexts=(context,),
         grants=(enabled_grant, denied_grant),
+        agents=(agent,),
     )
 
 
@@ -257,6 +291,7 @@ def _bindings(
     tools: dict[str, object | None] | None = None,
     datasources: dict[str, object | None] | None = None,
     external_context: dict[str, object | None] | None = None,
+    profiles: dict[str, TargetProfile] | None = None,
 ) -> TargetBindings:
     return TargetBindings(
         path=root / "contract4agents.targets.toml",
@@ -266,6 +301,7 @@ def _bindings(
                 tools=_entries(tools or {}),
                 datasources=_entries(datasources or {}),
                 external_context=_entries(external_context or {}),
+                profiles=profiles or {"test": TargetProfile(default_model="test-model")},
             )
         },
     )

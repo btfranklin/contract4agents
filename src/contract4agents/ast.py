@@ -37,6 +37,13 @@ class TypeDef:
     span: SourceSpan
 
 
+@dataclass(frozen=True)
+class EnumDef:
+    name: str
+    values: list[str]
+    span: SourceSpan
+
+
 RunSpecStageCardinality = Literal["one", "optional", "many"]
 Availability = Literal["enabled", "denied"]
 Authorization = Literal["preapproved", "approval_required"]
@@ -184,6 +191,7 @@ class RunSpecDef:
 class ContractModule:
     path: Path
     types: list[TypeDef] = field(default_factory=list)
+    enums: list[EnumDef] = field(default_factory=list)
     datasources: list[DatasourceDef] = field(default_factory=list)
     agents: list[AgentDef] = field(default_factory=list)
     evals: list[EvalCase] = field(default_factory=list)
@@ -205,6 +213,10 @@ class ContractProject:
     @property
     def types(self) -> dict[str, TypeDef]:
         return {item.name: item for module in self.modules for item in module.types}
+
+    @property
+    def enums(self) -> dict[str, EnumDef]:
+        return {item.name: item for module in self.modules for item in module.enums}
 
     @property
     def datasources(self) -> dict[str, DatasourceDef]:

@@ -6,7 +6,7 @@ import json
 import re
 from typing import Any, cast
 
-from contract4agents.ast import ContractProject, FieldDef
+from contract4agents.ast import ContractProject, EnumDef, FieldDef
 from contract4agents.ast import SourceSpan as AstSourceSpan
 from contract4agents.diagnostics import raise_if_errors
 from contract4agents.ir._collections import FrozenMap, freeze_json
@@ -24,6 +24,7 @@ from contract4agents.ir._model import (
     ContextOrigin,
     ContextRequirementIR,
     ControlIR,
+    EnumIR,
     EvalIR,
     ExecutionBoundary,
     ExternalContextIR,
@@ -52,7 +53,9 @@ def build_canonical_ir(project: ContractProject) -> CanonicalIR:
 
     raise_if_errors(analyze_project(project).diagnostics)
 
-    types = tuple(_type_ir(project, item) for item in project.types.values())
+    types = tuple(_type_ir(project, item) for item in project.types.values()) + tuple(
+        _enum_ir(project, item) for item in project.enums.values()
+    )
     capabilities = tuple(_tool_ir(project, item) for item in project.tools.values()) + tuple(
         _datasource_ir(project, item) for item in project.datasources.values()
     )
@@ -110,6 +113,15 @@ def _type_ir(project: ContractProject, item: Any) -> TypeIR:
         id=semantic_id("type", item.name),
         name=item.name,
         fields=fields,
+        span=_span(project, item.span),
+    )
+
+
+def _enum_ir(project: ContractProject, item: EnumDef) -> EnumIR:
+    return EnumIR(
+        id=semantic_id("type", item.name),
+        name=item.name,
+        values=tuple(item.values),
         span=_span(project, item.span),
     )
 

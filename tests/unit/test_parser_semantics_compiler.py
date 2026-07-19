@@ -120,6 +120,33 @@ def test_build_artifacts_accepts_canonical_ir_only() -> None:
     assert "summary.md" in {str(path) for path in artifacts.docs}
 
 
+def test_compiler_emits_standalone_and_referenced_enum_schemas(tmp_path: Path) -> None:
+    (tmp_path / "enum.contract").write_text(
+        """\
+enum Status:
+    "accepted"
+    "failed"
+
+type Result:
+    status: Status
+"""
+    )
+
+    artifacts = compile_project(tmp_path)
+
+    assert artifacts.schemas["Status"] == {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "urn:contract4agents:type:Status",
+        "title": "Status",
+        "type": "string",
+        "enum": ["accepted", "failed"],
+    }
+    assert artifacts.schemas["Result"]["$defs"] == {
+        "Status": {"title": "Status", "type": "string", "enum": ["accepted", "failed"]}
+    }
+    assert "`Status` enum: `accepted`, `failed`" in artifacts.docs[next(iter(artifacts.docs))]
+
+
 def test_compile_check_detects_stale_artifacts(tmp_path: Path) -> None:
     build = tmp_path / "build"
     compile_project(INCIDENT, build)

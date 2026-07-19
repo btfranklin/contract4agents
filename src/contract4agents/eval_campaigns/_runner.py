@@ -29,7 +29,7 @@ from contract4agents.eval_campaigns._provider import (
 )
 from contract4agents.ir import CanonicalIR, EvalIR, SemanticId, contract_digest
 from contract4agents.planning import MaterializationPlan
-from contract4agents.tracing import assess_trace_completeness
+from contract4agents.tracing import assess_trace_completeness, validate_trace_conformance
 
 
 async def run_campaign(
@@ -126,6 +126,7 @@ async def _run_trial(
             diagnostic=f"Eval provider failed: {exc}",
         )
 
+    validate_trace_conformance(ir, plan, execution.trace)
     completeness = assess_trace_completeness(execution.trace, plan.expected_telemetry)
     hidden_truth_value = inputs.get("hidden_truth", {})
     hidden_truth = hidden_truth_value if isinstance(hidden_truth_value, Mapping) else {}

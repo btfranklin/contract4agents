@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from contract4agents.ir import (
     CanonicalIR,
+    EnumIR,
     FrozenMap,
     ListTypeRef,
     MapTypeRef,
@@ -19,7 +20,7 @@ from contract4agents.ir import (
 from contract4agents.materialization._errors import MaterializationError, MaterializationIssue
 
 
-def build_pydantic_types(ir: CanonicalIR) -> FrozenMap[str, type[object]]:
+def build_pydantic_types(ir: CanonicalIR) -> FrozenMap[str, Any]:
     try:
         from pydantic import ConfigDict, Field, create_model
     except Exception as exc:  # noqa: BLE001 - optional provider boundary.
@@ -27,7 +28,7 @@ def build_pydantic_types(ir: CanonicalIR) -> FrozenMap[str, type[object]]:
             (MaterializationIssue("MAT201", "Pydantic v2 is required for native output types"),)
         ) from exc
 
-    built: dict[str, type[object]] = {}
+    built: dict[str, Any] = {}
     resolving: set[str] = set()
 
     def annotation(type_ref: TypeRef) -> Any:
@@ -41,7 +42,7 @@ def build_pydantic_types(ir: CanonicalIR) -> FrozenMap[str, type[object]]:
             return dict.__class_getitem__((str, annotation(type_ref.value)))
         return _annotation(type_ref, FrozenMap(built))
 
-    def build(name: str) -> type[object]:
+    def build(name: str) -> Any:
         if name in built:
             return built[name]
         if name in resolving:
@@ -53,6 +54,10 @@ def build_pydantic_types(ir: CanonicalIR) -> FrozenMap[str, type[object]]:
             raise MaterializationError(
                 (MaterializationIssue("MAT203", f"Unknown canonical type `{name}`"),)
             )
+        if isinstance(type_def, EnumIR):
+            enum_type = Literal.__getitem__(type_def.values)
+            built[name] = enum_type
+            return enum_type
         resolving.add(name)
         fields: dict[str, tuple[Any, Any]] = {}
         for item in type_def.fields:
@@ -80,7 +85,7 @@ def build_pydantic_types(ir: CanonicalIR) -> FrozenMap[str, type[object]]:
 def build_parameter_model(
     name: str,
     parameters: tuple[ParameterIR, ...],
-    output_types: FrozenMap[str, type[object]],
+    output_types: FrozenMap[str, Any],
 ) -> type[object] | None:
     if not parameters:
         return None
@@ -102,7 +107,7 @@ def build_parameter_model(
     )
 
 
-def output_type_for(type_ref: TypeRef, output_types: FrozenMap[str, type[object]]) -> type[object]:
+def output_type_for(type_ref: TypeRef, output_types: FrozenMap[str, Any]) -> Any:
     if isinstance(type_ref, NamedTypeRef):
         return output_types[type_ref.type_id.parts[0]]
     raise MaterializationError(
@@ -110,7 +115,7 @@ def output_type_for(type_ref: TypeRef, output_types: FrozenMap[str, type[object]
     )
 
 
-def type_adapter_for(type_ref: TypeRef, output_types: FrozenMap[str, type[object]]) -> Any:
+def type_adapter_for(type_ref: TypeRef, output_types: FrozenMap[str, Any]) -> Any:
     """Return a Pydantic adapter for any portable contract type reference."""
 
     from pydantic import TypeAdapter
@@ -118,7 +123,7 @@ def type_adapter_for(type_ref: TypeRef, output_types: FrozenMap[str, type[object
     return TypeAdapter(_annotation(type_ref, output_types))
 
 
-def _annotation(type_ref: TypeRef, output_types: FrozenMap[str, type[object]]) -> Any:
+def _annotation(type_ref: TypeRef, output_types: FrozenMap[str, Any]) -> Any:
     if isinstance(type_ref, PrimitiveTypeRef):
         return {
             "string": str,

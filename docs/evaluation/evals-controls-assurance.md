@@ -96,7 +96,9 @@ disappearing or becoming passes.
 `assess_controls(ir, plan, trace)` is the common provider-neutral assessor. It
 uses the plan's requested mechanisms and expected telemetry when evaluating
 contract controls. Eval campaigns and production trace assessment call this
-same API.
+same API. Both paths first validate trace conformance against the canonical
+contract and reviewed plan; invalid digests, undeclared capabilities, and
+missing or contradictory tool/grant identities are rejected before scoring.
 
 Continuous monitoring is an operational pattern outside the contract language:
 a scheduler, trace pipeline, or observability service repeatedly invokes the

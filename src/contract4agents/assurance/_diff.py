@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
-from contract4agents.ir import CanonicalIR, SemanticId, format_type_ref
+from contract4agents.ir import CanonicalIR, EnumIR, SemanticId, TypeIR, format_type_ref
 from contract4agents.planning import MaterializationPlan
 
 DiffArea = Literal[
@@ -258,6 +258,34 @@ def _diff_types(before: CanonicalIR, after: CanonicalIR) -> list[SemanticDiffEnt
             entries.append(_entry("schema", "removed", "breaking", identifier, "Type removed."))
             continue
         assert old is not None and new is not None
+        if type(old) is not type(new):
+            entries.append(_entry("schema", "changed", "breaking", identifier, "Type kind changed."))
+            continue
+        if isinstance(old, EnumIR) and isinstance(new, EnumIR):
+            old_values = set(old.values)
+            new_values = set(new.values)
+            for value in sorted(old_values - new_values):
+                entries.append(
+                    _entry(
+                        "schema",
+                        "removed",
+                        "breaking",
+                        f"{identifier}:{value}",
+                        f"Enum value `{value}` removed.",
+                    )
+                )
+            for value in sorted(new_values - old_values):
+                entries.append(
+                    _entry(
+                        "schema",
+                        "added",
+                        "review",
+                        f"{identifier}:{value}",
+                        f"Enum value `{value}` added.",
+                    )
+                )
+            continue
+        assert isinstance(old, TypeIR) and isinstance(new, TypeIR)
         old_fields = {item.name: item for item in old.fields}
         new_fields = {item.name: item for item in new.fields}
         for name in sorted(set(old_fields) | set(new_fields)):

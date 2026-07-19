@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
 
 from contract4agents.ir import Audience
@@ -29,10 +31,26 @@ def dumps_trace_jsonl(trace: NormalizedTrace, *, audience: Audience | None = Non
 
 
 def write_trace_jsonl(path: Path, trace: NormalizedTrace, *, audience: Audience | None = None) -> None:
-    """Write canonical JSONL, replacing any previous file contents."""
+    """Atomically write canonical JSONL, replacing any previous file contents."""
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(dumps_trace_jsonl(trace, audience=audience), encoding="utf-8")
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(dumps_trace_jsonl(trace, audience=audience))
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, path)
+    except BaseException:
+        try:
+            temporary_path.unlink(missing_ok=True)
+        finally:
+            raise
 
 
 def loads_trace_jsonl(content: str) -> NormalizedTrace:

@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from contract4agents.diagnostics import ContractError
 from contract4agents.ir import build_canonical_ir, canonical_ir_json, contract_digest, semantic_id
 from contract4agents.parser import parse_project
 from contract4agents.semantics import analyze_project
@@ -115,6 +118,78 @@ eval delegates_for_evidence for IncidentCommander:
     }
     assert canonical_ir_json(ir) == canonical_ir_json(build_canonical_ir(project))
     assert contract_digest(ir).startswith("sha256:")
+
+
+def test_string_enums_share_the_type_namespace_and_validate_defaults(tmp_path: Path) -> None:
+    (tmp_path / "enums.contract").write_text(
+        """\
+enum Status:
+    "accepted"
+    "follow_up"
+    "failed"
+
+type Result:
+    status: Status = "accepted"
+    prior: Status? = null
+    history: list[Status] = ["follow_up"]
+    by_source: map[string,Status] = {"primary":"accepted"}
+"""
+    )
+
+    project = parse_project(tmp_path)
+    result = analyze_project(project)
+    ir = build_canonical_ir(project)
+
+    assert result.ok, [diagnostic.format() for diagnostic in result.diagnostics]
+    assert project.enums["Status"].values == ["accepted", "follow_up", "failed"]
+    assert ir.types[semantic_id("type", "Status")].values == ("accepted", "follow_up", "failed")  # type: ignore[union-attr]
+
+
+@pytest.mark.parametrize(
+    ("source", "messages"),
+    [
+        ("enum Status:\n", ["must declare at least one value"]),
+        ('enum Status:\n    "accepted"\n    "accepted"\n', ["Duplicate value `accepted`"]),
+        ('enum Status:\n    ""\n', ["values cannot be empty"]),
+        (
+            'enum Status:\n    "accepted"\n\ntype Status:\n    value: string\n',
+            ["Duplicate type declaration `Status`"],
+        ),
+        (
+            'enum Status:\n    "accepted"\n\ntype Result:\n    status: Status = "unknown"\n',
+            ["does not conform to `Status`"],
+        ),
+        (
+            'enum Status:\n    "accepted"\n\ntype Result:\n    history: list[Status] = ["unknown"]\n',
+            ["does not conform to `list[Status]`"],
+        ),
+        (
+            'enum Status:\n    "accepted"\n\ntype Result:\n    status: Status? = "unknown"\n',
+            ["does not conform to `Status?`"],
+        ),
+        (
+            'enum Status:\n    "accepted"\n\ntype Result:\n    statuses: map[string,Status] = {"x":"unknown"}\n',
+            ["does not conform to `map[string,Status]`"],
+        ),
+    ],
+)
+def test_invalid_enum_declarations_and_defaults_fail_semantically(
+    tmp_path: Path,
+    source: str,
+    messages: list[str],
+) -> None:
+    (tmp_path / "invalid.contract").write_text(source)
+
+    result = analyze_project(parse_project(tmp_path))
+
+    assert [message for message in messages if not any(message in item.message for item in result.diagnostics)] == []
+
+
+def test_enum_values_must_use_quoted_block_strings(tmp_path: Path) -> None:
+    (tmp_path / "invalid.contract").write_text("enum Status:\n    accepted\n")
+
+    with pytest.raises(ContractError, match="PARSE001"):
+        parse_project(tmp_path)
 
 
 def test_enabled_grant_requires_explicit_authorization_and_execution(tmp_path: Path) -> None:
