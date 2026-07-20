@@ -47,11 +47,18 @@ class ConditionalExpression:
     expectation: ParsedExpression
 
 
+@dataclass(frozen=True)
+class ConjunctiveExpression:
+    expression: str
+    clauses: tuple[ParsedExpression, ...]
+
+
 ContractExpression = ParsedExpression | ConditionalExpression
 
 
 __all__ = [
     "ConditionalExpression",
+    "ConjunctiveExpression",
     "ContractExpression",
     "DataRelationOperator",
     "ExpressionError",

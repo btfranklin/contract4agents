@@ -49,7 +49,7 @@ binding coverage. The provider-neutral plan resolves:
 - delegation and handoff mappings;
 - explicit and derived controls;
 - isolation mechanisms by dimension;
-- host obligations, caveats, and expected telemetry.
+- host obligations, caveats, and expected event types.
 
 Every mapping is exact, host-enforced, emulated, degraded, or unsupported.
 Required degraded or unsupported semantics stop the lifecycle before execution.
@@ -77,7 +77,7 @@ causal relationships, provider-native correlation, provenance, evidence links,
 and audience-safe redaction. It supplements provider trace systems rather than
 replacing them.
 
-Plan telemetry diagnoses expected event-family occurrence. Identity-bound
+Plan event types identify expected event-family occurrence. Identity-bound
 closure evidence proves which attempts and instrumentation channels were
 covered. Event absence cannot prove a negative claim when that closure is
 missing or incomplete. Versioned closure frontiers bind that claim to one exact

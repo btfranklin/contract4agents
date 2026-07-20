@@ -1,4 +1,4 @@
-"""Evidence completeness assessment for normalized traces."""
+"""Event occurrence and instrumentation-closure assessment for traces."""
 
 from __future__ import annotations
 
@@ -10,61 +10,61 @@ from typing import Any, Literal
 from contract4agents.tracing._closure import (
     TraceClosureError,
     TraceClosureEvidence,
-    TraceCoverageChannel,
+    TraceInstrumentationChannel,
     validate_trace_closure,
 )
 from contract4agents.tracing._models import NormalizedTrace
 
-TraceCompletenessStatus = Literal["complete", "incomplete", "unverified"]
+TraceEvidenceStatus = Literal["complete", "incomplete", "unverified"]
 
 
 @dataclass(frozen=True)
-class TraceCompletenessResult:
-    """Whether a run has enough expected telemetry to support trace claims."""
+class TraceEvidenceAssessment:
+    """Whether a run has enough event and closure evidence for trace claims."""
 
     run_id: str
-    status: TraceCompletenessStatus
+    status: TraceEvidenceStatus
     reason: str
-    expected_telemetry: tuple[str, ...] = field(default_factory=tuple)
-    observed_telemetry: tuple[str, ...] = field(default_factory=tuple)
+    expected_event_types: tuple[str, ...] = field(default_factory=tuple)
+    observed_event_types: tuple[str, ...] = field(default_factory=tuple)
     closure_digest: str | None = None
-    covered_channels: tuple[TraceCoverageChannel, ...] = field(default_factory=tuple)
+    closed_channels: tuple[TraceInstrumentationChannel, ...] = field(default_factory=tuple)
     evidence_refs: tuple[str, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         _require_text("run_id", self.run_id)
         _require_text("reason", self.reason)
         if self.status not in {"complete", "incomplete", "unverified"}:
-            raise ValueError(f"Unsupported trace completeness status `{self.status}`")
-        object.__setattr__(self, "expected_telemetry", _normalized_references(self.expected_telemetry))
-        object.__setattr__(self, "observed_telemetry", _normalized_references(self.observed_telemetry))
-        object.__setattr__(self, "covered_channels", tuple(sorted(set(self.covered_channels))))
+            raise ValueError(f"Unsupported trace evidence status `{self.status}`")
+        object.__setattr__(self, "expected_event_types", _normalized_references(self.expected_event_types))
+        object.__setattr__(self, "observed_event_types", _normalized_references(self.observed_event_types))
+        object.__setattr__(self, "closed_channels", tuple(sorted(set(self.closed_channels))))
         object.__setattr__(self, "evidence_refs", _normalized_references(self.evidence_refs))
-        if self.status == "complete" and self.missing_telemetry:
-            missing = ", ".join(self.missing_telemetry)
-            raise ValueError(f"A complete trace cannot be missing expected telemetry: {missing}")
+        if self.status == "complete" and self.missing_event_types:
+            missing = ", ".join(self.missing_event_types)
+            raise ValueError(f"Complete trace evidence cannot be missing event types: {missing}")
 
     @property
     def complete(self) -> bool:
         return self.status == "complete"
 
     @property
-    def missing_telemetry(self) -> tuple[str, ...]:
-        return tuple(sorted(set(self.expected_telemetry) - set(self.observed_telemetry)))
+    def missing_event_types(self) -> tuple[str, ...]:
+        return tuple(sorted(set(self.expected_event_types) - set(self.observed_event_types)))
 
-    def complete_for(self, channel: TraceCoverageChannel) -> bool:
+    def proves_channel_closed(self, channel: TraceInstrumentationChannel) -> bool:
         """Whether closure evidence proves one instrumentation channel complete."""
 
-        return self.closure_digest is not None and channel in self.covered_channels
+        return self.closure_digest is not None and channel in self.closed_channels
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "evidence_refs": list(self.evidence_refs),
             "closure_digest": self.closure_digest,
-            "covered_channels": list(self.covered_channels),
-            "expected_telemetry": list(self.expected_telemetry),
-            "missing_telemetry": list(self.missing_telemetry),
-            "observed_telemetry": list(self.observed_telemetry),
+            "closed_channels": list(self.closed_channels),
+            "expected_event_types": list(self.expected_event_types),
+            "missing_event_types": list(self.missing_event_types),
+            "observed_event_types": list(self.observed_event_types),
             "reason": self.reason,
             "run_id": self.run_id,
             "status": self.status,
@@ -74,20 +74,20 @@ class TraceCompletenessResult:
         return json.dumps(self.to_dict(), ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
 
-def assess_trace_completeness(
+def assess_trace_evidence(
     trace: NormalizedTrace,
-    expected_telemetry: Collection[str],
+    expected_event_types: Collection[str],
     *,
     closure: TraceClosureEvidence | None = None,
     run_id: str | None = None,
-) -> TraceCompletenessResult:
+) -> TraceEvidenceAssessment:
     """Assess event-family occurrence and explicit identity-bound run closure.
 
     Event-family occurrence is diagnostic only. Negative claims require a
     complete closure object covering their instrumentation channel.
     """
 
-    expected = _normalized_telemetry(expected_telemetry)
+    expected = _normalized_event_types(expected_event_types)
     selected = _select_run(trace, run_id)
     selected_run_id = selected.run_ids[0]
     if closure is not None:
@@ -113,56 +113,56 @@ def assess_trace_completeness(
     )
     closure_refs = closure.evidence_refs if closure is not None else ()
     closure_digest = closure.digest if closure is not None and closure.complete else None
-    covered_channels = closure.channels if closure is not None and closure.complete else ()
+    closed_channels = closure.channels if closure is not None and closure.complete else ()
     combined_refs = tuple(sorted(set(evidence_refs) | set(closure_refs)))
     if not expected:
-        return TraceCompletenessResult(
+        return TraceEvidenceAssessment(
             run_id=selected_run_id,
             status="unverified",
-            reason="No expected telemetry was declared for this run.",
-            observed_telemetry=observed,
+            reason="No expected event types were declared for this run.",
+            observed_event_types=observed,
             closure_digest=closure_digest,
-            covered_channels=covered_channels,
+            closed_channels=closed_channels,
             evidence_refs=combined_refs,
         )
     missing = tuple(sorted(set(expected) - set(observed_expected)))
     if missing:
-        return TraceCompletenessResult(
+        return TraceEvidenceAssessment(
             run_id=selected_run_id,
             status="incomplete" if closure is not None and closure.status == "complete" else "unverified",
-            reason=f"Expected telemetry was not observed: {', '.join(missing)}.",
-            expected_telemetry=expected,
-            observed_telemetry=observed,
+            reason=f"Expected event types were not observed: {', '.join(missing)}.",
+            expected_event_types=expected,
+            observed_event_types=observed,
             closure_digest=closure_digest,
-            covered_channels=covered_channels,
+            closed_channels=closed_channels,
             evidence_refs=combined_refs,
         )
     if closure is None:
-        return TraceCompletenessResult(
+        return TraceEvidenceAssessment(
             run_id=selected_run_id,
             status="unverified",
             reason="Expected event families were observed, but run-closure evidence was not supplied.",
-            expected_telemetry=expected,
-            observed_telemetry=observed,
+            expected_event_types=expected,
+            observed_event_types=observed,
             evidence_refs=evidence_refs,
         )
     if not closure.complete:
-        return TraceCompletenessResult(
+        return TraceEvidenceAssessment(
             run_id=selected_run_id,
             status=closure.status,
             reason=f"Expected event families were observed, but trace closure is {closure.status}: {closure.reason}",
-            expected_telemetry=expected,
-            observed_telemetry=observed,
+            expected_event_types=expected,
+            observed_event_types=observed,
             evidence_refs=combined_refs,
         )
-    return TraceCompletenessResult(
+    return TraceEvidenceAssessment(
         run_id=selected_run_id,
         status="complete",
-        reason="All expected telemetry was observed.",
-        expected_telemetry=expected,
-        observed_telemetry=observed,
+        reason="All expected event types were observed and instrumentation closure was verified.",
+        expected_event_types=expected,
+        observed_event_types=observed,
         closure_digest=closure.digest,
-        covered_channels=closure.channels,
+        closed_channels=closure.channels,
         evidence_refs=combined_refs,
     )
 
@@ -175,11 +175,11 @@ def _select_run(trace: NormalizedTrace, run_id: str | None) -> NormalizedTrace:
     return trace
 
 
-def _normalized_telemetry(values: Collection[str]) -> tuple[str, ...]:
+def _normalized_event_types(values: Collection[str]) -> tuple[str, ...]:
     normalized: set[str] = set()
     for value in values:
         if not isinstance(value, str) or not value.strip():
-            raise ValueError("Expected telemetry values must be non-empty strings")
+            raise ValueError("Expected event types must be non-empty strings")
         normalized.add(value)
     return tuple(sorted(normalized))
 
@@ -188,7 +188,7 @@ def _normalized_references(values: tuple[str, ...]) -> tuple[str, ...]:
     normalized: set[str] = set()
     for value in values:
         if not isinstance(value, str) or not value.strip():
-            raise ValueError("Trace completeness references must be non-empty strings")
+            raise ValueError("Trace evidence references must be non-empty strings")
         normalized.add(value)
     return tuple(sorted(normalized))
 
@@ -199,7 +199,7 @@ def _require_text(label: str, value: str) -> None:
 
 
 __all__ = [
-    "TraceCompletenessResult",
-    "TraceCompletenessStatus",
-    "assess_trace_completeness",
+    "TraceEvidenceAssessment",
+    "TraceEvidenceStatus",
+    "assess_trace_evidence",
 ]

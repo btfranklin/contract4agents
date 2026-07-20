@@ -1,7 +1,7 @@
 # Eval Language Reference
 
 `.eval` files declare scenarios against canonical agent IDs. The selected
-target plan supplies the runtime inventory and expected telemetry; eval source
+target plan supplies the runtime inventory and expected event types; eval source
 contains only case inputs and outcome expectations.
 
 ```contract
@@ -96,7 +96,7 @@ must be omitted from runtime inputs and audience views that include the model.
 
 Each trial finishes as `passed`, `violated`, or `unverified`. Campaign reports
 separate deterministic expectations, contract control results, quality results,
-trace completeness, and provider failures. Repeated campaigns add rates,
+trace evidence, and provider failures. Repeated campaigns add rates,
 uncertainty intervals, latency/cost/token summaries, threshold checks, and
 baseline comparisons.
 

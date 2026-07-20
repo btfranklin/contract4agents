@@ -27,7 +27,6 @@ From the repository root, substitute the example directory for `ROOT`:
 pdm run python ROOT/data/seed.py
 pdm run contract4agents check ROOT
 pdm run contract4agents compile ROOT --out .contract/build/example
-pdm run contract4agents generate ROOT --out .contract/generated/example
 pdm run contract4agents plan ROOT --target openai --profile test \
   --out .contract/build/example/plan.json
 pdm run contract4agents eval ROOT --target openai --profile test
@@ -37,6 +36,10 @@ pdm run contract4agents visualize ROOT --target openai --profile test \
 
 The `test` profile and file-backed eval data require no provider credentials.
 Generated `.contract/` output is disposable.
+
+The complete compiler bundle already contains review copies of generated
+types. Run `generate` separately only when an application imports those types
+from a dedicated machine-owned source directory.
 
 ## Incident Command
 

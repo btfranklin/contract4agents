@@ -10,7 +10,7 @@ from contract4agents.assurance._models import (
     ControlApplicability,
     ControlResult,
 )
-from contract4agents.expressions import ExpressionError, parse_expectation
+from contract4agents.expressions import ExpressionError, parse_trace_conjunction
 from contract4agents.expressions._trace_evaluation import assess_trace_expression
 from contract4agents.ir import CanonicalIR, ControlIR, SemanticId
 from contract4agents.planning import MaterializationPlan
@@ -18,9 +18,9 @@ from contract4agents.tracing import (
     NormalizedTrace,
     TraceAttempt,
     TraceClosureEvidence,
-    TraceCompletenessResult,
     TraceEvent,
-    assess_trace_completeness,
+    TraceEvidenceAssessment,
+    assess_trace_evidence,
     validate_trace_conformance,
 )
 
@@ -39,14 +39,14 @@ def assess_controls(
 
     selected = _select_run(trace, run_id)
     validate_trace_conformance(ir, plan, selected)
-    completeness = assess_trace_completeness(
+    trace_evidence = assess_trace_evidence(
         selected,
-        plan.expected_telemetry,
+        plan.expected_event_types,
         closure=closure,
         run_id=selected.run_ids[0],
     )
     results = [
-        _assess_control(control, ir, selected, completeness)
+        _assess_control(control, ir, selected, trace_evidence)
         for control_id in plan.controls
         if (control := ir.controls.get(control_id)) is not None
     ]
@@ -57,12 +57,12 @@ def _assess_control(
     control: ControlIR,
     ir: CanonicalIR,
     trace: NormalizedTrace,
-    completeness: TraceCompletenessResult,
+    trace_evidence: TraceEvidenceAssessment,
 ) -> ControlResult:
     relevant = tuple(event for event in trace.events if control.id in event.semantic.control_ids)
     condition_events: tuple[TraceEvent, ...] = ()
     if control.condition is not None:
-        condition = _evaluate_control_expression(control.condition, ir, trace, completeness)
+        condition = _evaluate_control_expression(control.condition, ir, trace, trace_evidence)
         condition_events = condition[1]
         if condition[0] == "violated":
             return _result(
@@ -83,15 +83,15 @@ def _assess_control(
     if control.derived_from is not None and control.derived_from.kind == "grant":
         grant = ir.grants.get(control.derived_from)
         if grant is not None and grant.authorization == "approval_required":
-            return _assess_approval(control, grant.id, grant.capability_id, trace, completeness)
+            return _assess_approval(control, grant.id, grant.capability_id, trace, trace_evidence)
     if control.name == "output_conformance":
-        return _assess_output(control, trace, completeness)
+        return _assess_output(control, trace, trace_evidence)
     explicit = _explicit_result(relevant)
     if explicit is not None:
         status, reason = explicit
         return _result(control, status, reason, condition_events + relevant)
     if control.requirement:
-        status, evidence = _evaluate_control_expression(control.requirement, ir, trace, completeness)
+        status, evidence = _evaluate_control_expression(control.requirement, ir, trace, trace_evidence)
         return _result(
             control,
             status,
@@ -110,7 +110,7 @@ def _assess_approval(
     grant_id: SemanticId,
     capability_id: SemanticId,
     trace: NormalizedTrace,
-    completeness: TraceCompletenessResult,
+    trace_evidence: TraceEvidenceAssessment,
 ) -> ControlResult:
     events = tuple(
         event
@@ -129,12 +129,12 @@ def _assess_approval(
         return _result(control, "violated", "Approval was not recorded before the capability started.", events)
     if starts and approvals:
         return _result(control, "passed", "Approval was granted before the capability started.", events)
-    if completeness.complete_for("tool"):
+    if trace_evidence.proves_channel_closed("tool"):
         return _result(control, "passed", "The approval-gated capability was not invoked.", events)
     return _result(
         control,
         "unverified",
-        "No capability invocation was observed and trace completeness is insufficient for a negative claim.",
+        "No capability invocation was observed and trace evidence is insufficient for a negative claim.",
         events,
     )
 
@@ -142,7 +142,7 @@ def _assess_approval(
 def _assess_output(
     control: ControlIR,
     trace: NormalizedTrace,
-    completeness: TraceCompletenessResult,
+    trace_evidence: TraceEvidenceAssessment,
 ) -> ControlResult:
     events = tuple(
         event
@@ -259,11 +259,11 @@ def _assess_output(
         and event.event_type in {"agent.started", "agent.completed", "composition.started", "composition.completed"}
         for event in trace.events
     )
-    if not invoked and completeness.complete_for("agent"):
+    if not invoked and trace_evidence.proves_channel_closed("agent"):
         return _result(control, "passed", "The agent was not invoked during this complete run.", events)
     reason = (
-        "No output validation event was observed despite otherwise complete telemetry."
-        if completeness.complete_for("output")
+        "No output validation event was observed despite closed output instrumentation."
+        if trace_evidence.proves_channel_closed("output")
         else "Output validation evidence is missing from an incomplete trace."
     )
     return _result(control, "unverified", reason, events)
@@ -284,17 +284,16 @@ def _evaluate_control_expression(
     expression: str,
     ir: CanonicalIR,
     trace: NormalizedTrace,
-    completeness: TraceCompletenessResult,
+    trace_evidence: TraceEvidenceAssessment,
 ) -> tuple[AssuranceStatus, tuple[TraceEvent, ...]]:
-    clauses = tuple(item.strip() for item in expression.split(" and ") if item.strip())
     try:
-        parsed = tuple(parse_expectation(clause) for clause in clauses)
+        parsed = parse_trace_conjunction(expression).clauses
     except ExpressionError:
         return "unverified", ()
     if not parsed or any(item.kind != "trace" for item in parsed):
         return "unverified", ()
     results = tuple(
-        assess_trace_expression(item, ir=ir, trace=trace, completeness=completeness)
+        assess_trace_expression(item, ir=ir, trace=trace, trace_evidence=trace_evidence)
         for item in parsed
     )
     evidence = {

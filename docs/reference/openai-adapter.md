@@ -71,7 +71,7 @@ contract4agents plan agent_contracts --target openai --profile production \
 
 The plan contains the contract digest, resolved model for every agent, binding
 identities, grants and authorization, native composition mappings, control and
-isolation mechanisms, expected telemetry, host obligations, and target caveats.
+isolation mechanisms, expected event types, host obligations, and target caveats.
 It contains no live SDK objects or process-specific callable addresses.
 
 Each mapping reports one outcome:
@@ -182,18 +182,18 @@ systems execute.
 
 ## Materialization Evidence
 
-Pass a `TraceSink` to `materialize` to capture deterministic construction
-evidence. `RecordingTraceSink` is useful for tests and small host integrations:
+Pass a `MaterializationTraceSink` to `materialize` to capture deterministic construction
+evidence. `RecordingMaterializationTraceSink` is useful for tests and small host integrations:
 
 ```python
-from contract4agents.materialization import RecordingTraceSink
+from contract4agents.materialization import RecordingMaterializationTraceSink
 
-sink = RecordingTraceSink()
+sink = RecordingMaterializationTraceSink()
 system = materialize(
     "agent_contracts",
     target="openai",
     profile="production",
-    trace_sink=sink,
+    materialization_trace_sink=sink,
 )
 ```
 
@@ -223,14 +223,15 @@ with session:
         result = await Runner.run(agent, input=prompt)
         session.record_result(result, agent="Planner", attempt=attempt)
 
-trace = session.normalized_trace()
-trace_closure = session.closure_evidence
+snapshot = session.closed_snapshot
+trace = snapshot.trace
+trace_closure = snapshot.closure
 ```
 
-The router and session map native agent, function-tool, delegation, and handoff spans
-to stable contract IDs, add output-validation evidence for successful agent
-spans, and preserves provider trace/span correlation. It intentionally does not
-copy raw provider inputs or outputs into normalized payloads.
+The router and session map native agent, function-tool, delegation, and handoff
+spans to stable contract IDs, add output-validation evidence for successful
+agent spans, and preserve provider trace/span correlation. They intentionally
+do not copy raw provider inputs or outputs into normalized payloads.
 
 For a retried host invocation, bind portable attempt identity around each
 runner call. The binding annotates evidence but does not catch, retry, or select
@@ -295,8 +296,8 @@ For a durable recovery point without closing the active session, capture an
 internally consistent pair after at least one normalized event exists:
 
 ```python
-checkpoint = session.checkpoint()
-# Persist checkpoint.trace and checkpoint.closure through the host's durable
+snapshot = session.snapshot()
+# Persist snapshot.trace and snapshot.closure through the host's durable
 # recovery mechanism before advancing application workflow state.
 ```
 
@@ -319,7 +320,7 @@ retry needs a new `TraceAttempt` with the next number and exact `retry_of`
 identity. Host-semantic reconciliation may still record terminal selection or
 output-schema failure evidence against a sealed prior attempt. Channel closure
 for a resumed run is conservative across every SDK-execution segment. A
-checkpoint does not make trace, closure, and application state one transaction;
+snapshot does not make trace, closure, and application state one transaction;
 the host owns persistence ordering, crash policy, and workflow recovery.
 
 Supported hosted-call status is preserved: completed or succeeded calls emit

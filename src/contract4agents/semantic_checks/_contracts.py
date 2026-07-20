@@ -412,25 +412,20 @@ def check_control(item: ControlDef, index: ProjectIndex) -> list[Diagnostic]:
             if attribute not in attrs:
                 continue
             value = _text(attrs.get(attribute))
-            clauses = tuple(clause.strip() for clause in value.split(" and ") if clause.strip())
-            if not clauses:
-                diagnostics.append(
-                    Diagnostic("SEM052", f"Control `{item.name}` has an empty `{attribute}` expression", span=item.span)
+            diagnostics.extend(
+                check_expression_refs(
+                    value,
+                    owner.name,
+                    owner.return_type,
+                    index,
+                    reachable_tools,
+                    span=item.span,
+                    contract_expression=False,
+                    agent_names=reachable_agents,
+                    datasource_targets=reachable_datasources,
+                    trace_conjunction=True,
                 )
-            for clause in clauses:
-                diagnostics.extend(
-                    check_expression_refs(
-                        clause,
-                        owner.name,
-                        owner.return_type,
-                        index,
-                        reachable_tools,
-                        span=item.span,
-                        contract_expression=False,
-                        agent_names=reachable_agents,
-                        datasource_targets=reachable_datasources,
-                    )
-                )
+            )
     severity = _text(attrs.get("severity"))
     if severity not in SEVERITIES:
         diagnostics.append(Diagnostic("SEM136", f"Control `{item.name}` requires a valid severity", span=item.span))

@@ -16,6 +16,9 @@ and assurance bundles are derived from those two authorities.
   smallest contract-first agent from scratch.
 - [Using Contract4Agents in an Application](tutorials/using-contract4agents-with-an-agent-app.md)
   covers materialization, host responsibilities, traces, and assurance.
+- [Capture and Assure a Run](tutorials/trace-and-assure.md) completes the
+  runtime path with attempt-bound OpenAI capture, closure, assessment, and a
+  portable assurance bundle.
 - [Incident Command](../examples/incident-command/README.md) is the complete
   beginner-facing example.
 - [Vision](../VISION.md) explains the product thesis.

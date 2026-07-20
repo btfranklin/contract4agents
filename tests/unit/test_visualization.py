@@ -153,7 +153,7 @@ def test_graph_rejects_cross_contract_and_cross_plan_overlays() -> None:
         isolation=plan.isolation,
         artifact_digests=plan.artifact_digests,
         host_obligations=plan.host_obligations,
-        expected_telemetry=plan.expected_telemetry,
+        expected_event_types=plan.expected_event_types,
     )
 
     with pytest.raises(ValueError, match="contract digest"):
@@ -422,7 +422,7 @@ def _plan(ir: CanonicalIR) -> MaterializationPlan:
         isolation=FrozenMap(),
         artifact_digests=FrozenMap(),
         host_obligations=(),
-        expected_telemetry=("agent.completed",),
+        expected_event_types=("agent.completed",),
     )
 
 

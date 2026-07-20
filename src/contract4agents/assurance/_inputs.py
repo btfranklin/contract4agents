@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
 
+from contract4agents._strict_json import json_array, json_object, require_exact_keys
 from contract4agents.assurance._run_specs import RunSpecEvidence, RunSpecSelection
 
 RUN_SPEC_ASSESSMENT_INPUT_VERSION = "1"
@@ -34,8 +33,8 @@ class RunSpecAssessmentInput:
 
     @classmethod
     def from_dict(cls, value: object) -> RunSpecAssessmentInput:
-        payload = _object("run-spec assessment input", value)
-        _keys("run-spec assessment input", payload, {"evidence", "selection"})
+        payload = json_object("run-spec assessment input", value)
+        require_exact_keys("run-spec assessment input", payload, {"evidence", "selection"})
         evidence = payload["evidence"]
         return cls(
             selection=RunSpecSelection.from_dict(payload["selection"]),
@@ -65,13 +64,13 @@ class RunSpecAssessmentManifest:
 
     @classmethod
     def from_dict(cls, value: object) -> RunSpecAssessmentManifest:
-        payload = _object("run-spec assessment manifest", value)
-        _keys("run-spec assessment manifest", payload, {"runs", "version"})
+        payload = json_object("run-spec assessment manifest", value)
+        require_exact_keys("run-spec assessment manifest", payload, {"runs", "version"})
         version = payload["version"]
         if not isinstance(version, str):
             raise TypeError("version must be a string")
         return cls(
-            runs=tuple(RunSpecAssessmentInput.from_dict(item) for item in _array("runs", payload["runs"])),
+            runs=tuple(RunSpecAssessmentInput.from_dict(item) for item in json_array("runs", payload["runs"])),
             version=version,
         )
 
@@ -86,30 +85,6 @@ class RunSpecAssessmentManifest:
     @classmethod
     def load(cls, path: Path | str) -> RunSpecAssessmentManifest:
         return cls.from_json(Path(path).read_text())
-
-
-def _object(label: str, value: object) -> Mapping[str, object]:
-    if not isinstance(value, Mapping) or not all(isinstance(key, str) for key in value):
-        raise TypeError(f"{label} must be an object with string keys")
-    return cast(Mapping[str, object], value)
-
-
-def _array(label: str, value: object) -> list[object]:
-    if not isinstance(value, list):
-        raise TypeError(f"{label} must be an array")
-    return value
-
-
-def _keys(label: str, payload: Mapping[str, object], required: set[str]) -> None:
-    missing = sorted(required - set(payload))
-    unknown = sorted(set(payload) - required)
-    if missing or unknown:
-        details = []
-        if missing:
-            details.append(f"missing {', '.join(missing)}")
-        if unknown:
-            details.append(f"unknown {', '.join(unknown)}")
-        raise ValueError(f"Invalid {label} keys: {'; '.join(details)}")
 
 
 __all__ = [

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
@@ -17,7 +18,7 @@ TARGET_BINDINGS_SCHEMA_VERSION = "2"
 class BindingEntry:
     """Adapter-owned implementation locator and options for one semantic ID."""
 
-    values: dict[str, object] | MappingProxyType[str, object]
+    values: Mapping[str, object]
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "values", _freeze_mapping(dict(self.values)))
@@ -28,7 +29,7 @@ class AgentProfile:
     """Model selection and provider options for one agent in one profile."""
 
     model: str | None = None
-    options: dict[str, object] | MappingProxyType[str, object] = field(default_factory=dict)
+    options: Mapping[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "options", _freeze_mapping(dict(self.options)))
@@ -39,8 +40,8 @@ class TargetProfile:
     """A complete, non-inheriting target profile."""
 
     default_model: str | None = None
-    agents: dict[str, AgentProfile] | MappingProxyType[str, AgentProfile] = field(default_factory=dict)
-    options: dict[str, object] | MappingProxyType[str, object] = field(default_factory=dict)
+    agents: Mapping[str, AgentProfile] = field(default_factory=dict)
+    options: Mapping[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "agents", _freeze_typed_mapping(dict(self.agents)))
@@ -52,11 +53,11 @@ class TargetBinding:
     """All implementation bindings and profiles for one adapter target."""
 
     adapter: str
-    tools: dict[str, BindingEntry] | MappingProxyType[str, BindingEntry] = field(default_factory=dict)
-    datasources: dict[str, BindingEntry] | MappingProxyType[str, BindingEntry] = field(default_factory=dict)
-    external_context: dict[str, BindingEntry] | MappingProxyType[str, BindingEntry] = field(default_factory=dict)
-    environments: dict[str, BindingEntry] | MappingProxyType[str, BindingEntry] = field(default_factory=dict)
-    profiles: dict[str, TargetProfile] | MappingProxyType[str, TargetProfile] = field(default_factory=dict)
+    tools: Mapping[str, BindingEntry] = field(default_factory=dict)
+    datasources: Mapping[str, BindingEntry] = field(default_factory=dict)
+    external_context: Mapping[str, BindingEntry] = field(default_factory=dict)
+    environments: Mapping[str, BindingEntry] = field(default_factory=dict)
+    profiles: Mapping[str, TargetProfile] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.profiles:
@@ -73,7 +74,7 @@ class TargetBindings:
     """Validated contents of one target-binding document."""
 
     path: Path
-    targets: dict[str, TargetBinding] | MappingProxyType[str, TargetBinding]
+    targets: Mapping[str, TargetBinding]
     schema_version: str = TARGET_BINDINGS_SCHEMA_VERSION
 
     def __post_init__(self) -> None:

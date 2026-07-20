@@ -78,7 +78,7 @@ def test_run_spec_assessment_never_treats_missing_stage_evidence_as_control_succ
     assert next(item for item in result.stages if item.stage == "synthesis").status == "violated"
 
 
-def test_run_spec_assessment_requires_explicit_workflow_and_trace_completeness() -> None:
+def test_run_spec_assessment_requires_explicit_workflow_and_trace_evidence() -> None:
     ir = _ir()
     plan = _plan(ir)
     trace = _trace(ir, plan)
@@ -91,8 +91,8 @@ def test_run_spec_assessment_requires_explicit_workflow_and_trace_completeness()
     workflow_result = assess_run_spec(ir, plan, trace, "ResearchRun", incomplete)
     trace_result = assess_run_spec(
         ir,
-        replace(plan, expected_telemetry=("agent.started", "workflow.closed")),
-        _trace(ir, replace(plan, expected_telemetry=("agent.started", "workflow.closed"))),
+        replace(plan, expected_event_types=("agent.started", "workflow.closed")),
+        _trace(ir, replace(plan, expected_event_types=("agent.started", "workflow.closed"))),
         "ResearchRun",
         _evidence(ir),
     )
@@ -310,7 +310,7 @@ def test_run_spec_results_are_distinct_assurance_bundle_evidence() -> None:
     assert "BUNDLE013" in {item.code for item in explicitly_missing.diagnostics}
     assert '"status": "unverified"' in missing.files["run-spec-results.json"]
     assert complete.complete
-    assert complete.bundle_version == "3"
+    assert complete.bundle_version == "4"
     assert '"run_spec_id": "run_spec:ResearchRun"' in complete.files["run-spec-results.json"]
     assert result.evidence_digest in complete.files["run-spec-results.json"]
 
@@ -411,7 +411,7 @@ def test_assurance_bundle_requires_selection_for_each_trace_run() -> None:
         assert '"status": "unverified"' in bundle.files["run-spec-results.json"]
 
 
-def test_complete_run_spec_evidence_requires_a_completeness_reference() -> None:
+def test_complete_run_spec_evidence_requires_a_workflow_completeness_reference() -> None:
     with pytest.raises(ValueError, match="completeness evidence reference"):
         RunSpecEvidence("complete", "The host says it finished.")
 

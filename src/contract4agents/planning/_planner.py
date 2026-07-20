@@ -66,7 +66,7 @@ def plan_materialization(
     agents = _resolve_agents(ir, target_profile, issues)
     resolved_bindings = _resolve_bindings(ir, target_binding, issues)
     obligations: dict[tuple[str, SemanticId | None], HostObligationPlan] = {}
-    expected_telemetry = set(capabilities.expected_telemetry)
+    expected_event_types = set(capabilities.expected_event_types)
     for binding in resolved_bindings.values():
         if binding.execution == "host":
             _add_obligation(
@@ -85,10 +85,10 @@ def plan_materialization(
         capabilities,
         issues,
         obligations,
-        expected_telemetry,
+        expected_event_types,
     )
-    composition = _resolve_composition(ir, capabilities, issues, obligations, expected_telemetry)
-    controls = _resolve_controls(ir, capabilities, issues, obligations, expected_telemetry)
+    composition = _resolve_composition(ir, capabilities, issues, obligations, expected_event_types)
+    controls = _resolve_controls(ir, capabilities, issues, obligations, expected_event_types)
     isolation = _resolve_isolation(
         ir,
         target_binding,
@@ -96,7 +96,7 @@ def plan_materialization(
         capabilities,
         issues,
         obligations,
-        expected_telemetry,
+        expected_event_types,
     )
     if issues:
         raise PlanningError(tuple(issues))
@@ -120,7 +120,7 @@ def plan_materialization(
         host_obligations=tuple(
             sorted(obligations.values(), key=lambda item: (item.code, str(item.semantic_id), item.description))
         ),
-        expected_telemetry=tuple(sorted(expected_telemetry)),
+        expected_event_types=tuple(sorted(expected_event_types)),
     )
 
 
@@ -237,7 +237,7 @@ def _resolve_grants(
     capabilities: PlannerCapabilities,
     issues: list[PlanningIssue],
     obligations: dict[tuple[str, SemanticId | None], HostObligationPlan],
-    telemetry: set[str],
+    event_types: set[str],
 ) -> dict[SemanticId, GrantMappingPlan]:
     result: dict[SemanticId, GrantMappingPlan] = {}
     for grant_id, grant in ir.grants.items():
@@ -263,7 +263,7 @@ def _resolve_grants(
             if grant.authorization == "approval_required":
                 outcome = _combine_outcomes(outcome, capabilities.approval.outcome)
                 mechanism = _combine_mechanisms(mechanism, capabilities.approval.mechanism)
-                _consume_support(capabilities.approval, grant_id, obligations, telemetry)
+                _consume_support(capabilities.approval, grant_id, obligations, event_types)
         _require_mapping(outcome, grant_id, "grant", issues, detail=mechanism)
         result[grant_id] = GrantMappingPlan(
             id=grant_id,
@@ -284,7 +284,7 @@ def _resolve_composition(
     capabilities: PlannerCapabilities,
     issues: list[PlanningIssue],
     obligations: dict[tuple[str, SemanticId | None], HostObligationPlan],
-    telemetry: set[str],
+    event_types: set[str],
 ) -> dict[SemanticId, CompositionMappingPlan]:
     result: dict[SemanticId, CompositionMappingPlan] = {}
     for edge_id, edge in ir.composition.items():
@@ -293,7 +293,7 @@ def _resolve_composition(
             capabilities.composition.get(edge.mode, MappingSupport("unsupported", None)),
         )
         _require_mapping(support.outcome, edge_id, "composition edge", issues)
-        _consume_support(support, edge_id, obligations, telemetry)
+        _consume_support(support, edge_id, obligations, event_types)
         result[edge_id] = CompositionMappingPlan(
             id=edge_id,
             source_agent_id=edge.source_agent_id,
@@ -315,7 +315,7 @@ def _resolve_controls(
     capabilities: PlannerCapabilities,
     issues: list[PlanningIssue],
     obligations: dict[tuple[str, SemanticId | None], HostObligationPlan],
-    telemetry: set[str],
+    event_types: set[str],
 ) -> dict[SemanticId, ControlMappingPlan]:
     result: dict[SemanticId, ControlMappingPlan] = {}
     grants = ir.grants
@@ -331,8 +331,8 @@ def _resolve_controls(
             support = capabilities.controls.get(control.assessment, MappingSupport("unsupported", None))
         if control.required:
             _require_mapping(support.outcome, control_id, "required control", issues)
-        _consume_support(support, control_id, obligations, telemetry)
-        evidence = tuple(sorted(set(control.expected_evidence) | set(support.expected_telemetry)))
+        _consume_support(support, control_id, obligations, event_types)
+        evidence = tuple(sorted(set(control.expected_evidence) | set(support.expected_event_types)))
         result[control_id] = ControlMappingPlan(
             id=control_id,
             required=control.required,
@@ -351,7 +351,7 @@ def _resolve_isolation(
     capabilities: PlannerCapabilities,
     issues: list[PlanningIssue],
     obligations: dict[tuple[str, SemanticId | None], HostObligationPlan],
-    telemetry: set[str],
+    event_types: set[str],
 ) -> dict[SemanticId, IsolationMappingPlan]:
     if not ir.isolation_profiles:
         return {}
@@ -369,7 +369,7 @@ def _resolve_isolation(
         for dimension, requested in _isolation_dimensions(isolation):
             support = _isolation_support(capabilities, dimension, requested, environment)
             _require_mapping(support.outcome, isolation_id, f"isolation dimension `{dimension}`", issues)
-            _consume_support(support, isolation_id, obligations, telemetry)
+            _consume_support(support, isolation_id, obligations, event_types)
             dimensions.append(
                 (dimension, IsolationDimensionPlan(requested, support.outcome, support.mechanism))
             )
@@ -460,7 +460,7 @@ def _consume_support(
     support: MappingSupport,
     semantic_id: SemanticId,
     obligations: dict[tuple[str, SemanticId | None], HostObligationPlan],
-    telemetry: set[str],
+    event_types: set[str],
 ) -> None:
     # Mapping-specific evidence is conditional on that mapping being exercised.
     # Keep it on the mapping/control plan; the run-level completeness set contains

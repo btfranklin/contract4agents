@@ -12,6 +12,13 @@ from typing import Literal, cast
 
 from jsonschema import Draft202012Validator, FormatChecker, ValidationError
 
+from contract4agents._strict_json import (
+    json_array,
+    json_object,
+    json_string,
+    json_strings,
+    require_exact_keys,
+)
 from contract4agents.assurance._models import AssessorIdentity, AssuranceStatus
 from contract4agents.compiler import build_artifacts
 from contract4agents.expressions._grammar import parse_contract_expression
@@ -32,9 +39,9 @@ from contract4agents.run_specs import derived_value_collection_member_type
 from contract4agents.tracing import (
     NormalizedTrace,
     TraceClosureEvidence,
-    TraceCompletenessResult,
     TraceEvent,
-    assess_trace_completeness,
+    TraceEvidenceAssessment,
+    assess_trace_evidence,
     validate_trace_conformance,
 )
 
@@ -89,19 +96,19 @@ class RunSpecStageObservation:
 
     @classmethod
     def from_dict(cls, value: object) -> RunSpecStageObservation:
-        payload = _object("run-spec stage observation", value)
-        _keys(
+        payload = json_object("run-spec stage observation", value)
+        require_exact_keys(
             "run-spec stage observation",
             payload,
             {"agent_id", "evidence_event_ids", "evidence_refs", "observation_id", "output", "stage"},
         )
         return cls(
-            observation_id=_string("observation_id", payload["observation_id"]),
-            stage=_string("stage", payload["stage"]),
-            agent_id=SemanticId.parse(_string("agent_id", payload["agent_id"])),
+            observation_id=json_string("observation_id", payload["observation_id"]),
+            stage=json_string("stage", payload["stage"]),
+            agent_id=SemanticId.parse(json_string("agent_id", payload["agent_id"])),
             output=payload["output"],
-            evidence_event_ids=_strings("evidence_event_ids", payload["evidence_event_ids"]),
-            evidence_refs=_strings("evidence_refs", payload["evidence_refs"]),
+            evidence_event_ids=json_strings("evidence_event_ids", payload["evidence_event_ids"]),
+            evidence_refs=json_strings("evidence_refs", payload["evidence_refs"]),
         )
 
 
@@ -130,7 +137,9 @@ class RunSpecEvidence:
         object.__setattr__(self, "derived_values", values)
         object.__setattr__(self, "evidence_refs", _references("Evidence reference", self.evidence_refs))
         if self.status == "complete" and not self.evidence_refs:
-            raise ValueError("Complete run-spec evidence requires a completeness evidence reference")
+            raise ValueError(
+                "Complete run-spec evidence requires a workflow-completeness evidence reference"
+            )
 
     @property
     def complete(self) -> bool:
@@ -147,22 +156,22 @@ class RunSpecEvidence:
 
     @classmethod
     def from_dict(cls, value: object) -> RunSpecEvidence:
-        payload = _object("run-spec evidence", value)
-        _keys(
+        payload = json_object("run-spec evidence", value)
+        require_exact_keys(
             "run-spec evidence",
             payload,
             {"derived_values", "evidence_refs", "reason", "stage_observations", "status"},
         )
-        derived = _object("derived_values", payload["derived_values"])
+        derived = json_object("derived_values", payload["derived_values"])
         return cls(
-            status=cast(RunSpecEvidenceStatus, _string("status", payload["status"])),
-            reason=_string("reason", payload["reason"]),
+            status=cast(RunSpecEvidenceStatus, json_string("status", payload["status"])),
+            reason=json_string("reason", payload["reason"]),
             stage_observations=tuple(
                 RunSpecStageObservation.from_dict(item)
-                for item in _array("stage_observations", payload["stage_observations"])
+                for item in json_array("stage_observations", payload["stage_observations"])
             ),
             derived_values=FrozenMap((name, freeze_json(item)) for name, item in derived.items()),
-            evidence_refs=_strings("evidence_refs", payload["evidence_refs"]),
+            evidence_refs=json_strings("evidence_refs", payload["evidence_refs"]),
         )
 
 
@@ -198,16 +207,16 @@ class RunSpecSelection:
 
     @classmethod
     def from_dict(cls, value: object) -> RunSpecSelection:
-        payload = _object("run-spec selection", value)
-        _keys("run-spec selection", payload, {"evidence_refs", "reason", "run_id", "run_spec_id"})
+        payload = json_object("run-spec selection", value)
+        require_exact_keys("run-spec selection", payload, {"evidence_refs", "reason", "run_id", "run_spec_id"})
         run_spec_id = payload["run_spec_id"]
         if run_spec_id is not None and not isinstance(run_spec_id, str):
             raise TypeError("run_spec_id must be a string or null")
         return cls(
-            run_id=_string("run_id", payload["run_id"]),
+            run_id=json_string("run_id", payload["run_id"]),
             run_spec_id=run_spec_id,
-            reason=_string("reason", payload["reason"]),
-            evidence_refs=_strings("evidence_refs", payload["evidence_refs"]),
+            reason=json_string("reason", payload["reason"]),
+            evidence_refs=json_strings("evidence_refs", payload["evidence_refs"]),
         )
 
 
@@ -328,9 +337,9 @@ def assess_run_spec(
     selected = _select_run(trace, run_id)
     validate_trace_conformance(ir, plan, selected)
     declaration = _resolve_run_spec(ir, run_spec)
-    trace_completeness = assess_trace_completeness(
+    trace_evidence = assess_trace_evidence(
         selected,
-        plan.expected_telemetry,
+        plan.expected_event_types,
         closure=closure,
         run_id=selected.run_ids[0],
     )
@@ -352,7 +361,7 @@ def assess_run_spec(
             selected,
             evidence,
             observations_by_stage,
-            trace_completeness=trace_completeness,
+            trace_evidence=trace_evidence,
         )
         for assertion in declaration.assertions
     )
@@ -565,7 +574,7 @@ def _assess_assertion(
     evidence: RunSpecEvidence,
     observations_by_stage: Mapping[str, tuple[RunSpecStageObservation, ...]],
     *,
-    trace_completeness: TraceCompletenessResult,
+    trace_evidence: TraceEvidenceAssessment,
 ) -> RunSpecAssertionResult:
     if not evidence.complete:
         return RunSpecAssertionResult(
@@ -588,7 +597,7 @@ def _assess_assertion(
             trace,
             evidence,
             observations_by_stage,
-            trace_completeness,
+            trace_evidence,
         )
         statuses.append(status)
         reasons.append(reason)
@@ -612,7 +621,7 @@ def _evaluate_expression(
     trace: NormalizedTrace,
     evidence: RunSpecEvidence,
     observations_by_stage: Mapping[str, tuple[RunSpecStageObservation, ...]],
-    completeness: TraceCompletenessResult,
+    trace_evidence: TraceEvidenceAssessment,
 ) -> tuple[AssuranceStatus, str, tuple[TraceEvent, ...]]:
     if isinstance(parsed, ConditionalExpression):
         condition = _evaluate_parsed(
@@ -621,7 +630,7 @@ def _evaluate_expression(
             trace,
             evidence,
             observations_by_stage,
-            completeness,
+            trace_evidence,
         )
         if condition[0] == "violated":
             return "passed", "The assertion condition was proven false and did not apply.", condition[2]
@@ -633,10 +642,10 @@ def _evaluate_expression(
             trace,
             evidence,
             observations_by_stage,
-            completeness,
+            trace_evidence,
         )
         return expectation[0], expectation[1], condition[2] + expectation[2]
-    return _evaluate_parsed(parsed, ir, trace, evidence, observations_by_stage, completeness)
+    return _evaluate_parsed(parsed, ir, trace, evidence, observations_by_stage, trace_evidence)
 
 
 def _evaluate_parsed(
@@ -645,7 +654,7 @@ def _evaluate_parsed(
     trace: NormalizedTrace,
     evidence: RunSpecEvidence,
     observations_by_stage: Mapping[str, tuple[RunSpecStageObservation, ...]],
-    completeness: TraceCompletenessResult,
+    trace_evidence: TraceEvidenceAssessment,
 ) -> tuple[AssuranceStatus, str, tuple[TraceEvent, ...]]:
     if parsed.kind == "trace":
         stage_events = {
@@ -660,7 +669,7 @@ def _evaluate_parsed(
             parsed,
             ir=ir,
             trace=trace,
-            completeness=completeness,
+            trace_evidence=trace_evidence,
             stage_event_ids=stage_events,
         )
         return result.status, result.reason, result.events
@@ -759,40 +768,6 @@ def _references(label: str, values: tuple[str, ...]) -> tuple[str, ...]:
             raise ValueError(f"{label} must be a non-empty string")
         normalized.add(value)
     return tuple(sorted(normalized))
-
-
-def _object(label: str, value: object) -> Mapping[str, object]:
-    if not isinstance(value, Mapping) or not all(isinstance(key, str) for key in value):
-        raise TypeError(f"{label} must be an object with string keys")
-    return cast(Mapping[str, object], value)
-
-
-def _array(label: str, value: object) -> list[object]:
-    if not isinstance(value, list):
-        raise TypeError(f"{label} must be an array")
-    return value
-
-
-def _string(label: str, value: object) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise TypeError(f"{label} must be a non-empty string")
-    return value
-
-
-def _strings(label: str, value: object) -> tuple[str, ...]:
-    return tuple(_string(label, item) for item in _array(label, value))
-
-
-def _keys(label: str, payload: Mapping[str, object], required: set[str]) -> None:
-    missing = sorted(required - set(payload))
-    unknown = sorted(set(payload) - required)
-    if missing or unknown:
-        details = []
-        if missing:
-            details.append(f"missing {', '.join(missing)}")
-        if unknown:
-            details.append(f"unknown {', '.join(unknown)}")
-        raise ValueError(f"Invalid {label} keys: {'; '.join(details)}")
 
 
 def _require_text(label: str, value: str) -> None:

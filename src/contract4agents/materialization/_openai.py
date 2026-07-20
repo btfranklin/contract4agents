@@ -19,7 +19,7 @@ from contract4agents.materialization._models import (
     GraphValidationEvidence,
     NativeAgentGraph,
 )
-from contract4agents.materialization._tracing import MaterializationTraceEvent, TraceSink
+from contract4agents.materialization._tracing import MaterializationTraceEvent, MaterializationTraceSink
 from contract4agents.materialization._types import build_parameter_model, output_type_for
 from contract4agents.planning import MaterializationPlan, PlannerCapabilities
 from contract4agents.runtime import (
@@ -335,7 +335,7 @@ class OpenAIMaterializationProvider:
             composition=base.composition,
             controls=base.controls,
             isolation=isolation,
-            expected_telemetry=base.expected_telemetry,
+            expected_event_types=base.expected_event_types,
         )
 
     def build_graph(
@@ -349,7 +349,7 @@ class OpenAIMaterializationProvider:
         output_types: FrozenMap[str, type[object]],
         context_runtime: ContextRuntime,
         environment: EnvironmentProvider | None,
-        trace_sink: TraceSink,
+        materialization_trace_sink: MaterializationTraceSink,
     ) -> NativeAgentGraph:
         isolated_grants = [grant for grant in ir.grants.values() if grant.isolation_id is not None]
         if isolated_grants:
@@ -503,7 +503,7 @@ class OpenAIMaterializationProvider:
             edge_objects,
             output_types,
         )
-        _emit_materialization_events(trace_sink, ir, plan)
+        _emit_materialization_events(materialization_trace_sink, ir, plan)
         evidence = (
             tuple(environment.enforcement_evidence(item) for item in plan.isolation.values())
             if environment is not None
@@ -581,7 +581,7 @@ def _validate_graph(
 
 
 def _emit_materialization_events(
-    sink: TraceSink,
+    sink: MaterializationTraceSink,
     ir: CanonicalIR,
     plan: MaterializationPlan,
 ) -> None:

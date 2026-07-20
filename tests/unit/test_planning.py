@@ -48,7 +48,7 @@ def test_plans_complete_provider_neutral_target_with_deterministic_digest() -> N
     second = plan_materialization(ir, bindings, target="openai", profile="production", capabilities=capabilities)
     data = materialization_plan_data(first)
 
-    assert first.plan_version == PLAN_VERSION == "2"
+    assert first.plan_version == PLAN_VERSION == "3"
     assert first.contract_digest.startswith("sha256:")
     assert first.plan_digest.startswith("sha256:")
     assert first.plan_digest == second.plan_digest == data["plan_digest"]
@@ -78,7 +78,7 @@ def test_plans_complete_provider_neutral_target_with_deterministic_digest() -> N
         semantic_id("datasource", "incident.timeline"),
         semantic_id("external", "incident_record"),
     }
-    assert first.expected_telemetry == (
+    assert first.expected_event_types == (
         "agent.completed",
         "agent.started",
         "output.accepted",
@@ -335,19 +335,19 @@ def _capabilities(
         approval=MappingSupport(
             "exact",
             "openai.approval_interrupt",
-            expected_telemetry=("approval.requested", "approval.completed", "tool.started"),
+            expected_event_types=("approval.requested", "approval.completed", "tool.started"),
         ),
         composition={
             "delegate": MappingSupport(
                 "exact",
                 "openai.agent_as_tool",
-                expected_telemetry=("agent.started", "agent.completed"),
+                expected_event_types=("agent.started", "agent.completed"),
             ),
             "handoff": MappingSupport("exact", "openai.handoff"),
         },
         controls=controls or {},
         isolation=in_process_isolation_support(),
-        expected_telemetry=("agent.started", "agent.completed", "output.accepted"),
+        expected_event_types=("agent.started", "agent.completed", "output.accepted"),
     )
 
 

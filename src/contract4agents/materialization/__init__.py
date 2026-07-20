@@ -21,9 +21,9 @@ from contract4agents.materialization._openai import (
 )
 from contract4agents.materialization._tracing import (
     MaterializationTraceEvent,
-    NoOpTraceSink,
-    RecordingTraceSink,
-    TraceSink,
+    MaterializationTraceSink,
+    NoOpMaterializationTraceSink,
+    RecordingMaterializationTraceSink,
 )
 
 __all__ = [
@@ -36,13 +36,13 @@ __all__ = [
     "MaterializationProvider",
     "MaterializationResult",
     "MaterializationTraceEvent",
+    "MaterializationTraceSink",
     "NativeAgentDescription",
     "NativeAgentGraph",
-    "NoOpTraceSink",
+    "NoOpMaterializationTraceSink",
     "OpenAIMaterializationProvider",
     "OpenAISDK",
-    "RecordingTraceSink",
+    "RecordingMaterializationTraceSink",
     "ResolvedContextValue",
-    "TraceSink",
     "materialize",
 ]

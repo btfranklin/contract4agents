@@ -11,9 +11,8 @@ import click
 
 from contract4agents.assurance import (
     RunSpecAssessmentManifest,
-    assemble_assurance_bundle,
+    assess_assurance_evidence,
     assess_controls,
-    assess_run_spec,
     semantic_diff,
     write_assurance_bundle,
 )
@@ -43,7 +42,6 @@ from contract4agents.tracing import (
     TraceClosureManifest,
     TraceConformanceError,
     TraceLoadError,
-    dumps_trace_jsonl,
     load_trace_jsonl,
 )
 
@@ -107,11 +105,11 @@ def compile_cmd(root: Path, output_dir: Path, check_mode: bool) -> None:
     "output_dir",
     type=click.Path(path_type=Path),
     default=".contract/generated",
-    help="Generated language-artifact directory.",
+    help="Application-consumed generated-source directory.",
 )
 @click.option("--check", "check_mode", is_flag=True, help="Fail if generated source is stale.")
 def generate_cmd(root: Path, output_dir: Path, check_mode: bool) -> None:
-    """Generate Pydantic, TypeScript, and Zod types from canonical contracts."""
+    """Write only application-consumed Pydantic, TypeScript, and Zod source."""
 
     try:
         artifacts = compile_project(root)
@@ -308,12 +306,30 @@ def eval_cmd(
 
 @main.command("assess")
 @click.argument("root", type=click.Path(path_type=Path), default=".", required=False)
-@click.option("--target", required=True)
-@click.option("--profile", required=True)
-@click.option("--bindings", "bindings_path", type=click.Path(path_type=Path), default=None)
-@click.option("--trace", "trace_path", type=click.Path(path_type=Path), required=True)
-@click.option("--trace-closure", "trace_closure_path", type=click.Path(path_type=Path), default=None)
-@click.option("--run-id", default=None)
+@click.option("--target", required=True, help="Named target from contract4agents.targets.toml.")
+@click.option("--profile", required=True, help="Complete model/provider profile to assess.")
+@click.option(
+    "--bindings",
+    "bindings_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Override the discovered target-binding file.",
+)
+@click.option(
+    "--trace",
+    "trace_path",
+    type=click.Path(path_type=Path),
+    required=True,
+    help="Normalized trace JSONL to assess.",
+)
+@click.option(
+    "--trace-closure",
+    "trace_closure_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Versioned trace-closure manifest matching the trace frontier.",
+)
+@click.option("--run-id", default=None, help="Select one run when the trace contains multiple runs.")
 def assess_cmd(
     root: Path,
     target: str,
@@ -348,15 +364,50 @@ def assess_cmd(
 
 @main.command("assure")
 @click.argument("root", type=click.Path(path_type=Path), default=".", required=False)
-@click.option("--target", required=True)
-@click.option("--profile", required=True)
-@click.option("--bindings", "bindings_path", type=click.Path(path_type=Path), default=None)
-@click.option("--trace", "trace_path", type=click.Path(path_type=Path), default=None)
-@click.option("--trace-closure", "trace_closure_path", type=click.Path(path_type=Path), default=None)
-@click.option("--run-spec-evidence", "run_spec_path", type=click.Path(path_type=Path), default=None)
-@click.option("--eval-results", type=click.Path(path_type=Path), default=None)
-@click.option("--provenance", type=click.Path(path_type=Path), default=None)
-@click.option("--out", "output_dir", type=click.Path(path_type=Path), default=".contract/assurance")
+@click.option("--target", required=True, help="Named target from contract4agents.targets.toml.")
+@click.option("--profile", required=True, help="Complete model/provider profile used by the evidence.")
+@click.option(
+    "--bindings",
+    "bindings_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Override the discovered target-binding file.",
+)
+@click.option(
+    "--trace",
+    "trace_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Normalized trace JSONL to include and assess.",
+)
+@click.option(
+    "--trace-closure",
+    "trace_closure_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Versioned trace-closure manifest matching every trace run.",
+)
+@click.option(
+    "--run-spec-evidence",
+    "run_spec_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Versioned host-selected run-spec evidence manifest.",
+)
+@click.option(
+    "--eval-results",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Eval campaign result JSON to include.",
+)
+@click.option("--provenance", type=click.Path(path_type=Path), default=None, help="Provenance JSON to include.")
+@click.option(
+    "--out",
+    "output_dir",
+    type=click.Path(path_type=Path),
+    default=".contract/assurance",
+    help="Destination directory for the assurance bundle.",
+)
 def assure_cmd(
     root: Path,
     target: str,
@@ -373,42 +424,15 @@ def assure_cmd(
     ir, plan, _bindings = _resolve_plan(root, target, profile, bindings_path)
     trace = load_trace_jsonl(trace_path) if trace_path is not None else None
     closure_manifest = _load_trace_closure_manifest(trace_closure_path)
-    closures = closure_manifest.closures if closure_manifest is not None else None
-    control_closure = None
-    if trace is not None and len(trace.run_ids) == 1:
-        control_closure = _closure_for_run(closure_manifest, trace.run_ids[0])
-    results = assess_controls(ir, plan, trace, closure=control_closure) if trace is not None else None
     run_spec_manifest = _load_run_spec_manifest(run_spec_path)
-    selections = None if run_spec_manifest is None else tuple(item.selection for item in run_spec_manifest.runs)
-    run_spec_results = None
-    if run_spec_manifest is not None:
-        if trace is None:
-            raise click.ClickException("--run-spec-evidence requires --trace")
-        assessed = []
-        for item in run_spec_manifest.runs:
-            if item.selection.run_spec_id is None:
-                continue
-            assert item.evidence is not None
-            assessed.append(
-                assess_run_spec(
-                    ir,
-                    plan,
-                    trace,
-                    item.selection.run_spec_id,
-                    item.evidence,
-                    closure=_closure_for_run(closure_manifest, item.selection.run_id),
-                    run_id=item.selection.run_id,
-                )
-            )
-        run_spec_results = tuple(assessed)
-    bundle = assemble_assurance_bundle(
+    if run_spec_manifest is not None and trace is None:
+        raise click.ClickException("--run-spec-evidence requires --trace")
+    bundle = assess_assurance_evidence(
         ir,
         plan,
-        normalized_trace_jsonl=dumps_trace_jsonl(trace) if trace is not None else None,
-        control_results=results,
-        trace_closures=closures,
-        run_spec_selections=selections,
-        run_spec_results=run_spec_results,
+        trace=trace,
+        trace_closures=closure_manifest,
+        run_spec_evidence=run_spec_manifest,
         eval_results=_load_json_file(eval_results),
         provenance=_load_json_file(provenance),
     )

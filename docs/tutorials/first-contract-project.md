@@ -237,6 +237,9 @@ the same contract to live or recorded executions.
 
 ## Next Step
 
-You now have the complete loop: contract, binding, plan, materialized agent, and
-eval. When you need multiple agents, context providers, approvals, or production
-traces, continue with [the application guide](using-contract4agents-with-an-agent-app.md).
+You now have the first executable loop: contract, binding, plan, materialized
+agent, and deterministic eval. Continue with
+[Capture and Assure a Run](trace-and-assure.md) to add production trace capture,
+instrumentation closure, control assessment, and an assurance bundle. For
+multiple agents, context providers, approvals, and host-ownership boundaries,
+use the [application guide](using-contract4agents-with-an-agent-app.md).

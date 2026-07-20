@@ -156,7 +156,7 @@ system = materialize(
     "agent_contracts",
     target="openai",
     profile="production",
-    runtime_trace_sink=trace_sink,
+    normalized_trace_sink=trace_sink,
 )
 context = await system.context.resolve_agent(
     "SupportAgent",

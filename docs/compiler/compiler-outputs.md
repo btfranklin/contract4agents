@@ -38,7 +38,8 @@ docs/
   string enums.
 - `instructions/` contains only model-visible goals, guidance, composition
   descriptions, and controls whose audience explicitly includes `model`.
-- `generated/` contains disposable Pydantic, TypeScript, and Zod artifacts.
+- `generated/` contains review copies of Pydantic, TypeScript, and Zod artifacts
+  inside the complete disposable compiler bundle.
   String enums become Python `Literal` aliases, TypeScript string unions, and
   Zod `z.enum` schemas.
 - `docs/` contains reviewer-facing summaries generated from the IR.
@@ -61,6 +62,13 @@ pdm run contract4agents compile agent_contracts --out .contract/build --check
 `--check` reports `COMPILE001` when any managed file is missing, changed, or
 stale. A normal compile replaces only managed artifact directories and preserves
 adjacent outputs such as visualization or target plans.
+
+Use `compile` when you need the complete review bundle. Use `generate` only
+when application code imports generated Pydantic, TypeScript, or Zod source.
+`generate --out` may therefore point at a dedicated generated-source directory
+inside the application package, and `generate --check` can protect committed
+generated source in CI. Do not run both commands merely to obtain two copies of
+the same language artifacts.
 
 Unsafe destinations report `COMPILE002`. The compiler refuses the project root,
 the current working directory, and obvious source-owned directories.

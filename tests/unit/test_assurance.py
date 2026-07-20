@@ -9,7 +9,7 @@ from contract4agents.assurance import (
     AssessorIdentity,
     ControlResult,
 )
-from contract4agents.tracing import TraceCompletenessResult
+from contract4agents.tracing import TraceEvidenceAssessment
 
 
 def test_control_result_is_immutable_and_serializes_deterministically() -> None:
@@ -80,40 +80,40 @@ def test_control_result_rejects_unknown_values_and_empty_references() -> None:
         ControlResult("control:A:x", "passed", "ok", "runtime", assessor, evidence_event_ids=("",))
 
 
-def test_trace_completeness_reports_missing_expected_telemetry() -> None:
-    result = TraceCompletenessResult(
+def test_trace_evidence_reports_missing_expected_event_types() -> None:
+    result = TraceEvidenceAssessment(
         run_id="run-123",
         status="incomplete",
         reason="Approval instrumentation did not emit a completion event.",
-        expected_telemetry=("tool", "approval", "agent", "approval"),
-        observed_telemetry=("tool", "agent"),
+        expected_event_types=("tool", "approval", "agent", "approval"),
+        observed_event_types=("tool", "agent"),
         evidence_refs=("trace:run-123",),
     )
 
     assert not result.complete
-    assert result.expected_telemetry == ("agent", "approval", "tool")
-    assert result.missing_telemetry == ("approval",)
+    assert result.expected_event_types == ("agent", "approval", "tool")
+    assert result.missing_event_types == ("approval",)
     assert json.loads(result.to_json()) == result.to_dict()
-    assert result.to_dict()["missing_telemetry"] == ["approval"]
+    assert result.to_dict()["missing_event_types"] == ["approval"]
 
 
-def test_trace_completeness_rejects_a_complete_result_with_missing_telemetry() -> None:
-    with pytest.raises(ValueError, match="complete trace"):
-        TraceCompletenessResult(
+def test_trace_evidence_rejects_a_complete_result_with_missing_event_types() -> None:
+    with pytest.raises(ValueError, match="Complete trace evidence"):
+        TraceEvidenceAssessment(
             run_id="run-123",
             status="complete",
-            reason="All expected telemetry was observed.",
-            expected_telemetry=("agent", "tool"),
-            observed_telemetry=("agent",),
+            reason="All expected event types were observed.",
+            expected_event_types=("agent", "tool"),
+            observed_event_types=("agent",),
         )
 
 
-def test_trace_completeness_supports_unverified_without_claiming_completion() -> None:
-    result = TraceCompletenessResult(
+def test_trace_evidence_supports_unverified_without_claiming_completion() -> None:
+    result = TraceEvidenceAssessment(
         run_id="run-123",
         status="unverified",
         reason="The imported provider trace does not attest instrumentation coverage.",
     )
 
     assert not result.complete
-    assert result.missing_telemetry == ()
+    assert result.missing_event_types == ()

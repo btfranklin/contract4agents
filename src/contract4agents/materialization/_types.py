@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal, cast
 
+from pydantic import ConfigDict, Field, create_model
+
 from contract4agents.ir import (
     CanonicalIR,
     EnumIR,
@@ -21,13 +23,6 @@ from contract4agents.materialization._errors import MaterializationError, Materi
 
 
 def build_pydantic_types(ir: CanonicalIR) -> FrozenMap[str, Any]:
-    try:
-        from pydantic import ConfigDict, Field, create_model
-    except Exception as exc:  # noqa: BLE001 - optional provider boundary.
-        raise MaterializationError(
-            (MaterializationIssue("MAT201", "Pydantic v2 is required for native output types"),)
-        ) from exc
-
     built: dict[str, Any] = {}
     resolving: set[str] = set()
 
@@ -89,8 +84,6 @@ def build_parameter_model(
 ) -> type[object] | None:
     if not parameters:
         return None
-    from pydantic import ConfigDict, Field, create_model
-
     fields: dict[str, tuple[Any, Any]] = {}
     for parameter in parameters:
         default = _thaw(parameter.default) if parameter.has_default else (... if parameter.required else None)

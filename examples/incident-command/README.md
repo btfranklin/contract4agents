@@ -71,7 +71,7 @@ appear there.
 
 The plan shows the exact model selection, shared capability bindings,
 authorization mechanisms, composition graph, context providers, derived and
-explicit controls, host obligations, and expected telemetry.
+explicit controls, host obligations, and expected event types.
 
 ## Materialize
 

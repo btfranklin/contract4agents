@@ -1,14 +1,21 @@
-"""Identity-bound evidence that a normalized trace covers a complete run."""
+"""Identity-bound instrumentation closure at an exact normalized-trace frontier."""
 
 from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, Self, cast
 
+from contract4agents._strict_json import (
+    json_array,
+    json_object,
+    json_string,
+    json_strings,
+    require_exact_keys,
+)
 from contract4agents.ir import SemanticId
 from contract4agents.tracing._models import (
     NormalizedTrace,
@@ -18,7 +25,7 @@ from contract4agents.tracing._models import (
 )
 
 TraceClosureStatus = Literal["complete", "incomplete", "unverified"]
-TraceCoverageChannel = Literal[
+TraceInstrumentationChannel = Literal[
     "agent",
     "approval",
     "composition",
@@ -29,22 +36,21 @@ TraceCoverageChannel = Literal[
     "provider_response",
     "tool",
 ]
+TRACE_INSTRUMENTATION_CHANNELS: tuple[TraceInstrumentationChannel, ...] = (
+    "agent",
+    "approval",
+    "composition",
+    "datasource",
+    "guardrail",
+    "handoff",
+    "output",
+    "provider_response",
+    "tool",
+)
 TRACE_CLOSURE_MANIFEST_VERSION = "2"
 
 _STATUSES = frozenset({"complete", "incomplete", "unverified"})
-_CHANNELS = frozenset(
-    {
-        "agent",
-        "approval",
-        "composition",
-        "datasource",
-        "guardrail",
-        "handoff",
-        "output",
-        "provider_response",
-        "tool",
-    }
-)
+_CHANNELS = frozenset(TRACE_INSTRUMENTATION_CHANNELS)
 
 
 class TraceClosureError(ValueError):
@@ -96,14 +102,14 @@ class TraceFrontier:
 
     @classmethod
     def from_dict(cls, value: object) -> Self:
-        payload = _object("trace frontier", value)
-        _keys("trace frontier", payload, {"event_count", "prefix_digest"})
+        payload = json_object("trace frontier", value)
+        require_exact_keys("trace frontier", payload, {"event_count", "prefix_digest"})
         event_count = payload["event_count"]
         if isinstance(event_count, bool) or not isinstance(event_count, int):
             raise TypeError("Trace frontier event_count must be an integer")
         return cls(
             event_count=event_count,
-            prefix_digest=_string("prefix_digest", payload["prefix_digest"]),
+            prefix_digest=json_string("prefix_digest", payload["prefix_digest"]),
         )
 
 
@@ -151,8 +157,8 @@ class TraceAttemptClosure:
 
     @classmethod
     def from_dict(cls, value: object) -> TraceAttemptClosure:
-        payload = _object("attempt closure", value)
-        _keys(
+        payload = json_object("attempt closure", value)
+        require_exact_keys(
             "attempt closure",
             payload,
             {
@@ -168,13 +174,13 @@ class TraceAttemptClosure:
         )
         return cls(
             attempt=TraceAttempt.from_dict(payload["attempt"]),
-            agent_id=SemanticId.parse(_string("agent_id", payload["agent_id"])),
-            lifecycle_status=cast(TraceClosureStatus, _string("lifecycle_status", payload["lifecycle_status"])),
-            response_status=cast(TraceClosureStatus, _string("response_status", payload["response_status"])),
-            provider_trace_ids=_strings("provider_trace_ids", payload["provider_trace_ids"]),
-            response_ids=_strings("response_ids", payload["response_ids"]),
-            evidence_refs=_strings("evidence_refs", payload["evidence_refs"]),
-            reason=_string("reason", payload["reason"]),
+            agent_id=SemanticId.parse(json_string("agent_id", payload["agent_id"])),
+            lifecycle_status=cast(TraceClosureStatus, json_string("lifecycle_status", payload["lifecycle_status"])),
+            response_status=cast(TraceClosureStatus, json_string("response_status", payload["response_status"])),
+            provider_trace_ids=json_strings("provider_trace_ids", payload["provider_trace_ids"]),
+            response_ids=json_strings("response_ids", payload["response_ids"]),
+            evidence_refs=json_strings("evidence_refs", payload["evidence_refs"]),
+            reason=json_string("reason", payload["reason"]),
         )
 
 
@@ -186,7 +192,7 @@ class TraceClosureEvidence:
     status: TraceClosureStatus
     reason: str
     frontier: TraceFrontier
-    channels: tuple[TraceCoverageChannel, ...]
+    channels: tuple[TraceInstrumentationChannel, ...]
     attempts: tuple[TraceAttemptClosure, ...]
     evidence_refs: tuple[str, ...] = field(default_factory=tuple)
 
@@ -196,7 +202,7 @@ class TraceClosureEvidence:
         channels = tuple(sorted(set(self.channels)))
         unknown = sorted(set(channels) - _CHANNELS)
         if unknown:
-            raise ValueError(f"Unsupported trace-coverage channels: {', '.join(unknown)}")
+            raise ValueError(f"Unsupported instrumentation channels: {', '.join(unknown)}")
         object.__setattr__(self, "channels", channels)
         attempts = tuple(self.attempts)
         attempt_ids = [item.attempt.attempt_id for item in attempts]
@@ -211,7 +217,7 @@ class TraceClosureEvidence:
             if self.frontier.event_count == 0:
                 raise ValueError("Complete trace closure requires a non-empty trace frontier")
             if not channels:
-                raise ValueError("Complete trace closure requires at least one coverage channel")
+                raise ValueError("Complete trace closure requires at least one instrumentation channel")
             if not attempts:
                 raise ValueError("Complete trace closure requires at least one attempt")
             if not self.evidence_refs:
@@ -229,7 +235,7 @@ class TraceClosureEvidence:
         payload = json.dumps(self.to_dict(), ensure_ascii=False, separators=(",", ":"), sort_keys=True)
         return f"sha256:{hashlib.sha256(payload.encode()).hexdigest()}"
 
-    def covers(self, channel: TraceCoverageChannel) -> bool:
+    def covers(self, channel: TraceInstrumentationChannel) -> bool:
         return self.complete and channel in self.channels
 
     def to_dict(self) -> dict[str, object]:
@@ -248,8 +254,8 @@ class TraceClosureEvidence:
 
     @classmethod
     def from_dict(cls, value: object) -> TraceClosureEvidence:
-        payload = _object("trace closure", value)
-        _keys(
+        payload = json_object("trace closure", value)
+        require_exact_keys(
             "trace closure",
             payload,
             {
@@ -267,17 +273,17 @@ class TraceClosureEvidence:
         )
         return cls(
             context=TraceRunContext(
-                _string("run_id", payload["run_id"]),
-                _string("thread_id", payload["thread_id"]),
-                _string("contract_digest", payload["contract_digest"]),
-                _string("plan_digest", payload["plan_digest"]),
+                json_string("run_id", payload["run_id"]),
+                json_string("thread_id", payload["thread_id"]),
+                json_string("contract_digest", payload["contract_digest"]),
+                json_string("plan_digest", payload["plan_digest"]),
             ),
-            status=cast(TraceClosureStatus, _string("status", payload["status"])),
-            reason=_string("reason", payload["reason"]),
+            status=cast(TraceClosureStatus, json_string("status", payload["status"])),
+            reason=json_string("reason", payload["reason"]),
             frontier=TraceFrontier.from_dict(payload["frontier"]),
-            channels=cast(tuple[TraceCoverageChannel, ...], _strings("channels", payload["channels"])),
-            attempts=tuple(TraceAttemptClosure.from_dict(item) for item in _array("attempts", payload["attempts"])),
-            evidence_refs=_strings("evidence_refs", payload["evidence_refs"]),
+            channels=cast(tuple[TraceInstrumentationChannel, ...], json_strings("channels", payload["channels"])),
+            attempts=tuple(TraceAttemptClosure.from_dict(item) for item in json_array("attempts", payload["attempts"])),
+            evidence_refs=json_strings("evidence_refs", payload["evidence_refs"]),
         )
 
     @classmethod
@@ -290,7 +296,7 @@ class TraceClosureEvidence:
 
 
 @dataclass(frozen=True)
-class TraceClosureCheckpoint:
+class TraceCaptureSnapshot:
     """One internally consistent normalized-trace and closure snapshot."""
 
     trace: NormalizedTrace
@@ -325,9 +331,9 @@ class TraceClosureManifest:
 
     @classmethod
     def from_dict(cls, value: object) -> TraceClosureManifest:
-        payload = _object("trace-closure manifest", value)
-        _keys("trace-closure manifest", payload, {"closures", "version"})
-        version = _string("version", payload["version"])
+        payload = json_object("trace-closure manifest", value)
+        require_exact_keys("trace-closure manifest", payload, {"closures", "version"})
+        version = json_string("version", payload["version"])
         if version != TRACE_CLOSURE_MANIFEST_VERSION:
             raise ValueError(
                 f"Unsupported trace-closure manifest version `{version}`; "
@@ -335,7 +341,7 @@ class TraceClosureManifest:
             )
         return cls(
             closures=tuple(
-                TraceClosureEvidence.from_dict(item) for item in _array("closures", payload["closures"])
+                TraceClosureEvidence.from_dict(item) for item in json_array("closures", payload["closures"])
             ),
             version=version,
         )
@@ -418,40 +424,6 @@ def _validate_retry_chains(attempts: tuple[TraceAttemptClosure, ...]) -> None:
             raise ValueError(f"Trace closure attempt `{attempt.attempt_id}` does not follow its retry parent")
 
 
-def _object(label: str, value: object) -> Mapping[str, object]:
-    if not isinstance(value, Mapping) or not all(isinstance(key, str) for key in value):
-        raise TypeError(f"{label} must be an object with string keys")
-    return cast(Mapping[str, object], value)
-
-
-def _array(label: str, value: object) -> list[object]:
-    if not isinstance(value, list):
-        raise TypeError(f"{label} must be an array")
-    return value
-
-
-def _string(label: str, value: object) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise TypeError(f"{label} must be a non-empty string")
-    return value
-
-
-def _strings(label: str, value: object) -> tuple[str, ...]:
-    return tuple(_string(label, item) for item in _array(label, value))
-
-
-def _keys(label: str, payload: Mapping[str, object], required: set[str]) -> None:
-    missing = sorted(required - set(payload))
-    unknown = sorted(set(payload) - required)
-    if missing or unknown:
-        details = []
-        if missing:
-            details.append(f"missing {', '.join(missing)}")
-        if unknown:
-            details.append(f"unknown {', '.join(unknown)}")
-        raise ValueError(f"Invalid {label} keys: {'; '.join(details)}")
-
-
 def _status(label: str, value: str) -> None:
     if value not in _STATUSES:
         raise ValueError(f"Unsupported {label} `{value}`")
@@ -479,13 +451,14 @@ def _references(label: str, values: tuple[str, ...]) -> tuple[str, ...]:
 
 __all__ = [
     "TRACE_CLOSURE_MANIFEST_VERSION",
+    "TRACE_INSTRUMENTATION_CHANNELS",
     "TraceAttemptClosure",
-    "TraceClosureCheckpoint",
+    "TraceCaptureSnapshot",
     "TraceClosureEvidence",
     "TraceClosureError",
     "TraceClosureManifest",
     "TraceClosureStatus",
-    "TraceCoverageChannel",
+    "TraceInstrumentationChannel",
     "TraceFrontier",
     "validate_trace_closure",
 ]

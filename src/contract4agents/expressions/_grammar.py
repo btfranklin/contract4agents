@@ -10,6 +10,7 @@ from lark.exceptions import VisitError
 
 from contract4agents.expressions._model import (
     ConditionalExpression,
+    ConjunctiveExpression,
     ContractExpression,
     ExpressionError,
     ParsedExpression,
@@ -29,6 +30,8 @@ EXPRESSION_GRAMMAR = r"""
         | forbid_wrapper
         | when_wrapper
         | expectation
+
+    trace_conjunction: trace_expr ("and" trace_expr)*
 
     output_conforms: "output" "conforms" NAME
     output_compare: "output" "." NAME COMPARE_OP COMPARE_VALUE
@@ -66,7 +69,13 @@ EXPRESSION_GRAMMAR = r"""
 EXPRESSION_PARSER = Lark(
     EXPRESSION_GRAMMAR,
     parser="lalr",
-    start=["expectation", "trace_expr", "contract_expr", "semantic_expr"],
+    start=[
+        "expectation",
+        "trace_expr",
+        "trace_conjunction",
+        "contract_expr",
+        "semantic_expr",
+    ],
 )
 
 
@@ -80,6 +89,16 @@ def parse_semantic_expectation(expression: str) -> ParsedExpression:
     """Parse a semantic eval expectation and preserve its rubric text."""
     value = expression.strip()
     return _parse_lark_expression(value, "semantic_expr")
+
+
+def parse_trace_conjunction(expression: str) -> ConjunctiveExpression:
+    """Parse one or more trace expressions joined by `and`."""
+
+    value = expression.strip()
+    parsed = _parse_with_lark(value, "trace_conjunction")
+    if not isinstance(parsed, ConjunctiveExpression):
+        raise ExpressionError(f"Unsupported trace conjunction: {expression}")
+    return parsed
 
 
 def parse_contract_expression(expression: str) -> list[ContractExpression]:
@@ -145,6 +164,12 @@ class _ExpressionTransformer(Transformer[Any, Any]):
     def trace_args(self, items: list[Any]) -> tuple[str, ...]:
         return tuple(str(item).strip() for item in items)
 
+    def trace_conjunction(self, items: list[Any]) -> ConjunctiveExpression:
+        return ConjunctiveExpression(
+            self.expression,
+            tuple(cast(ParsedExpression, item) for item in items),
+        )
+
     def trace_arg(self, items: list[Any]) -> str:
         return unquote(str(items[0]).strip())
 
@@ -207,7 +232,13 @@ def _parse_lark_contract_expression(expression: str) -> ContractExpression:
 
 def _parse_with_lark(
     expression: str,
-    start: Literal["expectation", "trace_expr", "contract_expr", "semantic_expr"],
+    start: Literal[
+        "expectation",
+        "trace_expr",
+        "trace_conjunction",
+        "contract_expr",
+        "semantic_expr",
+    ],
 ) -> Any:
     try:
         tree = EXPRESSION_PARSER.parse(expression, start=start)

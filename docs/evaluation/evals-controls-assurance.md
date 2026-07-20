@@ -51,8 +51,8 @@ Every assurance result is one of:
   establish the claim.
 
 The distinction is deliberately asymmetric. Positive events may prove a
-positive claim. Event absence proves a negative claim only when the trace also
-proves the relevant instrumentation covered the complete run.
+positive claim. Event absence proves a negative claim only when identity-bound
+closure proves the relevant instrumentation channel closed at that trace frontier.
 
 Conditional controls evaluate `when` before `require`. A proven-false
 condition produces a passed result with `applicability = "not_applicable"`; the
@@ -106,7 +106,7 @@ disappearing or becoming passes.
 
 `assess_controls(ir, plan, trace, closure=trace_closure)` is the common
 provider-neutral assessor. It
-uses the plan's requested mechanisms and expected telemetry when evaluating
+uses the plan's requested mechanisms and expected event types when evaluating
 contract controls. Eval campaigns and production trace assessment call this
 same API. Both paths first validate trace conformance against the canonical
 contract and reviewed plan; invalid digests, undeclared capabilities, and
@@ -155,7 +155,7 @@ An assurance bundle is a deterministic evidence package containing:
 - materialization plan and plan digest;
 - normalized trace JSONL;
 - versioned, identity-bound trace-closure evidence;
-- control results whose reasons and evidence reflect trace completeness;
+- control results whose reasons and evidence reflect trace evidence;
 - run-spec results for contracts whose selected workflow is declared by a run
   spec;
 - eval campaign summaries when available;
@@ -165,6 +165,12 @@ An assurance bundle is a deterministic evidence package containing:
 Bundle verification checks internal digest references and records missing
 evidence. A bundle is review evidence, not a claim that a legal or regulatory
 standard has been certified.
+
+`assess_assurance_evidence(...)` is the library-level orchestration entry point.
+It accepts raw normalized trace, closure-manifest, and run-spec manifest objects,
+computes control and run-spec results, and delegates deterministic packaging to
+`assemble_assurance_bundle(...)`. Call the lower-level assembler only when the
+application already owns those assessed result objects.
 
 Run-spec bundle input includes explicit `RunSpecSelection` evidence for every
 run. A selection may name one declared run spec or state that none applied.

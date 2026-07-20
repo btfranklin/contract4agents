@@ -8,7 +8,7 @@ from typing import Literal
 
 from contract4agents.ir import FrozenJsonValue, FrozenMap, SemanticId, TypeRef, freeze_json
 
-PLAN_VERSION = "2"
+PLAN_VERSION = "3"
 MappingOutcome = Literal["exact", "host_enforced", "emulated", "degraded", "unsupported"]
 BindingKind = Literal["tool", "datasource", "external"]
 IsolationDimension = Literal["context", "capabilities", "state", "filesystem", "network", "secrets", "return"]
@@ -18,7 +18,7 @@ IsolationDimension = Literal["context", "capabilities", "state", "filesystem", "
 class MappingSupport:
     outcome: MappingOutcome
     mechanism: str | None
-    expected_telemetry: tuple[str, ...] = ()
+    expected_event_types: tuple[str, ...] = ()
     host_obligation: str | None = None
 
     def __post_init__(self) -> None:
@@ -26,7 +26,7 @@ class MappingSupport:
             raise ValueError(f"Mapping outcome `{self.outcome}` requires a mechanism")
         if self.outcome == "unsupported" and self.mechanism is not None:
             raise ValueError("An unsupported mapping cannot claim a mechanism")
-        _unique(self.expected_telemetry, "expected telemetry")
+        _unique(self.expected_event_types, "expected event type")
 
 
 @dataclass(frozen=True)
@@ -39,7 +39,7 @@ class PlannerCapabilities:
     composition: FrozenMap[str, MappingSupport] = field(default_factory=FrozenMap)
     controls: FrozenMap[str, MappingSupport] = field(default_factory=FrozenMap)
     isolation: FrozenMap[str, MappingSupport] = field(default_factory=FrozenMap)
-    expected_telemetry: tuple[str, ...] = ()
+    expected_event_types: tuple[str, ...] = ()
 
     @classmethod
     def create(
@@ -51,7 +51,7 @@ class PlannerCapabilities:
         composition: Mapping[str, MappingSupport] | Iterable[tuple[str, MappingSupport]] = (),
         controls: Mapping[str, MappingSupport] | Iterable[tuple[str, MappingSupport]] = (),
         isolation: Mapping[str, MappingSupport] | Iterable[tuple[str, MappingSupport]] = (),
-        expected_telemetry: Iterable[str] = (),
+        expected_event_types: Iterable[str] = (),
     ) -> PlannerCapabilities:
         return cls(
             adapter=adapter,
@@ -60,7 +60,7 @@ class PlannerCapabilities:
             composition=FrozenMap(composition),
             controls=FrozenMap(controls),
             isolation=FrozenMap(isolation),
-            expected_telemetry=tuple(expected_telemetry),
+            expected_event_types=tuple(expected_event_types),
         )
 
 
@@ -185,7 +185,7 @@ class MaterializationPlan:
     isolation: FrozenMap[SemanticId, IsolationMappingPlan]
     artifact_digests: FrozenMap[str, str]
     host_obligations: tuple[HostObligationPlan, ...]
-    expected_telemetry: tuple[str, ...]
+    expected_event_types: tuple[str, ...]
     plan_version: str = field(default=PLAN_VERSION, init=False)
 
     @property

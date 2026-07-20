@@ -6,9 +6,11 @@ from contract4agents.expressions._grammar import (
     parse_contract_expression,
     parse_expectation,
     parse_semantic_expectation,
+    parse_trace_conjunction,
 )
 from contract4agents.expressions._model import (
     ConditionalExpression,
+    ConjunctiveExpression,
     ContractExpression,
     ExpressionError,
     ExpressionKind,
@@ -18,15 +20,17 @@ from contract4agents.expressions._refs import referenced_output_fields, referenc
 from contract4agents.expressions._trace_ops import TraceOp
 
 __all__ = [
+    "ConditionalExpression",
+    "ConjunctiveExpression",
+    "ContractExpression",
     "ExpressionError",
     "ExpressionKind",
-    "ConditionalExpression",
-    "ContractExpression",
     "ParsedExpression",
     "TraceOp",
     "parse_contract_expression",
     "parse_expectation",
     "parse_semantic_expectation",
+    "parse_trace_conjunction",
     "referenced_output_fields",
     "referenced_trace_targets",
     "referenced_type",

@@ -355,7 +355,7 @@ def _add_planned(
         profile=plan.profile,
         plan_digest=plan.plan_digest,
         artifact_digests=_json_value(plan.artifact_digests),
-        expected_telemetry=list(plan.expected_telemetry),
+        expected_event_types=list(plan.expected_event_types),
     )
     for item in plan.agents.values():
         add_node(

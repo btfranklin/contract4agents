@@ -10,7 +10,7 @@ Contracts and the target plan already define:
 
 - agents, capabilities, grants, and authorization;
 - composition, context, and isolation;
-- controls, rubrics, and expected telemetry;
+- controls, rubrics, and expected event types;
 - input and output schemas.
 
 `eval-data.json` supplies only case-specific facts:

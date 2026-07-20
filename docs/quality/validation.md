@@ -70,7 +70,7 @@ Tests should cover:
 - duplicate, broken, cyclic, mixed-digest, and malformed trace rejection;
 - stable semantic references and provider correlation;
 - audience redaction before serialization and export;
-- completeness assessment against plan telemetry;
+- trace-evidence assessment against plan event types;
 - missing evidence becoming `unverified`;
 - identical control results in eval and production-trace assessment;
 - deterministic assurance bundle assembly and internal digest verification;

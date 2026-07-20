@@ -139,12 +139,12 @@ def _ir(*, missing_judge: bool = False, negative_expectation: bool = False) -> C
     )
 
 
-def _plan(ir: CanonicalIR, *, expected_telemetry: tuple[str, ...] | None = None) -> MaterializationPlan:
+def _plan(ir: CanonicalIR, *, expected_event_types: tuple[str, ...] | None = None) -> MaterializationPlan:
     agent_id = semantic_id("agent", "SupportAgent")
     capability_id = semantic_id("tool", "status.publish")
     grant_id = semantic_id("grant", "SupportAgent", "status.publish")
     controls = tuple(ir.controls.values())
-    telemetry = expected_telemetry or (
+    telemetry = expected_event_types or (
         "approval.requested",
         "approval.completed",
         "tool.started",
@@ -204,7 +204,7 @@ def _plan(ir: CanonicalIR, *, expected_telemetry: tuple[str, ...] | None = None)
         ),
         isolation=FrozenMap(),
         host_obligations=(),
-        expected_telemetry=telemetry,
+        expected_event_types=telemetry,
         artifact_digests=FrozenMap(),
     )
 
@@ -362,7 +362,7 @@ async def test_campaign_runs_repeated_trials_and_reports_deterministic_statistic
 
 
 @pytest.mark.asyncio
-async def test_missing_telemetry_and_judge_results_are_unverified(tmp_path: Path) -> None:
+async def test_missing_event_types_and_judge_results_are_unverified(tmp_path: Path) -> None:
     quality_ir = _ir()
     quality_plan = _plan(quality_ir)
     provider = _write_eval_data(
@@ -381,7 +381,7 @@ async def test_missing_telemetry_and_judge_results_are_unverified(tmp_path: Path
     assert quality_result.cases[0].trials[0].qualities[0].status == "unverified"
 
     negative_ir = _ir(missing_judge=True, negative_expectation=True)
-    negative_plan = _plan(negative_ir, expected_telemetry=("approval.requested", "output.accepted"))
+    negative_plan = _plan(negative_ir, expected_event_types=("approval.requested", "output.accepted"))
     negative_result = await run_campaign(
         negative_ir,
         negative_plan,
@@ -389,11 +389,11 @@ async def test_missing_telemetry_and_judge_results_are_unverified(tmp_path: Path
         CampaignConfig("incomplete-negative"),
     )
     negative_trial = negative_result.cases[0].trials[0]
-    assert negative_trial.trace_completeness is not None
-    assert negative_trial.trace_completeness.status == "complete"
+    assert negative_trial.trace_evidence is not None
+    assert negative_trial.trace_evidence.status == "complete"
     assert negative_trial.expectations[1].status == "unverified"
 
-    incomplete_plan = _plan(negative_ir, expected_telemetry=("approval.requested", "event.never_emitted"))
+    incomplete_plan = _plan(negative_ir, expected_event_types=("approval.requested", "event.never_emitted"))
     incomplete = await run_campaign(
         negative_ir,
         incomplete_plan,

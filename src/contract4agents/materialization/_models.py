@@ -8,7 +8,7 @@ from typing import Protocol, runtime_checkable
 from contract4agents.compiler import CompilerArtifacts
 from contract4agents.ir import CanonicalIR, FrozenMap, SemanticId
 from contract4agents.materialization._context import ContextRuntime
-from contract4agents.materialization._tracing import TraceSink
+from contract4agents.materialization._tracing import MaterializationTraceSink
 from contract4agents.planning import MaterializationPlan, PlannerCapabilities
 from contract4agents.runtime import EnvironmentEnforcementEvidence, EnvironmentProvider
 from contract4agents.target_bindings import TargetBinding
@@ -86,7 +86,7 @@ class MaterializationProvider(Protocol):
         output_types: FrozenMap[str, type[object]],
         context_runtime: ContextRuntime,
         environment: EnvironmentProvider | None,
-        trace_sink: TraceSink,
+        materialization_trace_sink: MaterializationTraceSink,
     ) -> NativeAgentGraph:
         """Construct and validate the complete native graph."""
 

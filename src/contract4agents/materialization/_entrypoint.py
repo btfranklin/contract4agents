@@ -18,7 +18,7 @@ from contract4agents.materialization._models import (
     MaterializationResult,
 )
 from contract4agents.materialization._openai import OpenAIMaterializationProvider
-from contract4agents.materialization._tracing import NOOP_TRACE_SINK, TraceSink
+from contract4agents.materialization._tracing import NOOP_MATERIALIZATION_TRACE_SINK, MaterializationTraceSink
 from contract4agents.materialization._types import build_pydantic_types
 from contract4agents.planning import plan_materialization
 from contract4agents.runtime import EnvironmentProvider, InProcessEnvironment, load_python_ref
@@ -38,8 +38,8 @@ def materialize(
     bindings: TargetBindings | Path | str | None = None,
     *,
     provider: MaterializationProvider | None = None,
-    trace_sink: TraceSink | None = None,
-    runtime_trace_sink: NormalizedTraceSink | None = None,
+    materialization_trace_sink: MaterializationTraceSink | None = None,
+    normalized_trace_sink: NormalizedTraceSink | None = None,
 ) -> MaterializationResult:
     """Compile, plan, construct, and validate one framework-native agent graph."""
 
@@ -92,7 +92,7 @@ def materialize(
         plan,
         implementations,
         output_types,
-        trace_sink=runtime_trace_sink,
+        trace_sink=normalized_trace_sink,
     )
     graph = selected_provider.build_graph(
         ir=artifacts.ir,
@@ -103,7 +103,9 @@ def materialize(
         output_types=output_types,
         context_runtime=context_runtime,
         environment=environment,
-        trace_sink=trace_sink or NOOP_TRACE_SINK,
+        materialization_trace_sink=(
+            materialization_trace_sink or NOOP_MATERIALIZATION_TRACE_SINK
+        ),
     )
     return MaterializationResult(graph=graph, plan=plan)
 

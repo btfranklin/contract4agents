@@ -2,27 +2,27 @@
 
 from __future__ import annotations
 
-import hashlib
 import threading
 import time
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
-from dataclasses import dataclass, field
-from datetime import datetime
 from types import TracebackType
 from typing import Literal, Self
 
-from contract4agents.adapters._openai_names import contract_tool_name
 from contract4agents.ir import CanonicalIR, SemanticId, semantic_id
-from contract4agents.planning import GrantMappingPlan, MaterializationPlan
+from contract4agents.planning import MaterializationPlan
+from contract4agents.tracing._capture import (
+    AttemptCaptureState,
+    build_trace_closure,
+    prior_attempt,
+)
 from contract4agents.tracing._closure import (
+    TRACE_INSTRUMENTATION_CHANNELS,
     TraceAttemptClosure,
-    TraceClosureCheckpoint,
+    TraceCaptureSnapshot,
     TraceClosureEvidence,
-    TraceClosureStatus,
-    TraceCoverageChannel,
-    TraceFrontier,
+    TraceInstrumentationChannel,
 )
 from contract4agents.tracing._models import (
     NormalizedTrace,
@@ -33,314 +33,25 @@ from contract4agents.tracing._models import (
     TraceRunContext,
     TraceSemanticRefs,
 )
+from contract4agents.tracing._openai_responses import (
+    normalize_openai_exception_responses,
+    normalize_openai_response_events,
+    resolve_provider_tool_grant,
+)
+from contract4agents.tracing._openai_spans import OpenAISpanMapper
+from contract4agents.tracing._openai_utils import (
+    field_text,
+    field_value,
+    optional_text_attr,
+    text_attr,
+    timestamp,
+)
 from contract4agents.tracing._sinks import NormalizedTraceSink
 
-_OPENAI_SUPPORTED_PROVIDER_HOSTED_CALLS = {
-    "web_search_call": "web_search",
-}
-
-_OPENAI_UNSUPPORTED_PROVIDER_HOSTED_CALLS = {
-    "file_search_call": "file_search",
-    "code_interpreter_call": "code_interpreter",
-    "image_generation_call": "image_generation",
-    "mcp_call": "mcp",
-    "mcp_list_tools": "mcp_list_tools",
-    "tool_search_call": "tool_search",
-}
-
-# These calls are dispatched outside the provider-hosted tool path. Their
-# authoritative evidence comes from SDK spans or the host application, not
-# model-response normalization.
-_OPENAI_HOST_DISPATCHED_CALLS = frozenset(
-    {
-        "apply_patch_call",
-        "computer_call",
-        "custom_tool_call",
-        "function_call",
-        "local_shell_call",
-        "shell_call",
-    }
+_OPENAI_CAPTURED_CHANNELS: frozenset[TraceInstrumentationChannel] = frozenset(
+    {"agent", "composition", "handoff", "output", "provider_response", "tool"}
 )
-
 _MISSING = object()
-
-
-def resolve_provider_tool_grant(
-    plan: MaterializationPlan,
-    *,
-    agent_id: SemanticId,
-    provider: str,
-    tool: str,
-) -> GrantMappingPlan:
-    """Resolve exactly one enabled provider-hosted grant from planned locators."""
-
-    agent_id.require_kind("agent")
-    matches: list[GrantMappingPlan] = []
-    for grant in plan.grants.values():
-        if grant.agent_id != agent_id or grant.availability != "enabled":
-            continue
-        binding = plan.bindings.get(grant.capability_id)
-        if (
-            binding is None
-            or binding.kind != "tool"
-            or binding.execution != "provider_hosted"
-        ):
-            continue
-        locator_tool = _locator_tool(binding.locator)
-        if binding.locator.get("provider") == provider and locator_tool == tool:
-            matches.append(grant)
-    if len(matches) != 1:
-        raise ValueError(
-            f"Expected exactly one enabled provider-hosted grant for "
-            f"`{agent_id}` and `{provider}:{tool}`; found {len(matches)}"
-        )
-    return matches[0]
-
-
-def normalize_openai_response_events(
-    plan: MaterializationPlan,
-    responses: Iterable[object],
-    *,
-    agent: str | SemanticId,
-    context: TraceRunContext,
-    attempt: TraceAttempt | None = None,
-    batch_id: str | None = None,
-    sink: NormalizedTraceSink | None = None,
-) -> tuple[TraceEvent, ...]:
-    """Normalize provider-hosted calls from Agents SDK model responses.
-
-    Only provider identity, status, model metadata, and correlation identifiers
-    are retained. Provider prompts, actions, queries, and outputs are excluded.
-    """
-
-    agent_id = agent if isinstance(agent, SemanticId) else semantic_id("agent", agent)
-    agent_id.require_kind("agent")
-    response_items = tuple(responses)
-    events: list[TraceEvent] = []
-    response_identities = [
-        _field_text(response, "response_id")
-        or _field_text(response, "request_id")
-        or f"index-{index}"
-        for index, response in enumerate(response_items)
-    ]
-    selected_batch_id = batch_id or (
-        attempt.attempt_id if attempt is not None else _batch_identity(response_identities)
-    )
-    for response_index, response in enumerate(response_items):
-        response_id = _field_text(response, "response_id")
-        request_id = _field_text(response, "request_id")
-        provider_model = _provider_model(response)
-        output = _field(response, "output")
-        response_identity = response_identities[response_index]
-        receipt_data: dict[str, object] = {
-            "output_item_count": len(output) if isinstance(output, list | tuple) else 0,
-            "response_identity": response_identity,
-        }
-        if attempt is not None:
-            receipt_data["attempt"] = attempt.to_dict()
-        if provider_model is not None:
-            receipt_data["provider_model"] = provider_model
-        receipt = TraceEvent(
-            context=context,
-            event_id=(
-                f"openai:response-batch:{selected_batch_id}:response:{response_index}:"
-                f"{response_identity}:normalized"
-            ),
-            parent_event_id=None,
-            event_type="provider.response.normalized",
-            timestamp=_timestamp(_field(response, "completed_at")),
-            semantic=TraceSemanticRefs(agent_id=agent_id),
-            data=receipt_data,
-            provider=ProviderCorrelation("openai", run_id=response_id, request_id=request_id),
-            evidence_refs=tuple(
-                reference
-                for reference in (
-                    f"provider:openai:response:{response_id}" if response_id else None,
-                    f"provider:openai:request:{request_id}" if request_id else None,
-                )
-                if reference is not None
-            ),
-            provenance={"source": "openai-agents-sdk-response-normalizer"},
-            redaction=RedactionMetadata(),
-        )
-        events.append(receipt)
-        if sink is not None:
-            sink.emit(receipt)
-        if not isinstance(output, list | tuple):
-            continue
-        for item_index, item in enumerate(output):
-            item_type = _field_text(item, "type")
-            if item_type is None or item_type in _OPENAI_HOST_DISPATCHED_CALLS:
-                continue
-            provider_tool = _OPENAI_SUPPORTED_PROVIDER_HOSTED_CALLS.get(item_type)
-            unsupported_tool = _OPENAI_UNSUPPORTED_PROVIDER_HOSTED_CALLS.get(item_type)
-            if provider_tool is None:
-                provider_tool = unsupported_tool
-            unrecognized_call = provider_tool is None and item_type.endswith("_call")
-            if provider_tool is None and not unrecognized_call:
-                continue
-            call_id = _field_text(item, "id")
-            identity = ":".join(
-                part
-                for part in (
-                    response_id or request_id or str(response_index),
-                    call_id or str(item_index),
-                )
-            )
-            event_id = f"openai:hosted-tool:{identity}"
-            data: dict[str, object] = {
-                "provider_tool": (
-                    f"openai.{provider_tool}"
-                    if provider_tool is not None
-                    else f"openai.unrecognized:{item_type}"
-                )
-            }
-            if attempt is not None:
-                data["attempt"] = attempt.to_dict()
-            status = _field_text(item, "status")
-            if status is not None:
-                data["status"] = status
-            if provider_model is not None:
-                data["provider_model"] = provider_model
-            evidence_refs = tuple(
-                reference
-                for reference in (
-                    f"provider:openai:response:{response_id}" if response_id else None,
-                    f"provider:openai:call:{call_id}" if call_id else None,
-                )
-                if reference is not None
-            )
-            if unsupported_tool is not None:
-                event_type = "capability.undeclared"
-                semantic = TraceSemanticRefs(agent_id=agent_id)
-                data["reason"] = (
-                    f"OpenAI provider-hosted response call type `{item_type}` is not supported by this adapter"
-                )
-            elif unrecognized_call:
-                event_type = "capability.undeclared"
-                semantic = TraceSemanticRefs(agent_id=agent_id)
-                data["reason"] = (
-                    f"Unrecognized OpenAI response call type `{item_type}`; "
-                    "provider-hosted execution cannot be ruled out"
-                )
-            else:
-                assert provider_tool is not None
-                try:
-                    grant = resolve_provider_tool_grant(
-                        plan,
-                        agent_id=agent_id,
-                        provider="openai",
-                        tool=provider_tool,
-                    )
-                except ValueError as exc:
-                    event_type = "capability.undeclared"
-                    semantic = TraceSemanticRefs(agent_id=agent_id)
-                    data["reason"] = str(exc)
-                else:
-                    if status in {"failed", "cancelled", "canceled", "incomplete"}:
-                        event_type = "tool.failed"
-                    elif status is not None and status not in {"completed", "succeeded"}:
-                        event_type = "tool.started"
-                    else:
-                        event_type = "tool.completed"
-                    semantic = TraceSemanticRefs(
-                        agent_id=agent_id,
-                        capability_id=grant.capability_id,
-                        grant_id=grant.id,
-                        isolation_id=grant.isolation_id,
-                    )
-            event = TraceEvent(
-                context=context,
-                event_id=event_id,
-                parent_event_id=None,
-                event_type=event_type,
-                timestamp=_timestamp(_field(item, "completed_at")),
-                semantic=semantic,
-                data=data,
-                provider=ProviderCorrelation(
-                    "openai",
-                    run_id=response_id,
-                    request_id=request_id,
-                ),
-                evidence_refs=evidence_refs,
-                provenance={"source": "openai-agents-sdk-model-response"},
-                redaction=RedactionMetadata(),
-            )
-            events.append(event)
-            if sink is not None:
-                sink.emit(event)
-    batch_data: dict[str, object] = {
-        "batch_id": selected_batch_id,
-        "response_count": len(response_items),
-        "response_ids": response_identities,
-    }
-    if attempt is not None:
-        batch_data["attempt"] = attempt.to_dict()
-    batch = TraceEvent(
-        context=context,
-        event_id=f"openai:response-batch:{selected_batch_id}:normalized",
-        parent_event_id=None,
-        event_type="provider.response_batch.normalized",
-        timestamp=time.time(),
-        semantic=TraceSemanticRefs(agent_id=agent_id),
-        data=batch_data,
-        provider=ProviderCorrelation("openai"),
-        evidence_refs=(f"contract4agents:openai:response-batch:{selected_batch_id}",),
-        provenance={"source": "openai-agents-sdk-response-normalizer"},
-        redaction=RedactionMetadata(),
-    )
-    events.append(batch)
-    if sink is not None:
-        sink.emit(batch)
-    return tuple(events)
-
-
-def normalize_openai_exception_responses(
-    plan: MaterializationPlan,
-    exception: BaseException,
-    *,
-    agent: str | SemanticId,
-    context: TraceRunContext,
-    attempt: TraceAttempt | None = None,
-    batch_id: str | None = None,
-    sink: NormalizedTraceSink | None = None,
-) -> tuple[TraceEvent, ...]:
-    """Normalize model responses retained on an Agents SDK run exception.
-
-    The helper deliberately records only provider response evidence. The host
-    still owns exception handling, retry decisions, and lifecycle failure
-    events.
-    """
-
-    run_data = getattr(exception, "run_data", None)
-    if run_data is None:
-        return ()
-    raw_responses = getattr(run_data, "raw_responses", _MISSING)
-    if raw_responses is _MISSING:
-        return ()
-    if not isinstance(raw_responses, Iterable) or isinstance(raw_responses, str | bytes | Mapping):
-        raise TypeError("Agents SDK exception run_data.raw_responses must be an iterable of responses")
-    return normalize_openai_response_events(
-        plan,
-        raw_responses,
-        agent=agent,
-        context=context,
-        attempt=attempt,
-        batch_id=batch_id,
-        sink=sink,
-    )
-
-
-@dataclass
-class _AttemptState:
-    attempt: TraceAttempt
-    agent_id: SemanticId
-    provider_trace_ids: set[str] = field(default_factory=set)
-    ended_trace_ids: set[str] = field(default_factory=set)
-    response_ids: set[str] = field(default_factory=set)
-    response_status: TraceClosureStatus = "incomplete"
-    response_evidence_refs: set[str] = field(default_factory=set)
-    reason: str = "The response-normalization path has not been closed."
 
 
 class OpenAINormalizedTraceRouter:
@@ -386,7 +97,7 @@ class OpenAINormalizedTraceRouter:
         session = self._current_session.get()
         if session is None:
             return
-        trace_id = _text_attr(trace, "trace_id")
+        trace_id = text_attr(trace, "trace_id")
         with self._lock:
             if self._shutdown:
                 return
@@ -400,7 +111,7 @@ class OpenAINormalizedTraceRouter:
                     self._trace_sessions.pop(trace_id, None)
 
     def on_trace_end(self, trace: object) -> None:
-        trace_id = _text_attr(trace, "trace_id")
+        trace_id = text_attr(trace, "trace_id")
         with self._lock:
             session = self._trace_sessions.pop(trace_id, None)
         if session is not None:
@@ -438,7 +149,7 @@ class OpenAINormalizedTraceRouter:
         self._current_session.reset(token)
 
     def _session_for_span(self, span: object) -> OpenAINormalizedTraceSession | None:
-        trace_id = _text_attr(span, "trace_id")
+        trace_id = text_attr(span, "trace_id")
         with self._lock:
             return self._trace_sessions.get(trace_id)
 
@@ -487,7 +198,7 @@ class OpenAINormalizedTraceSession:
         if prior_trace is not None and prior_closure is not None:
             if prior_trace.run_ids != (run_id,):
                 raise ValueError("Prior trace must contain exactly the resumed run")
-            TraceClosureCheckpoint(prior_trace, prior_closure)
+            TraceCaptureSnapshot(prior_trace, prior_closure)
             if prior_closure.context != self.context:
                 raise ValueError("Prior trace closure does not match the resumed session context")
             self._prior_events = prior_trace.events
@@ -496,28 +207,20 @@ class OpenAINormalizedTraceSession:
             self._prior_events = ()
             self._prior_closure = None
         self.events: list[TraceEvent] = []
-        self._span_parent: dict[str, str | None] = {}
-        self._span_semantic: dict[str, TraceSemanticRefs] = {}
+        self._span_mapper = OpenAISpanMapper(ir)
         self._span_attempt: dict[str, TraceAttempt | None] = {}
         self._attempt_context: ContextVar[TraceAttempt | None] = ContextVar(
             f"contract4agents_openai_attempt_{id(self)}",
             default=None,
         )
-        self._attempts: dict[str, _AttemptState] = {}
+        self._attempts: dict[str, AttemptCaptureState] = {}
         self._active_trace_attempts: dict[str, TraceAttempt] = {}
         self._unbound_trace_ids: set[str] = set()
         self._activation_token: Token[OpenAINormalizedTraceSession | None] | None = None
         self._closed = False
-        self._closure: TraceClosureEvidence | None = None
-        self._channels: set[TraceCoverageChannel] = {
-            "agent",
-            "composition",
-            "handoff",
-            "output",
-            "provider_response",
-            "tool",
-        }
-        self._attested_channels: set[TraceCoverageChannel] = set()
+        self._closed_snapshot: TraceCaptureSnapshot | None = None
+        self._channels: set[TraceInstrumentationChannel] = set(_OPENAI_CAPTURED_CHANNELS)
+        self._attested_channels: set[TraceInstrumentationChannel] = set()
         self._closure_evidence_refs: set[str] = set()
         self._lock = threading.Lock()
 
@@ -551,6 +254,22 @@ class OpenAINormalizedTraceSession:
             attempt = self._current_attempt()
             if attempt is None:
                 self._unbound_trace_ids.add(trace_id)
+                event = TraceEvent(
+                    context=self.context,
+                    event_id=f"openai:trace:{trace_id}:unbound",
+                    parent_event_id=None,
+                    event_type="instrumentation.unbound",
+                    timestamp=time.time(),
+                    semantic=TraceSemanticRefs(),
+                    data={"reason": "SDK trace started without attempt identity."},
+                    provider=ProviderCorrelation("openai", trace_id=trace_id),
+                    evidence_refs=(f"provider:openai:{trace_id}",),
+                    provenance={"source": "openai-agents-sdk-tracing-router"},
+                    redaction=RedactionMetadata(),
+                )
+                self.events.append(event)
+                if self.sink is not None:
+                    self.sink.emit(event)
                 return True
             state = self._attempts[attempt.attempt_id]
             state.provider_trace_ids.add(trace_id)
@@ -569,23 +288,22 @@ class OpenAINormalizedTraceSession:
         with self._lock:
             if self._closed:
                 return
-            trace_id = _text_attr(span, "trace_id")
+            trace_id = text_attr(span, "trace_id")
             attempt = self._active_trace_attempts.get(trace_id)
             if attempt is None:
                 return
-            span_id = _text_attr(span, "span_id")
-            parent_id = _optional_text_attr(span, "parent_id")
-            self._span_parent[span_id] = parent_id
+            span_id = text_attr(span, "span_id")
+            parent_id = optional_text_attr(span, "parent_id")
             self._span_attempt[span_id] = attempt
-            event_type, semantic = self._classify(span, completed=False)
-            self._span_semantic[span_id] = semantic
+            event_type, semantic = self._span_mapper.classify(span, completed=False)
+            self._span_mapper.register(span_id, parent_id, semantic)
             self._record(
                 span,
                 event_id=f"openai:{span_id}:started",
                 parent_event_id=f"openai:{parent_id}:started" if parent_id else None,
                 event_type=event_type,
                 semantic=semantic,
-                timestamp=_timestamp(getattr(span, "started_at", None)),
+                timestamp=timestamp(getattr(span, "started_at", None)),
                 attempt=attempt,
             )
 
@@ -593,14 +311,14 @@ class OpenAINormalizedTraceSession:
         with self._lock:
             if self._closed:
                 return
-            trace_id = _text_attr(span, "trace_id")
+            trace_id = text_attr(span, "trace_id")
             if trace_id not in self._active_trace_attempts:
                 return
-            span_id = _text_attr(span, "span_id")
-            start_semantic = self._span_semantic.get(span_id)
-            event_type, semantic = self._classify(span, completed=True)
+            span_id = text_attr(span, "span_id")
+            start_semantic = self._span_mapper.semantic_for(span_id)
+            event_type, semantic = self._span_mapper.classify(span, completed=True)
             semantic = start_semantic or semantic
-            timestamp = _timestamp(getattr(span, "ended_at", None))
+            event_timestamp = timestamp(getattr(span, "ended_at", None))
             error = getattr(span, "error", None)
             attempt = self._span_attempt.get(span_id)
             if error is not None:
@@ -613,7 +331,7 @@ class OpenAINormalizedTraceSession:
                     parent_event_id=f"openai:{span_id}:started",
                     event_type="output.accepted",
                     semantic=semantic,
-                    timestamp=timestamp,
+                    timestamp=event_timestamp,
                     attempt=attempt,
                 )
                 parent = accepted_id
@@ -625,7 +343,7 @@ class OpenAINormalizedTraceSession:
                 parent_event_id=parent,
                 event_type=event_type,
                 semantic=semantic,
-                timestamp=timestamp,
+                timestamp=event_timestamp,
                 error=error is not None,
                 attempt=attempt,
             )
@@ -734,7 +452,7 @@ class OpenAINormalizedTraceSession:
 
     def attest_channels(
         self,
-        channels: Iterable[TraceCoverageChannel],
+        channels: Iterable[TraceInstrumentationChannel],
         *,
         evidence_refs: Iterable[str],
     ) -> None:
@@ -745,146 +463,83 @@ class OpenAINormalizedTraceSession:
         self._ensure_open()
         if not selected_channels or not selected_refs:
             raise ValueError("Channel attestation requires channels and evidence references")
-        allowed = {
-            "agent",
-            "approval",
-            "composition",
-            "datasource",
-            "guardrail",
-            "handoff",
-            "output",
-            "provider_response",
-            "tool",
-        }
-        unknown = sorted(set(selected_channels) - allowed)
+        unknown = sorted(set(selected_channels) - set(TRACE_INSTRUMENTATION_CHANNELS))
         if unknown:
-            raise ValueError(f"Unsupported trace-coverage channels: {', '.join(unknown)}")
+            raise ValueError(f"Unsupported instrumentation channels: {', '.join(unknown)}")
         if any(not isinstance(reference, str) or not reference.strip() for reference in selected_refs):
             raise ValueError("Channel evidence references must be non-empty strings")
         self._channels.update(selected_channels)
         self._attested_channels.update(selected_channels)
         self._closure_evidence_refs.update(selected_refs)
 
-    def checkpoint(self) -> TraceClosureCheckpoint:
+    def snapshot(self) -> TraceCaptureSnapshot:
         """Snapshot one immutable trace and closure frontier without closing."""
 
         with self._lock:
             if self._closed:
-                if self._closure is None:
-                    raise RuntimeError("Closed OpenAI trace session has no closure evidence")
-                closure = self._closure
+                if self._closed_snapshot is None:
+                    raise RuntimeError("Closed OpenAI trace session has no capture snapshot")
+                return self._closed_snapshot
             else:
-                closure = self._build_checkpoint()
+                closure = self._build_closure()
             trace = NormalizedTrace((*self._prior_events, *self.events))
-            return TraceClosureCheckpoint(trace, closure)
+            return TraceCaptureSnapshot(trace, closure)
 
-    def close(self) -> TraceClosureEvidence:
-        """Detach the session, release router state, and return final closure evidence."""
+    def close(self) -> TraceCaptureSnapshot:
+        """Detach the session and return its final trace-plus-closure snapshot."""
 
         with self._lock:
-            if self._closure is None:
+            if self._closed_snapshot is None:
                 if self._activation_token is not None:
                     raise RuntimeError("Exit the OpenAI trace session before closing it")
-                self._closure = self._build_checkpoint()
+                if not self._prior_events and not self.events:
+                    event = TraceEvent(
+                        context=self.context,
+                        event_id=f"contract4agents:{self.context.run_id}:capture-empty",
+                        parent_event_id=None,
+                        event_type="instrumentation.empty",
+                        timestamp=time.time(),
+                        semantic=TraceSemanticRefs(),
+                        data={"reason": "No SDK execution was captured for this session."},
+                        provider=ProviderCorrelation("contract4agents"),
+                        evidence_refs=(
+                            f"contract4agents:openai:session:{self.context.run_id}",
+                        ),
+                        provenance={"source": "contract4agents-openai-capture"},
+                        redaction=RedactionMetadata(),
+                    )
+                    self.events.append(event)
+                    if self.sink is not None:
+                        self.sink.emit(event)
+                closure = self._build_closure()
+                trace = NormalizedTrace((*self._prior_events, *self.events))
+                self._closed_snapshot = TraceCaptureSnapshot(trace, closure)
                 self._closed = True
-            closure = self._closure
+            snapshot = self._closed_snapshot
         self.router._release(self)
-        return closure
+        return snapshot
 
-    def _build_checkpoint(self) -> TraceClosureEvidence:
-        if (
-            self._prior_closure is not None
-            and not self.events
-            and not self._attempts
-            and not self._unbound_trace_ids
-            and not self._closure_evidence_refs
-        ):
-            return self._prior_closure
-
-        attempt_closures = tuple(
-            self._attempt_closure(state)
-            for state in sorted(self._attempts.values(), key=lambda item: item.attempt)
-        )
-        if self._unbound_trace_ids:
-            current_status: TraceClosureStatus = "incomplete"
-            current_reason = "One or more SDK traces were created without attempt identity."
-        elif not attempt_closures:
-            if self._prior_closure is None:
-                current_status = "unverified"
-                current_reason = "No attempt-scoped SDK execution was captured."
-            else:
-                current_status = "complete"
-                current_reason = "No new SDK execution occurred in the resumed trace segment."
-        elif any(
-            item.lifecycle_status == "incomplete" or item.response_status == "incomplete"
-            for item in attempt_closures
-        ):
-            current_status = "incomplete"
-            current_reason = "One or more captured attempts have an open instrumentation path."
-        elif any(not item.complete for item in attempt_closures):
-            current_status = "unverified"
-            current_reason = "One or more captured attempts lack verifiable instrumentation evidence."
-        else:
-            current_status = "complete"
-            current_reason = (
-                "Every captured attempt closed its SDK lifecycle and response-normalization path."
-            )
-
-        prior_attempts = self._prior_closure.attempts if self._prior_closure is not None else ()
-        attempts_by_id = {item.attempt.attempt_id: item for item in prior_attempts}
-        for item in attempt_closures:
-            existing = attempts_by_id.get(item.attempt.attempt_id)
-            if existing is not None and existing != item:
-                raise ValueError(f"Attempt `{item.attempt.attempt_id}` conflicts with prior closure evidence")
-            attempts_by_id[item.attempt.attempt_id] = item
-        combined_attempts = tuple(sorted(attempts_by_id.values(), key=lambda item: item.attempt))
-
-        status: TraceClosureStatus
-        if self._prior_closure is None:
-            status = current_status
-            channels = tuple(self._channels)
-            reason = current_reason
-            refs: set[str] = set()
-        else:
-            prior_status = self._prior_closure.status
-            if "incomplete" in {prior_status, current_status}:
-                status = "incomplete"
-            elif "unverified" in {prior_status, current_status}:
-                status = "unverified"
-            else:
-                status = "complete"
-            if attempt_closures or self._unbound_trace_ids:
-                channels = tuple(set(self._prior_closure.channels) & self._channels)
-            else:
-                channels = tuple(
-                    set(self._prior_closure.channels) | self._attested_channels
-                )
-            reason = (
-                "Prior and current trace segments were combined at an exact validated frontier; "
-                f"current segment: {current_reason}"
-            )
-            refs = set(self._prior_closure.evidence_refs)
-
-        refs.update(self._closure_evidence_refs)
-        for item in combined_attempts:
-            refs.update(item.evidence_refs)
-        combined_events = (*self._prior_events, *self.events)
-        return TraceClosureEvidence(
+    def _build_closure(self) -> TraceClosureEvidence:
+        return build_trace_closure(
             context=self.context,
-            status=status,
-            reason=reason,
-            frontier=TraceFrontier.from_events(combined_events),
-            channels=channels,
-            attempts=combined_attempts,
-            evidence_refs=tuple(refs)
-            or (f"contract4agents:openai:session:{self.context.run_id}",),
+            prior_events=self._prior_events,
+            prior_closure=self._prior_closure,
+            events=tuple(self.events),
+            attempts=tuple(
+                sorted(self._attempts.values(), key=lambda item: item.attempt)
+            ),
+            unbound_trace_ids=frozenset(self._unbound_trace_ids),
+            channels=frozenset(self._channels),
+            attested_channels=frozenset(self._attested_channels),
+            evidence_refs=frozenset(self._closure_evidence_refs),
+            provider="openai",
         )
 
     @property
-    def closure_evidence(self) -> TraceClosureEvidence:
-        if self._closure is None:
+    def closed_snapshot(self) -> TraceCaptureSnapshot:
+        if self._closed_snapshot is None:
             raise RuntimeError("The OpenAI trace session has not been closed")
-        return self._closure
+        return self._closed_snapshot
 
     def record_output_schema_failure(
         self,
@@ -929,7 +584,7 @@ class OpenAINormalizedTraceSession:
             provenance_source="host-attempt-selection",
         )
 
-    def _attempt_state(self, attempt: TraceAttempt, agent_id: SemanticId) -> _AttemptState:
+    def _attempt_state(self, attempt: TraceAttempt, agent_id: SemanticId) -> AttemptCaptureState:
         prior = self._prior_attempt(attempt.attempt_id)
         if prior is not None:
             if prior.attempt != attempt or prior.agent_id != agent_id:
@@ -940,7 +595,7 @@ class OpenAINormalizedTraceSession:
             )
         state = self._attempts.get(attempt.attempt_id)
         if state is None:
-            state = _AttemptState(attempt, agent_id)
+            state = AttemptCaptureState(attempt, agent_id)
             self._attempts[attempt.attempt_id] = state
             return state
         if state.attempt != attempt or state.agent_id != agent_id:
@@ -948,20 +603,11 @@ class OpenAINormalizedTraceSession:
         return state
 
     def _prior_attempt(self, attempt_id: str) -> TraceAttemptClosure | None:
-        if self._prior_closure is None:
-            return None
-        return next(
-            (
-                item
-                for item in self._prior_closure.attempts
-                if item.attempt.attempt_id == attempt_id
-            ),
-            None,
-        )
+        return prior_attempt(self._prior_closure, attempt_id)
 
     def _close_response_path(
         self,
-        state: _AttemptState,
+        state: AttemptCaptureState,
         events: tuple[TraceEvent, ...],
         reason: str,
     ) -> None:
@@ -977,100 +623,7 @@ class OpenAINormalizedTraceSession:
         state.response_status = "complete"
         state.reason = reason
 
-    def _attempt_closure(self, state: _AttemptState) -> TraceAttemptClosure:
-        lifecycle_status: TraceClosureStatus = (
-            "complete"
-            if state.provider_trace_ids and state.provider_trace_ids == state.ended_trace_ids
-            else "incomplete"
-        )
-        evidence_refs = set(state.response_evidence_refs)
-        evidence_refs.update(
-            f"provider:openai:{trace_id}" for trace_id in state.provider_trace_ids
-        )
-        return TraceAttemptClosure(
-            attempt=state.attempt,
-            agent_id=state.agent_id,
-            lifecycle_status=lifecycle_status,
-            response_status=state.response_status,
-            provider_trace_ids=tuple(state.provider_trace_ids),
-            response_ids=tuple(state.response_ids),
-            evidence_refs=tuple(evidence_refs),
-            reason=state.reason,
-        )
 
-    def _classify(self, span: object, *, completed: bool) -> tuple[str, TraceSemanticRefs]:
-        data = getattr(span, "span_data", None)
-        span_type = str(getattr(data, "type", "custom"))
-        suffix = "completed" if completed else "started"
-        if span_type == "agent":
-            name = str(getattr(data, "name", ""))
-            agent_id = semantic_id("agent", name)
-            return f"agent.{suffix}", TraceSemanticRefs(
-                agent_id=agent_id if agent_id in self.ir.agents else None
-            )
-        if span_type == "function":
-            raw_name = str(getattr(data, "name", ""))
-            try:
-                name = contract_tool_name(raw_name)
-            except ValueError:
-                name = raw_name
-            parent_agent = self._parent_agent(span)
-            edge = next(
-                (
-                    item
-                    for item in self.ir.composition.values()
-                    if item.name == name and (parent_agent is None or item.source_agent_id == parent_agent)
-                ),
-                None,
-            )
-            if edge is not None:
-                return f"composition.{suffix}", TraceSemanticRefs(
-                    agent_id=edge.source_agent_id,
-                    composition_id=edge.id,
-                    isolation_id=edge.isolation_id,
-                )
-            capability_id: SemanticId | None = semantic_id("tool", name)
-            if capability_id not in self.ir.capabilities:
-                capability_id = None
-            grant_id = None
-            if parent_agent is not None and capability_id is not None:
-                candidate = semantic_id("grant", parent_agent.parts[0], capability_id.parts[0])
-                grant_id = candidate if candidate in self.ir.grants else None
-            return f"tool.{suffix}", TraceSemanticRefs(
-                agent_id=parent_agent,
-                capability_id=capability_id,
-                grant_id=grant_id,
-            )
-        if span_type == "handoff":
-            source = str(getattr(data, "from_agent", ""))
-            target = str(getattr(data, "to_agent", ""))
-            edge = next(
-                (
-                    item
-                    for item in self.ir.composition.values()
-                    if item.mode == "handoff"
-                    and item.source_agent_id == semantic_id("agent", source)
-                    and item.target_agent_id == semantic_id("agent", target)
-                ),
-                None,
-            )
-            return f"handoff.{suffix}", TraceSemanticRefs(
-                agent_id=semantic_id("agent", source) if source else None,
-                composition_id=edge.id if edge is not None else None,
-                isolation_id=edge.isolation_id if edge is not None else None,
-            )
-        return f"provider.{span_type}.{suffix}", TraceSemanticRefs(agent_id=self._parent_agent(span))
-
-    def _parent_agent(self, span: object) -> SemanticId | None:
-        parent_id = _optional_text_attr(span, "parent_id")
-        visited: set[str] = set()
-        while parent_id is not None and parent_id not in visited:
-            visited.add(parent_id)
-            semantic = self._span_semantic.get(parent_id)
-            if semantic is not None and semantic.agent_id is not None:
-                return semantic.agent_id
-            parent_id = self._span_parent.get(parent_id)
-        return None
 
     def _record(
         self,
@@ -1084,16 +637,16 @@ class OpenAINormalizedTraceSession:
         error: bool = False,
         attempt: TraceAttempt | None = None,
     ) -> None:
-        trace_id = _text_attr(span, "trace_id")
-        span_id = _text_attr(span, "span_id")
+        trace_id = text_attr(span, "trace_id")
+        span_id = text_attr(span, "span_id")
         span_data = getattr(span, "span_data", None)
         provider_span_type = str(getattr(span_data, "type", "custom"))
         data: dict[str, object] = {"error": error, "provider_span_type": provider_span_type}
         if attempt is not None:
             data["attempt"] = attempt.to_dict()
-        provider_model = _field_text(span_data, "model")
+        provider_model = field_text(span_data, "model")
         if provider_model is None:
-            provider_model = _field_text(_field(span_data, "response"), "model")
+            provider_model = field_text(field_value(span_data, "response"), "model")
         if provider_model is not None:
             data["provider_model"] = provider_model
         event = TraceEvent(
@@ -1191,59 +744,6 @@ class OpenAINormalizedTraceSession:
         return event
 
 
-def _text_attr(value: object, name: str) -> str:
-    item = getattr(value, name, None)
-    if not isinstance(item, str) or not item:
-        raise ValueError(f"OpenAI span `{name}` must be a non-empty string")
-    return item
-
-
-def _optional_text_attr(value: object, name: str) -> str | None:
-    item = getattr(value, name, None)
-    return item if isinstance(item, str) and item else None
-
-
-def _timestamp(value: object) -> float:
-    if isinstance(value, str):
-        try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
-        except ValueError:
-            pass
-    if isinstance(value, int | float) and not isinstance(value, bool):
-        return float(value)
-    return time.time()
-
-
-def _field(value: object, name: str) -> object:
-    if isinstance(value, Mapping):
-        return value.get(name)
-    return getattr(value, name, None)
-
-
-def _field_text(value: object, name: str) -> str | None:
-    item = _field(value, name)
-    return item if isinstance(item, str) and item else None
-
-
-def _provider_model(response: object) -> str | None:
-    for name in ("model", "model_name"):
-        value = _field_text(response, name)
-        if value is not None:
-            return value
-    return None
-
-
-def _locator_tool(locator: Mapping[str, object]) -> object:
-    tool = locator.get("tool")
-    provider_tool = locator.get("provider_tool")
-    if tool is not None and provider_tool is not None and tool != provider_tool:
-        return None
-    return tool if tool is not None else provider_tool
-
-
-def _batch_identity(response_ids: Iterable[str]) -> str:
-    payload = "\n".join(response_ids).encode()
-    return f"unscoped-{hashlib.sha256(payload).hexdigest()[:16]}"
 
 
 __all__ = [

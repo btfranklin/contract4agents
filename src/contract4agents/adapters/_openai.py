@@ -14,13 +14,13 @@ def openai_planner_capabilities() -> PlannerCapabilities:
         approval=MappingSupport(
             "exact",
             "openai.function_tool.needs_approval",
-            expected_telemetry=("approval.requested", "approval.completed", "tool.started"),
+            expected_event_types=("approval.requested", "approval.completed", "tool.started"),
         ),
         composition={
             "delegate": MappingSupport(
                 "emulated",
                 "openai.agent_as_tool.model_supplied_typed_input",
-                expected_telemetry=("composition.started", "composition.completed"),
+                expected_event_types=("composition.started", "composition.completed"),
                 host_obligation=(
                     "Verify model-supplied delegate values against declared source mappings when "
                     "source-value equality is required."
@@ -29,7 +29,7 @@ def openai_planner_capabilities() -> PlannerCapabilities:
             "delegate:none": MappingSupport(
                 "emulated",
                 "openai.agent_as_tool.model_supplied_typed_input",
-                expected_telemetry=("composition.started", "composition.completed"),
+                expected_event_types=("composition.started", "composition.completed"),
                 host_obligation=(
                     "Verify model-supplied delegate values against declared source mappings when "
                     "source-value equality is required."
@@ -40,20 +40,20 @@ def openai_planner_capabilities() -> PlannerCapabilities:
             "handoff": MappingSupport(
                 "emulated",
                 "openai.handoff.model_supplied_transfer",
-                expected_telemetry=("handoff.started", "handoff.completed"),
+                expected_event_types=("handoff.started", "handoff.completed"),
                 host_obligation="Verify handoff input transfer against the declared mappings.",
             ),
             "handoff:none": MappingSupport(
                 "emulated",
                 "openai.handoff.input_filter",
-                expected_telemetry=("handoff.started", "handoff.completed"),
+                expected_event_types=("handoff.started", "handoff.completed"),
                 host_obligation="Supply and verify declared handoff inputs outside conversation history.",
             ),
             "handoff:summary": MappingSupport("unsupported", None),
             "handoff:full": MappingSupport(
                 "emulated",
                 "openai.handoff.full_history.model_supplied_transfer",
-                expected_telemetry=("handoff.started", "handoff.completed"),
+                expected_event_types=("handoff.started", "handoff.completed"),
                 host_obligation="Verify handoff input transfer against the declared mappings.",
             ),
         },
@@ -69,7 +69,7 @@ def openai_planner_capabilities() -> PlannerCapabilities:
             "advisory": MappingSupport("unsupported", None),
         },
         isolation=in_process_isolation_support(),
-        expected_telemetry=("agent.started", "agent.completed", "output.accepted"),
+        expected_event_types=("agent.started", "agent.completed", "output.accepted"),
     )
 
 

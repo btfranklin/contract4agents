@@ -24,7 +24,7 @@ from contract4agents.materialization import (
     MaterializationError,
     NativeAgentDescription,
     OpenAIMaterializationProvider,
-    RecordingTraceSink,
+    RecordingMaterializationTraceSink,
 )
 from contract4agents.materialization._types import build_pydantic_types
 from contract4agents.planning import PlanningError
@@ -245,14 +245,14 @@ def test_concrete_openai_materializer_builds_real_sdk_objects_without_live_calls
 
 def test_materialization_trace_sink_receives_stable_validated_configuration_events(tmp_path: Path) -> None:
     _write_project(tmp_path, isolation=True)
-    sink = RecordingTraceSink()
+    sink = RecordingMaterializationTraceSink()
 
     result = materialize(
         tmp_path,
         "openai",
         "test",
         provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
-        trace_sink=sink,
+        materialization_trace_sink=sink,
     )
 
     event_types = {event.event_type for event in sink.events}
@@ -289,7 +289,7 @@ async def test_materialized_context_runtime_maps_validates_caches_renders_and_tr
         "openai",
         "test",
         provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
-        runtime_trace_sink=runtime_sink,
+        normalized_trace_sink=runtime_sink,
     )
 
     first = await result.context.resolve_agent(
@@ -361,7 +361,7 @@ async def test_context_runtime_enforces_thread_cache_and_records_provider_failur
         "openai",
         "test",
         provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
-        runtime_trace_sink=sink,
+        normalized_trace_sink=sink,
     )
 
     first = await result.context.resolve_agent(
@@ -387,7 +387,7 @@ async def test_context_runtime_enforces_thread_cache_and_records_provider_failur
         "openai",
         "test",
         provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
-        runtime_trace_sink=broken_sink,
+        normalized_trace_sink=broken_sink,
     )
     with pytest.raises(ContextResolutionError, match="output validation failed"):
         await broken.context.resolve_agent(

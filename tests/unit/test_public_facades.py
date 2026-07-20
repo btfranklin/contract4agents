@@ -3,7 +3,12 @@ from __future__ import annotations
 import contract4agents
 from contract4agents import compiler, expressions, runtime, tracing
 from contract4agents.compiler import CompilerArtifacts, compile_project
-from contract4agents.expressions import ConditionalExpression, ExpressionError, ParsedExpression
+from contract4agents.expressions import (
+    ConditionalExpression,
+    ConjunctiveExpression,
+    ExpressionError,
+    ParsedExpression,
+)
 from contract4agents.ir import CanonicalIR
 from contract4agents.runtime import InProcessEnvironment
 from contract4agents.tracing import NormalizedTrace, TraceEvent
@@ -13,7 +18,9 @@ def test_expression_facade_exports_canonical_public_surface() -> None:
     assert expressions.ExpressionError is ExpressionError
     assert expressions.ParsedExpression is ParsedExpression
     assert expressions.ConditionalExpression is ConditionalExpression
+    assert expressions.ConjunctiveExpression is ConjunctiveExpression
     assert callable(expressions.parse_expectation)
+    assert callable(expressions.parse_trace_conjunction)
     assert callable(expressions.referenced_trace_targets)
 
 

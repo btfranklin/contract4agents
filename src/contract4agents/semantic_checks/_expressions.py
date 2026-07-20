@@ -10,6 +10,7 @@ from contract4agents.expressions._grammar import (
     parse_contract_expression,
     parse_expectation,
     parse_semantic_expectation,
+    parse_trace_conjunction,
 )
 from contract4agents.expressions._model import (
     ConditionalExpression,
@@ -83,11 +84,14 @@ def check_expression_refs(
     agent_names: set[str] | None = None,
     datasource_targets: set[str] | None = None,
     stage_targets: set[str] | None = None,
+    trace_conjunction: bool = False,
 ) -> list[Diagnostic]:
     try:
         parsed_items: list[ContractExpression]
         if contract_expression:
             parsed_items = parse_contract_expression(expression)
+        elif trace_conjunction:
+            parsed_items = list(parse_trace_conjunction(expression).clauses)
         else:
             parsed_items = [parse_expectation(expression)]
     except ExpressionError as exc:

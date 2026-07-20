@@ -20,17 +20,17 @@ class MaterializationTraceEvent:
 
 
 @runtime_checkable
-class TraceSink(Protocol):
+class MaterializationTraceSink(Protocol):
     def emit(self, event: MaterializationTraceEvent) -> None:
         """Accept one deterministic materialization event."""
 
 
-class NoOpTraceSink:
+class NoOpMaterializationTraceSink:
     def emit(self, event: MaterializationTraceEvent) -> None:
         del event
 
 
-class RecordingTraceSink:
+class RecordingMaterializationTraceSink:
     """Small in-memory sink for tests and host integration."""
 
     def __init__(self) -> None:
@@ -40,13 +40,13 @@ class RecordingTraceSink:
         self.events.append(event)
 
 
-NOOP_TRACE_SINK = NoOpTraceSink()
+NOOP_MATERIALIZATION_TRACE_SINK = NoOpMaterializationTraceSink()
 
 
 __all__ = [
-    "NOOP_TRACE_SINK",
+    "NOOP_MATERIALIZATION_TRACE_SINK",
     "MaterializationTraceEvent",
-    "NoOpTraceSink",
-    "RecordingTraceSink",
-    "TraceSink",
+    "NoOpMaterializationTraceSink",
+    "RecordingMaterializationTraceSink",
+    "MaterializationTraceSink",
 ]

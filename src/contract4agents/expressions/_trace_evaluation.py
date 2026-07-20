@@ -10,10 +10,11 @@ from contract4agents.expressions._model import ParsedExpression
 from contract4agents.expressions._trace_ops import TRACE_OPS, TraceTargetKind
 from contract4agents.ir import CanonicalIR, SemanticId
 from contract4agents.tracing import (
+    TRACE_INSTRUMENTATION_CHANNELS,
     NormalizedTrace,
-    TraceCompletenessResult,
-    TraceCoverageChannel,
     TraceEvent,
+    TraceEvidenceAssessment,
+    TraceInstrumentationChannel,
 )
 
 TraceExpressionStatus = Literal["passed", "violated", "unverified"]
@@ -29,17 +30,7 @@ _CALL_EVENT_TYPES = {
     "provider_response": frozenset({"provider.response.normalized", "provider.response_batch.normalized"}),
     "tool": frozenset({"tool.started", "tool.completed", "tool.failed"}),
 }
-_ALL_CHANNELS: tuple[TraceCoverageChannel, ...] = (
-    "agent",
-    "approval",
-    "composition",
-    "datasource",
-    "guardrail",
-    "handoff",
-    "output",
-    "provider_response",
-    "tool",
-)
+_ALL_CHANNELS = TRACE_INSTRUMENTATION_CHANNELS
 
 
 @dataclass(frozen=True)
@@ -57,7 +48,7 @@ def assess_trace_expression(
     parsed: ParsedExpression,
     ir: CanonicalIR,
     trace: NormalizedTrace,
-    completeness: TraceCompletenessResult,
+    trace_evidence: TraceEvidenceAssessment,
     *,
     stage_event_ids: dict[str, tuple[str, ...]] | None = None,
 ) -> TraceExpressionResult:
@@ -78,7 +69,7 @@ def assess_trace_expression(
         )
         if events:
             return _result("passed", "Expected trace content was observed.", events)
-        if _channels_complete(completeness, _ALL_CHANNELS):
+        if _channels_complete(trace_evidence, _ALL_CHANNELS):
             return _result("violated", "The complete trace did not contain the expected content.")
         return _result("unverified", "Trace closure is insufficient to prove content absence.")
 
@@ -94,7 +85,7 @@ def assess_trace_expression(
             and event.semantic.agent_id == agent_id
             and event.semantic.capability_id == capability_id
         )
-        return _absence_result(parsed.expression, events, completeness, ("tool",))
+        return _absence_result(parsed.expression, events, trace_evidence, ("tool",))
 
     if op in {"called_before", "called_after"}:
         left, left_channels = _target_events(ir, trace, args[0], target_kind, stages)
@@ -112,7 +103,7 @@ def assess_trace_expression(
         if not left_channels or not right_channels:
             return _result("unverified", "The ordering expression references an unknown target.", events)
         channels = tuple(sorted(set(left_channels + right_channels)))
-        if _channels_complete(completeness, channels):
+        if _channels_complete(trace_evidence, channels):
             return _result("violated", "The closed trace did not contain both ordered targets.", events)
         return _result("unverified", "Trace closure is insufficient to assess ordering.", events)
 
@@ -129,7 +120,7 @@ def assess_trace_expression(
             )
         if relevant:
             return _result("violated", "The recorded approval decision was the opposite value.", relevant)
-        if _channels_complete(completeness, channels):
+        if _channels_complete(trace_evidence, channels):
             return _result("violated", "No approval decision was observed in the closed trace.")
         return _result("unverified", "Approval-channel closure is insufficient to assess the decision.")
 
@@ -138,7 +129,7 @@ def assess_trace_expression(
     if event_type is not None and op not in {"tool_called", "agent_called"}:
         events = tuple(event for event in events if event.event_type == event_type)
     if op == "not_called":
-        return _absence_result(parsed.expression, events, completeness, channels)
+        return _absence_result(parsed.expression, events, trace_evidence, channels)
     if op in {"called_once", "called_times", "max_calls"}:
         events = _count_events(events)
         expected_count = 1 if op == "called_once" else int(args[1])
@@ -146,30 +137,30 @@ def assess_trace_expression(
         if op == "max_calls":
             if count > expected_count:
                 return _result("violated", f"Observed {count} calls; expected at most {expected_count}.", events)
-            if _channels_complete(completeness, channels):
+            if _channels_complete(trace_evidence, channels):
                 return _result("passed", f"Observed {count} calls; expected at most {expected_count}.", events)
             return _result("unverified", "Trace closure is insufficient to prove the call upper bound.", events)
         if count > expected_count:
             return _result("violated", f"Observed {count} calls; expected exactly {expected_count}.", events)
-        if _channels_complete(completeness, channels):
+        if _channels_complete(trace_evidence, channels):
             return _result(
                 "passed" if count == expected_count else "violated",
                 f"Observed {count} calls; expected exactly {expected_count}.",
                 events,
             )
         return _result("unverified", "Trace closure is insufficient to prove the exact call count.", events)
-    return _presence_result(parsed.expression, events, completeness, channels)
+    return _presence_result(parsed.expression, events, trace_evidence, channels)
 
 
 def _presence_result(
     expression: str,
     events: tuple[TraceEvent, ...],
-    completeness: TraceCompletenessResult,
-    channels: tuple[TraceCoverageChannel, ...],
+    trace_evidence: TraceEvidenceAssessment,
+    channels: tuple[TraceInstrumentationChannel, ...],
 ) -> TraceExpressionResult:
     if events:
         return _result("passed", "Expected trace evidence was observed.", events)
-    if _channels_complete(completeness, channels):
+    if _channels_complete(trace_evidence, channels):
         return _result("violated", f"The closed trace did not satisfy `{expression}`.")
     return _result("unverified", f"Trace closure is insufficient to assess `{expression}`.")
 
@@ -177,12 +168,12 @@ def _presence_result(
 def _absence_result(
     expression: str,
     events: tuple[TraceEvent, ...],
-    completeness: TraceCompletenessResult,
-    channels: tuple[TraceCoverageChannel, ...],
+    trace_evidence: TraceEvidenceAssessment,
+    channels: tuple[TraceInstrumentationChannel, ...],
 ) -> TraceExpressionResult:
     if events:
         return _result("violated", f"Forbidden trace evidence for `{expression}` was observed.", events)
-    if _channels_complete(completeness, channels):
+    if _channels_complete(trace_evidence, channels):
         return _result("passed", "Complete channel closure contains no forbidden trace evidence.")
     return _result("unverified", f"Trace closure is insufficient to prove `{expression}`.")
 
@@ -193,7 +184,7 @@ def _target_events(
     target: str,
     target_kind: TraceTargetKind,
     stages: dict[str, tuple[str, ...]],
-) -> tuple[tuple[TraceEvent, ...], tuple[TraceCoverageChannel, ...]]:
+) -> tuple[tuple[TraceEvent, ...], tuple[TraceInstrumentationChannel, ...]]:
     clean = target.strip().strip('"')
     if target_kind == "approval_tool":
         capability_id = _capability_id(ir, clean)
@@ -237,7 +228,7 @@ def _target_events(
     capability_id = _capability_id(ir, clean)
     if capability_id is not None and target_kind in {"tool", "datasource", "any"}:
         capability = ir.capabilities[capability_id]
-        channel: TraceCoverageChannel = "tool" if capability.kind == "tool" else "datasource"
+        channel: TraceInstrumentationChannel = "tool" if capability.kind == "tool" else "datasource"
         return (
             tuple(
                 event
@@ -251,10 +242,10 @@ def _target_events(
 
 
 def _channels_complete(
-    completeness: TraceCompletenessResult,
-    channels: tuple[TraceCoverageChannel, ...],
+    trace_evidence: TraceEvidenceAssessment,
+    channels: tuple[TraceInstrumentationChannel, ...],
 ) -> bool:
-    return bool(channels) and all(completeness.complete_for(channel) for channel in channels)
+    return bool(channels) and all(trace_evidence.proves_channel_closed(channel) for channel in channels)
 
 
 def _count_events(events: tuple[TraceEvent, ...]) -> tuple[TraceEvent, ...]:

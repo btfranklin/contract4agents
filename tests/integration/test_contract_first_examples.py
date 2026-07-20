@@ -7,7 +7,7 @@ import pytest
 
 from contract4agents import compile_project, materialize
 from contract4agents.eval_campaigns import CampaignConfig, FileEvalProvider, run_campaign
-from contract4agents.materialization import RecordingTraceSink
+from contract4agents.materialization import RecordingMaterializationTraceSink
 
 ROOT = Path(__file__).resolve().parents[2]
 EXAMPLES = ("incident-command", "multi-lens-research", "market-research-brief")
@@ -18,9 +18,14 @@ EXAMPLES = ("incident-command", "multi-lens-research", "market-research-brief")
 def test_public_example_declares_materializes_and_evaluates(name: str) -> None:
     project = ROOT / "examples" / name
     artifacts = compile_project(project)
-    trace_sink = RecordingTraceSink()
+    trace_sink = RecordingMaterializationTraceSink()
 
-    result = materialize(project, "openai", "test", trace_sink=trace_sink)
+    result = materialize(
+        project,
+        "openai",
+        "test",
+        materialization_trace_sink=trace_sink,
+    )
     campaign = asyncio.run(
         run_campaign(
             artifacts.ir,

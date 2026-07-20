@@ -16,7 +16,7 @@ from contract4agents.expressions import (
 )
 from contract4agents.expressions._trace_evaluation import assess_trace_expression
 from contract4agents.ir import CanonicalIR
-from contract4agents.tracing import NormalizedTrace, TraceCompletenessResult
+from contract4agents.tracing import NormalizedTrace, TraceEvidenceAssessment
 
 
 def assess_expectation(
@@ -24,7 +24,7 @@ def assess_expectation(
     *,
     output: Mapping[str, object],
     trace: NormalizedTrace,
-    trace_completeness: TraceCompletenessResult,
+    trace_evidence: TraceEvidenceAssessment,
     ir: CanonicalIR,
     schemas: Mapping[str, dict[str, object]],
     hidden_truth: Mapping[str, object],
@@ -38,7 +38,7 @@ def assess_expectation(
     if parsed.kind == "hidden_truth":
         return _hidden_truth_result(parsed, output, hidden_truth)
     if parsed.kind == "trace":
-        result = assess_trace_expression(parsed, ir=ir, trace=trace, completeness=trace_completeness)
+        result = assess_trace_expression(parsed, ir=ir, trace=trace, trace_evidence=trace_evidence)
         return ExpectationResult(
             parsed.expression,
             result.status,

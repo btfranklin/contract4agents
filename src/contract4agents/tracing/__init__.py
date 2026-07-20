@@ -1,26 +1,27 @@
-"""Normalized trace schema, deterministic JSONL, and evidence completeness."""
+"""Normalized traces, instrumentation closure, and evidence assessment."""
 
 from contract4agents.tracing._closure import (
     TRACE_CLOSURE_MANIFEST_VERSION,
+    TRACE_INSTRUMENTATION_CHANNELS,
     TraceAttemptClosure,
-    TraceClosureCheckpoint,
+    TraceCaptureSnapshot,
     TraceClosureError,
     TraceClosureEvidence,
     TraceClosureManifest,
     TraceClosureStatus,
-    TraceCoverageChannel,
     TraceFrontier,
+    TraceInstrumentationChannel,
     validate_trace_closure,
-)
-from contract4agents.tracing._completeness import (
-    TraceCompletenessResult,
-    TraceCompletenessStatus,
-    assess_trace_completeness,
 )
 from contract4agents.tracing._conformance import (
     TraceConformanceError,
     TraceConformanceIssue,
     validate_trace_conformance,
+)
+from contract4agents.tracing._evidence import (
+    TraceEvidenceAssessment,
+    TraceEvidenceStatus,
+    assess_trace_evidence,
 )
 from contract4agents.tracing._io import (
     TraceLoadError,
@@ -62,6 +63,7 @@ from contract4agents.tracing._sinks import (
 
 __all__ = [
     "TRACE_CLOSURE_MANIFEST_VERSION",
+    "TRACE_INSTRUMENTATION_CHANNELS",
     "TRACE_SCHEMA_VERSION",
     "AtomicTraceFileSink",
     "NormalizedTrace",
@@ -78,22 +80,22 @@ __all__ = [
     "RedactionState",
     "TraceAttempt",
     "TraceAttemptClosure",
-    "TraceClosureCheckpoint",
+    "TraceCaptureSnapshot",
     "TraceClosureEvidence",
     "TraceClosureError",
     "TraceClosureManifest",
     "TraceClosureStatus",
-    "TraceCoverageChannel",
+    "TraceInstrumentationChannel",
     "TraceEvent",
     "TraceFrontier",
-    "TraceCompletenessResult",
-    "TraceCompletenessStatus",
+    "TraceEvidenceAssessment",
+    "TraceEvidenceStatus",
     "TraceLoadError",
     "TraceConformanceError",
     "TraceConformanceIssue",
     "TraceRunContext",
     "TraceSemanticRefs",
-    "assess_trace_completeness",
+    "assess_trace_evidence",
     "dumps_trace_jsonl",
     "export_open_telemetry",
     "load_trace_jsonl",

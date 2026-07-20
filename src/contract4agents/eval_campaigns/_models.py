@@ -17,7 +17,7 @@ from contract4agents.ir import FrozenJsonValue, FrozenMap, freeze_json
 from contract4agents.tracing import (
     NormalizedTrace,
     TraceClosureEvidence,
-    TraceCompletenessResult,
+    TraceEvidenceAssessment,
     dumps_trace_jsonl,
 )
 
@@ -31,7 +31,7 @@ class EvalInventory:
     capability_ids: tuple[str, ...]
     grant_ids: tuple[str, ...]
     control_ids: tuple[str, ...]
-    expected_telemetry: tuple[str, ...]
+    expected_event_types: tuple[str, ...]
 
     def __post_init__(self) -> None:
         for name in (
@@ -39,7 +39,7 @@ class EvalInventory:
             "capability_ids",
             "grant_ids",
             "control_ids",
-            "expected_telemetry",
+            "expected_event_types",
         ):
             object.__setattr__(self, name, _text_set(name, getattr(self, name)))
 
@@ -48,7 +48,7 @@ class EvalInventory:
             "agent_ids": list(self.agent_ids),
             "capability_ids": list(self.capability_ids),
             "control_ids": list(self.control_ids),
-            "expected_telemetry": list(self.expected_telemetry),
+            "expected_event_types": list(self.expected_event_types),
             "grant_ids": list(self.grant_ids),
         }
 
@@ -322,7 +322,7 @@ class TrialResult:
     expectations: tuple[ExpectationResult, ...]
     controls: tuple[ControlResult, ...]
     qualities: tuple[QualityResult, ...]
-    trace_completeness: TraceCompletenessResult | None
+    trace_evidence: TraceEvidenceAssessment | None
     trace_closure: TraceClosureEvidence | None
     metrics: TrialMetrics
     diagnostic: str | None = None
@@ -356,8 +356,8 @@ class TrialResult:
             "output": _thaw(self.output) if self.output is not None else None,
             "qualities": [item.to_dict() for item in self.qualities],
             "status": self.status,
-            "trace_completeness": (
-                self.trace_completeness.to_dict() if self.trace_completeness is not None else None
+            "trace_evidence": (
+                self.trace_evidence.to_dict() if self.trace_evidence is not None else None
             ),
             "trace_digest": self.trace_digest,
             "trace_closure_digest": self.trace_closure.digest if self.trace_closure is not None else None,

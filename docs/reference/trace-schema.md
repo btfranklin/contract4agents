@@ -89,7 +89,7 @@ Normalization is not intended to replace a provider's full trace representation
 or an existing observability backend.
 
 For the OpenAI Agents SDK, `OpenAINormalizedTraceRouter` implements the global
-tracing-processor callbacks. Register exactly one router for the process, then
+trace-processor callbacks. Register exactly one router for the process, then
 open a disposable `OpenAINormalizedTraceSession` for each logical run. The
 router binds provider trace IDs to the context-local session active when the
 SDK trace starts and releases that binding when the trace ends or the owning
@@ -118,7 +118,7 @@ with session.bind_attempt(attempt, agent="SectionResearcher"):
     result = await Runner.run(agent, input=prompt)
 ```
 
-The processor uses context-local binding and remembers the attempt active when
+The session uses context-local binding and remembers the attempt active when
 each span starts, including when the span ends after the binding scope exits.
 Response normalization also accepts an explicit `attempt=` argument.
 
@@ -126,7 +126,7 @@ After the host has decided that no further retry will replace an attempt, it
 records that decision explicitly:
 
 ```python
-processor.record_terminal_attempt(
+session.record_terminal_attempt(
     agent="SectionResearcher",
     attempt=attempt,
     outcome="succeeded",
@@ -172,16 +172,16 @@ infer that an SDK exception was a schema failure. Host-side canonical output
 validation can record the narrower fact through
 `session.record_output_schema_failure(...)`.
 
-### Checkpoints and recovery
+### Snapshots and recovery
 
-After the session has at least one normalized event, `session.checkpoint()`
-returns a `TraceClosureCheckpoint` containing an
+After the session has at least one normalized event, `session.snapshot()`
+returns a `TraceCaptureSnapshot` containing an
 immutable normalized trace and its closure evidence captured under the same
 session lock. The closure manifest v2 frontier records the exact event count
 and canonical SHA-256 digest of that ordered trace. A later event advances the
 frontier, so an older closure cannot be applied to the newer trace.
 
-Persist the checkpoint's `trace` and `closure` together as one recovery unit.
+Persist the snapshot's `trace` and `closure` together as one recovery unit.
 To continue the same logical run in another session or process, supply that
 exact pair as `prior_trace=` and `prior_closure=` to `router.open_session(...)`.
 The session validates run, thread, contract, plan, frontier, attempt identities,
@@ -191,7 +191,7 @@ the prior attempt. Host-semantic reconciliation evidence, including terminal
 selection or an output-schema failure discovered after recovery, may still
 reference a sealed attempt with its original agent identity.
 
-Closure and terminal selection remain different claims. A checkpoint may have
+Closure and terminal selection remain different claims. A snapshot may have
 complete instrumentation closure before the host selects the terminal attempt;
 output assurance remains unverified until the host supplies that semantic
 selection. Contract4Agents does not coordinate application state, trace files,
@@ -276,14 +276,14 @@ explicit undeclared-capability evidence, tool events without complete semantic
 identity, and unknown, disabled, or mismatched grants through structured
 `TraceConformanceError.issues`.
 
-## Trace Completeness
+## Trace Evidence
 
 ```python
-from contract4agents.tracing import assess_trace_completeness
+from contract4agents.tracing import assess_trace_evidence
 
-result = assess_trace_completeness(
+result = assess_trace_evidence(
     trace,
-    plan.expected_telemetry,
+    plan.expected_event_types,
     closure=trace_closure,
 )
 ```

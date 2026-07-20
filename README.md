@@ -112,7 +112,6 @@ Compile provider-neutral artifacts and review the resolved target plan:
 ```bash
 contract4agents check agent_contracts
 contract4agents compile agent_contracts --out .contract/build
-contract4agents generate agent_contracts --out .contract/generated
 contract4agents plan agent_contracts --target openai --profile production \
   --out .contract/build/production-plan.json
 ```
@@ -121,12 +120,13 @@ contract4agents plan agent_contracts --target openai --profile production \
 file is present, it also validates every declared target and named profile.
 Compilation produces deterministic canonical IR, its digest, JSON Schemas,
 audience-safe instructions, reviewer documentation, and generated Pydantic,
-TypeScript, and Zod types. `compile --check` and `generate --check` make stale
-generated artifacts a CI failure.
+TypeScript, and Zod types. `compile --check` makes stale review artifacts a CI
+failure. Run `generate` separately only when application code imports generated
+source; `generate --check` then protects that machine-owned directory.
 
 The plan resolves models, bindings, grants, approvals, composition, controls,
-isolation mechanisms, host obligations, and expected telemetry. Each mapping is
-reported as `exact`, `host_enforced`, `emulated`, `degraded`, or `unsupported`.
+isolation mechanisms, host obligations, and expected event types. Each mapping
+is reported as `exact`, `host_enforced`, `emulated`, `degraded`, or `unsupported`.
 Required degraded or unsupported guarantees fail closed.
 
 ## Materialize Normal Framework Objects
@@ -164,7 +164,7 @@ stable semantic IDs, provider-native correlation, provenance, and audience-safe
 redaction metadata. Identity-bound closure evidence records which attempts,
 provider responses, and instrumentation channels were completely observed at
 an exact ordered trace frontier. OpenAI sessions expose consistent non-closing
-checkpoints, validated cross-session retry continuation, and disposable router
+snapshots, validated cross-session retry continuation, and disposable router
 bindings. The same control assessor is used for controlled evals and imported
 production traces.
 
@@ -175,14 +175,14 @@ invocations can carry portable attempt identity and an explicit selected
 terminal attempt without moving retry or recovery decisions out of host code.
 
 `.eval` files name scenarios and expectations. The target/profile eval workflow
-derives its agent, capability, grant, control, and telemetry inventory from the
+derives its agent, capability, grant, control, and event-type inventory from the
 contract and plan; users do not restate the runtime in a fixture manifest.
 Repeated campaigns report pass, violation, and unverified rates with uncertainty,
 latency and cost summaries, thresholds, and optional baseline comparisons.
 
 Assurance bundles join the canonical contract, materialization plan, normalized
-traces, trace closure, control results, eval summaries, and semantic diffs into one portable
-review package. Missing or incomplete evidence remains explicitly `unverified`.
+traces, trace closure, control results, eval summaries, and semantic diffs into
+one portable review package. Missing or incomplete evidence remains explicitly `unverified`.
 This is useful evidence for compliance and release review; it is not a legal
 certification by itself.
 
@@ -204,6 +204,7 @@ See [the examples guide](examples/README.md) for the common project structure.
 
 - [First Contract Project](docs/tutorials/first-contract-project.md)
 - [Using Contract4Agents in an Application](docs/tutorials/using-contract4agents-with-an-agent-app.md)
+- [Capture and Assure a Run](docs/tutorials/trace-and-assure.md)
 - [Language Reference](docs/language/contract-language.md)
 - [CLI Reference](docs/reference/cli.md)
 - [OpenAI Target Reference](docs/reference/openai-adapter.md)

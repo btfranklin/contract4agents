@@ -38,7 +38,7 @@ instructions, Pydantic/TypeScript/Zod source, and generated reviewer docs.
 
 ## `generate [ROOT]`
 
-Write only disposable language artifacts derived from canonical IR.
+Write only application-consumed language source derived from canonical IR.
 
 ```bash
 contract4agents generate agent_contracts --out .contract/generated
@@ -49,6 +49,11 @@ Options:
 
 - `--out PATH`: output root; default `.contract/generated`.
 - `--check`: fail when generated source is missing, modified, extra, or stale.
+
+`compile` already includes review copies under its managed artifact bundle.
+Run `generate` separately only when Python or TypeScript application code
+imports the generated source, commonly from a dedicated checked-in generated
+directory. Generated files remain machine-owned and must not be edited.
 
 ## `plan [ROOT]`
 
@@ -72,7 +77,7 @@ Options:
 
 Planning validates target-binding coverage and inspectable callable shape, then
 resolves models, implementations, grants, composition, controls, isolation,
-host obligations, caveats, and expected telemetry. Required degraded or
+host obligations, caveats, and expected event types. Required degraded or
 unsupported guarantees fail the command.
 
 ## `visualize [ROOT]`
@@ -125,7 +130,7 @@ Options:
 - `--out PATH`: default `ROOT/.contract/eval-results.json`.
 
 The command compiles, plans, derives the runtime inventory, runs every canonical
-eval case through `FileEvalProvider`, assesses trace completeness, expectations,
+eval case through `FileEvalProvider`, assesses trace evidence, expectations,
 controls, and quality, and writes a deterministic JSON report. Any violated or
 unverified trial or failed threshold produces a nonzero exit.
 

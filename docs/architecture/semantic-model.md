@@ -18,7 +18,7 @@ Declare -> Compile -> Plan -> Materialize -> Run -> Trace -> Assure
   representation, schemas, instructions, and provider-neutral checks.
 - **Plan:** a target and profile resolve models, implementation bindings,
   provider capabilities, enforcement mechanisms, host obligations, and
-  expected telemetry.
+  expected event types.
 - **Materialize:** a target adapter constructs framework-native runtime objects
   and verifies them against the immutable plan.
 - **Run:** the materialized system executes with host-owned tools, data,
@@ -647,13 +647,13 @@ assessment is unavailable.
 The `plan_digest` uses the same canonical JSON rules as the contract digest. It
 includes the contract digest, target and profile, adapter and runtime versions,
 resolved model identifiers, implementation binding identities, control
-mappings, isolation mechanisms, generated artifact digests, expected telemetry,
+mappings, isolation mechanisms, generated artifact digests, expected event types,
 and host obligations. It excludes timestamps and loaded callable memory
 addresses.
 
 ```json
 {
-  "plan_version": "2",
+  "plan_version": "3",
   "contract_digest": "sha256:contract...",
   "plan_digest": "sha256:plan...",
   "target": "openai",
@@ -661,22 +661,28 @@ addresses.
   "adapter": {"name": "openai", "version": "1"},
   "agents": {
     "agent:IncidentCommander": {
+      "name": "IncidentCommander",
       "model": "gpt-5.2",
-      "instructions_digest": "sha256:instructions...",
-      "output_type_id": "type:IncidentDecision"
+      "model_options": {},
+      "output_type": "type:IncidentDecision"
     }
   },
   "bindings": {
     "tool:status.publish": {
-      "locator": "incident_app.tools:publish_update",
-      "status": "exact"
+      "kind": "tool",
+      "locator": {"python": "incident_app.tools:publish_update"},
+      "outcome": "exact",
+      "mechanism": "host.implementation_binding",
+      "execution": "host"
     }
   },
   "controls": {
     "control:IncidentCommander:approval:status.publish": {
-      "status": "exact",
+      "required": true,
+      "assessment": "runtime",
+      "outcome": "exact",
       "mechanism": "openai.tool_approval_interrupt",
-      "expected_events": [
+      "expected_evidence": [
         "approval.requested",
         "approval.completed",
         "tool.started"
@@ -685,11 +691,27 @@ addresses.
   },
   "isolation": {
     "isolation:EvidenceWorker": {
-      "context": {"status": "emulated", "mechanism": "fresh_session"},
-      "capabilities": {"status": "emulated", "mechanism": "tool_allowlist"},
-      "network": {"status": "unsupported", "mechanism": null}
+      "environment": "in_process",
+      "provider": "contract4agents.runtime:InProcessEnvironment",
+      "dimensions": {
+        "context": {
+          "requested": "explicit_only",
+          "outcome": "emulated",
+          "mechanism": "in_process.fresh_context"
+        },
+        "network": {
+          "requested": "denied",
+          "outcome": "unsupported",
+          "mechanism": null
+        }
+      }
     }
   },
+  "expected_event_types": [
+    "agent.started",
+    "agent.completed",
+    "output.accepted"
+  ],
   "host_obligations": []
 }
 ```
@@ -822,7 +844,7 @@ contract4agents eval agent_contracts --target openai --profile test
 The test profile binds deterministic tool, datasource, external-context,
 approval, and judge providers. `.eval` cases supply scenario inputs and
 expectations. The contract and plan supply agent, capability grant,
-authorization, control, and telemetry inventory; no test-data provider repeats
+authorization, control, and event-type inventory; no test-data provider repeats
 them.
 
 An eval campaign records:
@@ -896,7 +918,7 @@ Every implementation phase must preserve these invariants:
 5. Model-visible instructions never receive evaluator-only or hidden controls.
 6. Generated types share one canonical IR and contract digest.
 7. Every trace run identifies its exact contract and plan.
-8. Missing telemetry never becomes a passing assurance claim.
+8. Missing event or instrumentation-closure evidence never becomes a passing assurance claim.
 9. Deterministic host workflow stays outside the DSL.
 
 ## Current design choices

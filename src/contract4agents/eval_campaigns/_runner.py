@@ -29,7 +29,7 @@ from contract4agents.eval_campaigns._provider import (
 )
 from contract4agents.ir import CanonicalIR, EvalIR, SemanticId, contract_digest
 from contract4agents.planning import MaterializationPlan
-from contract4agents.tracing import assess_trace_completeness, validate_trace_conformance
+from contract4agents.tracing import assess_trace_evidence, validate_trace_conformance
 
 
 async def run_campaign(
@@ -121,16 +121,16 @@ async def _run_trial(
             expectations=(),
             controls=(),
             qualities=(),
-            trace_completeness=None,
+            trace_evidence=None,
             trace_closure=None,
             metrics=TrialMetrics(),
             diagnostic=f"Eval provider failed: {exc}",
         )
 
     validate_trace_conformance(ir, plan, execution.trace)
-    completeness = assess_trace_completeness(
+    trace_evidence = assess_trace_evidence(
         execution.trace,
-        plan.expected_telemetry,
+        plan.expected_event_types,
         closure=execution.trace_closure,
     )
     hidden_truth_value = inputs.get("hidden_truth", {})
@@ -140,7 +140,7 @@ async def _run_trial(
             expression,
             output=execution.output,
             trace=execution.trace,
-            trace_completeness=completeness,
+            trace_evidence=trace_evidence,
             ir=ir,
             schemas=schemas,
             hidden_truth=hidden_truth,
@@ -185,7 +185,7 @@ async def _run_trial(
         expectations=expectations,
         controls=controls,
         qualities=qualities,
-        trace_completeness=completeness,
+        trace_evidence=trace_evidence,
         trace_closure=execution.trace_closure,
         metrics=execution.metrics,
     )
@@ -245,7 +245,7 @@ def _inventory(ir: CanonicalIR, plan: MaterializationPlan) -> EvalInventory:
         capability_ids=tuple(str(identifier) for identifier in ir.capabilities),
         grant_ids=tuple(str(identifier) for identifier in ir.grants),
         control_ids=tuple(str(identifier) for identifier in ir.controls),
-        expected_telemetry=plan.expected_telemetry,
+        expected_event_types=plan.expected_event_types,
     )
 
 

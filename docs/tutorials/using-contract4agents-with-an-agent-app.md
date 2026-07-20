@@ -27,11 +27,13 @@ Run source and generated-artifact checks in CI:
 contract4agents check agent_contracts
 contract4agents compile agent_contracts --out .contract/build
 contract4agents compile agent_contracts --out .contract/build --check
-contract4agents generate agent_contracts --out .contract/generated
-contract4agents generate agent_contracts --out .contract/generated --check
 contract4agents plan agent_contracts --target openai --profile production \
   --out .contract/build/production-plan.json
 ```
+
+If application code imports generated Pydantic, TypeScript, or Zod source,
+also run `generate` into that machine-owned source directory and protect it
+with `generate --check`. The compiler bundle already contains review copies.
 
 Approve the contract digest and plan digest that correspond to the release.
 Model changes are target-profile changes; portable behavior changes are contract
@@ -189,7 +191,7 @@ For production assessment:
 5. treat incomplete evidence as `unverified`.
 
 For crash recovery, persist the trace and closure returned by one
-`session.checkpoint()` call, then resume a session with that exact pair. New SDK
+`session.snapshot()` call, then resume a session with that exact pair. New SDK
 work uses new attempt identity linked by `retry_of`; prior attempts remain
 immutable audit evidence. Contract4Agents validates and conservatively combines
 the evidence, while the application still owns transactional persistence,
@@ -205,9 +207,9 @@ They do not duplicate behavioral controls.
 ## Release Assurance
 
 For a release or incident review, assemble an assurance bundle containing the
-approved canonical IR and plan, normalized traces, trace closure, completeness and control
-results, eval campaign summaries, and semantic diffs. Verify the bundle's digest
-references before review.
+approved canonical IR and plan, normalized traces, trace closure, trace-evidence
+and control results, eval campaign summaries, and semantic diffs. Verify the
+bundle's digest references before review.
 
 A useful release gate asks:
 

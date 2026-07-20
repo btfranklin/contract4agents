@@ -117,7 +117,7 @@ High-value review highlights include:
 - isolation requested versus actually enforced;
 - degraded or unsupported plan mappings;
 - controls that are violated or unverified;
-- missing expected telemetry.
+- missing expected event types.
 
 The underlying source remains `.contract` and `.eval` files plus target
 bindings. Generated plans, traces, and assurance results are evidence inputs,
