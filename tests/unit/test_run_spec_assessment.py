@@ -35,6 +35,7 @@ from contract4agents.tracing import (
     TraceAttemptClosure,
     TraceClosureEvidence,
     TraceEvent,
+    TraceFrontier,
     TraceRunContext,
     TraceSemanticRefs,
     dumps_trace_jsonl,
@@ -546,6 +547,7 @@ def _closure(trace: NormalizedTrace) -> TraceClosureEvidence:
         context=trace.events[0].context,
         status="complete",
         reason="The workflow fixture covers every attempt.",
+        frontier=TraceFrontier.from_trace(trace),
         channels=("agent",),
         attempts=tuple(
             TraceAttemptClosure(

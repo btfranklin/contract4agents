@@ -80,7 +80,10 @@ replacing them.
 Plan telemetry diagnoses expected event-family occurrence. Identity-bound
 closure evidence proves which attempts and instrumentation channels were
 covered. Event absence cannot prove a negative claim when that closure is
-missing or incomplete.
+missing or incomplete. Versioned closure frontiers bind that claim to one exact
+ordered trace snapshot. Adapter sessions may resume from a validated snapshot
+and conservatively extend retry-chain evidence, but persistence transactions and
+workflow recovery remain host responsibilities.
 
 ## Assure
 

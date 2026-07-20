@@ -92,8 +92,10 @@ For the OpenAI Agents SDK, `OpenAINormalizedTraceRouter` implements the global
 tracing-processor callbacks. Register exactly one router for the process, then
 open a disposable `OpenAINormalizedTraceSession` for each logical run. The
 router binds provider trace IDs to the context-local session active when the
-SDK trace starts and releases that binding when the trace ends. A closed
-session is therefore not retained by the global SDK registry. Its
+SDK trace starts and releases that binding when the trace ends or the owning
+session closes. Closing a session whose SDK trace never ended preserves
+incomplete lifecycle evidence while purging the router binding, so a closed
+session is not retained by the global SDK registry. Its
 `normalized_trace()` result retains provider IDs while excluding raw provider
 inputs and outputs.
 
@@ -169,6 +171,32 @@ does not catch exceptions, decide retries, emit a generic agent failure, or
 infer that an SDK exception was a schema failure. Host-side canonical output
 validation can record the narrower fact through
 `session.record_output_schema_failure(...)`.
+
+### Checkpoints and recovery
+
+After the session has at least one normalized event, `session.checkpoint()`
+returns a `TraceClosureCheckpoint` containing an
+immutable normalized trace and its closure evidence captured under the same
+session lock. The closure manifest v2 frontier records the exact event count
+and canonical SHA-256 digest of that ordered trace. A later event advances the
+frontier, so an older closure cannot be applied to the newer trace.
+
+Persist the checkpoint's `trace` and `closure` together as one recovery unit.
+To continue the same logical run in another session or process, supply that
+exact pair as `prior_trace=` and `prior_closure=` to `router.open_session(...)`.
+The session validates run, thread, contract, plan, frontier, attempt identities,
+and retry chains before accepting new evidence. Prior attempts are sealed: a
+new SDK execution uses a new attempt ID and number with `retry_of` pointing to
+the prior attempt. Host-semantic reconciliation evidence, including terminal
+selection or an output-schema failure discovered after recovery, may still
+reference a sealed attempt with its original agent identity.
+
+Closure and terminal selection remain different claims. A checkpoint may have
+complete instrumentation closure before the host selects the terminal attempt;
+output assurance remains unverified until the host supplies that semantic
+selection. Contract4Agents does not coordinate application state, trace files,
+and closure files as a transaction, nor does it decide whether recovery or a
+retry is allowed.
 
 `normalize_openai_response_events(...)` is the corresponding standalone API.
 For recognized provider-hosted call items it resolves exactly one enabled
@@ -269,11 +297,13 @@ keeps absence and upper-bound claims `unverified`. Directly observed positive
 evidence can still prove a positive claim.
 
 `TraceClosureManifest` is the versioned JSON artifact used by the CLI and
-assurance bundles. Complete closure must cover exactly every attempt observed
-in its run. The OpenAI session produces closure for SDK lifecycle and response
-paths; the host uses `attest_channels(...)` for adjacent instrumentation that
-the session cannot observe. Contract4Agents validates these identities but
-cannot prove that a dishonest host disclosed work it deliberately omitted.
+assurance bundles. Version 2 binds closure to an exact ordered event frontier;
+version 1 manifests are intentionally rejected rather than treated as negative
+assurance. Complete closure must cover exactly every attempt observed in its
+run. The OpenAI session produces closure for SDK lifecycle and response paths;
+the host uses `attest_channels(...)` for adjacent instrumentation that the
+session cannot observe. Contract4Agents validates these identities but cannot
+prove that a dishonest host disclosed work it deliberately omitted.
 
 ## OpenTelemetry Export
 

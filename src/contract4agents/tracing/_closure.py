@@ -4,13 +4,18 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal, Self, cast
 
 from contract4agents.ir import SemanticId
-from contract4agents.tracing._models import NormalizedTrace, TraceAttempt, TraceRunContext
+from contract4agents.tracing._models import (
+    NormalizedTrace,
+    TraceAttempt,
+    TraceEvent,
+    TraceRunContext,
+)
 
 TraceClosureStatus = Literal["complete", "incomplete", "unverified"]
 TraceCoverageChannel = Literal[
@@ -24,7 +29,7 @@ TraceCoverageChannel = Literal[
     "provider_response",
     "tool",
 ]
-TRACE_CLOSURE_MANIFEST_VERSION = "1"
+TRACE_CLOSURE_MANIFEST_VERSION = "2"
 
 _STATUSES = frozenset({"complete", "incomplete", "unverified"})
 _CHANNELS = frozenset(
@@ -44,6 +49,62 @@ _CHANNELS = frozenset(
 
 class TraceClosureError(ValueError):
     """Trace closure identities do not match normalized evidence."""
+
+
+@dataclass(frozen=True)
+class TraceFrontier:
+    """Exact ordered normalized-trace prefix attested by closure evidence."""
+
+    event_count: int
+    prefix_digest: str
+
+    def __post_init__(self) -> None:
+        if isinstance(self.event_count, bool) or not isinstance(self.event_count, int):
+            raise TypeError("Trace frontier event_count must be an integer")
+        if self.event_count < 0:
+            raise ValueError("Trace frontier event_count cannot be negative")
+        if not _canonical_digest(self.prefix_digest):
+            raise ValueError("Trace frontier prefix_digest must be a canonical sha256 digest")
+
+    @classmethod
+    def from_events(cls, events: Iterable[TraceEvent]) -> Self:
+        selected = tuple(events)
+        payload = "".join(
+            json.dumps(
+                event.to_dict(),
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+            + "\n"
+            for event in selected
+        )
+        return cls(
+            event_count=len(selected),
+            prefix_digest=f"sha256:{hashlib.sha256(payload.encode()).hexdigest()}",
+        )
+
+    @classmethod
+    def from_trace(cls, trace: NormalizedTrace) -> Self:
+        return cls.from_events(trace.events)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "event_count": self.event_count,
+            "prefix_digest": self.prefix_digest,
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> Self:
+        payload = _object("trace frontier", value)
+        _keys("trace frontier", payload, {"event_count", "prefix_digest"})
+        event_count = payload["event_count"]
+        if isinstance(event_count, bool) or not isinstance(event_count, int):
+            raise TypeError("Trace frontier event_count must be an integer")
+        return cls(
+            event_count=event_count,
+            prefix_digest=_string("prefix_digest", payload["prefix_digest"]),
+        )
 
 
 @dataclass(frozen=True)
@@ -124,6 +185,7 @@ class TraceClosureEvidence:
     context: TraceRunContext
     status: TraceClosureStatus
     reason: str
+    frontier: TraceFrontier
     channels: tuple[TraceCoverageChannel, ...]
     attempts: tuple[TraceAttemptClosure, ...]
     evidence_refs: tuple[str, ...] = field(default_factory=tuple)
@@ -146,6 +208,8 @@ class TraceClosureEvidence:
         object.__setattr__(self, "attempts", attempts)
         object.__setattr__(self, "evidence_refs", _references("Evidence reference", self.evidence_refs))
         if self.status == "complete":
+            if self.frontier.event_count == 0:
+                raise ValueError("Complete trace closure requires a non-empty trace frontier")
             if not channels:
                 raise ValueError("Complete trace closure requires at least one coverage channel")
             if not attempts:
@@ -174,6 +238,7 @@ class TraceClosureEvidence:
             "channels": list(self.channels),
             "contract_digest": self.context.contract_digest,
             "evidence_refs": list(self.evidence_refs),
+            "frontier": self.frontier.to_dict(),
             "plan_digest": self.context.plan_digest,
             "reason": self.reason,
             "run_id": self.context.run_id,
@@ -192,6 +257,7 @@ class TraceClosureEvidence:
                 "channels",
                 "contract_digest",
                 "evidence_refs",
+                "frontier",
                 "plan_digest",
                 "reason",
                 "run_id",
@@ -208,6 +274,7 @@ class TraceClosureEvidence:
             ),
             status=cast(TraceClosureStatus, _string("status", payload["status"])),
             reason=_string("reason", payload["reason"]),
+            frontier=TraceFrontier.from_dict(payload["frontier"]),
             channels=cast(tuple[TraceCoverageChannel, ...], _strings("channels", payload["channels"])),
             attempts=tuple(TraceAttemptClosure.from_dict(item) for item in _array("attempts", payload["attempts"])),
             evidence_refs=_strings("evidence_refs", payload["evidence_refs"]),
@@ -220,6 +287,17 @@ class TraceClosureEvidence:
         except json.JSONDecodeError as exc:
             raise ValueError(f"Invalid trace-closure JSON: {exc}") from exc
         return cls.from_dict(payload)
+
+
+@dataclass(frozen=True)
+class TraceClosureCheckpoint:
+    """One internally consistent normalized-trace and closure snapshot."""
+
+    trace: NormalizedTrace
+    closure: TraceClosureEvidence
+
+    def __post_init__(self) -> None:
+        validate_trace_closure(self.trace, self.closure)
 
 
 @dataclass(frozen=True)
@@ -249,11 +327,17 @@ class TraceClosureManifest:
     def from_dict(cls, value: object) -> TraceClosureManifest:
         payload = _object("trace-closure manifest", value)
         _keys("trace-closure manifest", payload, {"closures", "version"})
+        version = _string("version", payload["version"])
+        if version != TRACE_CLOSURE_MANIFEST_VERSION:
+            raise ValueError(
+                f"Unsupported trace-closure manifest version `{version}`; "
+                f"expected `{TRACE_CLOSURE_MANIFEST_VERSION}`"
+            )
         return cls(
             closures=tuple(
                 TraceClosureEvidence.from_dict(item) for item in _array("closures", payload["closures"])
             ),
-            version=_string("version", payload["version"]),
+            version=version,
         )
 
     @classmethod
@@ -279,6 +363,11 @@ def validate_trace_closure(trace: NormalizedTrace, closure: TraceClosureEvidence
     context = selected.events[0].context
     if context != closure.context:
         raise TraceClosureError("Trace closure context does not match the normalized trace")
+    frontier = TraceFrontier.from_trace(selected)
+    if closure.frontier != frontier:
+        raise TraceClosureError(
+            "Trace closure frontier does not match the complete normalized trace"
+        )
     trace_attempts = {
         TraceAttempt.from_dict(event.data["attempt"]).attempt_id
         for event in selected.events
@@ -373,6 +462,13 @@ def _text(label: str, value: str) -> None:
         raise ValueError(f"{label} must be a non-empty string")
 
 
+def _canonical_digest(value: str) -> bool:
+    if not isinstance(value, str) or not value.startswith("sha256:"):
+        return False
+    digest = value.removeprefix("sha256:")
+    return len(digest) == 64 and all(character in "0123456789abcdef" for character in digest)
+
+
 def _references(label: str, values: tuple[str, ...]) -> tuple[str, ...]:
     normalized: set[str] = set()
     for value in values:
@@ -384,10 +480,12 @@ def _references(label: str, values: tuple[str, ...]) -> tuple[str, ...]:
 __all__ = [
     "TRACE_CLOSURE_MANIFEST_VERSION",
     "TraceAttemptClosure",
+    "TraceClosureCheckpoint",
     "TraceClosureEvidence",
     "TraceClosureError",
     "TraceClosureManifest",
     "TraceClosureStatus",
     "TraceCoverageChannel",
+    "TraceFrontier",
     "validate_trace_closure",
 ]

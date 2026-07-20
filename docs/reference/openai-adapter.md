@@ -291,6 +291,37 @@ one the host never submitted. Closing the session produces identity-bound
 `TraceClosureEvidence`; incomplete SDK traces or missing success/exception
 response paths keep closure incomplete or unverified.
 
+For a durable recovery point without closing the active session, capture an
+internally consistent pair after at least one normalized event exists:
+
+```python
+checkpoint = session.checkpoint()
+# Persist checkpoint.trace and checkpoint.closure through the host's durable
+# recovery mechanism before advancing application workflow state.
+```
+
+The v2 closure frontier binds the exact ordered event count and digest. Resume
+only from the matching pair:
+
+```python
+session = router.open_session(
+    artifacts.ir,
+    system.plan,
+    run_id=run_id,
+    thread_id=thread_id,
+    prior_trace=loaded_trace,
+    prior_closure=loaded_closure,
+)
+```
+
+Prior attempts cannot be rebound around another `Runner.run`; a recovered SDK
+retry needs a new `TraceAttempt` with the next number and exact `retry_of`
+identity. Host-semantic reconciliation may still record terminal selection or
+output-schema failure evidence against a sealed prior attempt. Channel closure
+for a resumed run is conservative across every SDK-execution segment. A
+checkpoint does not make trace, closure, and application state one transaction;
+the host owns persistence ordering, crash policy, and workflow recovery.
+
 Supported hosted-call status is preserved: completed or succeeded calls emit
 `tool.completed`, failed, cancelled, or incomplete calls emit `tool.failed`,
 and other nonterminal statuses emit `tool.started`. Hosted MCP discovery items
@@ -305,8 +336,10 @@ The Agents SDK processor registry is process-global and has no individual
 removal API. Do not register a router per run and do not use
 `set_trace_processors()` to replace other integrations in a long-lived
 service. Register one router at startup and create disposable sessions; ended
-provider traces are removed from the router, so completed sessions are not
-retained by the SDK registry.
+provider traces are removed from the router. Session close also removes every
+remaining router binding, including a provider trace that never delivered
+`on_trace_end`, while leaving its lifecycle closure incomplete. Completed or
+abandoned closed sessions are therefore not retained by the router.
 
 ## Offline and Live Validation
 

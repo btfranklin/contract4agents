@@ -18,9 +18,11 @@ from contract4agents.ir import CanonicalIR, SemanticId, semantic_id
 from contract4agents.planning import GrantMappingPlan, MaterializationPlan
 from contract4agents.tracing._closure import (
     TraceAttemptClosure,
+    TraceClosureCheckpoint,
     TraceClosureEvidence,
     TraceClosureStatus,
     TraceCoverageChannel,
+    TraceFrontier,
 )
 from contract4agents.tracing._models import (
     NormalizedTrace,
@@ -361,6 +363,8 @@ class OpenAINormalizedTraceRouter:
         run_id: str,
         thread_id: str | None = None,
         sink: NormalizedTraceSink | None = None,
+        prior_trace: NormalizedTrace | None = None,
+        prior_closure: TraceClosureEvidence | None = None,
     ) -> OpenAINormalizedTraceSession:
         """Create one logical-run session without adding another SDK processor."""
 
@@ -374,6 +378,8 @@ class OpenAINormalizedTraceRouter:
             run_id=run_id,
             thread_id=thread_id,
             sink=sink,
+            prior_trace=prior_trace,
+            prior_closure=prior_closure,
         )
 
     def on_trace_start(self, trace: object) -> None:
@@ -388,7 +394,10 @@ class OpenAINormalizedTraceRouter:
             if existing is not None and existing is not session:
                 raise ValueError(f"OpenAI trace `{trace_id}` is already owned by another session")
             self._trace_sessions[trace_id] = session
-        session._on_trace_start(trace_id)
+        if not session._on_trace_start(trace_id):
+            with self._lock:
+                if self._trace_sessions.get(trace_id) is session:
+                    self._trace_sessions.pop(trace_id, None)
 
     def on_trace_end(self, trace: object) -> None:
         trace_id = _text_attr(trace, "trace_id")
@@ -433,6 +442,16 @@ class OpenAINormalizedTraceRouter:
         with self._lock:
             return self._trace_sessions.get(trace_id)
 
+    def _release(self, session: OpenAINormalizedTraceSession) -> None:
+        with self._lock:
+            owned = tuple(
+                trace_id
+                for trace_id, candidate in self._trace_sessions.items()
+                if candidate is session
+            )
+            for trace_id in owned:
+                self._trace_sessions.pop(trace_id, None)
+
 
 class OpenAINormalizedTraceSession:
     """Disposable normalized-evidence state for one logical OpenAI run."""
@@ -446,6 +465,8 @@ class OpenAINormalizedTraceSession:
         run_id: str,
         thread_id: str | None = None,
         sink: NormalizedTraceSink | None = None,
+        prior_trace: NormalizedTrace | None = None,
+        prior_closure: TraceClosureEvidence | None = None,
     ) -> None:
         if plan.contract_digest == "" or not run_id.strip():
             raise ValueError("plan and run_id are required")
@@ -459,6 +480,21 @@ class OpenAINormalizedTraceSession:
             plan.plan_digest,
         )
         self.sink = sink
+        self._prior_events: tuple[TraceEvent, ...]
+        self._prior_closure: TraceClosureEvidence | None
+        if (prior_trace is None) != (prior_closure is None):
+            raise ValueError("prior_trace and prior_closure must be supplied together")
+        if prior_trace is not None and prior_closure is not None:
+            if prior_trace.run_ids != (run_id,):
+                raise ValueError("Prior trace must contain exactly the resumed run")
+            TraceClosureCheckpoint(prior_trace, prior_closure)
+            if prior_closure.context != self.context:
+                raise ValueError("Prior trace closure does not match the resumed session context")
+            self._prior_events = prior_trace.events
+            self._prior_closure = prior_closure
+        else:
+            self._prior_events = ()
+            self._prior_closure = None
         self.events: list[TraceEvent] = []
         self._span_parent: dict[str, str | None] = {}
         self._span_semantic: dict[str, TraceSemanticRefs] = {}
@@ -481,6 +517,7 @@ class OpenAINormalizedTraceSession:
             "provider_response",
             "tool",
         }
+        self._attested_channels: set[TraceCoverageChannel] = set()
         self._closure_evidence_refs: set[str] = set()
         self._lock = threading.Lock()
 
@@ -507,17 +544,18 @@ class OpenAINormalizedTraceSession:
             self.router._deactivate(token)
         self.close()
 
-    def _on_trace_start(self, trace_id: str) -> None:
+    def _on_trace_start(self, trace_id: str) -> bool:
         with self._lock:
             if self._closed:
-                return
+                return False
             attempt = self._current_attempt()
             if attempt is None:
                 self._unbound_trace_ids.add(trace_id)
-                return
+                return True
             state = self._attempts[attempt.attempt_id]
             state.provider_trace_ids.add(trace_id)
             self._active_trace_attempts[trace_id] = attempt
+            return True
 
     def _on_trace_end(self, trace_id: str) -> None:
         with self._lock:
@@ -594,7 +632,7 @@ class OpenAINormalizedTraceSession:
 
     def normalized_trace(self) -> NormalizedTrace:
         with self._lock:
-            return NormalizedTrace(tuple(self.events))
+            return NormalizedTrace((*self._prior_events, *self.events))
 
     def emit(self, event: TraceEvent) -> None:
         """Accept an adjacent normalized event into this run's evidence."""
@@ -724,51 +762,123 @@ class OpenAINormalizedTraceSession:
         if any(not isinstance(reference, str) or not reference.strip() for reference in selected_refs):
             raise ValueError("Channel evidence references must be non-empty strings")
         self._channels.update(selected_channels)
+        self._attested_channels.update(selected_channels)
         self._closure_evidence_refs.update(selected_refs)
 
-    def close(self) -> TraceClosureEvidence:
-        """Detach the session and produce immutable identity-bound closure evidence."""
+    def checkpoint(self) -> TraceClosureCheckpoint:
+        """Snapshot one immutable trace and closure frontier without closing."""
 
         with self._lock:
-            if self._closure is not None:
-                return self._closure
-            if self._activation_token is not None:
-                raise RuntimeError("Exit the OpenAI trace session before closing it")
-            attempt_closures = tuple(
-                self._attempt_closure(state)
-                for state in sorted(self._attempts.values(), key=lambda item: item.attempt)
+            if self._closed:
+                if self._closure is None:
+                    raise RuntimeError("Closed OpenAI trace session has no closure evidence")
+                closure = self._closure
+            else:
+                closure = self._build_checkpoint()
+            trace = NormalizedTrace((*self._prior_events, *self.events))
+            return TraceClosureCheckpoint(trace, closure)
+
+    def close(self) -> TraceClosureEvidence:
+        """Detach the session, release router state, and return final closure evidence."""
+
+        with self._lock:
+            if self._closure is None:
+                if self._activation_token is not None:
+                    raise RuntimeError("Exit the OpenAI trace session before closing it")
+                self._closure = self._build_checkpoint()
+                self._closed = True
+            closure = self._closure
+        self.router._release(self)
+        return closure
+
+    def _build_checkpoint(self) -> TraceClosureEvidence:
+        if (
+            self._prior_closure is not None
+            and not self.events
+            and not self._attempts
+            and not self._unbound_trace_ids
+            and not self._closure_evidence_refs
+        ):
+            return self._prior_closure
+
+        attempt_closures = tuple(
+            self._attempt_closure(state)
+            for state in sorted(self._attempts.values(), key=lambda item: item.attempt)
+        )
+        if self._unbound_trace_ids:
+            current_status: TraceClosureStatus = "incomplete"
+            current_reason = "One or more SDK traces were created without attempt identity."
+        elif not attempt_closures:
+            if self._prior_closure is None:
+                current_status = "unverified"
+                current_reason = "No attempt-scoped SDK execution was captured."
+            else:
+                current_status = "complete"
+                current_reason = "No new SDK execution occurred in the resumed trace segment."
+        elif any(
+            item.lifecycle_status == "incomplete" or item.response_status == "incomplete"
+            for item in attempt_closures
+        ):
+            current_status = "incomplete"
+            current_reason = "One or more captured attempts have an open instrumentation path."
+        elif any(not item.complete for item in attempt_closures):
+            current_status = "unverified"
+            current_reason = "One or more captured attempts lack verifiable instrumentation evidence."
+        else:
+            current_status = "complete"
+            current_reason = (
+                "Every captured attempt closed its SDK lifecycle and response-normalization path."
             )
-            if not attempt_closures:
-                status: TraceClosureStatus = "unverified"
-                reason = "No attempt-scoped SDK execution was captured."
-            elif self._unbound_trace_ids:
+
+        prior_attempts = self._prior_closure.attempts if self._prior_closure is not None else ()
+        attempts_by_id = {item.attempt.attempt_id: item for item in prior_attempts}
+        for item in attempt_closures:
+            existing = attempts_by_id.get(item.attempt.attempt_id)
+            if existing is not None and existing != item:
+                raise ValueError(f"Attempt `{item.attempt.attempt_id}` conflicts with prior closure evidence")
+            attempts_by_id[item.attempt.attempt_id] = item
+        combined_attempts = tuple(sorted(attempts_by_id.values(), key=lambda item: item.attempt))
+
+        status: TraceClosureStatus
+        if self._prior_closure is None:
+            status = current_status
+            channels = tuple(self._channels)
+            reason = current_reason
+            refs: set[str] = set()
+        else:
+            prior_status = self._prior_closure.status
+            if "incomplete" in {prior_status, current_status}:
                 status = "incomplete"
-                reason = "One or more SDK traces were created without attempt identity."
-            elif any(
-                item.lifecycle_status == "incomplete" or item.response_status == "incomplete"
-                for item in attempt_closures
-            ):
-                status = "incomplete"
-                reason = "One or more captured attempts have an open instrumentation path."
-            elif any(not item.complete for item in attempt_closures):
+            elif "unverified" in {prior_status, current_status}:
                 status = "unverified"
-                reason = "One or more captured attempts lack verifiable instrumentation evidence."
             else:
                 status = "complete"
-                reason = "Every captured attempt closed its SDK lifecycle and response-normalization path."
-            refs = set(self._closure_evidence_refs)
-            for item in attempt_closures:
-                refs.update(item.evidence_refs)
-            self._closed = True
-            self._closure = TraceClosureEvidence(
-                context=self.context,
-                status=status,
-                reason=reason,
-                channels=tuple(self._channels),
-                attempts=attempt_closures,
-                evidence_refs=tuple(refs) or (f"contract4agents:openai:session:{self.context.run_id}",),
+            if attempt_closures or self._unbound_trace_ids:
+                channels = tuple(set(self._prior_closure.channels) & self._channels)
+            else:
+                channels = tuple(
+                    set(self._prior_closure.channels) | self._attested_channels
+                )
+            reason = (
+                "Prior and current trace segments were combined at an exact validated frontier; "
+                f"current segment: {current_reason}"
             )
-            return self._closure
+            refs = set(self._prior_closure.evidence_refs)
+
+        refs.update(self._closure_evidence_refs)
+        for item in combined_attempts:
+            refs.update(item.evidence_refs)
+        combined_events = (*self._prior_events, *self.events)
+        return TraceClosureEvidence(
+            context=self.context,
+            status=status,
+            reason=reason,
+            frontier=TraceFrontier.from_events(combined_events),
+            channels=channels,
+            attempts=combined_attempts,
+            evidence_refs=tuple(refs)
+            or (f"contract4agents:openai:session:{self.context.run_id}",),
+        )
 
     @property
     def closure_evidence(self) -> TraceClosureEvidence:
@@ -785,8 +895,7 @@ class OpenAINormalizedTraceSession:
     ) -> TraceEvent:
         """Record a host-observed canonical output validation failure."""
 
-        selected = self._require_attempt(attempt)
-        agent_id = self._require_agent(agent)
+        selected, agent_id = self._require_attempt_agent(attempt, agent)
         return self._record_host_event(
             event_id=(
                 f"contract4agents:{agent_id}:attempt:{selected.attempt_id}:output-schema-failed"
@@ -810,8 +919,7 @@ class OpenAINormalizedTraceSession:
 
         if outcome not in {"succeeded", "failed"}:
             raise ValueError(f"Unsupported terminal attempt outcome `{outcome}`")
-        selected = self._require_attempt(attempt)
-        agent_id = self._require_agent(agent)
+        selected, agent_id = self._require_attempt_agent(attempt, agent)
         return self._record_host_event(
             event_id=f"contract4agents:{agent_id}:attempt:{selected.attempt_id}:selected",
             event_type="attempt.selected",
@@ -822,6 +930,14 @@ class OpenAINormalizedTraceSession:
         )
 
     def _attempt_state(self, attempt: TraceAttempt, agent_id: SemanticId) -> _AttemptState:
+        prior = self._prior_attempt(attempt.attempt_id)
+        if prior is not None:
+            if prior.attempt != attempt or prior.agent_id != agent_id:
+                raise ValueError(f"Attempt `{attempt.attempt_id}` conflicts with prior closure identity")
+            raise ValueError(
+                f"Attempt `{attempt.attempt_id}` is sealed by prior closure evidence; "
+                "a resumed SDK execution requires a new attempt identity"
+            )
         state = self._attempts.get(attempt.attempt_id)
         if state is None:
             state = _AttemptState(attempt, agent_id)
@@ -830,6 +946,18 @@ class OpenAINormalizedTraceSession:
         if state.attempt != attempt or state.agent_id != agent_id:
             raise ValueError(f"Attempt `{attempt.attempt_id}` has inconsistent session identity")
         return state
+
+    def _prior_attempt(self, attempt_id: str) -> TraceAttemptClosure | None:
+        if self._prior_closure is None:
+            return None
+        return next(
+            (
+                item
+                for item in self._prior_closure.attempts
+                if item.attempt.attempt_id == attempt_id
+            ),
+            None,
+        )
 
     def _close_response_path(
         self,
@@ -990,6 +1118,36 @@ class OpenAINormalizedTraceSession:
         if selected is None:
             raise ValueError("attempt is required for attempt-aware evidence")
         return selected
+
+    def _require_attempt_agent(
+        self,
+        attempt: TraceAttempt | None,
+        agent: str | SemanticId,
+    ) -> tuple[TraceAttempt, SemanticId]:
+        selected = self._require_attempt(attempt)
+        agent_id = self._require_agent(agent)
+        current = self._attempts.get(selected.attempt_id)
+        prior = self._prior_attempt(selected.attempt_id)
+        if current is not None and current.attempt != selected:
+            raise ValueError(f"Attempt `{selected.attempt_id}` conflicts with current session identity")
+        if prior is not None and prior.attempt != selected:
+            raise ValueError(f"Attempt `{selected.attempt_id}` conflicts with prior closure identity")
+        if self._prior_closure is not None and current is None and prior is None:
+            raise ValueError(
+                f"Attempt `{selected.attempt_id}` is not present in prior or current execution evidence"
+            )
+        expected = (
+            current.agent_id
+            if current is not None
+            else prior.agent_id
+            if prior is not None
+            else None
+        )
+        if expected is not None and expected != agent_id:
+            raise ValueError(
+                f"Attempt `{selected.attempt_id}` belongs to `{expected}`, not `{agent_id}`"
+            )
+        return selected, agent_id
 
     def _ensure_open(self) -> None:
         if self._closed:

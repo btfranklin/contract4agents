@@ -31,6 +31,7 @@ from contract4agents.tracing import (
     TraceClosureStatus,
     TraceCoverageChannel,
     TraceEvent,
+    TraceFrontier,
     TraceRunContext,
     TraceSemanticRefs,
 )
@@ -87,6 +88,7 @@ class FileEvalProvider:
             context=trace.events[0].context,
             status=cast(TraceClosureStatus, _string("closure status", closure_data.get("status"))),
             reason=_string("closure reason", closure_data.get("reason")),
+            frontier=TraceFrontier.from_trace(trace),
             channels=cast(
                 tuple[TraceCoverageChannel, ...],
                 _strings("closure channels", closure_data.get("channels")),

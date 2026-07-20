@@ -36,6 +36,7 @@ from contract4agents.tracing import (
     TraceAttemptClosure,
     TraceClosureEvidence,
     TraceEvent,
+    TraceFrontier,
     TraceRunContext,
     TraceSemanticRefs,
     dumps_trace_jsonl,
@@ -120,6 +121,7 @@ def test_assurance_bundle_is_deterministic_verified_and_explicit_about_missing_e
         context,
         "complete",
         "The test fixture covers the run.",
+        TraceFrontier.from_trace(trace),
         ("output",),
         (
             TraceAttemptClosure(

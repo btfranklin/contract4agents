@@ -774,7 +774,11 @@ references, and absent required identity.
 Negative claims require identity-bound trace-closure evidence. Event-family
 occurrence is diagnostic only: the absence of a tool event cannot prove that a
 tool was not called unless closure covers every attempt and the relevant tool
-and provider-response paths for that run.
+and provider-response paths for that run. A closure frontier records the exact
+ordered event count and canonical digest it covers; stale or mismatched
+frontiers fail validation. Resumed adapter sessions may extend a validated
+frontier with new retry attempts but cannot rebind a sealed attempt to another
+provider execution.
 
 ## Assurance results
 

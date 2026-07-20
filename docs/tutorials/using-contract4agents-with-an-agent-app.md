@@ -181,11 +181,19 @@ hand-maintained description of agents and permissions.
 
 For production assessment:
 
-1. load and validate a normalized trace plus its versioned closure manifest;
+1. load and validate a normalized trace plus its versioned, exact-frontier
+   closure manifest;
 2. validate event-family coverage and identity-bound closure against the reviewed plan;
 3. call the shared control assessor with the matching `TraceClosureEvidence`;
 4. store or export the results with their contract and plan digests;
 5. treat incomplete evidence as `unverified`.
+
+For crash recovery, persist the trace and closure returned by one
+`session.checkpoint()` call, then resume a session with that exact pair. New SDK
+work uses new attempt identity linked by `retry_of`; prior attempts remain
+immutable audit evidence. Contract4Agents validates and conservatively combines
+the evidence, while the application still owns transactional persistence,
+workflow state, and the decision to retry or fail recovery.
 
 A continuous monitoring service can repeat this process whenever a complete
 trace arrives. Contract4Agents performs the assessment; the surrounding

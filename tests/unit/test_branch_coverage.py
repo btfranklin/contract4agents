@@ -55,6 +55,7 @@ from contract4agents.tracing import (
     TraceClosureEvidence,
     TraceCompletenessResult,
     TraceEvent,
+    TraceFrontier,
     TraceRunContext,
     TraceSemanticRefs,
 )
@@ -703,6 +704,7 @@ def test_conditional_control_distinguishes_false_true_and_unverified_applicabili
         false_trace.events[0].context,
         "complete",
         "The fixture covers all tool and agent paths.",
+        TraceFrontier.from_trace(false_trace),
         ("agent", "tool"),
         (
             TraceAttemptClosure(
@@ -729,7 +731,11 @@ def test_conditional_control_distinguishes_false_true_and_unverified_applicabili
         ir,
         plan,
         true_trace,
-        closure=replace(closure, context=true_trace.events[0].context),
+        closure=replace(
+            closure,
+            context=true_trace.events[0].context,
+            frontier=TraceFrontier.from_trace(true_trace),
+        ),
     )[0]
 
     assert (not_applicable.status, not_applicable.applicability) == ("passed", "not_applicable")

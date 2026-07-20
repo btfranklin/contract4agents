@@ -162,8 +162,11 @@ not a general workflow language and does not hide provider differences.
 The normalized trace schema binds every event to a contract digest, plan digest,
 stable semantic IDs, provider-native correlation, provenance, and audience-safe
 redaction metadata. Identity-bound closure evidence records which attempts,
-provider responses, and instrumentation channels were completely observed. The
-same control assessor is used for controlled evals and imported production traces.
+provider responses, and instrumentation channels were completely observed at
+an exact ordered trace frontier. OpenAI sessions expose consistent non-closing
+checkpoints, validated cross-session retry continuation, and disposable router
+bindings. The same control assessor is used for controlled evals and imported
+production traces.
 
 Run specs have a separate post-run assessor for host-supplied stage outputs,
 derived values, cardinality, assertions, and explicit workflow-completeness

@@ -3,11 +3,13 @@
 from contract4agents.tracing._closure import (
     TRACE_CLOSURE_MANIFEST_VERSION,
     TraceAttemptClosure,
+    TraceClosureCheckpoint,
     TraceClosureError,
     TraceClosureEvidence,
     TraceClosureManifest,
     TraceClosureStatus,
     TraceCoverageChannel,
+    TraceFrontier,
     validate_trace_closure,
 )
 from contract4agents.tracing._completeness import (
@@ -76,12 +78,14 @@ __all__ = [
     "RedactionState",
     "TraceAttempt",
     "TraceAttemptClosure",
+    "TraceClosureCheckpoint",
     "TraceClosureEvidence",
     "TraceClosureError",
     "TraceClosureManifest",
     "TraceClosureStatus",
     "TraceCoverageChannel",
     "TraceEvent",
+    "TraceFrontier",
     "TraceCompletenessResult",
     "TraceCompletenessStatus",
     "TraceLoadError",

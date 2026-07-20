@@ -12,6 +12,7 @@ from contract4agents.adapters._openai_names import openai_tool_name
 from contract4agents.assurance import assess_controls
 from contract4agents.ir import FrozenMap, SemanticId, semantic_id
 from contract4agents.tracing import (
+    TRACE_CLOSURE_MANIFEST_VERSION,
     TRACE_SCHEMA_VERSION,
     AtomicTraceFileSink,
     NoOpNormalizedTraceSink,
@@ -23,11 +24,14 @@ from contract4agents.tracing import (
     RedactionRule,
     TraceAttempt,
     TraceAttemptClosure,
+    TraceClosureCheckpoint,
+    TraceClosureError,
     TraceClosureEvidence,
     TraceClosureManifest,
     TraceCompletenessResult,
     TraceConformanceError,
     TraceEvent,
+    TraceFrontier,
     TraceLoadError,
     TraceRunContext,
     TraceSemanticRefs,
@@ -39,6 +43,7 @@ from contract4agents.tracing import (
     normalize_openai_exception_responses,
     normalize_openai_response_events,
     resolve_provider_tool_grant,
+    validate_trace_closure,
     validate_trace_conformance,
     write_trace_jsonl,
 )
@@ -372,6 +377,244 @@ def test_openai_router_session_closes_lifecycle_and_zero_response_batch() -> Non
         event.event_type for event in session.normalized_trace().events
     }
     assert TraceClosureManifest.from_json(TraceClosureManifest((closure,)).to_json()).closures == (closure,)
+    assert router.active_trace_count == 0
+
+
+def test_openai_session_checkpoint_binds_frontier_without_requiring_terminal_selection() -> None:
+    project = ROOT / "examples" / "incident-command"
+    artifacts = compile_project(project)
+    system = materialize(project, "openai", "test")
+    router = OpenAINormalizedTraceRouter()
+    session = router.open_session(artifacts.ir, system.plan, run_id="run-checkpoint")
+    attempt = TraceAttempt("commander:1", "commander-attempt-1", 1)
+    provider_trace = SimpleNamespace(trace_id="trace-checkpoint")
+    span = SimpleNamespace(
+        trace_id="trace-checkpoint",
+        span_id="span-checkpoint",
+        parent_id=None,
+        started_at="2026-07-15T12:00:00Z",
+        ended_at="2026-07-15T12:00:01Z",
+        error=None,
+        span_data=SimpleNamespace(type="agent", name="IncidentCommander"),
+    )
+
+    with session:
+        with session.bind_attempt(attempt, agent="IncidentCommander"):
+            router.on_trace_start(provider_trace)
+            router.on_span_start(span)
+            router.on_span_end(span)
+            router.on_trace_end(provider_trace)
+            session.record_result(
+                SimpleNamespace(raw_responses=[]),
+                agent="IncidentCommander",
+                attempt=attempt,
+            )
+        first = session.checkpoint()
+        assert isinstance(first, TraceClosureCheckpoint)
+        assert first.closure.complete
+        assert first.trace == session.normalized_trace()
+        assert first.closure.frontier == TraceFrontier.from_trace(first.trace)
+        with pytest.raises(RuntimeError, match="has not been closed"):
+            _ = session.closure_evidence
+
+        session.record_terminal_attempt(
+            agent="IncidentCommander",
+            attempt=attempt,
+            outcome="succeeded",
+        )
+        second = session.checkpoint()
+        assert second.closure.complete
+        assert second.closure.frontier.event_count == first.closure.frontier.event_count + 1
+        assert second.closure.frontier.prefix_digest != first.closure.frontier.prefix_digest
+        with pytest.raises(TraceClosureError, match="frontier"):
+            validate_trace_closure(second.trace, first.closure)
+
+    assert session.closure_evidence == second.closure
+
+
+def test_openai_session_resumes_validated_closure_and_retry_chain() -> None:
+    project = ROOT / "examples" / "incident-command"
+    artifacts = compile_project(project)
+    system = materialize(project, "openai", "test")
+    router = OpenAINormalizedTraceRouter()
+    first = router.open_session(artifacts.ir, system.plan, run_id="run-resumed")
+    original = TraceAttempt("commander:1", "commander-attempt-1", 1)
+
+    with first:
+        with first.bind_attempt(original, agent="IncidentCommander"):
+            first_trace = SimpleNamespace(trace_id="trace-original")
+            first_span = SimpleNamespace(
+                trace_id="trace-original",
+                span_id="span-original",
+                parent_id=None,
+                started_at="2026-07-15T12:00:00Z",
+                ended_at="2026-07-15T12:00:01Z",
+                error=None,
+                span_data=SimpleNamespace(type="agent", name="IncidentCommander"),
+            )
+            router.on_trace_start(first_trace)
+            router.on_span_start(first_span)
+            router.on_span_end(first_span)
+            router.on_trace_end(first_trace)
+            first.record_result(
+                SimpleNamespace(raw_responses=[]),
+                agent="IncidentCommander",
+                attempt=original,
+            )
+        first.attest_channels(("approval",), evidence_refs=("host:approval-log",))
+
+    prior_trace = first.normalized_trace()
+    prior_closure = first.closure_evidence
+    with pytest.raises(ValueError, match="supplied together"):
+        router.open_session(
+            artifacts.ir,
+            system.plan,
+            run_id="run-resumed",
+            prior_trace=prior_trace,
+        )
+    with pytest.raises(ValueError, match="session context"):
+        router.open_session(
+            artifacts.ir,
+            system.plan,
+            run_id="run-resumed",
+            thread_id="different-thread",
+            prior_trace=prior_trace,
+            prior_closure=prior_closure,
+        )
+    reconciled = router.open_session(
+        artifacts.ir,
+        system.plan,
+        run_id="run-resumed",
+        prior_trace=prior_trace,
+        prior_closure=prior_closure,
+    )
+    with reconciled:
+        with pytest.raises(ValueError, match="belongs to"):
+            reconciled.record_terminal_attempt(
+                agent="MetricsAnalyst",
+                attempt=original,
+                outcome="succeeded",
+            )
+        reconciled.record_terminal_attempt(
+            agent="IncidentCommander",
+            attempt=original,
+            outcome="succeeded",
+        )
+        reconciliation = reconciled.checkpoint()
+        assert reconciliation.closure.complete
+        assert "approval" in reconciliation.closure.channels
+        validate_trace_closure(reconciliation.trace, reconciliation.closure)
+
+    conservative = router.open_session(
+        artifacts.ir,
+        system.plan,
+        run_id="run-resumed",
+        prior_trace=prior_trace,
+        prior_closure=replace(
+            prior_closure,
+            status="incomplete",
+            reason="The prior process did not close every instrumentation path.",
+        ),
+    )
+    with conservative:
+        conservative.record_output_schema_failure(
+            agent="IncidentCommander",
+            attempt=original,
+        )
+    assert conservative.closure_evidence.status == "incomplete"
+
+    resumed = router.open_session(
+        artifacts.ir,
+        system.plan,
+        run_id="run-resumed",
+        prior_trace=prior_trace,
+        prior_closure=prior_closure,
+    )
+    retry = TraceAttempt(
+        "commander:1",
+        "commander-attempt-2",
+        2,
+        retry_of=original.attempt_id,
+    )
+
+    with resumed:
+        assert resumed.checkpoint() == TraceClosureCheckpoint(prior_trace, prior_closure)
+        with pytest.raises(ValueError, match="sealed by prior closure"):
+            resumed.record_result(
+                SimpleNamespace(raw_responses=[]),
+                agent="IncidentCommander",
+                attempt=original,
+            )
+        with pytest.raises(ValueError, match="not present in prior or current"):
+            resumed.record_terminal_attempt(
+                agent="IncidentCommander",
+                attempt=TraceAttempt("other:1", "other-attempt-1", 1),
+                outcome="failed",
+            )
+        with pytest.raises(ValueError, match="sealed by prior closure"):
+            with resumed.bind_attempt(original, agent="IncidentCommander"):
+                pass
+        with resumed.bind_attempt(retry, agent="IncidentCommander"):
+            retry_trace = SimpleNamespace(trace_id="trace-retry")
+            retry_span = SimpleNamespace(
+                trace_id="trace-retry",
+                span_id="span-retry",
+                parent_id=None,
+                started_at="2026-07-15T12:00:02Z",
+                ended_at="2026-07-15T12:00:03Z",
+                error=None,
+                span_data=SimpleNamespace(type="agent", name="IncidentCommander"),
+            )
+            router.on_trace_start(retry_trace)
+            router.on_span_start(retry_span)
+            router.on_span_end(retry_span)
+            router.on_trace_end(retry_trace)
+            resumed.record_result(
+                SimpleNamespace(raw_responses=[]),
+                agent="IncidentCommander",
+                attempt=retry,
+            )
+        resumed.record_terminal_attempt(
+            agent="IncidentCommander",
+            attempt=retry,
+            outcome="succeeded",
+        )
+
+    closure = resumed.closure_evidence
+    trace = resumed.normalized_trace()
+    assert closure.complete
+    assert [item.attempt for item in closure.attempts] == [original, retry]
+    assert "approval" not in closure.channels
+    assert closure.frontier == TraceFrontier.from_trace(trace)
+    validate_trace_closure(trace, closure)
+
+
+def test_openai_session_close_releases_unended_provider_trace() -> None:
+    project = ROOT / "examples" / "incident-command"
+    artifacts = compile_project(project)
+    system = materialize(project, "openai", "test")
+    router = OpenAINormalizedTraceRouter()
+    session = router.open_session(artifacts.ir, system.plan, run_id="run-abandoned")
+    attempt = TraceAttempt("commander:1", "commander-attempt-1", 1)
+
+    with session:
+        with session.bind_attempt(attempt, agent="IncidentCommander"):
+            router.on_trace_start(SimpleNamespace(trace_id="trace-never-ended"))
+            session.record_result(
+                SimpleNamespace(raw_responses=[]),
+                agent="IncidentCommander",
+                attempt=attempt,
+            )
+        assert router.active_trace_count == 1
+
+    assert session.closure_evidence.status == "incomplete"
+    assert router.active_trace_count == 0
+
+    unbound = router.open_session(artifacts.ir, system.plan, run_id="run-unbound")
+    with unbound:
+        router.on_trace_start(SimpleNamespace(trace_id="trace-without-attempt"))
+    assert unbound.closure_evidence.status == "incomplete"
+    assert "without attempt identity" in unbound.closure_evidence.reason
     assert router.active_trace_count == 0
 
 
@@ -1167,6 +1410,7 @@ def test_trace_completeness_returns_complete_with_expected_evidence() -> None:
         context=trace.events[0].context,
         status="complete",
         reason="The test fixture covers the complete run.",
+        frontier=TraceFrontier.from_trace(trace),
         channels=("agent", "approval"),
         attempts=(
             TraceAttemptClosure(
@@ -1205,6 +1449,31 @@ def test_trace_completeness_marks_missing_evidence_unverified() -> None:
     assert "not observed" in result.reason
 
 
+def test_trace_closure_manifest_rejects_the_pre_frontier_schema() -> None:
+    assert TRACE_CLOSURE_MANIFEST_VERSION == "2"
+
+    with pytest.raises(ValueError, match="Unsupported trace-closure manifest version `1`"):
+        TraceClosureManifest.from_dict({"closures": [], "version": "1"})
+
+
+@pytest.mark.parametrize(
+    ("event_count", "prefix_digest", "error"),
+    [
+        (True, f"sha256:{'a' * 64}", TypeError),
+        (-1, f"sha256:{'a' * 64}", ValueError),
+        (0, f"sha256:{'A' * 64}", ValueError),
+        (0, "sha256:short", ValueError),
+    ],
+)
+def test_trace_frontier_requires_canonical_identity(
+    event_count: int,
+    prefix_digest: str,
+    error: type[Exception],
+) -> None:
+    with pytest.raises(error):
+        TraceFrontier(event_count, prefix_digest)
+
+
 def test_trace_closure_rejects_an_omitted_observed_attempt() -> None:
     first = TraceAttempt("run:1", "attempt-1", 1)
     second = TraceAttempt("run:2", "attempt-2", 1)
@@ -1218,6 +1487,7 @@ def test_trace_closure_rejects_an_omitted_observed_attempt() -> None:
         trace.events[0].context,
         "complete",
         "The caller incorrectly claims complete coverage.",
+        TraceFrontier.from_trace(trace),
         ("agent",),
         (
             TraceAttemptClosure(

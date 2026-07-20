@@ -18,7 +18,12 @@ from contract4agents.assurance import (
 from contract4agents.cli import main
 from contract4agents.eval_campaigns import CampaignConfig, FileEvalProvider, run_campaign
 from contract4agents.ir import semantic_id
-from contract4agents.tracing import NormalizedTrace, TraceClosureManifest, write_trace_jsonl
+from contract4agents.tracing import (
+    NormalizedTrace,
+    TraceClosureManifest,
+    TraceFrontier,
+    write_trace_jsonl,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 EXAMPLE = ROOT / "examples" / "incident-command"
@@ -254,7 +259,11 @@ def test_cli_assure_assesses_versioned_run_spec_evidence(tmp_path: Path) -> None
     provenance_path = tmp_path / "provenance.json"
     output_dir = tmp_path / "assurance"
     write_trace_jsonl(trace_path, assurance_trace)
-    closure_path.write_text(TraceClosureManifest((trial.trace_closure,)).to_json())
+    closure_path.write_text(
+        TraceClosureManifest(
+            (replace(trial.trace_closure, frontier=TraceFrontier.from_trace(assurance_trace)),)
+        ).to_json()
+    )
     event_ids = {
         event.semantic.agent_id.parts[-1]: event.event_id
         for event in assurance_trace.events

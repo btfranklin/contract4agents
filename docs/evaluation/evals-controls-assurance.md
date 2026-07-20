@@ -141,6 +141,12 @@ derived values, and declared assertions. It does not execute stages or make
 retry and recovery decisions. A passing control result is not a passing
 run-spec result, and the two result types remain distinct.
 
+Trace closure is also distinct from host retry semantics. Closure establishes
+which instrumentation paths were captured at one exact trace frontier; an
+`attempt.selected` event establishes which attempt the host chose as terminal.
+A fully captured retry chain can therefore have complete closure while output
+assurance remains unverified because no terminal attempt was selected.
+
 ## Assurance Bundles
 
 An assurance bundle is a deterministic evidence package containing:

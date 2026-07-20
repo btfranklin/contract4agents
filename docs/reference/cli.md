@@ -147,7 +147,8 @@ Options:
 - `--bindings PATH`: optional binding override.
 - `--trace PATH`: required normalized trace JSONL.
 - `--trace-closure PATH`: optional versioned `TraceClosureManifest` JSON. It is
-  required for negative, upper-bound, and other absence-dependent passes.
+  required for negative, upper-bound, and other absence-dependent passes. The
+  current v2 manifest must match the trace's exact ordered event frontier.
 - `--run-id ID`: optional run selection.
 
 Every control result is printed. Violated or unverified controls produce a
@@ -181,7 +182,7 @@ Options:
 - `--bindings PATH`: optional binding override.
 - `--trace PATH`: optional normalized trace.
 - `--trace-closure PATH`: optional versioned closure manifest covering every
-  trace run.
+  trace run at its exact ordered event frontier.
 - `--run-spec-evidence PATH`: optional versioned raw assessment manifest with
   one explicit `RunSpecSelection` per run and `RunSpecEvidence` for every
   non-null selection.
