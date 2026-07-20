@@ -270,6 +270,13 @@ advancing in-memory state. `RecordingNormalizedTraceSink` and
 do not coordinate multiple processes or transact trace evidence with host
 workflow state; those remain host responsibilities.
 
+A normal return from `NormalizedTraceSink.emit()` acknowledges one accepted
+event. If it raises, trace sessions propagate the exception without advancing
+their accepted event frontier. Multi-event normalization is prefix-atomic: all
+events acknowledged before the failure remain accepted, while the failed event
+and the remaining suffix are not committed by the session. Retry, recovery,
+and workflow-state policy remain host responsibilities.
+
 Before assurance or eval scoring, Contract4Agents automatically calls
 `validate_trace_conformance(ir, plan, trace)`. It rejects digest mismatches,
 explicit undeclared-capability evidence, tool events without complete semantic

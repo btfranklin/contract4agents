@@ -12,10 +12,10 @@ from contract4agents.tracing._models import NormalizedTrace, TraceEvent, TraceRu
 
 @runtime_checkable
 class NormalizedTraceSink(Protocol):
-    """A destination that accepts one validated normalized trace event."""
+    """A destination that acknowledges one validated normalized trace event."""
 
     def emit(self, event: TraceEvent) -> None:
-        """Accept one normalized trace event."""
+        """Acknowledge one event on return, or raise without acknowledging it."""
 
 
 class NoOpNormalizedTraceSink:

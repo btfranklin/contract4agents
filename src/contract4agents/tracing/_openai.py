@@ -105,7 +105,14 @@ class OpenAINormalizedTraceRouter:
             if existing is not None and existing is not session:
                 raise ValueError(f"OpenAI trace `{trace_id}` is already owned by another session")
             self._trace_sessions[trace_id] = session
-        if not session._on_trace_start(trace_id):
+        try:
+            accepted = session._on_trace_start(trace_id)
+        except BaseException:
+            with self._lock:
+                if self._trace_sessions.get(trace_id) is session:
+                    self._trace_sessions.pop(trace_id, None)
+            raise
+        if not accepted:
             with self._lock:
                 if self._trace_sessions.get(trace_id) is session:
                     self._trace_sessions.pop(trace_id, None)
@@ -253,7 +260,6 @@ class OpenAINormalizedTraceSession:
                 return False
             attempt = self._current_attempt()
             if attempt is None:
-                self._unbound_trace_ids.add(trace_id)
                 event = TraceEvent(
                     context=self.context,
                     event_id=f"openai:trace:{trace_id}:unbound",
@@ -267,9 +273,8 @@ class OpenAINormalizedTraceSession:
                     provenance={"source": "openai-agents-sdk-tracing-router"},
                     redaction=RedactionMetadata(),
                 )
-                self.events.append(event)
-                if self.sink is not None:
-                    self.sink.emit(event)
+                self._accept_event(event)
+                self._unbound_trace_ids.add(trace_id)
                 return True
             state = self._attempts[attempt.attempt_id]
             state.provider_trace_ids.add(trace_id)
@@ -294,18 +299,22 @@ class OpenAINormalizedTraceSession:
                 return
             span_id = text_attr(span, "span_id")
             parent_id = optional_text_attr(span, "parent_id")
-            self._span_attempt[span_id] = attempt
             event_type, semantic = self._span_mapper.classify(span, completed=False)
+            try:
+                self._record(
+                    span,
+                    event_id=f"openai:{span_id}:started",
+                    parent_event_id=f"openai:{parent_id}:started" if parent_id else None,
+                    event_type=event_type,
+                    semantic=semantic,
+                    timestamp=timestamp(getattr(span, "started_at", None)),
+                    attempt=attempt,
+                )
+            except BaseException:
+                self._active_trace_attempts.pop(trace_id, None)
+                raise
+            self._span_attempt[span_id] = attempt
             self._span_mapper.register(span_id, parent_id, semantic)
-            self._record(
-                span,
-                event_id=f"openai:{span_id}:started",
-                parent_event_id=f"openai:{parent_id}:started" if parent_id else None,
-                event_type=event_type,
-                semantic=semantic,
-                timestamp=timestamp(getattr(span, "started_at", None)),
-                attempt=attempt,
-            )
 
     def _on_span_end(self, span: object) -> None:
         with self._lock:
@@ -315,38 +324,44 @@ class OpenAINormalizedTraceSession:
             if trace_id not in self._active_trace_attempts:
                 return
             span_id = text_attr(span, "span_id")
+            attempt = self._span_attempt.get(span_id)
+            if attempt is None:
+                return
             start_semantic = self._span_mapper.semantic_for(span_id)
             event_type, semantic = self._span_mapper.classify(span, completed=True)
             semantic = start_semantic or semantic
             event_timestamp = timestamp(getattr(span, "ended_at", None))
             error = getattr(span, "error", None)
-            attempt = self._span_attempt.get(span_id)
             if error is not None:
                 event_type = f"{event_type.rsplit('.', 1)[0]}.failed"
-            if event_type == "agent.completed" and error is None:
-                accepted_id = f"openai:{span_id}:output-accepted"
+            try:
+                if event_type == "agent.completed" and error is None:
+                    accepted_id = f"openai:{span_id}:output-accepted"
+                    self._record(
+                        span,
+                        event_id=accepted_id,
+                        parent_event_id=f"openai:{span_id}:started",
+                        event_type="output.accepted",
+                        semantic=semantic,
+                        timestamp=event_timestamp,
+                        attempt=attempt,
+                    )
+                    parent = accepted_id
+                else:
+                    parent = f"openai:{span_id}:started"
                 self._record(
                     span,
-                    event_id=accepted_id,
-                    parent_event_id=f"openai:{span_id}:started",
-                    event_type="output.accepted",
+                    event_id=f"openai:{span_id}:completed",
+                    parent_event_id=parent,
+                    event_type=event_type,
                     semantic=semantic,
                     timestamp=event_timestamp,
+                    error=error is not None,
                     attempt=attempt,
                 )
-                parent = accepted_id
-            else:
-                parent = f"openai:{span_id}:started"
-            self._record(
-                span,
-                event_id=f"openai:{span_id}:completed",
-                parent_event_id=parent,
-                event_type=event_type,
-                semantic=semantic,
-                timestamp=event_timestamp,
-                error=error is not None,
-                attempt=attempt,
-            )
+            except BaseException:
+                self._active_trace_attempts.pop(trace_id, None)
+                raise
 
     def normalized_trace(self) -> NormalizedTrace:
         with self._lock:
@@ -360,9 +375,12 @@ class OpenAINormalizedTraceSession:
         with self._lock:
             if self._closed:
                 raise RuntimeError("A closed OpenAI trace session cannot accept evidence")
-            self.events.append(event)
-            if self.sink is not None:
-                self.sink.emit(event)
+            self._accept_event(event)
+
+    def _accept_event(self, event: TraceEvent) -> None:
+        if self.sink is not None:
+            self.sink.emit(event)
+        self.events.append(event)
 
     def normalize_response_events(
         self,
@@ -508,9 +526,7 @@ class OpenAINormalizedTraceSession:
                         provenance={"source": "contract4agents-openai-capture"},
                         redaction=RedactionMetadata(),
                     )
-                    self.events.append(event)
-                    if self.sink is not None:
-                        self.sink.emit(event)
+                    self._accept_event(event)
                 closure = self._build_closure()
                 trace = NormalizedTrace((*self._prior_events, *self.events))
                 self._closed_snapshot = TraceCaptureSnapshot(trace, closure)
@@ -662,9 +678,7 @@ class OpenAINormalizedTraceSession:
             provenance={"source": "openai-agents-sdk-tracing-processor"},
             redaction=RedactionMetadata(),
         )
-        self.events.append(event)
-        if self.sink is not None:
-            self.sink.emit(event)
+        self._accept_event(event)
 
     def _require_attempt(self, attempt: TraceAttempt | None) -> TraceAttempt:
         selected = attempt or self._current_attempt()

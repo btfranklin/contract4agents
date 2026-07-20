@@ -11,6 +11,7 @@ from contract4agents import compile_project, materialize
 from contract4agents.adapters._openai_names import openai_tool_name
 from contract4agents.ir import SemanticId
 from contract4agents.tracing import (
+    AtomicTraceFileSink,
     OpenAINormalizedTraceRouter,
     ProviderCorrelation,
     RedactionMetadata,
@@ -28,6 +29,19 @@ from contract4agents.tracing import (
 CONTRACT_DIGEST = f"sha256:{'a' * 64}"
 PLAN_DIGEST = f"sha256:{'b' * 64}"
 ROOT = Path(__file__).resolve().parents[2]
+
+
+class _FailOnEmissionSink:
+    def __init__(self, position: int) -> None:
+        self.position = position
+        self.calls = 0
+        self.events: list[TraceEvent] = []
+
+    def emit(self, event: TraceEvent) -> None:
+        self.calls += 1
+        if self.calls == self.position:
+            raise OSError(f"simulated emission {self.position} failure")
+        self.events.append(event)
 
 
 def _context(
@@ -272,6 +286,194 @@ def test_openai_session_snapshot_binds_frontier_without_requiring_terminal_selec
             validate_trace_closure(second.trace, first.closure)
 
     assert session.closed_snapshot.closure == second.closure
+
+
+def test_openai_session_retains_atomic_sink_frontier_when_emit_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = ROOT / "examples" / "incident-command"
+    artifacts = compile_project(project)
+    system = materialize(project, "openai", "test")
+    context = TraceRunContext(
+        "run-sink-failure",
+        "run-sink-failure",
+        system.plan.contract_digest,
+        system.plan.plan_digest,
+    )
+    sink = AtomicTraceFileSink(tmp_path / "trace.jsonl", context)
+    session = OpenAINormalizedTraceRouter().open_session(
+        artifacts.ir,
+        system.plan,
+        run_id=context.run_id,
+        sink=sink,
+    )
+    first = replace(_event("evt-first", "run.started"), context=context)
+    rejected = replace(_event("evt-rejected", "run.completed"), context=context)
+    session.emit(first)
+
+    def fail_replace(source: object, destination: object) -> None:
+        del source, destination
+        raise OSError("simulated replacement failure")
+
+    monkeypatch.setattr("contract4agents.tracing._io.os.replace", fail_replace)
+    with pytest.raises(OSError, match="simulated replacement failure"):
+        session.emit(rejected)
+
+    snapshot = session.snapshot()
+    assert sink.events == (first,)
+    assert session.normalized_trace().events == (first,)
+    assert snapshot.trace.events == sink.events
+    assert snapshot.closure.frontier == TraceFrontier.from_trace(sink.normalized_trace())
+    assert session.close() == snapshot
+
+
+def test_openai_response_normalization_retains_acknowledged_prefix_on_sink_failure() -> None:
+    project = ROOT / "examples" / "market-research-brief"
+    artifacts = compile_project(project)
+    system = materialize(project, "openai", "test")
+    sink = _FailOnEmissionSink(2)
+    session = OpenAINormalizedTraceRouter().open_session(
+        artifacts.ir,
+        system.plan,
+        run_id="run-response-sink-failure",
+        sink=sink,
+    )
+    attempt = TraceAttempt("scout:1", "scout-attempt-1", 1)
+
+    with pytest.raises(OSError, match="simulated emission 2 failure"):
+        session.normalize_response_events(
+            [
+                SimpleNamespace(
+                    response_id="resp_sink_failure",
+                    output=[{"id": "ws_sink_failure", "type": "web_search_call"}],
+                )
+            ],
+            agent="CurrentTruthScout",
+            attempt=attempt,
+        )
+
+    snapshot = session.snapshot()
+    assert [event.event_type for event in sink.events] == ["provider.response.normalized"]
+    assert session.normalized_trace().events == tuple(sink.events)
+    assert snapshot.closure.frontier == TraceFrontier.from_trace(session.normalized_trace())
+    assert snapshot.closure.attempts[0].response_status == "incomplete"
+
+
+def test_openai_span_failure_does_not_commit_mapping_or_orphaned_end_events() -> None:
+    project = ROOT / "examples" / "incident-command"
+    artifacts = compile_project(project)
+    system = materialize(project, "openai", "test")
+    sink = _FailOnEmissionSink(1)
+    router = OpenAINormalizedTraceRouter()
+    session = router.open_session(
+        artifacts.ir,
+        system.plan,
+        run_id="run-span-sink-failure",
+        sink=sink,
+    )
+    attempt = TraceAttempt("commander:1", "commander-attempt-1", 1)
+    provider_trace = SimpleNamespace(trace_id="trace-sink-failure")
+    span = SimpleNamespace(
+        trace_id="trace-sink-failure",
+        span_id="span-sink-failure",
+        parent_id=None,
+        started_at="2026-07-20T12:00:00Z",
+        ended_at="2026-07-20T12:00:01Z",
+        error=None,
+        span_data=SimpleNamespace(type="agent", name="IncidentCommander"),
+    )
+
+    with session:
+        with session.bind_attempt(attempt, agent="IncidentCommander"):
+            router.on_trace_start(provider_trace)
+            with pytest.raises(OSError, match="simulated emission 1 failure"):
+                router.on_span_start(span)
+            router.on_span_end(span)
+            router.on_trace_end(provider_trace)
+
+    assert [event.event_type for event in sink.events] == ["instrumentation.empty"]
+    assert session.normalized_trace().events == tuple(sink.events)
+    assert router.active_trace_count == 0
+
+
+def test_openai_span_end_failure_leaves_lifecycle_incomplete_at_accepted_prefix() -> None:
+    project = ROOT / "examples" / "incident-command"
+    artifacts = compile_project(project)
+    system = materialize(project, "openai", "test")
+    sink = _FailOnEmissionSink(3)
+    router = OpenAINormalizedTraceRouter()
+    session = router.open_session(
+        artifacts.ir,
+        system.plan,
+        run_id="run-span-end-sink-failure",
+        sink=sink,
+    )
+    attempt = TraceAttempt("commander:1", "commander-attempt-1", 1)
+    provider_trace = SimpleNamespace(trace_id="trace-end-sink-failure")
+    span = SimpleNamespace(
+        trace_id="trace-end-sink-failure",
+        span_id="span-end-sink-failure",
+        parent_id=None,
+        started_at="2026-07-20T12:00:00Z",
+        ended_at="2026-07-20T12:00:01Z",
+        error=None,
+        span_data=SimpleNamespace(type="agent", name="IncidentCommander"),
+    )
+
+    with session:
+        with session.bind_attempt(attempt, agent="IncidentCommander"):
+            router.on_trace_start(provider_trace)
+            router.on_span_start(span)
+            with pytest.raises(OSError, match="simulated emission 3 failure"):
+                router.on_span_end(span)
+            router.on_trace_end(provider_trace)
+
+    assert [event.event_type for event in sink.events] == [
+        "agent.started",
+        "output.accepted",
+    ]
+    assert session.normalized_trace().events == tuple(sink.events)
+    assert session.closed_snapshot.closure.status == "incomplete"
+    assert router.active_trace_count == 0
+
+
+def test_openai_trace_start_and_close_remain_retryable_after_sink_failure() -> None:
+    project = ROOT / "examples" / "incident-command"
+    artifacts = compile_project(project)
+    system = materialize(project, "openai", "test")
+    trace_sink = _FailOnEmissionSink(1)
+    router = OpenAINormalizedTraceRouter()
+    traced = router.open_session(
+        artifacts.ir,
+        system.plan,
+        run_id="run-trace-start-sink-failure",
+        sink=trace_sink,
+    )
+
+    with traced:
+        with pytest.raises(OSError, match="simulated emission 1 failure"):
+            router.on_trace_start(SimpleNamespace(trace_id="trace-unbound-failure"))
+        assert router.active_trace_count == 0
+
+    assert [event.event_type for event in traced.normalized_trace().events] == ["instrumentation.empty"]
+
+    close_sink = _FailOnEmissionSink(1)
+    closing = router.open_session(
+        artifacts.ir,
+        system.plan,
+        run_id="run-close-sink-failure",
+        sink=close_sink,
+    )
+    with pytest.raises(OSError, match="simulated emission 1 failure"):
+        closing.close()
+    assert closing.events == []
+    with pytest.raises(RuntimeError, match="has not been closed"):
+        _ = closing.closed_snapshot
+
+    recovered = closing.close()
+    assert recovered.trace.events == tuple(close_sink.events)
+    assert [event.event_type for event in recovered.trace.events] == ["instrumentation.empty"]
 
 
 def test_openai_session_resumes_validated_closure_and_retry_chain() -> None:
