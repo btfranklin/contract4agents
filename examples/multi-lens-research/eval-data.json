@@ -1,5 +1,5 @@
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "cases": {
     "eval:ResearchDirector:staged_rollout_research": {
       "inputs": {"hidden_truth": {"likely_conclusion": "Use staged rollout gates with representative regression cases."}},
@@ -39,6 +39,12 @@
               "provider": "deterministic-example",
               "version": "1"
             }
+          },
+          "closure": {
+            "status": "complete",
+            "reason": "The deterministic fixture enumerates every instrumented execution path.",
+            "channels": ["agent", "approval", "composition", "datasource", "guardrail", "handoff", "output", "provider_response", "tool"],
+            "evidence_refs": ["fixture:multi-lens-research:trial-1:closure"]
           },
           "metrics": {"latency_ms": 38.0, "cost_usd": 0.0, "input_tokens": 0, "output_tokens": 0}
         }

@@ -16,7 +16,7 @@ from contract4agents.assurance._models import AssessorIdentity, AssuranceStatus
 from contract4agents.compiler import build_artifacts
 from contract4agents.expressions._grammar import parse_contract_expression
 from contract4agents.expressions._model import ConditionalExpression, ExpressionError, ParsedExpression
-from contract4agents.expressions._trace_ops import TRACE_OPS, TraceTargetKind
+from contract4agents.expressions._trace_evaluation import assess_trace_expression
 from contract4agents.ir import (
     CanonicalIR,
     FrozenJsonValue,
@@ -31,6 +31,8 @@ from contract4agents.planning import MaterializationPlan
 from contract4agents.run_specs import derived_value_collection_member_type
 from contract4agents.tracing import (
     NormalizedTrace,
+    TraceClosureEvidence,
+    TraceCompletenessResult,
     TraceEvent,
     assess_trace_completeness,
     validate_trace_conformance,
@@ -85,6 +87,23 @@ class RunSpecStageObservation:
             "stage": self.stage,
         }
 
+    @classmethod
+    def from_dict(cls, value: object) -> RunSpecStageObservation:
+        payload = _object("run-spec stage observation", value)
+        _keys(
+            "run-spec stage observation",
+            payload,
+            {"agent_id", "evidence_event_ids", "evidence_refs", "observation_id", "output", "stage"},
+        )
+        return cls(
+            observation_id=_string("observation_id", payload["observation_id"]),
+            stage=_string("stage", payload["stage"]),
+            agent_id=SemanticId.parse(_string("agent_id", payload["agent_id"])),
+            output=payload["output"],
+            evidence_event_ids=_strings("evidence_event_ids", payload["evidence_event_ids"]),
+            evidence_refs=_strings("evidence_refs", payload["evidence_refs"]),
+        )
+
 
 @dataclass(frozen=True)
 class RunSpecEvidence:
@@ -126,6 +145,26 @@ class RunSpecEvidence:
             "status": self.status,
         }
 
+    @classmethod
+    def from_dict(cls, value: object) -> RunSpecEvidence:
+        payload = _object("run-spec evidence", value)
+        _keys(
+            "run-spec evidence",
+            payload,
+            {"derived_values", "evidence_refs", "reason", "stage_observations", "status"},
+        )
+        derived = _object("derived_values", payload["derived_values"])
+        return cls(
+            status=cast(RunSpecEvidenceStatus, _string("status", payload["status"])),
+            reason=_string("reason", payload["reason"]),
+            stage_observations=tuple(
+                RunSpecStageObservation.from_dict(item)
+                for item in _array("stage_observations", payload["stage_observations"])
+            ),
+            derived_values=FrozenMap((name, freeze_json(item)) for name, item in derived.items()),
+            evidence_refs=_strings("evidence_refs", payload["evidence_refs"]),
+        )
+
 
 @dataclass(frozen=True)
 class RunSpecSelection:
@@ -156,6 +195,20 @@ class RunSpecSelection:
             "run_id": self.run_id,
             "run_spec_id": self.run_spec_id,
         }
+
+    @classmethod
+    def from_dict(cls, value: object) -> RunSpecSelection:
+        payload = _object("run-spec selection", value)
+        _keys("run-spec selection", payload, {"evidence_refs", "reason", "run_id", "run_spec_id"})
+        run_spec_id = payload["run_spec_id"]
+        if run_spec_id is not None and not isinstance(run_spec_id, str):
+            raise TypeError("run_spec_id must be a string or null")
+        return cls(
+            run_id=_string("run_id", payload["run_id"]),
+            run_spec_id=run_spec_id,
+            reason=_string("reason", payload["reason"]),
+            evidence_refs=_strings("evidence_refs", payload["evidence_refs"]),
+        )
 
 
 @dataclass(frozen=True)
@@ -267,6 +320,7 @@ def assess_run_spec(
     run_spec: str | SemanticId,
     evidence: RunSpecEvidence,
     *,
+    closure: TraceClosureEvidence | None = None,
     run_id: str | None = None,
 ) -> RunSpecResult:
     """Assess one declared run spec without executing or controlling its workflow."""
@@ -277,6 +331,7 @@ def assess_run_spec(
     trace_completeness = assess_trace_completeness(
         selected,
         plan.expected_telemetry,
+        closure=closure,
         run_id=selected.run_ids[0],
     )
     observations_by_stage: dict[str, tuple[RunSpecStageObservation, ...]] = {
@@ -297,7 +352,7 @@ def assess_run_spec(
             selected,
             evidence,
             observations_by_stage,
-            trace_complete=trace_completeness.complete,
+            trace_completeness=trace_completeness,
         )
         for assertion in declaration.assertions
     )
@@ -510,7 +565,7 @@ def _assess_assertion(
     evidence: RunSpecEvidence,
     observations_by_stage: Mapping[str, tuple[RunSpecStageObservation, ...]],
     *,
-    trace_complete: bool,
+    trace_completeness: TraceCompletenessResult,
 ) -> RunSpecAssertionResult:
     if not evidence.complete:
         return RunSpecAssertionResult(
@@ -523,40 +578,32 @@ def _assess_assertion(
         parsed_items = parse_contract_expression(assertion)
     except ExpressionError as exc:
         return RunSpecAssertionResult(assertion, "unverified", str(exc))
-    if not trace_complete and any(_requires_trace(item) for item in parsed_items):
-        return RunSpecAssertionResult(
-            assertion,
-            "unverified",
-            "Normalized-trace completeness is insufficient to assess the trace assertion.",
-            evidence_refs=evidence.evidence_refs,
-        )
     all_events: dict[str, TraceEvent] = {}
+    statuses: list[AssuranceStatus] = []
+    reasons: list[str] = []
     for item in parsed_items:
-        passed, reason, events = _evaluate_expression(item, ir, trace, evidence, observations_by_stage)
+        status, reason, events = _evaluate_expression(
+            item,
+            ir,
+            trace,
+            evidence,
+            observations_by_stage,
+            trace_completeness,
+        )
+        statuses.append(status)
+        reasons.append(reason)
         all_events.update((event.event_id, event) for event in events)
-        if not passed:
-            ordered = tuple(all_events[name] for name in sorted(all_events))
-            return RunSpecAssertionResult(
-                assertion,
-                "violated",
-                reason,
-                tuple(event.event_id for event in ordered),
-                tuple(reference for event in ordered for reference in event.evidence_refs),
-            )
     ordered = tuple(all_events[name] for name in sorted(all_events))
+    status = _combined_status(statuses)
     return RunSpecAssertionResult(
         assertion,
-        "passed",
-        "The complete evidence satisfies the assertion.",
+        status,
+        "The complete evidence satisfies the assertion."
+        if status == "passed"
+        else next(reason for result, reason in zip(statuses, reasons, strict=True) if result == status),
         tuple(event.event_id for event in ordered),
         tuple(reference for event in ordered for reference in event.evidence_refs) + evidence.evidence_refs,
     )
-
-
-def _requires_trace(parsed: ParsedExpression | ConditionalExpression) -> bool:
-    if isinstance(parsed, ConditionalExpression):
-        return parsed.condition.kind == "trace" or parsed.expectation.kind == "trace"
-    return parsed.kind == "trace"
 
 
 def _evaluate_expression(
@@ -565,14 +612,31 @@ def _evaluate_expression(
     trace: NormalizedTrace,
     evidence: RunSpecEvidence,
     observations_by_stage: Mapping[str, tuple[RunSpecStageObservation, ...]],
-) -> tuple[bool, str, tuple[TraceEvent, ...]]:
+    completeness: TraceCompletenessResult,
+) -> tuple[AssuranceStatus, str, tuple[TraceEvent, ...]]:
     if isinstance(parsed, ConditionalExpression):
-        condition = _evaluate_parsed(parsed.condition, ir, trace, evidence, observations_by_stage)
-        if not condition[0]:
-            return True, "The assertion condition did not apply.", condition[2]
-        expectation = _evaluate_parsed(parsed.expectation, ir, trace, evidence, observations_by_stage)
+        condition = _evaluate_parsed(
+            parsed.condition,
+            ir,
+            trace,
+            evidence,
+            observations_by_stage,
+            completeness,
+        )
+        if condition[0] == "violated":
+            return "passed", "The assertion condition was proven false and did not apply.", condition[2]
+        if condition[0] == "unverified":
+            return "unverified", "The assertion condition could not be established.", condition[2]
+        expectation = _evaluate_parsed(
+            parsed.expectation,
+            ir,
+            trace,
+            evidence,
+            observations_by_stage,
+            completeness,
+        )
         return expectation[0], expectation[1], condition[2] + expectation[2]
-    return _evaluate_parsed(parsed, ir, trace, evidence, observations_by_stage)
+    return _evaluate_parsed(parsed, ir, trace, evidence, observations_by_stage, completeness)
 
 
 def _evaluate_parsed(
@@ -581,125 +645,29 @@ def _evaluate_parsed(
     trace: NormalizedTrace,
     evidence: RunSpecEvidence,
     observations_by_stage: Mapping[str, tuple[RunSpecStageObservation, ...]],
-) -> tuple[bool, str, tuple[TraceEvent, ...]]:
+    completeness: TraceCompletenessResult,
+) -> tuple[AssuranceStatus, str, tuple[TraceEvent, ...]]:
     if parsed.kind == "trace":
-        return _evaluate_trace(parsed, ir, trace, observations_by_stage)
+        stage_events = {
+            stage: tuple(
+                event_id
+                for observation in observations
+                for event_id in observation.evidence_event_ids
+            )
+            for stage, observations in observations_by_stage.items()
+        }
+        result = assess_trace_expression(
+            parsed,
+            ir=ir,
+            trace=trace,
+            completeness=completeness,
+            stage_event_ids=stage_events,
+        )
+        return result.status, result.reason, result.events
     if parsed.kind == "data_relation":
         passed, reason = _evaluate_data_relation(parsed, evidence.derived_values)
-        return passed, reason, ()
-    return False, f"Unsupported run-spec assertion `{parsed.expression}`.", ()
-
-
-def _evaluate_trace(
-    parsed: ParsedExpression,
-    ir: CanonicalIR,
-    trace: NormalizedTrace,
-    observations_by_stage: Mapping[str, tuple[RunSpecStageObservation, ...]],
-) -> tuple[bool, str, tuple[TraceEvent, ...]]:
-    assert parsed.trace_op is not None
-    op = parsed.trace_op
-    args = parsed.args
-    target_kind = TRACE_OPS[op].target_kind
-    if op == "not_tool_called_by":
-        agent_id = next((item.id for item in ir.agents.values() if item.name == args[0]), None)
-        tool_id = next((item.id for item in ir.capabilities.values() if item.name == args[1]), None)
-        events = tuple(
-            event
-            for event in trace.events
-            if event.event_type == "tool.completed"
-            and event.semantic.agent_id == agent_id
-            and event.semantic.capability_id == tool_id
-        )
-        return (not events, f"Expected `{args[0]}` not to call `{args[1]}`.", events)
-    if op in {"approval_granted", "approval_denied"}:
-        events = _events_for_target(ir, trace, args[0], "approval_tool", observations_by_stage)
-        approval_expected = op == "approval_granted"
-        matching = tuple(
-            event
-            for event in events
-            if event.event_type == "approval.completed" and event.data.get("approved") is approval_expected
-        )
-        return (
-            bool(matching),
-            f"Expected approval {'granted' if approval_expected else 'denied'} for `{args[0]}`.",
-            matching,
-        )
-    if op == "contains":
-        events = tuple(
-            event
-            for event in trace.events
-            if args[0] in json.dumps(event.to_dict(), ensure_ascii=False, sort_keys=True)
-        )
-        return bool(events), f"Expected trace to contain `{args[0]}`.", events
-    event_type = TRACE_OPS[op].event_type
-    if op in {"called_before", "called_after"}:
-        left = _events_for_target(ir, trace, args[0], target_kind, observations_by_stage)
-        right = _events_for_target(ir, trace, args[1], target_kind, observations_by_stage)
-        events = left + right
-        if not left or not right:
-            return False, f"Expected trace to include both `{args[0]}` and `{args[1]}`.", events
-        left_index = min(trace.events.index(event) for event in left)
-        right_index = min(trace.events.index(event) for event in right)
-        passed = left_index < right_index if op == "called_before" else left_index > right_index
-        relation = "before" if op == "called_before" else "after"
-        return passed, f"Expected `{args[0]}` {relation} `{args[1]}`.", events
-    events = _events_for_target(ir, trace, args[0], target_kind, observations_by_stage, event_type=event_type)
-    count = len(events)
-    if op == "not_called":
-        return count == 0, f"Expected trace not to include `{args[0]}`.", events
-    if op == "called_once":
-        return count == 1, f"Expected `{args[0]}` exactly once; found {count}.", events
-    if op == "called_times":
-        expected_count = int(args[1])
-        return count == expected_count, f"Expected `{args[0]}` {expected_count} times; found {count}.", events
-    if op == "max_calls":
-        maximum = int(args[1])
-        return count <= maximum, f"Expected `{args[0]}` at most {maximum} times; found {count}.", events
-    return bool(events), f"Expected trace to include `{args[0]}`.", events
-
-
-def _events_for_target(
-    ir: CanonicalIR,
-    trace: NormalizedTrace,
-    target: str,
-    target_kind: TraceTargetKind,
-    observations_by_stage: Mapping[str, tuple[RunSpecStageObservation, ...]],
-    *,
-    event_type: str | None = None,
-) -> tuple[TraceEvent, ...]:
-    if target in observations_by_stage and target_kind == "any":
-        identifiers = {
-            event_id for observation in observations_by_stage[target] for event_id in observation.evidence_event_ids
-        }
-        return tuple(event for event in trace.events if event.event_id in identifiers)
-    agent_id = next((item.id for item in ir.agents.values() if item.name == target), None)
-    capability_id = next((item.id for item in ir.capabilities.values() if item.name == target), None)
-    if target_kind in {"agent", "any"} and agent_id is not None:
-        selected_type = event_type or "agent.started"
-        return tuple(
-            event for event in trace.events if event.semantic.agent_id == agent_id and event.event_type == selected_type
-        )
-    if target_kind in {"tool", "hosted_tool", "approval_tool", "datasource", "any"} and capability_id is not None:
-        if event_type is not None:
-            types = {event_type}
-        elif target_kind == "approval_tool":
-            types = {"approval.requested", "approval.completed"}
-        elif capability_id.kind == "datasource":
-            types = {"datasource.resolved"}
-        else:
-            types = {"tool.started"}
-        return tuple(
-            event
-            for event in trace.events
-            if event.semantic.capability_id == capability_id and event.event_type in types
-        )
-    if target_kind == "guardrail":
-        return tuple(
-            event
-            for event in trace.events
-            if event.event_type == (event_type or "guardrail.rejected") and event.data.get("guardrail") == target
-        )
-    return ()
+        return ("passed" if passed else "violated"), reason, ()
+    return "unverified", f"Unsupported run-spec assertion `{parsed.expression}`.", ()
 
 
 def _evaluate_data_relation(
@@ -791,6 +759,40 @@ def _references(label: str, values: tuple[str, ...]) -> tuple[str, ...]:
             raise ValueError(f"{label} must be a non-empty string")
         normalized.add(value)
     return tuple(sorted(normalized))
+
+
+def _object(label: str, value: object) -> Mapping[str, object]:
+    if not isinstance(value, Mapping) or not all(isinstance(key, str) for key in value):
+        raise TypeError(f"{label} must be an object with string keys")
+    return cast(Mapping[str, object], value)
+
+
+def _array(label: str, value: object) -> list[object]:
+    if not isinstance(value, list):
+        raise TypeError(f"{label} must be an array")
+    return value
+
+
+def _string(label: str, value: object) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise TypeError(f"{label} must be a non-empty string")
+    return value
+
+
+def _strings(label: str, value: object) -> tuple[str, ...]:
+    return tuple(_string(label, item) for item in _array(label, value))
+
+
+def _keys(label: str, payload: Mapping[str, object], required: set[str]) -> None:
+    missing = sorted(required - set(payload))
+    unknown = sorted(set(payload) - required)
+    if missing or unknown:
+        details = []
+        if missing:
+            details.append(f"missing {', '.join(missing)}")
+        if unknown:
+            details.append(f"unknown {', '.join(unknown)}")
+        raise ValueError(f"Invalid {label} keys: {'; '.join(details)}")
 
 
 def _require_text(label: str, value: str) -> None:

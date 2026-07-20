@@ -206,25 +206,29 @@ Use the supplied Agents SDK tracing processor for runtime correlation:
 
 ```python
 from agents import add_trace_processor
-from contract4agents.tracing import OpenAINormalizedTraceProcessor
+from contract4agents.tracing import OpenAINormalizedTraceRouter, TraceAttempt
 
-processor = OpenAINormalizedTraceProcessor(
+router = OpenAINormalizedTraceRouter()
+add_trace_processor(router)  # once at process startup
+
+session = router.open_session(
     artifacts.ir,
     system.plan,
     run_id=run_id,
     thread_id=thread_id,
 )
-add_trace_processor(processor)
+attempt = TraceAttempt("planner:1", "planner:attempt:1", 1)
+with session:
+    with session.bind_attempt(attempt, agent="Planner"):
+        result = await Runner.run(agent, input=prompt)
+        session.record_result(result, agent="Planner", attempt=attempt)
 
-# Route only this SDK run to this globally registered processor.
-with processor.capture():
-    result = await Runner.run(agent, input=prompt)
-
-trace = processor.normalized_trace()
+trace = session.normalized_trace()
+trace_closure = session.closure_evidence
 ```
 
-The processor maps native agent, function-tool, delegation, and handoff spans
-to stable contract IDs, adds output-validation evidence for successful agent
+The router and session map native agent, function-tool, delegation, and handoff spans
+to stable contract IDs, add output-validation evidence for successful agent
 spans, and preserves provider trace/span correlation. It intentionally does not
 copy raw provider inputs or outputs into normalized payloads.
 
@@ -233,13 +237,11 @@ runner call. The binding annotates evidence but does not catch, retry, or select
 an attempt:
 
 ```python
-from contract4agents.tracing import TraceAttempt
-
 attempt = TraceAttempt("planner:1", "planner:attempt:1", 1)
-with processor.bind_attempt(attempt):
+with session.bind_attempt(attempt, agent="Planner"):
     result = await Runner.run(planner, input=prompt)
 
-processor.normalize_response_events(
+session.normalize_response_events(
     result.raw_responses,
     agent="Planner",
     attempt=attempt,
@@ -247,7 +249,7 @@ processor.normalize_response_events(
 ```
 
 If the runner raises, call
-`processor.normalize_exception_responses(exception, agent=..., attempt=...)`
+`session.normalize_exception_responses(exception, agent=..., attempt=...)`
 before retrying or reraising so provider-hosted call evidence preserved in
 `exception.run_data.raw_responses` is not lost. This helper is deliberately
 duck-typed and does not classify a general Agents SDK exception as an output
@@ -259,15 +261,17 @@ Output controls assess the explicitly selected attempt for each invocation;
 earlier failed attempts remain auditable. Contract4Agents does not decide when
 an attempt is terminal or whether a retry is allowed.
 
-After a run that may use an OpenAI-hosted tool, normalize the SDK model
-responses into the same processor:
+Every successful runner result must close its response path through
+`record_result(...)` or `normalize_response_events(...)`, even when no hosted
+tool was expected:
 
 ```python
-processor.normalize_response_events(
+session.normalize_response_events(
     result.raw_responses,
     agent="CurrentTruthScout",
+    attempt=attempt,
 )
-trace = processor.normalized_trace()
+trace = session.normalized_trace()
 ```
 
 OpenAI provider-hosted call items are matched fail-closed against the reviewed
@@ -280,6 +284,13 @@ or eval scoring. Provider response/request/call correlation and model metadata
 are preserved when available, while provider prompts, actions, and results
 remain outside the normalized payload.
 
+Every inspected response emits a normalization receipt, and every supplied
+response iterable emits a batch receipt, including a zero-response or zero-call
+batch. These receipts let the session distinguish an inspected empty path from
+one the host never submitted. Closing the session produces identity-bound
+`TraceClosureEvidence`; incomplete SDK traces or missing success/exception
+response paths keep closure incomplete or unverified.
+
 Supported hosted-call status is preserved: completed or succeeded calls emit
 `tool.completed`, failed, cancelled, or incomplete calls emit `tool.failed`,
 and other nonterminal statuses emit `tool.started`. Hosted MCP discovery items
@@ -289,6 +300,13 @@ silently discarded.
 Function, custom-tool, computer, shell, and patch calls are dispatched by the
 host or SDK and therefore remain on their existing span or host-evidence paths.
 Messages, reasoning, and other non-call output items are intentionally ignored.
+
+The Agents SDK processor registry is process-global and has no individual
+removal API. Do not register a router per run and do not use
+`set_trace_processors()` to replace other integrations in a long-lived
+service. Register one router at startup and create disposable sessions; ended
+provider traces are removed from the router, so completed sessions are not
+retained by the SDK registry.
 
 ## Offline and Live Validation
 

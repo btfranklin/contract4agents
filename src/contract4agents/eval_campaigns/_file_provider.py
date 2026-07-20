@@ -25,12 +25,17 @@ from contract4agents.tracing import (
     NormalizedTrace,
     ProviderCorrelation,
     RedactionMetadata,
+    TraceAttempt,
+    TraceAttemptClosure,
+    TraceClosureEvidence,
+    TraceClosureStatus,
+    TraceCoverageChannel,
     TraceEvent,
     TraceRunContext,
     TraceSemanticRefs,
 )
 
-EVAL_DATA_VERSION = "1"
+EVAL_DATA_VERSION = "2"
 
 
 @dataclass(frozen=True)
@@ -76,9 +81,21 @@ class FileEvalProvider:
         events = _array("trial events", trial.get("events"))
         if not events:
             raise EvalProviderError(f"Trial `{request.trial_id}` does not contain normalized trace events")
-        trace = _normalized_trace(request, events, self.source_name)
+        trace, attempt_closures = _normalized_trace(request, events, self.source_name)
+        closure_data = _object("trial closure", trial.get("closure"))
+        closure = TraceClosureEvidence(
+            context=trace.events[0].context,
+            status=cast(TraceClosureStatus, _string("closure status", closure_data.get("status"))),
+            reason=_string("closure reason", closure_data.get("reason")),
+            channels=cast(
+                tuple[TraceCoverageChannel, ...],
+                _strings("closure channels", closure_data.get("channels")),
+            ),
+            attempts=attempt_closures,
+            evidence_refs=_strings("closure evidence_refs", closure_data.get("evidence_refs")),
+        )
         metrics = _metrics(_object("trial metrics", trial.get("metrics", {})))
-        return EvalExecution(output, trace, metrics)
+        return EvalExecution(output, trace, closure, metrics)
 
     async def approve(self, request: ApprovalRequest) -> ApprovalDecision | None:
         trial = self._trial(request.case_id, _trial_index(request.trial_id))
@@ -140,11 +157,12 @@ def _normalized_trace(
     request: EvalExecutionRequest,
     values: Sequence[object],
     source_name: str,
-) -> NormalizedTrace:
+) -> tuple[NormalizedTrace, tuple[TraceAttemptClosure, ...]]:
     digest = hashlib.sha256(f"{request.case.id}:{request.trial_index}".encode()).hexdigest()[:12]
     run_id = f"eval-{digest}-{request.trial_index + 1:04d}"
     context = TraceRunContext(run_id, run_id, request.contract_digest, request.plan_digest)
     events: list[TraceEvent] = []
+    attempts: dict[SemanticId, TraceAttempt] = {}
     previous: str | None = None
     for index, value in enumerate(values):
         item = _object("trace event", value)
@@ -164,6 +182,15 @@ def _normalized_trace(
             control_ids=tuple(
                 _semantic_required(control)
                 for control in _array("trace semantic control_ids", semantic_data.get("control_ids", []))
+            ),
+        )
+        agent_id = semantic.agent_id or request.case.agent_id
+        attempt = attempts.setdefault(
+            agent_id,
+            TraceAttempt(
+                invocation_id=f"{request.trial_id}:{agent_id}:invocation",
+                attempt_id=f"{request.trial_id}:{agent_id}:attempt:1",
+                number=1,
             ),
         )
         provider_data = item.get("provider")
@@ -193,7 +220,7 @@ def _normalized_trace(
                 event_type=_string("trace event_type", item.get("event_type")),
                 timestamp=float(timestamp),
                 semantic=semantic,
-                data=_object("trace data", item.get("data", {})),
+                data={**_object("trace data", item.get("data", {})), "attempt": attempt.to_dict()},
                 provider=provider,
                 evidence_refs=evidence_refs,
                 provenance=_object("trace provenance", item.get("provenance", {"source": source_name})),
@@ -201,7 +228,51 @@ def _normalized_trace(
             )
         )
         previous = event_id
-    return NormalizedTrace(tuple(events))
+    for selection_index, (agent_id, attempt) in enumerate(
+        sorted(attempts.items(), key=lambda item: str(item[0])),
+        start=1,
+    ):
+        attempt_events = tuple(
+            event
+            for event in events
+            if TraceAttempt.from_dict(event.data["attempt"]) == attempt
+        )
+        outcome = (
+            "failed"
+            if any(event.event_type in {"agent.failed", "output.schema_failed"} for event in attempt_events)
+            else "succeeded"
+        )
+        selection_id = f"contract4agents:file:{attempt.attempt_id}:selected"
+        events.append(
+            TraceEvent(
+                context=context,
+                event_id=selection_id,
+                parent_event_id=None,
+                event_type="attempt.selected",
+                timestamp=float(len(values) + selection_index),
+                semantic=TraceSemanticRefs(agent_id=agent_id),
+                data={"attempt": attempt.to_dict(), "outcome": outcome},
+                provider=ProviderCorrelation("file", run_id=run_id, span_id=selection_id),
+                evidence_refs=(
+                    f"file:{request.case.id}:{request.trial_index + 1}:selection:{agent_id}",
+                ),
+                provenance={"source": source_name},
+                redaction=RedactionMetadata(),
+            )
+        )
+    trace = NormalizedTrace(tuple(events))
+    attempt_closures = tuple(
+        TraceAttemptClosure(
+            attempt=attempt,
+            agent_id=agent_id,
+            lifecycle_status="complete",
+            response_status="complete",
+            evidence_refs=(f"file:{request.case.id}:{request.trial_index + 1}:attempt:{agent_id}",),
+            reason="The deterministic file provider supplied the complete attempt lifecycle.",
+        )
+        for agent_id, attempt in sorted(attempts.items(), key=lambda item: str(item[0]))
+    )
+    return trace, attempt_closures
 
 
 def _metrics(value: Mapping[str, object]) -> TrialMetrics:

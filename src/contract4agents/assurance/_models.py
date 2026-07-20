@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 AssuranceStatus = Literal["passed", "violated", "unverified"]
+ControlApplicability = Literal["applicable", "not_applicable", "unverified"]
 AssessmentClassification = Literal[
     "static",
     "adapter",
@@ -55,6 +56,7 @@ class ControlResult:
     reason: str
     assessment: AssessmentClassification
     assessor: AssessorIdentity
+    applicability: ControlApplicability = "applicable"
     evidence_event_ids: tuple[str, ...] = field(default_factory=tuple)
     evidence_refs: tuple[str, ...] = field(default_factory=tuple)
 
@@ -63,6 +65,8 @@ class ControlResult:
         _require_text("reason", self.reason)
         if self.status not in _ASSURANCE_STATUSES:
             raise ValueError(f"Unsupported assurance status `{self.status}`")
+        if self.applicability not in {"applicable", "not_applicable", "unverified"}:
+            raise ValueError(f"Unsupported control applicability `{self.applicability}`")
         if self.assessment not in _ASSESSMENT_CLASSIFICATIONS:
             raise ValueError(f"Unsupported assessment classification `{self.assessment}`")
         object.__setattr__(
@@ -76,6 +80,7 @@ class ControlResult:
         return {
             "assessment": self.assessment,
             "assessor": self.assessor.to_dict(),
+            "applicability": self.applicability,
             "control_id": self.control_id,
             "evidence_event_ids": list(self.evidence_event_ids),
             "evidence_refs": list(self.evidence_refs),
@@ -109,5 +114,6 @@ __all__ = [
     "AssessmentClassification",
     "AssessorIdentity",
     "AssuranceStatus",
+    "ControlApplicability",
     "ControlResult",
 ]

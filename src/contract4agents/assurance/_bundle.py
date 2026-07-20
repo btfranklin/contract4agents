@@ -14,9 +14,15 @@ from contract4agents.assurance._models import ControlResult
 from contract4agents.assurance._run_specs import RunSpecResult, RunSpecSelection
 from contract4agents.ir import CanonicalIR, FrozenMap, canonical_ir_data, contract_digest
 from contract4agents.planning import MaterializationPlan, materialization_plan_data
-from contract4agents.tracing import loads_trace_jsonl
+from contract4agents.tracing import (
+    TRACE_CLOSURE_MANIFEST_VERSION,
+    TraceClosureEvidence,
+    TraceClosureManifest,
+    loads_trace_jsonl,
+    validate_trace_closure,
+)
 
-BUNDLE_VERSION = "2"
+BUNDLE_VERSION = "3"
 
 
 @dataclass(frozen=True)
@@ -50,6 +56,7 @@ def assemble_assurance_bundle(
     control_results: tuple[ControlResult, ...] | None,
     eval_results: object | None,
     provenance: object | None,
+    trace_closures: tuple[TraceClosureEvidence, ...] | None = None,
     run_spec_results: tuple[RunSpecResult, ...] | None = None,
     run_spec_selections: tuple[RunSpecSelection, ...] | None = None,
 ) -> AssuranceBundle:
@@ -66,6 +73,32 @@ def assemble_assurance_bundle(
         "BUNDLE001",
         "Normalized trace evidence is missing.",
     )
+    loaded_trace = loads_trace_jsonl(trace) if trace else None
+    closures = tuple(trace_closures or ())
+    if loaded_trace is None and closures:
+        raise ValueError("Trace closure evidence cannot be bundled without a normalized trace")
+    closure_runs = [item.context.run_id for item in closures]
+    if len(closure_runs) != len(set(closure_runs)):
+        raise ValueError("Trace closures must have unique run_id values")
+    trace_run_ids = set(loaded_trace.run_ids) if loaded_trace is not None else set()
+    closure_coverage_incomplete = loaded_trace is not None and (
+        trace_closures is None
+        or set(closure_runs) != trace_run_ids
+        or any(not item.complete for item in closures)
+    )
+    if closure_coverage_incomplete:
+        diagnostics.append(
+            BundleDiagnostic(
+                "BUNDLE015",
+                "Complete trace-closure evidence must cover every run in the normalized trace.",
+                "trace-closure.json",
+            )
+        )
+    if loaded_trace is not None:
+        for closure in closures:
+            validate_trace_closure(loaded_trace, closure)
+            if closure.context.contract_digest != expected_digest or closure.context.plan_digest != plan.plan_digest:
+                raise ValueError("Trace closure does not match the bundle contract and plan")
     controls: object
     if control_results is None:
         diagnostics.append(
@@ -80,11 +113,9 @@ def assemble_assurance_bundle(
     selection_runs = [item.run_id for item in selections]
     if len(selection_runs) != len(set(selection_runs)):
         raise ValueError("Run-spec selections must have unique run_id values")
-    trace_run_ids: set[str] = set()
-    if contract.run_specs and trace:
-        trace_run_ids = set(loads_trace_jsonl(trace).run_ids)
+    selection_trace_run_ids = trace_run_ids if contract.run_specs else set()
     selection_coverage_incomplete = bool(contract.run_specs) and (
-        run_spec_selections is None or set(selection_runs) != trace_run_ids
+        run_spec_selections is None or set(selection_runs) != selection_trace_run_ids
     )
     if selection_coverage_incomplete:
         diagnostics.append(
@@ -149,6 +180,11 @@ def assemble_assurance_bundle(
         "contract.snapshot.json": _pretty_json(canonical_ir_data(contract)),
         "materialization-plan.json": _pretty_json(materialization_plan_data(plan)),
         "normalized-trace.jsonl": trace,
+        "trace-closure.json": _pretty_json(
+            TraceClosureManifest(closures=closures).to_dict()
+            if closures
+            else {"closures": [], "version": TRACE_CLOSURE_MANIFEST_VERSION}
+        ),
         "control-results.json": _pretty_json(controls),
         "run-spec-results.json": _pretty_json(run_specs),
         "eval-results.json": _pretty_json(eval_results),

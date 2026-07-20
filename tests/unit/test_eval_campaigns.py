@@ -240,14 +240,39 @@ def _write_eval_data(
     *,
     trials: list[dict[str, object]],
 ) -> FileEvalProvider:
+    closed_trials = [
+        {
+            **trial,
+            "closure": trial.get(
+                "closure",
+                {
+                    "status": "complete",
+                    "reason": "The deterministic fixture enumerates every execution path.",
+                    "channels": [
+                        "agent",
+                        "approval",
+                        "composition",
+                        "datasource",
+                        "guardrail",
+                        "handoff",
+                        "output",
+                        "provider_response",
+                        "tool",
+                    ],
+                    "evidence_refs": ["fixture:eval:closure"],
+                },
+            ),
+        }
+        for trial in trials
+    ]
     path.write_text(
         json.dumps(
             {
-                "schema_version": "1",
+                "schema_version": "2",
                 "cases": {
                     "eval:SupportAgent:publishes_status": {
                         "inputs": {"tenant": "acme"},
-                        "trials": trials,
+                        "trials": closed_trials,
                     }
                 },
             }
@@ -366,7 +391,7 @@ async def test_missing_telemetry_and_judge_results_are_unverified(tmp_path: Path
     negative_trial = negative_result.cases[0].trials[0]
     assert negative_trial.trace_completeness is not None
     assert negative_trial.trace_completeness.status == "complete"
-    assert negative_trial.expectations[1].status == "passed"
+    assert negative_trial.expectations[1].status == "unverified"
 
     incomplete_plan = _plan(negative_ir, expected_telemetry=("approval.requested", "event.never_emitted"))
     incomplete = await run_campaign(

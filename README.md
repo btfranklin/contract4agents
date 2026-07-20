@@ -161,8 +161,9 @@ not a general workflow language and does not hide provider differences.
 
 The normalized trace schema binds every event to a contract digest, plan digest,
 stable semantic IDs, provider-native correlation, provenance, and audience-safe
-redaction metadata. The same control assessor is used for controlled evals and
-imported production traces.
+redaction metadata. Identity-bound closure evidence records which attempts,
+provider responses, and instrumentation channels were completely observed. The
+same control assessor is used for controlled evals and imported production traces.
 
 Run specs have a separate post-run assessor for host-supplied stage outputs,
 derived values, cardinality, assertions, and explicit workflow-completeness
@@ -177,7 +178,7 @@ Repeated campaigns report pass, violation, and unverified rates with uncertainty
 latency and cost summaries, thresholds, and optional baseline comparisons.
 
 Assurance bundles join the canonical contract, materialization plan, normalized
-traces, control results, eval summaries, and semantic diffs into one portable
+traces, trace closure, control results, eval summaries, and semantic diffs into one portable
 review package. Missing or incomplete evidence remains explicitly `unverified`.
 This is useful evidence for compliance and release review; it is not a legal
 certification by itself.

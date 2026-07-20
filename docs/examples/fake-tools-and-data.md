@@ -28,7 +28,7 @@ agent factories, tool registries, or output-type mappings.
 
 ```json
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "cases": {
     "eval:IncidentCommander:discovers_checkout_cause": {
       "inputs": {
@@ -56,6 +56,12 @@ agent factories, tool registries, or output-type mappings.
               }
             }
           ],
+          "closure": {
+            "status": "complete",
+            "reason": "The fixture enumerates every execution path.",
+            "channels": ["agent", "approval", "output", "provider_response", "tool"],
+            "evidence_refs": ["fixture:incident:trial-1:closure"]
+          },
           "approvals": {
             "tool:status_page.draft_update": false
           },
@@ -82,7 +88,8 @@ agent factories, tool registries, or output-type mappings.
 ```
 
 The loader fills run IDs, contract/plan digests, default provider correlation,
-event IDs, parent relationships, evidence references, provenance, and safe
+event and attempt IDs, terminal-attempt selections, parent relationships,
+evidence references, provenance, and safe
 redaction metadata when omitted. Explicit values are still strictly validated.
 
 ## Seed Scripts

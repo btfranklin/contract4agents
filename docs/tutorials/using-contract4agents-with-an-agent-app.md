@@ -181,9 +181,9 @@ hand-maintained description of agents and permissions.
 
 For production assessment:
 
-1. load and validate a complete normalized trace;
-2. validate completeness against the reviewed plan;
-3. call the shared control assessor;
+1. load and validate a normalized trace plus its versioned closure manifest;
+2. validate event-family coverage and identity-bound closure against the reviewed plan;
+3. call the shared control assessor with the matching `TraceClosureEvidence`;
 4. store or export the results with their contract and plan digests;
 5. treat incomplete evidence as `unverified`.
 
@@ -197,7 +197,7 @@ They do not duplicate behavioral controls.
 ## Release Assurance
 
 For a release or incident review, assemble an assurance bundle containing the
-approved canonical IR and plan, normalized traces, completeness and control
+approved canonical IR and plan, normalized traces, trace closure, completeness and control
 results, eval campaign summaries, and semantic diffs. Verify the bundle's digest
 references before review.
 

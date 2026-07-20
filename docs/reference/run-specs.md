@@ -60,8 +60,10 @@ run spec's `derived_values` block.
 
 Run specs use normalized traces and therefore inherit contract/plan identity,
 semantic IDs, parent relationships, and completeness rules. A missing event can
-prove a negative or ordering claim only when the reviewed plan establishes the
-necessary telemetry coverage. Otherwise the result is unverified.
+prove a negative or upper-bound claim only when identity-bound closure evidence
+establishes the relevant instrumentation channel. Otherwise the result is
+unverified. Directly observed positive and ordering evidence does not require a
+global completeness claim.
 
 ## IR and Assurance
 
@@ -93,7 +95,14 @@ evidence = RunSpecEvidence(
     ),
     evidence_refs=("workflow-ledger:run-123",),
 )
-result = assess_run_spec(ir, plan, trace, "ResearchRun", evidence)
+result = assess_run_spec(
+    ir,
+    plan,
+    trace,
+    "ResearchRun",
+    evidence,
+    closure=trace_closure,
+)
 ```
 
 `RunSpecEvidence.status` is `complete`, `incomplete`, or `unverified`. A
@@ -110,7 +119,8 @@ Results are `passed`, `violated`, or `unverified`:
   `violated`;
 - incomplete workflow evidence cannot prove that cardinality and stage output
   coverage are satisfied, so otherwise successful checks are `unverified`;
-- trace assertions also require complete plan-declared trace telemetry;
+- absence-dependent trace assertions require closure for their instrumentation
+  channel;
 - an optional stage may be absent only when workflow completeness is proven.
 
 Each result is bound to the assessed contract digest, plan digest, run ID, and
@@ -124,6 +134,36 @@ in the distinct `run-spec-results.json` artifact. The host supplies one
 `RunSpecSelection` per run, selecting a declared run spec or explicitly stating
 that no run spec applied. Only selected declarations require results; missing
 selection or assessment evidence leaves the bundle incomplete.
+
+The public CLI consumes one strict, versioned manifest:
+
+```json
+{
+  "version": "1",
+  "runs": [
+    {
+      "selection": {
+        "run_id": "run-123",
+        "run_spec_id": "run_spec:ResearchRun",
+        "reason": "The workflow ledger selected ResearchRun.",
+        "evidence_refs": ["workflow-ledger:run-123:selection"]
+      },
+      "evidence": {
+        "status": "complete",
+        "reason": "The workflow ledger is closed.",
+        "stage_observations": [],
+        "derived_values": {},
+        "evidence_refs": ["workflow-ledger:run-123"]
+      }
+    }
+  ]
+}
+```
+
+Pass it with `contract4agents assure --run-spec-evidence ...`. Every trace run
+must have exactly one selection. A selected declaration requires evidence; an
+explicit null selection forbids evidence. The CLI computes results locally so
+the manifest cannot smuggle in a caller-authored passing assessor result.
 
 This keeps the workflow implementation in Python or TypeScript while making its
 important stage and evidence invariants reviewable as code.

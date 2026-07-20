@@ -84,14 +84,15 @@ control approved_search_only for ResearchLead:
     required = true
     audience = [adapter, host, evaluator, reviewer]
     assessment = runtime
-    require = forbid(tool.sources.search unless approved_by_human)
+    require = trace.approval_granted(sources.search)
 
 control evidence_when_searching for ResearchLead:
     severity = medium
     required = true
     audience = [adapter, host, evaluator, reviewer]
     assessment = post_run
-    require = when(trace.tool_called(sources.search), expect(output.summary contains "evidence"))
+    when = trace.tool_called(sources.search)
+    require = trace.agent_called(EvidenceAnalyst)
 
 quality evidence_backed for ResearchLead:
     rubric = "The result is supported by evidence."
@@ -101,6 +102,14 @@ operational_control latency for ResearchLead:
     severity = medium
     window = 15m
     require = p95(trace.duration) < 10s
+
+operational_control approved_search_policy for ResearchLead:
+    severity = high
+    require = forbid(tool.sources.search unless approved_by_human)
+
+operational_control evidence_policy for ResearchLead:
+    severity = medium
+    require = when(trace.tool_called(sources.search), expect(output.summary contains "evidence"))
 
 eval current_evidence for ResearchLead:
     given request = ResearchRequest.fixture("current")

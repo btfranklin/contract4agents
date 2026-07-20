@@ -7,6 +7,12 @@ from collections.abc import Collection
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from contract4agents.tracing._closure import (
+    TraceClosureError,
+    TraceClosureEvidence,
+    TraceCoverageChannel,
+    validate_trace_closure,
+)
 from contract4agents.tracing._models import NormalizedTrace
 
 TraceCompletenessStatus = Literal["complete", "incomplete", "unverified"]
@@ -21,6 +27,8 @@ class TraceCompletenessResult:
     reason: str
     expected_telemetry: tuple[str, ...] = field(default_factory=tuple)
     observed_telemetry: tuple[str, ...] = field(default_factory=tuple)
+    closure_digest: str | None = None
+    covered_channels: tuple[TraceCoverageChannel, ...] = field(default_factory=tuple)
     evidence_refs: tuple[str, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
@@ -30,6 +38,7 @@ class TraceCompletenessResult:
             raise ValueError(f"Unsupported trace completeness status `{self.status}`")
         object.__setattr__(self, "expected_telemetry", _normalized_references(self.expected_telemetry))
         object.__setattr__(self, "observed_telemetry", _normalized_references(self.observed_telemetry))
+        object.__setattr__(self, "covered_channels", tuple(sorted(set(self.covered_channels))))
         object.__setattr__(self, "evidence_refs", _normalized_references(self.evidence_refs))
         if self.status == "complete" and self.missing_telemetry:
             missing = ", ".join(self.missing_telemetry)
@@ -43,9 +52,16 @@ class TraceCompletenessResult:
     def missing_telemetry(self) -> tuple[str, ...]:
         return tuple(sorted(set(self.expected_telemetry) - set(self.observed_telemetry)))
 
+    def complete_for(self, channel: TraceCoverageChannel) -> bool:
+        """Whether closure evidence proves one instrumentation channel complete."""
+
+        return self.closure_digest is not None and channel in self.covered_channels
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "evidence_refs": list(self.evidence_refs),
+            "closure_digest": self.closure_digest,
+            "covered_channels": list(self.covered_channels),
             "expected_telemetry": list(self.expected_telemetry),
             "missing_telemetry": list(self.missing_telemetry),
             "observed_telemetry": list(self.observed_telemetry),
@@ -62,18 +78,22 @@ def assess_trace_completeness(
     trace: NormalizedTrace,
     expected_telemetry: Collection[str],
     *,
+    closure: TraceClosureEvidence | None = None,
     run_id: str | None = None,
 ) -> TraceCompletenessResult:
-    """Compare one run's event types with the plan's explicit telemetry set.
+    """Assess event-family occurrence and explicit identity-bound run closure.
 
-    The expected set should include lifecycle boundary events when a negative
-    claim depends on proving that instrumentation covered the complete run.
-    Missing evidence is `unverified`, never proof that behavior did not occur.
+    Event-family occurrence is diagnostic only. Negative claims require a
+    complete closure object covering their instrumentation channel.
     """
 
     expected = _normalized_telemetry(expected_telemetry)
     selected = _select_run(trace, run_id)
     selected_run_id = selected.run_ids[0]
+    if closure is not None:
+        validate_trace_closure(selected, closure)
+        if closure.context.run_id != selected_run_id:
+            raise TraceClosureError("Trace closure run_id does not match the selected run")
     observed = tuple(sorted({event.event_type for event in selected.events}))
     observed_expected = tuple(item for item in expected if item in observed)
     evidence_refs = tuple(
@@ -91,22 +111,49 @@ def assess_trace_completeness(
             }
         )
     )
+    closure_refs = closure.evidence_refs if closure is not None else ()
+    closure_digest = closure.digest if closure is not None and closure.complete else None
+    covered_channels = closure.channels if closure is not None and closure.complete else ()
+    combined_refs = tuple(sorted(set(evidence_refs) | set(closure_refs)))
     if not expected:
         return TraceCompletenessResult(
             run_id=selected_run_id,
             status="unverified",
             reason="No expected telemetry was declared for this run.",
             observed_telemetry=observed,
+            closure_digest=closure_digest,
+            covered_channels=covered_channels,
+            evidence_refs=combined_refs,
         )
     missing = tuple(sorted(set(expected) - set(observed_expected)))
     if missing:
         return TraceCompletenessResult(
             run_id=selected_run_id,
-            status="unverified",
+            status="incomplete" if closure is not None and closure.status == "complete" else "unverified",
             reason=f"Expected telemetry was not observed: {', '.join(missing)}.",
             expected_telemetry=expected,
             observed_telemetry=observed,
+            closure_digest=closure_digest,
+            covered_channels=covered_channels,
+            evidence_refs=combined_refs,
+        )
+    if closure is None:
+        return TraceCompletenessResult(
+            run_id=selected_run_id,
+            status="unverified",
+            reason="Expected event families were observed, but run-closure evidence was not supplied.",
+            expected_telemetry=expected,
+            observed_telemetry=observed,
             evidence_refs=evidence_refs,
+        )
+    if not closure.complete:
+        return TraceCompletenessResult(
+            run_id=selected_run_id,
+            status=closure.status,
+            reason=f"Expected event families were observed, but trace closure is {closure.status}: {closure.reason}",
+            expected_telemetry=expected,
+            observed_telemetry=observed,
+            evidence_refs=combined_refs,
         )
     return TraceCompletenessResult(
         run_id=selected_run_id,
@@ -114,7 +161,9 @@ def assess_trace_completeness(
         reason="All expected telemetry was observed.",
         expected_telemetry=expected,
         observed_telemetry=observed,
-        evidence_refs=evidence_refs,
+        closure_digest=closure.digest,
+        covered_channels=closure.channels,
+        evidence_refs=combined_refs,
     )
 
 

@@ -8,7 +8,7 @@ from typing import Protocol
 
 from contract4agents.eval_campaigns._models import EvalInventory, TrialMetrics
 from contract4agents.ir import EvalIR, FrozenJsonValue, FrozenMap, SemanticId, freeze_json
-from contract4agents.tracing import NormalizedTrace
+from contract4agents.tracing import NormalizedTrace, TraceClosureEvidence
 
 
 class EvalProviderError(RuntimeError):
@@ -36,6 +36,7 @@ class EvalExecutionRequest:
 class EvalExecution:
     output: Mapping[str, object]
     trace: NormalizedTrace
+    trace_closure: TraceClosureEvidence
     metrics: TrialMetrics = field(default_factory=TrialMetrics)
 
     def __post_init__(self) -> None:

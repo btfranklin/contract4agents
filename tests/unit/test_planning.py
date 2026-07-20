@@ -48,7 +48,7 @@ def test_plans_complete_provider_neutral_target_with_deterministic_digest() -> N
     second = plan_materialization(ir, bindings, target="openai", profile="production", capabilities=capabilities)
     data = materialization_plan_data(first)
 
-    assert first.plan_version == PLAN_VERSION == "1"
+    assert first.plan_version == PLAN_VERSION == "2"
     assert first.contract_digest.startswith("sha256:")
     assert first.plan_digest.startswith("sha256:")
     assert first.plan_digest == second.plan_digest == data["plan_digest"]

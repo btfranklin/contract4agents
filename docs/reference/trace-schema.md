@@ -1,6 +1,6 @@
 # Trace Schema Reference
 
-Contract4Agents normalized trace schema version `1` connects observed execution
+Contract4Agents normalized trace schema version `2` connects observed execution
 to the exact contract and materialization plan that governed it. JSONL is the
 portable storage form; provider-native spans remain available through
 correlation references.
@@ -9,7 +9,7 @@ correlation references.
 
 ```json
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "run_id": "run-123",
   "thread_id": "thread-1",
   "event_id": "evt-000004",
@@ -88,14 +88,14 @@ evidence that the normalized payload does not duplicate.
 Normalization is not intended to replace a provider's full trace representation
 or an existing observability backend.
 
-For the OpenAI Agents SDK, `OpenAINormalizedTraceProcessor` implements the SDK
-tracing-processor callbacks and correlates native agent, tool, delegation, and
-handoff spans. Register one processor per logical run with
-`agents.add_trace_processor(...)`, then wrap the matching SDK run in
-`processor.capture()`. Agents SDK processors are global; the capture scope lets
-each processor claim only provider traces created for its logical run. Its
-`normalized_trace()` result retains the provider IDs while excluding raw
-provider inputs and outputs.
+For the OpenAI Agents SDK, `OpenAINormalizedTraceRouter` implements the global
+tracing-processor callbacks. Register exactly one router for the process, then
+open a disposable `OpenAINormalizedTraceSession` for each logical run. The
+router binds provider trace IDs to the context-local session active when the
+SDK trace starts and releases that binding when the trace ends. A closed
+session is therefore not retained by the global SDK registry. Its
+`normalized_trace()` result retains provider IDs while excluding raw provider
+inputs and outputs.
 
 ## Attempts and retries
 
@@ -112,7 +112,7 @@ attempt = TraceAttempt(
     retry_of="research-section:1:attempt:1",
 )
 
-with processor.bind_attempt(attempt):
+with session.bind_attempt(attempt, agent="SectionResearcher"):
     result = await Runner.run(agent, input=prompt)
 ```
 
@@ -145,7 +145,7 @@ Provider-hosted tools are also visible in Agents SDK model responses. Normalize
 those response items after each run:
 
 ```python
-events = processor.normalize_response_events(
+events = session.normalize_response_events(
     result.raw_responses,
     agent="CurrentTruthScout",
     attempt=attempt,
@@ -157,7 +157,7 @@ Agents SDK exceptions may retain model responses on
 reraises:
 
 ```python
-events = processor.normalize_exception_responses(
+events = session.normalize_exception_responses(
     exception,
     agent="CurrentTruthScout",
     attempt=attempt,
@@ -168,7 +168,7 @@ events = processor.normalize_exception_responses(
 does not catch exceptions, decide retries, emit a generic agent failure, or
 infer that an SDK exception was a schema failure. Host-side canonical output
 validation can record the narrower fact through
-`processor.record_output_schema_failure(...)`.
+`session.record_output_schema_failure(...)`.
 
 `normalize_openai_response_events(...)` is the corresponding standalone API.
 For recognized provider-hosted call items it resolves exactly one enabled
@@ -178,7 +178,10 @@ tool. The currently materialized OpenAI tool is `web_search_call`, matched to
 evidence with canonical capability/grant IDs. Missing or ambiguous matches,
 recognized hosted calls that the adapter cannot materialize, and unknown
 call-like response items instead emit `capability.undeclared`; they are never
-silently assigned to a capability or discarded.
+silently assigned to a capability or discarded. Every inspected response emits
+`provider.response.normalized`, and every supplied response iterable emits
+`provider.response_batch.normalized`, including a legitimate zero-response or
+zero-call batch. These receipts distinguish inspection from omission.
 
 For a supported hosted call, provider status selects `tool.started`,
 `tool.completed`, or `tool.failed`; an observed failed call is never rewritten
@@ -250,14 +253,27 @@ identity, and unknown, disabled, or mismatched grants through structured
 ```python
 from contract4agents.tracing import assess_trace_completeness
 
-result = assess_trace_completeness(trace, plan.expected_telemetry)
+result = assess_trace_completeness(
+    trace,
+    plan.expected_telemetry,
+    closure=trace_closure,
+)
 ```
 
-Completeness is evaluated against the plan, not against a generic event list.
-Missing required event families produce an `unverified` result with exact
-reasons. This matters especially for negative claims: the absence of a tool
-event does not prove the tool was not called unless complete tool telemetry was
-expected and present for the run.
+Event-family occurrence is a diagnostic; it is not proof that every execution
+path was instrumented. `TraceClosureEvidence` binds one run, contract, plan,
+invocation attempt, provider trace, and response-normalization path. It records
+which channels—such as `agent`, `tool`, `approval`, `output`, and
+`provider_response`—are closed. Missing, inconsistent, or incomplete closure
+keeps absence and upper-bound claims `unverified`. Directly observed positive
+evidence can still prove a positive claim.
+
+`TraceClosureManifest` is the versioned JSON artifact used by the CLI and
+assurance bundles. Complete closure must cover exactly every attempt observed
+in its run. The OpenAI session produces closure for SDK lifecycle and response
+paths; the host uses `attest_channels(...)` for adjacent instrumentation that
+the session cannot observe. Contract4Agents validates these identities but
+cannot prove that a dishonest host disclosed work it deliberately omitted.
 
 ## OpenTelemetry Export
 

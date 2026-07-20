@@ -137,7 +137,8 @@ Apply the same contract control assessor to an existing normalized trace.
 contract4agents assess agent_contracts \
   --target openai \
   --profile production \
-  --trace run.trace.jsonl
+  --trace run.trace.jsonl \
+  --trace-closure run.trace-closure.json
 ```
 
 Options:
@@ -145,6 +146,8 @@ Options:
 - `--target NAME`, `--profile NAME`: required.
 - `--bindings PATH`: optional binding override.
 - `--trace PATH`: required normalized trace JSONL.
+- `--trace-closure PATH`: optional versioned `TraceClosureManifest` JSON. It is
+  required for negative, upper-bound, and other absence-dependent passes.
 - `--run-id ID`: optional run selection.
 
 Every control result is printed. Violated or unverified controls produce a
@@ -165,6 +168,8 @@ contract4agents assure agent_contracts \
   --target openai \
   --profile production \
   --trace run.trace.jsonl \
+  --trace-closure run.trace-closure.json \
+  --run-spec-evidence run-spec-evidence.json \
   --eval-results .contract/eval-results.json \
   --provenance provenance.json \
   --out .contract/assurance
@@ -175,12 +180,22 @@ Options:
 - `--target NAME`, `--profile NAME`: required.
 - `--bindings PATH`: optional binding override.
 - `--trace PATH`: optional normalized trace.
+- `--trace-closure PATH`: optional versioned closure manifest covering every
+  trace run.
+- `--run-spec-evidence PATH`: optional versioned raw assessment manifest with
+  one explicit `RunSpecSelection` per run and `RunSpecEvidence` for every
+  non-null selection.
 - `--eval-results PATH`: optional eval report JSON.
 - `--provenance PATH`: optional provenance JSON.
 - `--out PATH`: default `.contract/assurance`.
 
 Missing optional evidence is recorded as an explicit bundle diagnostic. It is
 never synthesized into a passing result.
+
+The CLI validates exact run coverage, assesses raw run-spec evidence itself,
+and writes the resulting selections and results into the bundle. It never
+accepts caller-authored `RunSpecResult` objects as proof. A null selection
+attests that no declared run spec applied and cannot carry assessment evidence.
 
 ## `diff BEFORE AFTER`
 

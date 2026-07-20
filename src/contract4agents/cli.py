@@ -10,8 +10,10 @@ from pathlib import Path
 import click
 
 from contract4agents.assurance import (
+    RunSpecAssessmentManifest,
     assemble_assurance_bundle,
     assess_controls,
+    assess_run_spec,
     semantic_diff,
     write_assurance_bundle,
 )
@@ -36,6 +38,9 @@ from contract4agents.target_bindings import (
     validate_target_binding_conformance,
 )
 from contract4agents.tracing import (
+    TraceClosureError,
+    TraceClosureEvidence,
+    TraceClosureManifest,
     TraceConformanceError,
     TraceLoadError,
     dumps_trace_jsonl,
@@ -307,6 +312,7 @@ def eval_cmd(
 @click.option("--profile", required=True)
 @click.option("--bindings", "bindings_path", type=click.Path(path_type=Path), default=None)
 @click.option("--trace", "trace_path", type=click.Path(path_type=Path), required=True)
+@click.option("--trace-closure", "trace_closure_path", type=click.Path(path_type=Path), default=None)
 @click.option("--run-id", default=None)
 def assess_cmd(
     root: Path,
@@ -314,12 +320,17 @@ def assess_cmd(
     profile: str,
     bindings_path: Path | None,
     trace_path: Path,
+    trace_closure_path: Path | None,
     run_id: str | None,
 ) -> None:
     """Assess contract-derived controls against a normalized trace."""
     try:
         ir, plan, _bindings = _resolve_plan(root, target, profile, bindings_path)
-        results = assess_controls(ir, plan, load_trace_jsonl(trace_path), run_id=run_id)
+        trace = load_trace_jsonl(trace_path)
+        closure_manifest = _load_trace_closure_manifest(trace_closure_path)
+        selected_run = run_id or (trace.run_ids[0] if len(trace.run_ids) == 1 else None)
+        closure = _closure_for_run(closure_manifest, selected_run)
+        results = assess_controls(ir, plan, trace, closure=closure, run_id=run_id)
         for result in results:
             click.echo(f"{result.status.upper()} {result.control_id}: {result.reason}")
         if any(result.status != "passed" for result in results):
@@ -331,6 +342,8 @@ def assess_cmd(
         raise click.ClickException(f"Invalid normalized trace `{trace_path}`: {exc}") from exc
     except TraceConformanceError as exc:
         raise click.ClickException(f"Nonconforming normalized trace `{trace_path}`: {exc}") from exc
+    except TraceClosureError as exc:
+        raise click.ClickException(f"Invalid trace closure: {exc}") from exc
 
 
 @main.command("assure")
@@ -339,6 +352,8 @@ def assess_cmd(
 @click.option("--profile", required=True)
 @click.option("--bindings", "bindings_path", type=click.Path(path_type=Path), default=None)
 @click.option("--trace", "trace_path", type=click.Path(path_type=Path), default=None)
+@click.option("--trace-closure", "trace_closure_path", type=click.Path(path_type=Path), default=None)
+@click.option("--run-spec-evidence", "run_spec_path", type=click.Path(path_type=Path), default=None)
 @click.option("--eval-results", type=click.Path(path_type=Path), default=None)
 @click.option("--provenance", type=click.Path(path_type=Path), default=None)
 @click.option("--out", "output_dir", type=click.Path(path_type=Path), default=".contract/assurance")
@@ -348,6 +363,8 @@ def assure_cmd(
     profile: str,
     bindings_path: Path | None,
     trace_path: Path | None,
+    trace_closure_path: Path | None,
+    run_spec_path: Path | None,
     eval_results: Path | None,
     provenance: Path | None,
     output_dir: Path,
@@ -355,12 +372,43 @@ def assure_cmd(
     """Assemble a deterministic declared/planned/observed assurance bundle."""
     ir, plan, _bindings = _resolve_plan(root, target, profile, bindings_path)
     trace = load_trace_jsonl(trace_path) if trace_path is not None else None
-    results = assess_controls(ir, plan, trace) if trace is not None else None
+    closure_manifest = _load_trace_closure_manifest(trace_closure_path)
+    closures = closure_manifest.closures if closure_manifest is not None else None
+    control_closure = None
+    if trace is not None and len(trace.run_ids) == 1:
+        control_closure = _closure_for_run(closure_manifest, trace.run_ids[0])
+    results = assess_controls(ir, plan, trace, closure=control_closure) if trace is not None else None
+    run_spec_manifest = _load_run_spec_manifest(run_spec_path)
+    selections = None if run_spec_manifest is None else tuple(item.selection for item in run_spec_manifest.runs)
+    run_spec_results = None
+    if run_spec_manifest is not None:
+        if trace is None:
+            raise click.ClickException("--run-spec-evidence requires --trace")
+        assessed = []
+        for item in run_spec_manifest.runs:
+            if item.selection.run_spec_id is None:
+                continue
+            assert item.evidence is not None
+            assessed.append(
+                assess_run_spec(
+                    ir,
+                    plan,
+                    trace,
+                    item.selection.run_spec_id,
+                    item.evidence,
+                    closure=_closure_for_run(closure_manifest, item.selection.run_id),
+                    run_id=item.selection.run_id,
+                )
+            )
+        run_spec_results = tuple(assessed)
     bundle = assemble_assurance_bundle(
         ir,
         plan,
         normalized_trace_jsonl=dumps_trace_jsonl(trace) if trace is not None else None,
         control_results=results,
+        trace_closures=closures,
+        run_spec_selections=selections,
+        run_spec_results=run_spec_results,
         eval_results=_load_json_file(eval_results),
         provenance=_load_json_file(provenance),
     )
@@ -433,6 +481,33 @@ def _load_json_file(path: Path | None) -> object | None:
         return value
     except (OSError, json.JSONDecodeError) as exc:
         raise click.ClickException(f"Could not load JSON `{path}`: {exc}") from exc
+
+
+def _load_trace_closure_manifest(path: Path | None) -> TraceClosureManifest | None:
+    if path is None:
+        return None
+    try:
+        return TraceClosureManifest.load(path)
+    except (OSError, TypeError, ValueError) as exc:
+        raise click.ClickException(f"Could not load trace closure `{path}`: {exc}") from exc
+
+
+def _load_run_spec_manifest(path: Path | None) -> RunSpecAssessmentManifest | None:
+    if path is None:
+        return None
+    try:
+        return RunSpecAssessmentManifest.load(path)
+    except (OSError, TypeError, ValueError) as exc:
+        raise click.ClickException(f"Could not load run-spec evidence `{path}`: {exc}") from exc
+
+
+def _closure_for_run(
+    manifest: TraceClosureManifest | None,
+    run_id: str | None,
+) -> TraceClosureEvidence | None:
+    if manifest is None or run_id is None:
+        return None
+    return next((item for item in manifest.closures if item.context.run_id == run_id), None)
 
 
 def _print_diagnostics(diagnostics: list[Diagnostic]) -> None:

@@ -14,7 +14,12 @@ from contract4agents.assurance import (
     ControlResult,
 )
 from contract4agents.ir import FrozenJsonValue, FrozenMap, freeze_json
-from contract4agents.tracing import NormalizedTrace, TraceCompletenessResult, dumps_trace_jsonl
+from contract4agents.tracing import (
+    NormalizedTrace,
+    TraceClosureEvidence,
+    TraceCompletenessResult,
+    dumps_trace_jsonl,
+)
 
 TrialStatus = AssuranceStatus
 ComparisonStatus = AssuranceStatus
@@ -318,6 +323,7 @@ class TrialResult:
     controls: tuple[ControlResult, ...]
     qualities: tuple[QualityResult, ...]
     trace_completeness: TraceCompletenessResult | None
+    trace_closure: TraceClosureEvidence | None
     metrics: TrialMetrics
     diagnostic: str | None = None
 
@@ -354,6 +360,7 @@ class TrialResult:
                 self.trace_completeness.to_dict() if self.trace_completeness is not None else None
             ),
             "trace_digest": self.trace_digest,
+            "trace_closure_digest": self.trace_closure.digest if self.trace_closure is not None else None,
             "trace_run_ids": list(self.trace.run_ids) if self.trace is not None else [],
             "trial_id": self.trial_id,
         }

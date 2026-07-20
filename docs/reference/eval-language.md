@@ -57,9 +57,10 @@ produce an explicit unverified result if unchecked input reaches an assessor.
 
 ## Negative Claims
 
-`trace.not_called(...)` can pass only when trace completeness proves the
-relevant instrumentation covered the complete run. An absent event in an
-incomplete trace produces `unverified`, not `passed`.
+`trace.not_called(...)` can pass only when identity-bound trace closure covers
+the relevant instrumentation channel for every observed attempt. Event-family
+occurrence alone is not proof. An absent event without closure produces
+`unverified`, not `passed`.
 
 ## Quality Expectations
 

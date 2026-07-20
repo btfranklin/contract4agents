@@ -179,7 +179,7 @@ Create `agent_contracts/eval-data.json`:
 
 ```json
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "cases": {
     "eval:SupportResponder:answers_shipping_question": {
       "inputs": {"question": "When will my order ship?"},
@@ -211,6 +211,12 @@ Create `agent_contracts/eval-data.json`:
               "semantic": {"agent_id": "agent:SupportResponder"}
             }
           ],
+          "closure": {
+            "status": "complete",
+            "reason": "The fixture enumerates every execution path.",
+            "channels": ["agent", "output", "provider_response", "tool"],
+            "evidence_refs": ["fixture:support:trial-1:closure"]
+          },
           "metrics": {"latency_ms": 12.0, "cost_usd": 0.0}
         }
       ]

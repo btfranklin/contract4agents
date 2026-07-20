@@ -653,7 +653,7 @@ addresses.
 
 ```json
 {
-  "plan_version": "1",
+  "plan_version": "2",
   "contract_digest": "sha256:contract...",
   "plan_digest": "sha256:plan...",
   "target": "openai",
@@ -734,13 +734,13 @@ and application workflow.
 
 ## Trace identity and evidence
 
-Trace schema version `1` uses an immutable run context plus event-specific
+Trace schema version `2` uses an immutable run context plus event-specific
 data. Required run identity is repeated in JSONL events so files remain
 independently inspectable:
 
 ```json
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "run_id": "run-123",
   "thread_id": "thread-1",
   "event_id": "evt-000004",
@@ -771,9 +771,10 @@ The loader rejects duplicate event IDs, broken parent references within a
 complete trace, mixed contract or plan digests in one run, malformed semantic
 references, and absent required identity.
 
-Negative claims require trace-completeness evidence. The absence of a tool event
-cannot prove that a tool was not called unless the plan expected tool telemetry
-and the trace proves that instrumentation was active for the complete run.
+Negative claims require identity-bound trace-closure evidence. Event-family
+occurrence is diagnostic only: the absence of a tool event cannot prove that a
+tool was not called unless closure covers every attempt and the relevant tool
+and provider-response paths for that run.
 
 ## Assurance results
 
@@ -783,6 +784,7 @@ All control assessment uses one result model:
 {
   "control_id": "control:IncidentCommander:approval:status.publish",
   "status": "passed",
+  "applicability": "applicable",
   "reason": "Approval was granted before the capability started.",
   "evidence_event_ids": ["evt-000003", "evt-000004", "evt-000005"],
   "assessment": "runtime",
@@ -799,6 +801,11 @@ Statuses are:
 
 `skipped` remains an eval-execution state, not a control assurance result. A
 skipped semantic judge produces an `unverified` quality result with a reason.
+
+`applicability` is orthogonal to status. It is `applicable` when the requirement
+was assessed, `not_applicable` when a conditional control's `when` expression
+was proven false, and `unverified` when the condition could not be established.
+A false condition passes vacuously; an unknown condition never does.
 
 ## Eval campaigns
 
@@ -902,7 +909,7 @@ The product uses these design choices:
 - Stable semantic IDs are deterministic kind-qualified names.
 - SHA-256 over canonical JSON defines contract and plan digests.
 - `materialize(...)` is the primary runtime-construction API.
-- Trace schema version `1` requires contract and plan identity.
+- Trace schema version `2` requires contract and plan identity.
 - Control results use `passed`, `violated`, and `unverified`.
 - Environment isolation requires a bound enforcing provider.
 

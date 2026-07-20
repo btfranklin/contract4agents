@@ -2,22 +2,29 @@
 
 from __future__ import annotations
 
-import re
 from typing import cast
 
-from contract4agents.assurance._models import AssessorIdentity, AssuranceStatus, ControlResult
+from contract4agents.assurance._models import (
+    AssessorIdentity,
+    AssuranceStatus,
+    ControlApplicability,
+    ControlResult,
+)
+from contract4agents.expressions import ExpressionError, parse_expectation
+from contract4agents.expressions._trace_evaluation import assess_trace_expression
 from contract4agents.ir import CanonicalIR, ControlIR, SemanticId
 from contract4agents.planning import MaterializationPlan
 from contract4agents.tracing import (
     NormalizedTrace,
     TraceAttempt,
+    TraceClosureEvidence,
+    TraceCompletenessResult,
     TraceEvent,
     assess_trace_completeness,
     validate_trace_conformance,
 )
 
 _ASSESSOR = AssessorIdentity("contract4agents", "1")
-_CALL = re.compile(r"trace\.(?P<operation>[a-z_]+)\((?P<arguments>[^)]*)\)\Z")
 
 
 def assess_controls(
@@ -25,6 +32,7 @@ def assess_controls(
     plan: MaterializationPlan,
     trace: NormalizedTrace,
     *,
+    closure: TraceClosureEvidence | None = None,
     run_id: str | None = None,
 ) -> tuple[ControlResult, ...]:
     """Assess every planned control without treating absent evidence as success."""
@@ -34,10 +42,11 @@ def assess_controls(
     completeness = assess_trace_completeness(
         selected,
         plan.expected_telemetry,
+        closure=closure,
         run_id=selected.run_ids[0],
     )
     results = [
-        _assess_control(control, ir, selected, completeness.complete)
+        _assess_control(control, ir, selected, completeness)
         for control_id in plan.controls
         if (control := ir.controls.get(control_id)) is not None
     ]
@@ -48,43 +57,50 @@ def _assess_control(
     control: ControlIR,
     ir: CanonicalIR,
     trace: NormalizedTrace,
-    trace_complete: bool,
+    completeness: TraceCompletenessResult,
 ) -> ControlResult:
     relevant = tuple(event for event in trace.events if control.id in event.semantic.control_ids)
+    condition_events: tuple[TraceEvent, ...] = ()
+    if control.condition is not None:
+        condition = _evaluate_control_expression(control.condition, ir, trace, completeness)
+        condition_events = condition[1]
+        if condition[0] == "violated":
+            return _result(
+                control,
+                "passed",
+                "The control condition was proven false, so the requirement did not apply.",
+                condition_events,
+                applicability="not_applicable",
+            )
+        if condition[0] == "unverified":
+            return _result(
+                control,
+                "unverified",
+                "The control condition could not be established from complete evidence.",
+                condition_events,
+                applicability="unverified",
+            )
     if control.derived_from is not None and control.derived_from.kind == "grant":
         grant = ir.grants.get(control.derived_from)
         if grant is not None and grant.authorization == "approval_required":
-            return _assess_approval(control, grant.id, grant.capability_id, trace, trace_complete)
+            return _assess_approval(control, grant.id, grant.capability_id, trace, completeness)
     if control.name == "output_conformance":
-        return _assess_output(control, trace, trace_complete)
+        return _assess_output(control, trace, completeness)
     explicit = _explicit_result(relevant)
     if explicit is not None:
         status, reason = explicit
-        return _result(control, status, reason, relevant)
+        return _result(control, status, reason, condition_events + relevant)
     if control.requirement:
-        evaluated = _evaluate_requirement(control.requirement, ir, trace)
-        if evaluated is None:
-            return _result(
-                control,
-                "unverified",
-                "The control requirement is not supported by the deterministic assessor.",
-                relevant,
-            )
-        if not trace_complete:
-            return _result(
-                control,
-                "unverified",
-                "Expected telemetry is incomplete, so the control result cannot be proven.",
-                relevant,
-            )
-        passed, evidence = evaluated
+        status, evidence = _evaluate_control_expression(control.requirement, ir, trace, completeness)
         return _result(
             control,
-            "passed" if passed else "violated",
-            "The trace satisfies the declared requirement."
-            if passed
-            else "The trace violates the declared requirement.",
-            evidence,
+            status,
+            {
+                "passed": "The trace satisfies the declared requirement.",
+                "violated": "The trace violates the declared requirement.",
+                "unverified": "The declared requirement cannot be established from complete evidence.",
+            }[status],
+            condition_events + evidence,
         )
     return _result(control, "unverified", "No assessable requirement or evidence was available.", relevant)
 
@@ -94,7 +110,7 @@ def _assess_approval(
     grant_id: SemanticId,
     capability_id: SemanticId,
     trace: NormalizedTrace,
-    trace_complete: bool,
+    completeness: TraceCompletenessResult,
 ) -> ControlResult:
     events = tuple(
         event
@@ -113,7 +129,7 @@ def _assess_approval(
         return _result(control, "violated", "Approval was not recorded before the capability started.", events)
     if starts and approvals:
         return _result(control, "passed", "Approval was granted before the capability started.", events)
-    if trace_complete:
+    if completeness.complete_for("tool"):
         return _result(control, "passed", "The approval-gated capability was not invoked.", events)
     return _result(
         control,
@@ -123,7 +139,11 @@ def _assess_approval(
     )
 
 
-def _assess_output(control: ControlIR, trace: NormalizedTrace, trace_complete: bool) -> ControlResult:
+def _assess_output(
+    control: ControlIR,
+    trace: NormalizedTrace,
+    completeness: TraceCompletenessResult,
+) -> ControlResult:
     events = tuple(
         event
         for event in trace.events
@@ -239,11 +259,11 @@ def _assess_output(control: ControlIR, trace: NormalizedTrace, trace_complete: b
         and event.event_type in {"agent.started", "agent.completed", "composition.started", "composition.completed"}
         for event in trace.events
     )
-    if not invoked and trace_complete:
+    if not invoked and completeness.complete_for("agent"):
         return _result(control, "passed", "The agent was not invoked during this complete run.", events)
     reason = (
         "No output validation event was observed despite otherwise complete telemetry."
-        if trace_complete
+        if completeness.complete_for("output")
         else "Output validation evidence is missing from an incomplete trace."
     )
     return _result(control, "unverified", reason, events)
@@ -260,95 +280,36 @@ def _explicit_result(events: tuple[TraceEvent, ...]) -> tuple[AssuranceStatus, s
     return None
 
 
-def _evaluate_requirement(
-    requirement: str,
+def _evaluate_control_expression(
+    expression: str,
     ir: CanonicalIR,
     trace: NormalizedTrace,
-) -> tuple[bool, tuple[TraceEvent, ...]] | None:
-    clauses = tuple(item.strip() for item in requirement.split(" and "))
-    if not clauses:
-        return None
-    all_evidence: list[TraceEvent] = []
-    passed = True
-    for clause in clauses:
-        evaluated = _evaluate_clause(clause, ir, trace)
-        if evaluated is None:
-            return None
-        clause_passed, evidence = evaluated
-        passed = passed and clause_passed
-        all_evidence.extend(evidence)
-    unique = {event.event_id: event for event in all_evidence}
-    return passed, tuple(unique[name] for name in sorted(unique))
-
-
-def _evaluate_clause(
-    clause: str,
-    ir: CanonicalIR,
-    trace: NormalizedTrace,
-) -> tuple[bool, tuple[TraceEvent, ...]] | None:
-    match = _CALL.fullmatch(clause)
-    if match is None:
-        return None
-    operation = match.group("operation")
-    arguments = tuple(_unquote(item.strip()) for item in match.group("arguments").split(",") if item.strip())
-    if operation == "agent_called" and len(arguments) == 1:
-        events = _agent_events(ir, trace, arguments[0])
-        return bool(events), events
-    if operation == "tool_called" and len(arguments) == 1:
-        events = _capability_events(ir, trace, arguments[0])
-        return bool(events), events
-    if operation == "not_called" and len(arguments) == 1:
-        events = _agent_events(ir, trace, arguments[0]) + _capability_events(ir, trace, arguments[0])
-        return not events, events
-    if operation == "called_before" and len(arguments) == 2:
-        left = _agent_events(ir, trace, arguments[0])
-        right = _agent_events(ir, trace, arguments[1])
-        evidence = left + right
-        ordered = bool(
-            left
-            and right
-            and min(item.timestamp for item in left) < min(item.timestamp for item in right)
-        )
-        return ordered, evidence
-    if operation == "approval_granted" and len(arguments) == 1:
-        events = tuple(
-            event
-            for event in _capability_events(ir, trace, arguments[0], include_all=True)
-            if event.event_type == "approval.completed" and event.data.get("approved") is True
-        )
-        return bool(events), events
-    return None
-
-
-def _agent_events(ir: CanonicalIR, trace: NormalizedTrace, name: str) -> tuple[TraceEvent, ...]:
-    identifier = next((agent.id for agent in ir.agents.values() if agent.name == name), None)
-    if identifier is None:
-        return ()
-    return tuple(
-        event
-        for event in trace.events
-        if event.semantic.agent_id == identifier
-        and event.event_type
-        in {"agent.started", "agent.completed", "composition.started", "composition.completed", "handoff.completed"}
+    completeness: TraceCompletenessResult,
+) -> tuple[AssuranceStatus, tuple[TraceEvent, ...]]:
+    clauses = tuple(item.strip() for item in expression.split(" and ") if item.strip())
+    try:
+        parsed = tuple(parse_expectation(clause) for clause in clauses)
+    except ExpressionError:
+        return "unverified", ()
+    if not parsed or any(item.kind != "trace" for item in parsed):
+        return "unverified", ()
+    results = tuple(
+        assess_trace_expression(item, ir=ir, trace=trace, completeness=completeness)
+        for item in parsed
     )
-
-
-def _capability_events(
-    ir: CanonicalIR,
-    trace: NormalizedTrace,
-    name: str,
-    *,
-    include_all: bool = False,
-) -> tuple[TraceEvent, ...]:
-    identifier = next((item.id for item in ir.capabilities.values() if item.name == name), None)
-    if identifier is None:
-        return ()
-    return tuple(
-        event
-        for event in trace.events
-        if event.semantic.capability_id == identifier
-        and (include_all or event.event_type in {"tool.started", "tool.completed", "datasource.resolved"})
-    )
+    evidence = {
+        event.event_id: event
+        for result in results
+        for event in result.events
+    }
+    status: AssuranceStatus
+    if any(result.status == "violated" for result in results):
+        status = "violated"
+    elif any(result.status == "unverified" for result in results):
+        status = "unverified"
+    else:
+        status = "passed"
+    return status, tuple(evidence[event_id] for event_id in sorted(evidence))
 
 
 def _result(
@@ -356,6 +317,8 @@ def _result(
     status: AssuranceStatus,
     reason: str,
     events: tuple[TraceEvent, ...],
+    *,
+    applicability: ControlApplicability = "applicable",
 ) -> ControlResult:
     return ControlResult(
         control_id=str(control.id),
@@ -363,6 +326,7 @@ def _result(
         reason=reason,
         assessment=control.assessment,
         assessor=_ASSESSOR,
+        applicability=applicability,
         evidence_event_ids=tuple(event.event_id for event in events),
         evidence_refs=tuple(reference for event in events for reference in event.evidence_refs),
     )
@@ -374,12 +338,6 @@ def _select_run(trace: NormalizedTrace, run_id: str | None) -> NormalizedTrace:
     if len(trace.run_ids) != 1:
         raise ValueError("Trace contains multiple runs; pass run_id explicitly")
     return trace
-
-
-def _unquote(value: str) -> str:
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
-        return value[1:-1]
-    return value
 
 
 __all__ = ["assess_controls"]

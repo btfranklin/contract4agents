@@ -50,6 +50,9 @@ from contract4agents.planning import (
 from contract4agents.tracing import (
     NormalizedTrace,
     ProviderCorrelation,
+    TraceAttempt,
+    TraceAttemptClosure,
+    TraceClosureEvidence,
     TraceCompletenessResult,
     TraceEvent,
     TraceRunContext,
@@ -95,6 +98,20 @@ def _completeness(complete: bool) -> TraceCompletenessResult:
         "run-1",
         "complete" if complete else "unverified",
         "complete" if complete else "incomplete",
+        closure_digest=f"sha256:{'c' * 64}" if complete else None,
+        covered_channels=(
+            "agent",
+            "approval",
+            "composition",
+            "datasource",
+            "guardrail",
+            "handoff",
+            "output",
+            "provider_response",
+            "tool",
+        )
+        if complete
+        else (),
     )
 
 
@@ -132,6 +149,7 @@ def test_eval_output_expectation_branches(
 ) -> None:
     result = assess_expectation(
         expression,
+        ir=_ir(),
         output=output,
         trace=NormalizedTrace((_event("evt-1", "run.started"),)),
         trace_completeness=_completeness(True),
@@ -150,7 +168,7 @@ def test_eval_schema_hidden_truth_and_invalid_expression_branches() -> None:
         "required": ["status"],
         "additionalProperties": False,
     }
-    common = {"trace": trace, "trace_completeness": _completeness(True)}
+    common = {"trace": trace, "trace_completeness": _completeness(True), "ir": _ir()}
 
     assert assess_expectation(
         "output conforms Result",
@@ -207,10 +225,10 @@ def test_eval_schema_hidden_truth_and_invalid_expression_branches() -> None:
     ("expression", "complete", "status"),
     [
         ("trace.tool_called(status.publish)", True, "passed"),
-        ("trace.not_called(other.tool)", True, "passed"),
+        ("trace.not_called(other.tool)", True, "unverified"),
         ("trace.not_called(status.publish)", True, "violated"),
-        ("trace.called_once(status.publish)", True, "violated"),
-        ("trace.called_times(status.publish, 2)", True, "passed"),
+        ("trace.called_once(status.publish)", True, "passed"),
+        ("trace.called_times(status.publish, 2)", True, "violated"),
         ("trace.called_times(status.publish, 3)", False, "unverified"),
         ("trace.max_calls(status.publish, 0)", True, "violated"),
         ("trace.max_calls(status.publish, 2)", False, "unverified"),
@@ -232,6 +250,7 @@ def test_eval_trace_presence_absence_and_count_branches(
 
     result = assess_expectation(
         expression,
+        ir=_ir(),
         output={},
         trace=trace,
         trace_completeness=_completeness(complete),
@@ -243,6 +262,15 @@ def test_eval_trace_presence_absence_and_count_branches(
 
 
 def test_eval_trace_ordering_approval_and_actor_specific_branches() -> None:
+    base = _ir()
+    other = AgentIR(
+        semantic_id("agent", "Other"),
+        "Other",
+        (),
+        parse_type_ref("Result"),
+        "Be second.",
+    )
+    ir = replace(base, agents=FrozenMap((*base.agents.items(), (other.id, other))))
     trace = NormalizedTrace(
         (
             _event("evt-1", "agent.completed", agent="SupportAgent", capability=None, grant=None),
@@ -254,7 +282,7 @@ def test_eval_trace_ordering_approval_and_actor_specific_branches() -> None:
     expressions = {
         "trace.called_before(SupportAgent, Other)": "passed",
         "trace.called_after(SupportAgent, Other)": "violated",
-        "trace.called_before(SupportAgent, Missing)": "violated",
+        "trace.called_before(SupportAgent, Missing)": "unverified",
         "trace.approval_denied(status.publish)": "passed",
         "trace.approval_granted(status.publish)": "violated",
         "trace.not_tool_called_by(Other, status.publish)": "passed",
@@ -263,6 +291,7 @@ def test_eval_trace_ordering_approval_and_actor_specific_branches() -> None:
     for expression, status in expressions.items():
         result = assess_expectation(
             expression,
+            ir=ir,
             output={},
             trace=trace,
             trace_completeness=_completeness(True),
@@ -570,11 +599,11 @@ def test_control_assessor_approval_failure_and_missing_evidence_branches(
     [
         ('trace.agent_called("SupportAgent")', "passed"),
         ("trace.tool_called(status.publish)", "passed"),
-        ("trace.not_called(missing)", "passed"),
+        ("trace.not_called(missing)", "unverified"),
         ('trace.called_before("SupportAgent", Other)', "passed"),
         ("trace.approval_granted(status.publish)", "passed"),
-        ("trace.tool_called(status.publish) and trace.not_called(missing)", "passed"),
-        ("trace.agent_called(Missing)", "violated"),
+        ("trace.tool_called(status.publish) and trace.not_called(missing)", "unverified"),
+        ("trace.agent_called(Missing)", "unverified"),
         ("trace.unknown(operation)", "unverified"),
         ("not deterministic prose", "unverified"),
     ],
@@ -635,6 +664,77 @@ def test_control_assessor_deterministic_requirement_language(
     result = assess_controls(ir, plan, _conforming_trace(ir, plan, events))[0]
 
     assert result.status == expected_status
+
+
+def test_conditional_control_distinguishes_false_true_and_unverified_applicability() -> None:
+    base = _ir()
+    agent_id = semantic_id("agent", "SupportAgent")
+    control = ControlIR(
+        semantic_id("control", "SupportAgent", "conditional"),
+        "conditional",
+        agent_id,
+        "high",
+        True,
+        ("evaluator",),
+        "post_run",
+        condition="trace.tool_called(status.publish)",
+        requirement="trace.agent_called(SupportAgent)",
+    )
+    ir = replace(base, controls=FrozenMap({control.id: control}))
+    base_plan = _plan(base)
+    plan = replace(
+        base_plan,
+        contract_digest=contract_digest(ir),
+        controls=FrozenMap(
+            {control.id: ControlMappingPlan(control.id, True, "post_run", "exact", "test", ())}
+        ),
+        expected_telemetry=("agent.completed",),
+    )
+    attempt = TraceAttempt("support:1", "support-attempt-1", 1)
+    agent_event = _event(
+        "evt-agent",
+        "agent.completed",
+        capability=None,
+        grant=None,
+        data={"attempt": attempt.to_dict()},
+    )
+    false_trace = _conforming_trace(ir, plan, (agent_event,))
+    closure = TraceClosureEvidence(
+        false_trace.events[0].context,
+        "complete",
+        "The fixture covers all tool and agent paths.",
+        ("agent", "tool"),
+        (
+            TraceAttemptClosure(
+                attempt,
+                agent_id,
+                "complete",
+                "complete",
+                evidence_refs=("fixture:attempt",),
+            ),
+        ),
+        ("fixture:closure",),
+    )
+
+    not_applicable = assess_controls(ir, plan, false_trace, closure=closure)[0]
+    unknown = assess_controls(ir, plan, false_trace)[0]
+    tool_event = _event(
+        "evt-tool",
+        "tool.completed",
+        timestamp=2,
+        data={"attempt": attempt.to_dict()},
+    )
+    true_trace = _conforming_trace(ir, plan, (agent_event, tool_event))
+    applicable = assess_controls(
+        ir,
+        plan,
+        true_trace,
+        closure=replace(closure, context=true_trace.events[0].context),
+    )[0]
+
+    assert (not_applicable.status, not_applicable.applicability) == ("passed", "not_applicable")
+    assert (unknown.status, unknown.applicability) == ("unverified", "unverified")
+    assert (applicable.status, applicable.applicability) == ("passed", "applicable")
 
 
 def test_control_assessor_prefers_explicit_results_and_handles_output_failures() -> None:

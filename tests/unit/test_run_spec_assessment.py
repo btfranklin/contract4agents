@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 
 import pytest
 
 from contract4agents.assurance import (
+    RunSpecAssessmentInput,
+    RunSpecAssessmentManifest,
     RunSpecEvidence,
     RunSpecSelection,
     RunSpecStageObservation,
@@ -28,6 +31,9 @@ from contract4agents.planning import AdapterPlan, AgentPlan, MaterializationPlan
 from contract4agents.tracing import (
     NormalizedTrace,
     ProviderCorrelation,
+    TraceAttempt,
+    TraceAttemptClosure,
+    TraceClosureEvidence,
     TraceEvent,
     TraceRunContext,
     TraceSemanticRefs,
@@ -92,8 +98,8 @@ def test_run_spec_assessment_requires_explicit_workflow_and_trace_completeness()
 
     assert workflow_result.status == "unverified"
     assert all(item.status == "unverified" for item in workflow_result.stages)
-    assert trace_result.status == "unverified"
-    assert [item.status for item in trace_result.assertions] == ["unverified", "passed"]
+    assert trace_result.status == "passed"
+    assert [item.status for item in trace_result.assertions] == ["passed", "passed"]
 
 
 def test_run_spec_assessment_rejects_wrong_agent_schema_cardinality_and_extra_stage() -> None:
@@ -271,6 +277,7 @@ def test_run_spec_results_are_distinct_assurance_bundle_evidence() -> None:
     result = assess_run_spec(ir, plan, trace, "ResearchRun", _evidence(ir))
     common = {
         "normalized_trace_jsonl": dumps_trace_jsonl(trace),
+        "trace_closures": (_closure(trace),),
         "control_results": (),
         "eval_results": {"campaigns": []},
         "provenance": {"sources": ["test"]},
@@ -302,7 +309,7 @@ def test_run_spec_results_are_distinct_assurance_bundle_evidence() -> None:
     assert "BUNDLE013" in {item.code for item in explicitly_missing.diagnostics}
     assert '"status": "unverified"' in missing.files["run-spec-results.json"]
     assert complete.complete
-    assert complete.bundle_version == "2"
+    assert complete.bundle_version == "3"
     assert '"run_spec_id": "run_spec:ResearchRun"' in complete.files["run-spec-results.json"]
     assert result.evidence_digest in complete.files["run-spec-results.json"]
 
@@ -325,6 +332,7 @@ def test_assurance_bundle_accepts_explicit_no_applicable_run_spec() -> None:
         ir,
         plan,
         normalized_trace_jsonl=dumps_trace_jsonl(trace),
+        trace_closures=(_closure(trace),),
         control_results=(),
         eval_results={"campaigns": []},
         provenance={"sources": ["test"]},
@@ -407,6 +415,30 @@ def test_complete_run_spec_evidence_requires_a_completeness_reference() -> None:
         RunSpecEvidence("complete", "The host says it finished.")
 
 
+def test_run_spec_assessment_manifest_round_trips_raw_evidence_and_rejects_mismatches() -> None:
+    selection = RunSpecSelection(
+        "run-1",
+        "run_spec:ResearchRun",
+        "The workflow ledger selected the declared run spec.",
+        ("workflow-ledger:selection",),
+    )
+    manifest = RunSpecAssessmentManifest((RunSpecAssessmentInput(selection, _evidence(_ir())),))
+
+    assert RunSpecAssessmentManifest.from_json(json.dumps(manifest.to_dict())) == manifest
+    with pytest.raises(ValueError, match="requires assessment evidence"):
+        RunSpecAssessmentInput(selection, None)
+    with pytest.raises(ValueError, match="cannot carry assessment evidence"):
+        RunSpecAssessmentInput(
+            RunSpecSelection(
+                "run-1",
+                None,
+                "No declared workflow applied.",
+                ("workflow-ledger:none",),
+            ),
+            _evidence(_ir()),
+        )
+
+
 def _ir() -> CanonicalIR:
     plan_type = TypeIR(
         semantic_id("type", "Plan"),
@@ -477,6 +509,8 @@ def _plan(ir: CanonicalIR) -> MaterializationPlan:
 
 def _trace(ir: CanonicalIR, plan: MaterializationPlan) -> NormalizedTrace:
     context = TraceRunContext("run-1", "thread-1", contract_digest(ir), plan.plan_digest)
+    planner_attempt = TraceAttempt("planner:1", "planner-attempt-1", 1)
+    writer_attempt = TraceAttempt("writer:1", "writer-attempt-1", 1)
     return NormalizedTrace(
         (
             TraceEvent(
@@ -486,6 +520,7 @@ def _trace(ir: CanonicalIR, plan: MaterializationPlan) -> NormalizedTrace:
                 "agent.started",
                 1,
                 TraceSemanticRefs(agent_id=semantic_id("agent", "Planner")),
+                data={"attempt": planner_attempt.to_dict()},
                 provider=ProviderCorrelation("test"),
             ),
             TraceEvent(
@@ -495,9 +530,35 @@ def _trace(ir: CanonicalIR, plan: MaterializationPlan) -> NormalizedTrace:
                 "agent.started",
                 2,
                 TraceSemanticRefs(agent_id=semantic_id("agent", "Writer")),
+                data={"attempt": writer_attempt.to_dict()},
                 provider=ProviderCorrelation("test"),
             ),
         )
+    )
+
+
+def _closure(trace: NormalizedTrace) -> TraceClosureEvidence:
+    attempts = {
+        TraceAttempt.from_dict(event.data["attempt"]): event.semantic.agent_id
+        for event in trace.events
+    }
+    return TraceClosureEvidence(
+        context=trace.events[0].context,
+        status="complete",
+        reason="The workflow fixture covers every attempt.",
+        channels=("agent",),
+        attempts=tuple(
+            TraceAttemptClosure(
+                attempt,
+                agent_id,
+                "complete",
+                "complete",
+                evidence_refs=(f"fixture:{attempt.attempt_id}",),
+            )
+            for attempt, agent_id in attempts.items()
+            if agent_id is not None
+        ),
+        evidence_refs=(f"fixture:{trace.run_ids[0]}:closure",),
     )
 
 

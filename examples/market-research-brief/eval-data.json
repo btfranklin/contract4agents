@@ -1,5 +1,5 @@
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "cases": {
     "eval:MarketResearchLead:validates_segment_opportunity": {
       "inputs": {"hidden_truth": {"market_thesis": "Field operations teams are an attractive initial segment for governed AI workflows."}},
@@ -37,6 +37,12 @@
             "quality:MarketResearchLead:clear_market_thesis": {"status": "passed", "reason": "The thesis directly answers the decision question.", "score": 0.94, "provider": "deterministic-example", "version": "1"},
             "quality:MarketResearchLead:separates_evidence_sources": {"status": "passed", "reason": "Internal and current external evidence remain separate and cited.", "score": 0.96, "provider": "deterministic-example", "version": "1"},
             "quality:MarketResearchLead:balanced_recommendation": {"status": "passed", "reason": "Competitor and customer evidence both influence the recommendation.", "score": 0.91, "provider": "deterministic-example", "version": "1"}
+          },
+          "closure": {
+            "status": "complete",
+            "reason": "The deterministic fixture enumerates every instrumented execution path.",
+            "channels": ["agent", "approval", "composition", "datasource", "guardrail", "handoff", "output", "provider_response", "tool"],
+            "evidence_refs": ["fixture:market-research-brief:trial-1:closure"]
           },
           "metrics": {"latency_ms": 42.0, "cost_usd": 0.0, "input_tokens": 0, "output_tokens": 0}
         }

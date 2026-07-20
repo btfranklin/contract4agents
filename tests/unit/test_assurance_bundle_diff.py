@@ -29,6 +29,17 @@ from contract4agents.ir import (
 from contract4agents.parser import parse_project
 from contract4agents.planning import plan_materialization
 from contract4agents.target_bindings import load_target_bindings
+from contract4agents.tracing import (
+    NormalizedTrace,
+    ProviderCorrelation,
+    TraceAttempt,
+    TraceAttemptClosure,
+    TraceClosureEvidence,
+    TraceEvent,
+    TraceRunContext,
+    TraceSemanticRefs,
+    dumps_trace_jsonl,
+)
 
 
 def test_contract_diff_flags_new_access_weakened_approval_and_breaking_schema() -> None:
@@ -89,10 +100,43 @@ def test_assurance_bundle_is_deterministic_verified_and_explicit_about_missing_e
         evidence_event_ids=("evt-000001",),
     )
 
+    attempt = TraceAttempt("commander:1", "commander-attempt-1", 1)
+    context = TraceRunContext("run-1", "run-1", plan.contract_digest, plan.plan_digest)
+    trace = NormalizedTrace(
+        (
+            TraceEvent(
+                context,
+                "evt-000001",
+                None,
+                "output.accepted",
+                1,
+                TraceSemanticRefs(agent_id=semantic_id("agent", "IncidentCommander")),
+                data={"attempt": attempt.to_dict()},
+                provider=ProviderCorrelation("test"),
+            ),
+        )
+    )
+    closure = TraceClosureEvidence(
+        context,
+        "complete",
+        "The test fixture covers the run.",
+        ("output",),
+        (
+            TraceAttemptClosure(
+                attempt,
+                semantic_id("agent", "IncidentCommander"),
+                "complete",
+                "complete",
+                evidence_refs=("fixture:attempt",),
+            ),
+        ),
+        ("fixture:closure",),
+    )
     first = assemble_assurance_bundle(
         ir,
         plan,
-        normalized_trace_jsonl='{"schema_version":"1"}\n',
+        normalized_trace_jsonl=dumps_trace_jsonl(trace),
+        trace_closures=(closure,),
         control_results=(result,),
         eval_results={"campaigns": []},
         provenance={"sources": ["test"]},
@@ -100,7 +144,8 @@ def test_assurance_bundle_is_deterministic_verified_and_explicit_about_missing_e
     second = assemble_assurance_bundle(
         ir,
         plan,
-        normalized_trace_jsonl='{"schema_version":"1"}\n',
+        normalized_trace_jsonl=dumps_trace_jsonl(trace),
+        trace_closures=(closure,),
         control_results=(result,),
         eval_results={"campaigns": []},
         provenance={"sources": ["test"]},

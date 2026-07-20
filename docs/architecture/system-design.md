@@ -77,8 +77,10 @@ causal relationships, provider-native correlation, provenance, evidence links,
 and audience-safe redaction. It supplements provider trace systems rather than
 replacing them.
 
-Completeness is measured against plan telemetry. Event absence cannot prove a
-negative claim when instrumentation coverage is incomplete.
+Plan telemetry diagnoses expected event-family occurrence. Identity-bound
+closure evidence proves which attempts and instrumentation channels were
+covered. Event absence cannot prove a negative claim when that closure is
+missing or incomplete.
 
 ## Assure
 

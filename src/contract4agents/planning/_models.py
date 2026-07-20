@@ -8,7 +8,7 @@ from typing import Literal
 
 from contract4agents.ir import FrozenJsonValue, FrozenMap, SemanticId, TypeRef, freeze_json
 
-PLAN_VERSION = "1"
+PLAN_VERSION = "2"
 MappingOutcome = Literal["exact", "host_enforced", "emulated", "degraded", "unsupported"]
 BindingKind = Literal["tool", "datasource", "external"]
 IsolationDimension = Literal["context", "capabilities", "state", "filesystem", "network", "secrets", "return"]

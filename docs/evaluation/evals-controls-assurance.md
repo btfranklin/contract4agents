@@ -54,6 +54,13 @@ The distinction is deliberately asymmetric. Positive events may prove a
 positive claim. Event absence proves a negative claim only when the trace also
 proves the relevant instrumentation covered the complete run.
 
+Conditional controls evaluate `when` before `require`. A proven-false
+condition produces a passed result with `applicability = "not_applicable"`; the
+requirement is not evaluated. A proven-true condition makes the requirement
+applicable. An unverifiable condition produces an unverified result with
+`applicability = "unverified"`. Absence can prove a condition false only when
+the relevant trace channel has complete closure evidence.
+
 ## Eval Scenarios
 
 `.eval` files declare cases against named agents:
@@ -82,9 +89,13 @@ contract4agents eval agent_contracts --target openai --profile test
 
 An eval provider supplies scenario inputs, external context, datasource/tool
 behavior, approval decisions, execution, and semantic judge decisions. The
-built-in file provider reads `eval-data.json` for deterministic offline runs.
+built-in file provider reads schema-version `2` `eval-data.json` for
+deterministic offline runs. Each trial includes an explicit closure declaration;
+the provider binds that declaration to the attempts and events it constructs.
 Custom providers implement the `EvalProvider` protocol for live, replayed, or
-application-integrated execution.
+application-integrated execution. `EvalExecution` returns both a normalized
+trace and its `TraceClosureEvidence`; a custom provider cannot authorize
+absence-dependent results with event-family occurrence alone.
 
 Campaigns support repeated trials, pass/violation/unverified rates, Wilson
 uncertainty intervals, latency and cost summaries, thresholds, and baseline
@@ -93,7 +104,8 @@ disappearing or becoming passes.
 
 ## Shared Assessment
 
-`assess_controls(ir, plan, trace)` is the common provider-neutral assessor. It
+`assess_controls(ir, plan, trace, closure=trace_closure)` is the common
+provider-neutral assessor. It
 uses the plan's requested mechanisms and expected telemetry when evaluating
 contract controls. Eval campaigns and production trace assessment call this
 same API. Both paths first validate trace conformance against the canonical
@@ -111,7 +123,14 @@ drifting apart.
 Run specs have a separate post-run assessor:
 
 ```python
-assess_run_spec(ir, plan, trace, "ResearchRun", run_spec_evidence)
+assess_run_spec(
+    ir,
+    plan,
+    trace,
+    "ResearchRun",
+    run_spec_evidence,
+    closure=trace_closure,
+)
 ```
 
 The host still executes stages, computes derived values, and decides when its
@@ -129,6 +148,7 @@ An assurance bundle is a deterministic evidence package containing:
 - canonical contract IR and contract digest;
 - materialization plan and plan digest;
 - normalized trace JSONL;
+- versioned, identity-bound trace-closure evidence;
 - control results whose reasons and evidence reflect trace completeness;
 - run-spec results for contracts whose selected workflow is declared by a run
   spec;
@@ -145,6 +165,11 @@ run. A selection may name one declared run spec or state that none applied.
 Results are accepted only when their contract, plan, run, and run-spec identity
 matches that selection; their canonical evidence digest binds the exact stage
 outputs and derived values that were assessed.
+
+Controls and run specs remain different claims. A control assesses one
+behavioral requirement and may be conditional. A run spec assesses a
+host-selected workflow declaration: stage identity, cardinality, typed outputs,
+derived values, and assertions. Neither result substitutes for the other.
 
 ## Semantic Diffs
 

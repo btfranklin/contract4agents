@@ -19,10 +19,16 @@ from contract4agents.assurance._diff import (
     diff_materialization_plans,
     semantic_diff,
 )
+from contract4agents.assurance._inputs import (
+    RUN_SPEC_ASSESSMENT_INPUT_VERSION,
+    RunSpecAssessmentInput,
+    RunSpecAssessmentManifest,
+)
 from contract4agents.assurance._models import (
     AssessmentClassification,
     AssessorIdentity,
     AssuranceStatus,
+    ControlApplicability,
     ControlResult,
 )
 from contract4agents.assurance._run_specs import (
@@ -44,12 +50,16 @@ __all__ = [
     "AssuranceStatus",
     "BundleDiagnostic",
     "ControlResult",
+    "ControlApplicability",
     "DiffArea",
     "DiffChange",
     "DiffImpact",
     "SemanticDiff",
     "SemanticDiffEntry",
     "RunSpecAssertionResult",
+    "RUN_SPEC_ASSESSMENT_INPUT_VERSION",
+    "RunSpecAssessmentInput",
+    "RunSpecAssessmentManifest",
     "RunSpecEvidence",
     "RunSpecEvidenceStatus",
     "RunSpecResult",

@@ -9,8 +9,9 @@ import pytest
 from contract4agents import materialize
 from contract4agents.ir import semantic_id
 from contract4agents.tracing import (
-    OpenAINormalizedTraceProcessor,
+    OpenAINormalizedTraceRouter,
     RecordingNormalizedTraceSink,
+    TraceAttempt,
     validate_trace_conformance,
 )
 from examples.incident_command_imports.seed import seed_incident_data
@@ -61,23 +62,27 @@ async def test_contract_first_incident_graph_runs_through_openai(
         f"### {name}\n\n{value.rendered}" for name, value in context.items()
     )
 
-    processor = OpenAINormalizedTraceProcessor(
+    router = OpenAINormalizedTraceRouter()
+    processor = router.open_session(
         system.context.ir,
         system.plan,
         run_id=run_id,
     )
-    set_trace_processors([processor])
+    set_trace_processors([router])
     prompt = PROMPT.read_text(encoding="utf-8").replace("{{CONTEXT}}", rendered_context)
-    with processor.capture():
-        result = await Runner.run(
-            system.agents["IncidentCommander"],
-            prompt,
-            max_turns=12,
-            run_config=RunConfig(
-                workflow_name="Contract4Agents live Incident Command",
-                trace_include_sensitive_data=False,
-            ),
-        )
+    attempt = TraceAttempt("incident-command:1", "incident-command-attempt-1", 1)
+    with processor:
+        with processor.bind_attempt(attempt, agent="IncidentCommander"):
+            result = await Runner.run(
+                system.agents["IncidentCommander"],
+                prompt,
+                max_turns=12,
+                run_config=RunConfig(
+                    workflow_name="Contract4Agents live Incident Command",
+                    trace_include_sensitive_data=False,
+                ),
+            )
+            processor.record_result(result, agent="IncidentCommander", attempt=attempt)
 
     assert result.final_output is not None
     assert result.final_output.summary
@@ -116,29 +121,29 @@ async def test_openai_hosted_web_search_normalizes_to_exact_grant() -> None:
 
     system = materialize(WEB_SEARCH_PROJECT, target="openai", profile="production")
     run_id = "openai-live-web-search"
-    processor = OpenAINormalizedTraceProcessor(
+    router = OpenAINormalizedTraceRouter()
+    processor = router.open_session(
         system.context.ir,
         system.plan,
         run_id=run_id,
     )
-    set_trace_processors([processor])
+    set_trace_processors([router])
     # The SDK only attaches the provider response (including its model field)
     # when data capture is enabled. Our sole processor deliberately retains
     # correlation and model metadata while excluding response input/output.
-    with processor.capture():
-        result = await Runner.run(
-            system.agents["CurrentTruthScout"],
-            WEB_SEARCH_PROMPT.read_text(encoding="utf-8"),
-            max_turns=4,
-            run_config=RunConfig(
-                workflow_name="Contract4Agents live hosted web search",
-                trace_include_sensitive_data=True,
-            ),
-        )
-    processor.normalize_response_events(
-        result.raw_responses,
-        agent="CurrentTruthScout",
-    )
+    attempt = TraceAttempt("web-search:1", "web-search-attempt-1", 1)
+    with processor:
+        with processor.bind_attempt(attempt, agent="CurrentTruthScout"):
+            result = await Runner.run(
+                system.agents["CurrentTruthScout"],
+                WEB_SEARCH_PROMPT.read_text(encoding="utf-8"),
+                max_turns=4,
+                run_config=RunConfig(
+                    workflow_name="Contract4Agents live hosted web search",
+                    trace_include_sensitive_data=True,
+                ),
+            )
+            processor.record_result(result, agent="CurrentTruthScout", attempt=attempt)
     trace = processor.normalized_trace()
     hosted_events = [
         event

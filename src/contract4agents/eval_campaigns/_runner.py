@@ -122,12 +122,17 @@ async def _run_trial(
             controls=(),
             qualities=(),
             trace_completeness=None,
+            trace_closure=None,
             metrics=TrialMetrics(),
             diagnostic=f"Eval provider failed: {exc}",
         )
 
     validate_trace_conformance(ir, plan, execution.trace)
-    completeness = assess_trace_completeness(execution.trace, plan.expected_telemetry)
+    completeness = assess_trace_completeness(
+        execution.trace,
+        plan.expected_telemetry,
+        closure=execution.trace_closure,
+    )
     hidden_truth_value = inputs.get("hidden_truth", {})
     hidden_truth = hidden_truth_value if isinstance(hidden_truth_value, Mapping) else {}
     expectations = tuple(
@@ -136,6 +141,7 @@ async def _run_trial(
             output=execution.output,
             trace=execution.trace,
             trace_completeness=completeness,
+            ir=ir,
             schemas=schemas,
             hidden_truth=hidden_truth,
         )
@@ -146,7 +152,7 @@ async def _run_trial(
     }
     controls = tuple(
         result
-        for result in assess_controls(ir, plan, execution.trace)
+        for result in assess_controls(ir, plan, execution.trace, closure=execution.trace_closure)
         if SemanticId.parse(result.control_id) in case_control_ids
     )
     qualities = tuple(
@@ -180,6 +186,7 @@ async def _run_trial(
         controls=controls,
         qualities=qualities,
         trace_completeness=completeness,
+        trace_closure=execution.trace_closure,
         metrics=execution.metrics,
     )
 

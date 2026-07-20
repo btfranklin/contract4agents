@@ -1,5 +1,15 @@
 """Normalized trace schema, deterministic JSONL, and evidence completeness."""
 
+from contract4agents.tracing._closure import (
+    TRACE_CLOSURE_MANIFEST_VERSION,
+    TraceAttemptClosure,
+    TraceClosureError,
+    TraceClosureEvidence,
+    TraceClosureManifest,
+    TraceClosureStatus,
+    TraceCoverageChannel,
+    validate_trace_closure,
+)
 from contract4agents.tracing._completeness import (
     TraceCompletenessResult,
     TraceCompletenessStatus,
@@ -30,7 +40,8 @@ from contract4agents.tracing._models import (
     TraceSemanticRefs,
 )
 from contract4agents.tracing._openai import (
-    OpenAINormalizedTraceProcessor,
+    OpenAINormalizedTraceRouter,
+    OpenAINormalizedTraceSession,
     normalize_openai_exception_responses,
     normalize_openai_response_events,
     resolve_provider_tool_grant,
@@ -48,6 +59,7 @@ from contract4agents.tracing._sinks import (
 )
 
 __all__ = [
+    "TRACE_CLOSURE_MANIFEST_VERSION",
     "TRACE_SCHEMA_VERSION",
     "AtomicTraceFileSink",
     "NormalizedTrace",
@@ -55,13 +67,20 @@ __all__ = [
     "NoOpNormalizedTraceSink",
     "OpenTelemetrySpan",
     "OpenTelemetryTracer",
-    "OpenAINormalizedTraceProcessor",
+    "OpenAINormalizedTraceRouter",
+    "OpenAINormalizedTraceSession",
     "ProviderCorrelation",
     "RecordingNormalizedTraceSink",
     "RedactionMetadata",
     "RedactionRule",
     "RedactionState",
     "TraceAttempt",
+    "TraceAttemptClosure",
+    "TraceClosureEvidence",
+    "TraceClosureError",
+    "TraceClosureManifest",
+    "TraceClosureStatus",
+    "TraceCoverageChannel",
     "TraceEvent",
     "TraceCompletenessResult",
     "TraceCompletenessStatus",
@@ -79,5 +98,6 @@ __all__ = [
     "normalize_openai_response_events",
     "resolve_provider_tool_grant",
     "validate_trace_conformance",
+    "validate_trace_closure",
     "write_trace_jsonl",
 ]
