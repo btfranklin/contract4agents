@@ -33,7 +33,7 @@ from contract4agents.ir import (
 def test_generate_code_emits_stable_paths_headers_and_dependency_order() -> None:
     ir = _portable_ir(reverse=True)
 
-    generated = generate_code(ir)
+    generated = generate_code(ir, targets=("typescript", "python"))
 
     assert generated.generator_version == GENERATOR_VERSION
     assert generated.contract_digest == contract_digest(ir)
@@ -54,7 +54,28 @@ def test_generate_code_emits_stable_paths_headers_and_dependency_order() -> None
     assert typescript_source.index("interface Address") < typescript_source.index("interface Incident")
 
     same_semantics = _portable_ir(reverse=False)
-    assert generate_code(same_semantics).files == generated.files
+    assert generate_code(same_semantics, targets=("python", "typescript")).files == generated.files
+
+
+def test_generate_code_emits_only_selected_targets() -> None:
+    ir = _portable_ir()
+
+    python = generate_code(ir, targets=("python",))
+    typescript = generate_code(ir, targets=("typescript",))
+    combined = generate_code(ir, targets=("python", "typescript", "python"))
+
+    assert tuple(python.files) == (PYDANTIC_MODELS_PATH,)
+    assert tuple(typescript.files) == (TYPESCRIPT_TYPES_PATH, ZOD_SCHEMAS_PATH)
+    assert tuple(combined.files) == (
+        PYDANTIC_MODELS_PATH,
+        TYPESCRIPT_TYPES_PATH,
+        ZOD_SCHEMAS_PATH,
+    )
+
+    with pytest.raises(CodeGenerationError, match="CGEN003.*At least one generation target"):
+        generate_code(ir, targets=())
+    with pytest.raises(CodeGenerationError, match="CGEN003.*Unknown generation target: java"):
+        generate_code(ir, targets=("java",))
 
 
 def test_pydantic_generation_covers_portable_types_defaults_and_forward_refs() -> None:
@@ -188,13 +209,13 @@ def test_codegen_rejects_missing_named_types_and_nonportable_identifiers() -> No
     )
 
     with pytest.raises(CodeGenerationError, match="CGEN001.*missing contract type `Missing`"):
-        generate_code(CanonicalIR.create(types=(missing,)))
+        generate_code(CanonicalIR.create(types=(missing,)), targets=("python",))
     with pytest.raises(CodeGenerationError, match="CGEN001.*portable generated-code identifier"):
-        generate_code(CanonicalIR.create(types=(invalid_field,)))
+        generate_code(CanonicalIR.create(types=(invalid_field,)), targets=("python",))
 
 
 def test_write_and_check_freshness_only_touch_deterministic_generated_paths(tmp_path: Any) -> None:
-    generated = generate_code(_portable_ir())
+    generated = generate_code(_portable_ir(), targets=("python", "typescript"))
     output_dir = tmp_path / "generated"
 
     assert stale_generated_paths(generated, output_dir) == tuple(generated.files)
@@ -222,8 +243,24 @@ def test_write_and_check_freshness_only_touch_deterministic_generated_paths(tmp_
     assert unrelated.read_text() == "user-owned\n"
 
 
+def test_separate_targets_can_share_one_generated_source_root(tmp_path: Any) -> None:
+    ir = _portable_ir()
+    output_dir = tmp_path / "generated"
+    python = generate_code(ir, targets=("python",))
+    typescript = generate_code(ir, targets=("typescript",))
+
+    write_generated_code(python, output_dir)
+    write_generated_code(typescript, output_dir)
+
+    assert write_generated_code(python, output_dir, check=True) == ()
+    assert write_generated_code(typescript, output_dir, check=True) == ()
+    assert (output_dir / PYDANTIC_MODELS_PATH).is_file()
+    assert (output_dir / TYPESCRIPT_TYPES_PATH).is_file()
+    assert (output_dir / ZOD_SCHEMAS_PATH).is_file()
+
+
 def test_generated_code_paths_are_relative_and_normalized() -> None:
-    generated = generate_code(CanonicalIR.create())
+    generated = generate_code(CanonicalIR.create(), targets=("python",))
 
     assert all(isinstance(path, PurePosixPath) and not path.is_absolute() for path in generated.files)
 

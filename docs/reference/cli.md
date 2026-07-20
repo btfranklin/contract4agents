@@ -33,7 +33,7 @@ Options:
 - `--check`: write nothing and fail if managed artifacts are stale.
 
 Managed output includes canonical IR and digest, JSON Schemas, audience-safe
-instructions, Pydantic/TypeScript/Zod source, and generated reviewer docs.
+instructions, and generated reviewer docs.
 `COMPILE001` reports stale files; `COMPILE002` reports an unsafe destination.
 
 ## `generate [ROOT]`
@@ -41,18 +41,22 @@ instructions, Pydantic/TypeScript/Zod source, and generated reviewer docs.
 Write only application-consumed language source derived from canonical IR.
 
 ```bash
-contract4agents generate agent_contracts --out .contract/generated
-contract4agents generate agent_contracts --out .contract/generated --check
+contract4agents generate agent_contracts --target python --out .contract/generated
+contract4agents generate agent_contracts --target python --out .contract/generated --check
+contract4agents generate agent_contracts \
+  --target python --target typescript --out .contract/generated
 ```
 
 Options:
 
+- `--target [python|typescript]`: required generated-source target; repeat the
+  option to select both targets.
 - `--out PATH`: output root; default `.contract/generated`.
-- `--check`: fail when generated source is missing, modified, extra, or stale.
+- `--check`: fail when selected generated source is missing, modified, or stale.
 
-`compile` already includes review copies under its managed artifact bundle.
-Run `generate` separately only when Python or TypeScript application code
-imports the generated source, commonly from a dedicated checked-in generated
+The `python` target emits Pydantic models. The `typescript` target emits
+TypeScript interfaces and their Zod schemas. Run `generate` only for targets
+the application consumes, commonly into a dedicated checked-in generated
 directory. Generated files remain machine-owned and must not be edited.
 
 ## `plan [ROOT]`
@@ -153,7 +157,7 @@ Options:
 - `--trace PATH`: required normalized trace JSONL.
 - `--trace-closure PATH`: optional versioned `TraceClosureManifest` JSON. It is
   required for negative, upper-bound, and other absence-dependent passes. The
-  current v2 manifest must match the trace's exact ordered event frontier.
+  current v1 manifest must match the trace's exact ordered event frontier.
 - `--run-id ID`: optional run selection.
 
 Every control result is printed. Violated or unverified controls produce a

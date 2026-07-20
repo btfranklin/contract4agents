@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Literal
 
 from contract4agents.ast import RunSpecStageCardinality
 
@@ -34,6 +35,14 @@ class RunSpecDerivedValueDeclaration:
     raw: str
 
 
+@dataclass(frozen=True)
+class RunSpecStageSourceComponent:
+    role: Literal["stage", "agent", "output"]
+    value: str
+    start: int
+    end: int
+
+
 def parse_run_spec_stage_declaration(value: str) -> RunSpecStageDeclaration | None:
     match = _RUN_STAGE_RE.fullmatch(value)
     if match is None:
@@ -52,6 +61,19 @@ def parse_run_spec_stage_declaration(value: str) -> RunSpecStageDeclaration | No
         output_type=match.group("output"),
         cardinality=cardinality,
         raw=value,
+    )
+
+
+def run_spec_stage_source_components(value: str) -> tuple[RunSpecStageSourceComponent, ...]:
+    """Return positioned stage components using the canonical stage syntax."""
+
+    match = _RUN_STAGE_RE.fullmatch(value)
+    if match is None:
+        return ()
+    return (
+        RunSpecStageSourceComponent("stage", match.group("name"), *match.span("name")),
+        RunSpecStageSourceComponent("agent", match.group("agent"), *match.span("agent")),
+        RunSpecStageSourceComponent("output", match.group("output"), *match.span("output")),
     )
 
 
@@ -92,8 +114,10 @@ __all__ = [
     "DERIVED_VALUE_SCALAR_TYPES",
     "RunSpecDerivedValueDeclaration",
     "RunSpecStageDeclaration",
+    "RunSpecStageSourceComponent",
     "derived_value_collection_member_type",
     "normalize_derived_value_type",
     "parse_run_spec_derived_value_declaration",
     "parse_run_spec_stage_declaration",
+    "run_spec_stage_source_components",
 ]

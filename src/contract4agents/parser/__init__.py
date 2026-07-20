@@ -3,15 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import NoReturn, cast
 
-from lark import UnexpectedInput
-from lark.exceptions import VisitError
-
-from contract4agents.ast import ContractModule, ContractProject, SourceSpan
-from contract4agents.diagnostics import ContractError, Diagnostic
-from contract4agents.parser._grammar import MODULE_PARSER
-from contract4agents.parser._transformer import _ModuleTransformer
+from contract4agents.ast import ContractModule, ContractProject
+from contract4agents.parser._parse import parse_source_syntax
 
 
 def parse_project(root: Path | str) -> ContractProject:
@@ -31,27 +25,13 @@ def _source_paths(root_path: Path, pattern: str) -> list[Path]:
 
 def parse_file(path: Path | str) -> ContractModule:
     source_path = Path(path)
-    try:
-        source = source_path.read_text()
-        if source and not source.endswith("\n"):
-            source += "\n"
-        tree = MODULE_PARSER.parse(source)
-        module = _ModuleTransformer(source_path).transform(tree)
-    except UnexpectedInput as exc:
-        _raise("PARSE001", "Invalid syntax", source_path, exc.line or 1, str(exc), exc.column or 1)
-    except VisitError as exc:
-        if isinstance(exc.orig_exc, ContractError):
-            raise exc.orig_exc from exc
-        raise
-    return cast(ContractModule, module)
+    return parse_source(source_path, source_path.read_text())
 
 
-def _raise(
-    code: str,
-    message: str,
-    path: Path,
-    line: int,
-    hint: str | None = None,
-    column: int = 1,
-) -> NoReturn:
-    raise ContractError([Diagnostic(code, message, span=SourceSpan(path, line, column), hint=hint)])
+def parse_source(path: Path | str, source: str) -> ContractModule:
+    """Parse unsaved source text using the canonical module parser."""
+
+    return parse_source_syntax(Path(path), source).module
+
+
+__all__ = ["parse_file", "parse_project", "parse_source"]

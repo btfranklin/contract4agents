@@ -37,9 +37,12 @@ pdm run contract4agents visualize ROOT --target openai --profile test \
 The `test` profile and file-backed eval data require no provider credentials.
 Generated `.contract/` output is disposable.
 
-The complete compiler bundle already contains review copies of generated
-types. Run `generate` separately only when an application imports those types
-from a dedicated machine-owned source directory.
+Run `generate` separately only when an application imports generated types,
+and select only the language targets it consumes. For example:
+
+```bash
+pdm run contract4agents generate ROOT --target python --out src/generated
+```
 
 ## Incident Command
 

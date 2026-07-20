@@ -14,6 +14,7 @@ pdm build
 npm --prefix editors/vscode ci
 npm --prefix editors/vscode test
 npm --prefix editors/vscode run package
+pdm run pytest tests/unit/test_language_server.py
 ```
 
 `pdm run validate` runs Ruff, strict mypy, docs-check, and the offline test
@@ -56,8 +57,8 @@ code --user-data-dir "$tmpdir/user-data" \
 
 - `.github/workflows/python-package.yml` validates pushes and pull requests
   across supported Python versions.
-- `.github/workflows/vscode-extension.yml` builds the VS Code
-  syntax-highlighting VSIX on pushes and pull requests.
+- `.github/workflows/vscode-extension.yml` tests the real Python language-server
+  boundary and builds the VS Code VSIX on pushes and pull requests.
 - `.github/workflows/create-draft-release.yml` runs on pushed `v*.*.*` tags and
   drafts release notes with `btfranklin/release-notes-scribe`, then attaches
   the version-matched VSIX to the draft release.

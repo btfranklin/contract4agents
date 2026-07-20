@@ -4,10 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import PurePosixPath
+from typing import Literal
 
 from contract4agents.ir import FrozenMap
 
-GENERATOR_VERSION = "2"
+GENERATOR_VERSION = "1"
+GenerationTarget = Literal["python", "typescript"]
+GENERATION_TARGETS: tuple[GenerationTarget, ...] = ("python", "typescript")
 PYDANTIC_MODELS_PATH = PurePosixPath("python/models.py")
 TYPESCRIPT_TYPES_PATH = PurePosixPath("typescript/types.ts")
 ZOD_SCHEMAS_PATH = PurePosixPath("typescript/schemas.ts")
@@ -53,6 +56,8 @@ class GeneratedCodeStaleError(CodeGenerationError):
 
 __all__ = [
     "GENERATOR_VERSION",
+    "GENERATION_TARGETS",
+    "GenerationTarget",
     "PYDANTIC_MODELS_PATH",
     "TYPESCRIPT_TYPES_PATH",
     "ZOD_SCHEMAS_PATH",

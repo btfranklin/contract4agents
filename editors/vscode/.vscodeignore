@@ -1,5 +1,9 @@
 node_modules/
-dist/
+dist/*
+!dist/extension.js
+out/
+src/
+tsconfig.json
 *.vsix
 package-lock.json
 test/

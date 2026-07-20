@@ -36,9 +36,9 @@ def test_contract_grammar_covers_canonical_closed_vocabulary() -> None:
         | set(get_args(ContextOrigin))
         | set(get_args(CompositionMode))
         | set(get_args(HistoryMode))
-        | AUDIENCES
-        | ASSESSMENTS
-        | SEVERITIES
+        | set(AUDIENCES)
+        | set(ASSESSMENTS)
+        | set(SEVERITIES)
         | {value for values in ISOLATION_DIMENSIONS.values() for value in values}
     )
 

@@ -674,7 +674,7 @@ def context():
     )
     (tmp_path / "contract4agents.targets.toml").write_text(
         f"""\
-schema_version = "2"
+schema_version = "1"
 
 [targets.openai]
 adapter = "openai"

@@ -88,7 +88,7 @@ def test_canonical_ir_serialization_matches_stable_id_and_type_rules() -> None:
     types = cast(dict[str, object], data["types"])
     request = cast(dict[str, object], types["type:IncidentRequest"])
 
-    assert data["ir_version"] == IR_VERSION == "3"
+    assert data["ir_version"] == IR_VERSION == "1"
     assert list(agents) == ["agent:IncidentCommander", "agent:LogInvestigator"]
     assert commander["output_type"] == "type:IncidentDecision"
     assert commander["description"] == "Coordinates the incident response."
@@ -133,7 +133,7 @@ def test_ir_entities_and_collections_are_immutable() -> None:
     ir = _sample_ir(SourceSpan("agents/incident.contract", 1))
 
     with pytest.raises(FrozenInstanceError):
-        ir.ir_version = "3"  # type: ignore[misc]
+        ir.ir_version = "unsupported"  # type: ignore[misc]
     with pytest.raises(TypeError):
         ir.agents[semantic_id("agent", "Other")] = ir.agents[semantic_id("agent", "IncidentCommander")]  # type: ignore[index]
     with pytest.raises(AttributeError):

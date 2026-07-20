@@ -268,7 +268,7 @@ def _write_eval_data(
     path.write_text(
         json.dumps(
             {
-                "schema_version": "2",
+                "schema_version": "1",
                 "cases": {
                     "eval:SupportAgent:publishes_status": {
                         "inputs": {"tenant": "acme"},

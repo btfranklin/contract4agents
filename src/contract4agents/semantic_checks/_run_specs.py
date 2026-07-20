@@ -6,6 +6,7 @@ from contract4agents.ast import RunSpecDef, SourceSpan
 from contract4agents.diagnostics import Diagnostic
 from contract4agents.expressions._grammar import parse_contract_expression
 from contract4agents.expressions._model import ConditionalExpression, ExpressionError, ParsedExpression
+from contract4agents.language_spec import RUN_SPEC_ATTRIBUTES, WORKFLOW_LIKE_ATTRIBUTES
 from contract4agents.run_specs import (
     RunSpecDerivedValueDeclaration,
     RunSpecStageDeclaration,
@@ -15,9 +16,6 @@ from contract4agents.run_specs import (
 )
 from contract4agents.semantic_checks._expressions import check_trace_refs
 from contract4agents.semantic_checks._index import ProjectIndex
-
-RUN_SPEC_ATTRIBUTES = {"stages", "assertions", "derived_values"}
-WORKFLOW_LIKE_ATTRIBUTES = {"branch", "branches", "loop", "loops", "retry", "retries", "checkpoint", "recovery"}
 
 
 def check_run_spec(run_spec: RunSpecDef, index: ProjectIndex) -> list[Diagnostic]:

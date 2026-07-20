@@ -8,7 +8,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from contract4agents.codegen import GeneratedCode, generate_code
 from contract4agents.diagnostics import raise_if_errors
 from contract4agents.ir import (
     AgentIR,
@@ -41,7 +40,6 @@ class CompilerArtifacts:
     schemas: FrozenMap[str, dict[str, object]]
     instructions: FrozenMap[str, str]
     docs: FrozenMap[PurePosixPath, str]
-    generated_code: GeneratedCode
 
 
 def compile_project(
@@ -76,7 +74,6 @@ def build_artifacts(ir: CanonicalIR) -> CompilerArtifacts:
         schemas=schemas,
         instructions=instructions,
         docs=docs,
-        generated_code=generate_code(ir),
     )
 
 
@@ -88,8 +85,6 @@ def artifact_digests(artifacts: CompilerArtifacts) -> FrozenMap[str, str]:
         values.append((f"schemas/{name}.json", _digest_json(schema)))
     for name, source in artifacts.instructions.items():
         values.append((f"instructions/{name}.md", _digest_text(source)))
-    for path, source in artifacts.generated_code.files.items():
-        values.append((f"generated/{path}", _digest_text(source)))
     return FrozenMap(values)
 
 

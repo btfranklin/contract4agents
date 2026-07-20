@@ -68,7 +68,7 @@ global completeness claim.
 ## IR and Assurance
 
 Run specs are stored in canonical IR with stable IDs and included in the
-contract digest. Canonical IR version 3 retains the derived-value declarations
+contract digest. Canonical IR version 1 retains the derived-value declarations
 as well as stage and assertion declarations.
 
 After a host workflow finishes, assess one selected declaration with the

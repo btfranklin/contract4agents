@@ -22,10 +22,6 @@ schemas/
   TypeName.json
 instructions/
   AgentName.md
-generated/
-  python/models.py
-  typescript/types.ts
-  typescript/schemas.ts
 docs/
   summary.md
   agents/AgentName.md
@@ -38,10 +34,6 @@ docs/
   string enums.
 - `instructions/` contains only model-visible goals, guidance, composition
   descriptions, and controls whose audience explicitly includes `model`.
-- `generated/` contains review copies of Pydantic, TypeScript, and Zod artifacts
-  inside the complete disposable compiler bundle.
-  String enums become Python `Literal` aliases, TypeScript string unions, and
-  Zod `z.enum` schemas.
 - `docs/` contains reviewer-facing summaries generated from the IR.
 
 Permissions and output-conformance controls already exist in canonical IR;
@@ -51,8 +43,7 @@ rule pack, adapter capability matrix, or language-specific schema authority.
 
 ## Determinism and Freshness
 
-Generation is deterministic for a given canonical IR. Generated code includes
-the contract digest and should not be edited manually.
+Compilation is deterministic for a given canonical IR.
 
 ```bash
 pdm run contract4agents compile agent_contracts --out .contract/build
@@ -63,12 +54,21 @@ pdm run contract4agents compile agent_contracts --out .contract/build --check
 stale. A normal compile replaces only managed artifact directories and preserves
 adjacent outputs such as visualization or target plans.
 
-Use `compile` when you need the complete review bundle. Use `generate` only
-when application code imports generated Pydantic, TypeScript, or Zod source.
-`generate --out` may therefore point at a dedicated generated-source directory
-inside the application package, and `generate --check` can protect committed
-generated source in CI. Do not run both commands merely to obtain two copies of
-the same language artifacts.
+Use `compile` for the portable review bundle. Use `generate` only when
+application code imports generated source. Generation requires at least one
+explicit target and accepts repeated targets:
+
+```bash
+contract4agents generate agent_contracts --target python --out src/generated
+contract4agents generate agent_contracts --target typescript --out web/generated
+contract4agents generate agent_contracts \
+  --target python --target typescript --out shared/generated
+```
+
+The `python` target emits Pydantic models. The `typescript` target emits
+TypeScript interfaces and their Zod schemas. `generate --check` checks only the
+selected targets, so separate invocations may safely share an output root.
+Generated source includes the contract digest and should not be edited manually.
 
 Unsafe destinations report `COMPILE002`. The compiler refuses the project root,
 the current working directory, and obvious source-owned directories.

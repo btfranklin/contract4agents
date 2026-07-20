@@ -28,7 +28,7 @@ agent factories, tool registries, or output-type mappings.
 
 ```json
 {
-  "schema_version": "2",
+  "schema_version": "1",
   "cases": {
     "eval:IncidentCommander:discovers_checkout_cause": {
       "inputs": {

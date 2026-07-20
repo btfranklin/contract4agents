@@ -59,6 +59,7 @@ ENV/
 
 # Node.js dependencies
 node_modules/
+editors/vscode/out/
 
 # Contract4Agents generated artifacts and fixture state
 .contract/

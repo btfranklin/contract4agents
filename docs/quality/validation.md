@@ -38,13 +38,14 @@ For projects that commit or package generated artifacts:
 ```bash
 contract4agents compile agent_contracts --out .contract/build
 contract4agents compile agent_contracts --out .contract/build --check
-contract4agents generate agent_contracts --out .contract/generated
-contract4agents generate agent_contracts --out .contract/generated --check
+contract4agents generate agent_contracts --target python --out .contract/generated
+contract4agents generate agent_contracts --target python --out .contract/generated --check
 ```
 
 Freshness checks compare deterministic content and detect missing, modified,
-extra, or digest-stale managed files. Generated files are disposable and must
-not be edited by hand.
+extra, or digest-stale compiler files. Generated-source checks cover only the
+explicitly selected targets. Generated files are disposable and must not be
+edited by hand.
 
 ## Planner and Materializer Gates
 
@@ -98,9 +99,13 @@ When changing `editors/vscode` or its release workflow:
 npm --prefix editors/vscode ci
 npm --prefix editors/vscode test
 npm --prefix editors/vscode run package
+pdm run pytest tests/unit/test_language_server.py
 ```
 
-The VSIX is a release asset, not a Python package file.
+The Node suite verifies the grammar, client compilation, interpreter discovery,
+and bundled VSIX contents. The Python smoke test starts the packaged language
+server entry point over stdio and checks initialization, hover, and definition
+navigation. The VSIX is a release asset, not a Python package file.
 
 ## Live OpenAI Checks
 

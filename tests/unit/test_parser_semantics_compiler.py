@@ -109,7 +109,7 @@ def test_compile_project_is_the_canonical_compiler(tmp_path: Path) -> None:
     assert "IncidentBrief" in artifacts.schemas
     assert (tmp_path / "build" / "ir" / "contract.json").is_file()
     assert (tmp_path / "build" / "schemas" / "IncidentBrief.json").is_file()
-    assert (tmp_path / "build" / "generated" / "python" / "models.py").is_file()
+    assert (tmp_path / "build" / "docs" / "summary.md").is_file()
 
 
 def test_build_artifacts_accepts_canonical_ir_only() -> None:

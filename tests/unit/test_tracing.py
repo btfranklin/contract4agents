@@ -106,7 +106,7 @@ def test_trace_round_trips_as_deterministic_jsonl(tmp_path: Path) -> None:
     write_trace_jsonl(path, loaded)
 
     first_payload = json.loads(rendered.splitlines()[0])
-    assert first_payload["schema_version"] == TRACE_SCHEMA_VERSION == "2"
+    assert first_payload["schema_version"] == TRACE_SCHEMA_VERSION == "1"
     assert first_payload["run_id"] == "run-123"
     assert first_payload["thread_id"] == "thread-1"
     assert first_payload["contract_digest"] == CONTRACT_DIGEST
@@ -436,11 +436,11 @@ def test_trace_evidence_marks_missing_evidence_unverified() -> None:
     assert "not observed" in result.reason
 
 
-def test_trace_closure_manifest_rejects_the_pre_frontier_schema() -> None:
-    assert TRACE_CLOSURE_MANIFEST_VERSION == "2"
+def test_trace_closure_manifest_rejects_an_unsupported_version() -> None:
+    assert TRACE_CLOSURE_MANIFEST_VERSION == "1"
 
-    with pytest.raises(ValueError, match="Unsupported trace-closure manifest version `1`"):
-        TraceClosureManifest.from_dict({"closures": [], "version": "1"})
+    with pytest.raises(ValueError, match="Unsupported trace-closure manifest version `2`"):
+        TraceClosureManifest.from_dict({"closures": [], "version": "2"})
 
 
 @pytest.mark.parametrize(

@@ -11,7 +11,7 @@ from contract4agents.ir._collections import FrozenJsonValue, FrozenMap, freeze_j
 from contract4agents.ir._ids import SemanticId, SemanticKind
 from contract4agents.ir._type_refs import TypeRef
 
-IR_VERSION = "3"
+IR_VERSION = "1"
 
 Audience = Literal["model", "adapter", "host", "evaluator", "reviewer"]
 CapabilityKind = Literal["tool", "datasource"]

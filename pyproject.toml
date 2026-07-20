@@ -14,6 +14,7 @@ dependencies = [
     "lark>=1.3.1",
     "jsonschema>=4.26.0",
     "pydantic>=2.13.4",
+    "pygls>=2.1.1",
 ]
 requires-python = ">=3.11"
 readme = "README.md"
@@ -44,6 +45,7 @@ Repository = "https://github.com/btfranklin/contract4agents.git"
 
 [project.scripts]
 contract4agents = "contract4agents.cli:main"
+contract4agents-language-server = "contract4agents.language_server:main"
 
 [project.optional-dependencies]
 openai = [
@@ -78,7 +80,7 @@ validate = {composite = ["validate:python", "test:editor"]}
     "contract4agents check examples/incident-command",
     "contract4agents plan examples/incident-command --target openai --profile test --out .contract/build/incident-command/plan.json",
     "contract4agents compile examples/incident-command --out .contract/build/incident-command",
-    "contract4agents generate examples/incident-command --out .contract/build/incident-command/generated",
+    "contract4agents generate examples/incident-command --target python --out .contract/build/incident-command/generated",
     "contract4agents visualize examples/incident-command --target openai --profile test --out .contract/build/incident-command/visualization",
     "contract4agents eval examples/incident-command --target openai --profile test --out .contract/build/incident-command/eval-results.json",
     "contract4agents assure examples/incident-command --target openai --profile test --eval-results .contract/build/incident-command/eval-results.json --out .contract/build/incident-command/assurance",
@@ -102,6 +104,9 @@ markers = [
     "integration: tests that may require optional services or credentials",
     "live: opt-in tests that call provider APIs",
 ]
+
+[tool.coverage.run]
+patch = ["subprocess"]
 
 [tool.ruff]
 line-length = 120

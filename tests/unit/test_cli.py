@@ -70,7 +70,7 @@ def test_cli_check_validates_every_discovered_target_profile(tmp_path: Path) -> 
         encoding="utf-8",
     )
     (tmp_path / "contract4agents.targets.toml").write_text(
-        'schema_version = "2"\n\n'
+        'schema_version = "1"\n\n'
         "[targets.alpha]\n"
         'adapter = "alpha"\n\n'
         "[targets.alpha.profiles.incomplete]\n\n"
@@ -103,11 +103,24 @@ def test_cli_contract_first_workflow(tmp_path: Path) -> None:
     assurance = tmp_path / "assurance"
 
     assert runner.invoke(main, ["compile", str(EXAMPLE), "--out", str(build)]).exit_code == 0
-    assert runner.invoke(main, ["generate", str(EXAMPLE), "--out", str(generated)]).exit_code == 0
-    assert runner.invoke(
-        main,
-        ["plan", str(EXAMPLE), "--target", "openai", "--profile", "test", "--out", str(plan)],
-    ).exit_code == 0
+    missing_target = runner.invoke(main, ["generate", str(EXAMPLE), "--out", str(generated)])
+    assert missing_target.exit_code != 0
+    assert "Missing option '--target'" in missing_target.output
+    assert (
+        runner.invoke(
+            main,
+            ["generate", str(EXAMPLE), "--target", "python", "--out", str(generated)],
+        ).exit_code
+        == 0
+    )
+    assert (generated / "python" / "models.py").is_file()
+    assert (
+        runner.invoke(
+            main,
+            ["plan", str(EXAMPLE), "--target", "openai", "--profile", "test", "--out", str(plan)],
+        ).exit_code
+        == 0
+    )
     evaluated_trace, evaluated_closure = _evaluated_trace()
     write_trace_jsonl(trace, evaluated_trace)
     closure_path.write_text(TraceClosureManifest((evaluated_closure,)).to_json())

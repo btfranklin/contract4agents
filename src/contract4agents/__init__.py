@@ -2,7 +2,7 @@
 
 from contract4agents.compiler import compile_project
 from contract4agents.materialization import materialize
-from contract4agents.parser import parse_file, parse_project
+from contract4agents.parser import parse_file, parse_project, parse_source
 from contract4agents.semantics import analyze_project
 
 __all__ = [
@@ -11,4 +11,5 @@ __all__ = [
     "materialize",
     "parse_file",
     "parse_project",
+    "parse_source",
 ]

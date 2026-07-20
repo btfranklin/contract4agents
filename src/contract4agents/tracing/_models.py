@@ -10,7 +10,7 @@ from typing import Literal, cast
 
 from contract4agents.ir import Audience, FrozenJsonValue, FrozenMap, SemanticId, freeze_json
 
-TRACE_SCHEMA_VERSION = "2"
+TRACE_SCHEMA_VERSION = "1"
 
 RedactionState = Literal["safe", "sensitive", "redacted"]
 
@@ -294,7 +294,7 @@ class RedactionMetadata:
 
 @dataclass(frozen=True)
 class TraceEvent:
-    """One canonical schema-version-2 normalized trace event."""
+    """One canonical schema-version-1 normalized trace event."""
 
     context: TraceRunContext
     event_id: str

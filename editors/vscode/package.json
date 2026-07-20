@@ -1,7 +1,7 @@
 {
   "name": "contract4agents-vscode",
   "displayName": "Contract4Agents",
-  "description": "Syntax highlighting for Contract4Agents .contract and .eval files.",
+  "description": "Rich language support for Contract4Agents .contract and .eval files.",
   "version": "0.0.0",
   "publisher": "btfranklin",
   "author": "B.T. Franklin",
@@ -22,8 +22,25 @@
     "evals"
   ],
   "engines": {
-    "vscode": "^1.100.0",
+    "vscode": "^1.125.0",
     "node": ">=20"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:contract4agents",
+    "onLanguage:contract4agents-eval",
+    "onCommand:contract4agents.restartLanguageServer",
+    "onCommand:contract4agents.showLanguageServerOutput"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "The language server starts a Python process from the workspace environment."
+    },
+    "virtualWorkspaces": false
   },
   "contributes": {
     "languages": [
@@ -61,15 +78,56 @@
         "scopeName": "source.contract4agents.eval",
         "path": "./syntaxes/contract4agents-eval.tmLanguage.json"
       }
-    ]
+    ],
+    "commands": [
+      {
+        "command": "contract4agents.restartLanguageServer",
+        "title": "Contract4Agents: Restart Language Server"
+      },
+      {
+        "command": "contract4agents.showLanguageServerOutput",
+        "title": "Contract4Agents: Show Language Server Output"
+      }
+    ],
+    "configuration": {
+      "title": "Contract4Agents",
+      "properties": {
+        "contract4agents.pythonPath": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "Python interpreter containing contract4agents. Leave empty to discover the workspace .venv or a system interpreter. Supports ${workspaceFolder}."
+        }
+      }
+    },
+    "configurationDefaults": {
+      "[contract4agents]": {
+        "editor.inlayHints.enabled": "offUnlessPressed"
+      },
+      "[contract4agents-eval]": {
+        "editor.inlayHints.enabled": "offUnlessPressed"
+      }
+    }
   },
   "scripts": {
-    "package": "mkdir -p dist && vsce package --out dist/contract4agents-vscode-${npm_package_version}.vsix",
-    "test": "node test/tokenize.mjs"
+    "compile": "tsc",
+    "bundle": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=dist/extension.js",
+    "build": "npm run compile && npm run bundle",
+    "package": "npm run build && mkdir -p dist && vsce package --out dist/contract4agents-vscode-${npm_package_version}.vsix && node test/verify-package.mjs dist/contract4agents-vscode-${npm_package_version}.vsix",
+    "test:grammar": "node test/tokenize.mjs",
+    "test:client": "node --test test/*.test.mjs",
+    "test": "npm run build && npm run test:grammar && npm run test:client"
   },
   "devDependencies": {
+    "@types/node": ">=26.1.1",
+    "@types/vscode": ">=1.125.0",
     "@vscode/vsce": ">=3.9.2",
+    "esbuild": ">=0.28.1",
+    "typescript": ">=7.0.2",
     "vscode-oniguruma": ">=2.0.1",
     "vscode-textmate": ">=9.3.2"
+  },
+  "dependencies": {
+    "vscode-languageclient": ">=10.1.0"
   }
 }

@@ -22,7 +22,7 @@ from contract4agents.tracing import (
     validate_trace_closure,
 )
 
-BUNDLE_VERSION = "4"
+BUNDLE_VERSION = "1"
 
 
 @dataclass(frozen=True)

@@ -34,9 +34,9 @@ evals, and run specs. The IR builder then emits immutable, deterministic,
 kind-qualified semantic entities.
 
 The compiler consumes only canonical IR and produces JSON Schema,
-audience-specific instructions, Pydantic/TypeScript/Zod code, reviewer docs,
-and the contract digest. It never imports a Python model to discover portable
-schema authority.
+audience-specific instructions, reviewer docs, and the contract digest.
+Explicit code-generation targets separately derive application-language source.
+The compiler never imports a Python model to discover portable schema authority.
 
 ## Plan
 

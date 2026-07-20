@@ -44,6 +44,16 @@ application implementations. `plan` loads target bindings only far enough to
 validate coverage and safely inspect callable signatures; it does not construct
 agents or execute business code.
 
+## Rich Editor Support
+
+The repo-owned [VS Code extension](docs/reference/vscode-extension.md) combines
+the complete TextMate grammar with the same Python parser and semantic model
+used by the CLI. In `.contract` and `.eval` files it provides hover help,
+contextual completion, diagnostics and quick fixes, definition and reference
+navigation, rename, symbols, semantic highlighting, and optional inlay hints.
+Type and callable hovers show their declared shape, while contract vocabulary
+such as grant settings explains the meaning of each accepted value.
+
 ## A Small Contract-First Team
 
 Define portable types and a shared capability:
@@ -84,7 +94,7 @@ Bind the portable name to one target implementation in
 `contract4agents.targets.toml`:
 
 ```toml
-schema_version = "2"
+schema_version = "1"
 
 [targets.openai]
 adapter = "openai"
@@ -119,10 +129,10 @@ contract4agents plan agent_contracts --target openai --profile production \
 `check` remains provider-neutral when no target-binding file exists. When the
 file is present, it also validates every declared target and named profile.
 Compilation produces deterministic canonical IR, its digest, JSON Schemas,
-audience-safe instructions, reviewer documentation, and generated Pydantic,
-TypeScript, and Zod types. `compile --check` makes stale review artifacts a CI
-failure. Run `generate` separately only when application code imports generated
-source; `generate --check` then protects that machine-owned directory.
+audience-safe instructions, and reviewer documentation. `compile --check` makes
+stale review artifacts a CI failure. Run `generate` separately with an explicit
+`python` or `typescript` target only when application code imports generated
+source; use the same target selection with `generate --check`.
 
 The plan resolves models, bindings, grants, approvals, composition, controls,
 isolation mechanisms, host obligations, and expected event types. Each mapping

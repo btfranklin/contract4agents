@@ -11,7 +11,7 @@ from contract4agents.compiler._compiler import CompilerArtifacts
 from contract4agents.diagnostics import ContractError, Diagnostic
 from contract4agents.ir import canonical_ir_data
 
-MANAGED_ARTIFACT_DIRS = ("ir", "schemas", "instructions", "generated", "docs")
+MANAGED_ARTIFACT_DIRS = ("ir", "schemas", "instructions", "docs")
 
 
 def write_artifacts(artifacts: CompilerArtifacts, output_dir: Path, *, check: bool = False) -> None:
@@ -65,8 +65,6 @@ def _artifact_files(artifacts: CompilerArtifacts, output_dir: Path) -> dict[Path
         files[output_dir / "schemas" / f"{name}.json"] = _json(schema)
     for name, instructions in artifacts.instructions.items():
         files[output_dir / "instructions" / f"{name}.md"] = instructions
-    for path, source in artifacts.generated_code.files.items():
-        files[output_dir / "generated" / Path(*path.parts)] = source
     for path, source in artifacts.docs.items():
         files[output_dir / "docs" / Path(*path.parts)] = source
     return files

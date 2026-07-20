@@ -36,7 +36,7 @@ from contract4agents.tracing import (
     TraceSemanticRefs,
 )
 
-EVAL_DATA_VERSION = "2"
+EVAL_DATA_VERSION = "1"
 
 
 @dataclass(frozen=True)

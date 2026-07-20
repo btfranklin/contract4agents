@@ -18,23 +18,25 @@ from contract4agents.ast import (
     TypeDef,
 )
 from contract4agents.diagnostics import Diagnostic
+from contract4agents.language_spec import (
+    AGENT_CONTEXT_ORIGINS,
+    ASSESSMENTS,
+    AUDIENCES,
+    AUTHORIZATIONS,
+    AVAILABILITIES,
+    BOOLEAN_VALUES,
+    COMPOSITION_MODES,
+    HISTORY_MODES,
+    ISOLATION_DIMENSIONS,
+    RENDER_MODES,
+    SENSITIVITIES,
+    SEVERITIES,
+)
 from contract4agents.parser._values import unquote
 from contract4agents.semantic_checks._expressions import check_expression_refs
 from contract4agents.semantic_checks._index import ProjectIndex
 from contract4agents.semantic_checks._types import check_type_ref
 
-AUDIENCES = {"model", "adapter", "host", "evaluator", "reviewer"}
-ASSESSMENTS = {"static", "adapter", "runtime", "host_attested", "post_run", "semantic", "advisory"}
-SEVERITIES = {"low", "medium", "high", "critical"}
-ISOLATION_DIMENSIONS = {
-    "context": {"explicit_only", "inherited"},
-    "capabilities": {"declared_only", "inherited"},
-    "state": {"fresh", "shared"},
-    "filesystem": {"none", "ephemeral", "inherited_read_only", "inherited"},
-    "network": {"denied", "allowlisted", "inherited"},
-    "secrets": {"none", "declared_only", "inherited"},
-    "return": {"final_output_only", "full_trace"},
-}
 _EXECUTION_BOUNDARY = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]*\Z")
 
 
@@ -52,7 +54,7 @@ def check_tool(tool: ToolDef, index: ProjectIndex) -> list[Diagnostic]:
 
 def check_external_context(item: ExternalContextDef, index: ProjectIndex) -> list[Diagnostic]:
     diagnostics = check_type_ref(item.type_name, index, item.span, f"external context `{item.name}`")
-    if item.sensitivity not in {"public", "internal", "confidential", "restricted"}:
+    if item.sensitivity not in SENSITIVITIES:
         diagnostics.append(
             Diagnostic(
                 "SEM101",
@@ -60,7 +62,7 @@ def check_external_context(item: ExternalContextDef, index: ProjectIndex) -> lis
                 span=item.span,
             )
         )
-    if item.render not in {"markdown", "json", "text"}:
+    if item.render not in RENDER_MODES:
         diagnostics.append(
             Diagnostic(
                 "SEM102", f"External context `{item.name}` has invalid render mode `{item.render}`", span=item.span
@@ -90,7 +92,7 @@ def check_agent_contract(agent: AgentDef, index: ProjectIndex) -> list[Diagnosti
                     span=grant.span,
                 )
             )
-        if grant.availability not in {"enabled", "denied"}:
+        if grant.availability not in AVAILABILITIES:
             diagnostics.append(
                 Diagnostic(
                     "SEM105",
@@ -110,7 +112,7 @@ def check_agent_contract(agent: AgentDef, index: ProjectIndex) -> list[Diagnosti
                     )
                 )
             continue
-        if grant.authorization not in {"preapproved", "approval_required"}:
+        if grant.authorization not in AUTHORIZATIONS:
             diagnostics.append(
                 Diagnostic(
                     "SEM107",
@@ -153,7 +155,7 @@ def check_agent_contract(agent: AgentDef, index: ProjectIndex) -> list[Diagnosti
         diagnostics.extend(
             check_type_ref(requirement.type_name, index, requirement.span, f"context `{agent.name}.{requirement.name}`")
         )
-        if requirement.origin not in {"datasource", "external"}:
+        if requirement.origin not in AGENT_CONTEXT_ORIGINS:
             diagnostics.append(
                 Diagnostic(
                     "SEM145",
@@ -165,7 +167,7 @@ def check_agent_contract(agent: AgentDef, index: ProjectIndex) -> list[Diagnosti
                     ),
                 )
             )
-        if requirement.origin in {"datasource", "external"} and not requirement.source:
+        if requirement.origin in AGENT_CONTEXT_ORIGINS and not requirement.source:
             diagnostics.append(
                 Diagnostic(
                     "SEM111",
@@ -328,13 +330,13 @@ def check_composition(edge: CompositionDef, index: ProjectIndex) -> list[Diagnos
                 span=edge.span,
             )
         )
-    if edge.mode not in {"delegate", "handoff"}:
+    if edge.mode not in COMPOSITION_MODES:
         diagnostics.append(
             Diagnostic("SEM116", f"Composition `{edge.name}` requires mode `delegate` or `handoff`", span=edge.span)
         )
     if not edge.description:
         diagnostics.append(Diagnostic("SEM117", f"Composition `{edge.name}` requires a description", span=edge.span))
-    if edge.history not in {"none", "summary", "full"}:
+    if edge.history not in HISTORY_MODES:
         diagnostics.append(
             Diagnostic(
                 "SEM118", f"Composition `{edge.name}` has invalid history policy `{edge.history}`", span=edge.span
@@ -429,7 +431,7 @@ def check_control(item: ControlDef, index: ProjectIndex) -> list[Diagnostic]:
     severity = _text(attrs.get("severity"))
     if severity not in SEVERITIES:
         diagnostics.append(Diagnostic("SEM136", f"Control `{item.name}` requires a valid severity", span=item.span))
-    if _text(attrs.get("required")) not in {"true", "false"}:
+    if _text(attrs.get("required")) not in BOOLEAN_VALUES:
         diagnostics.append(
             Diagnostic("SEM137", f"Control `{item.name}` requires boolean `required` metadata", span=item.span)
         )
@@ -493,7 +495,7 @@ def _check_audiences(name: str, value: Any, span: Any, *, default: bool) -> list
         return []
     if not isinstance(value, list) or not value:
         return [Diagnostic("SEM131", f"Declaration `{name}` requires a non-empty audience list", span=span)]
-    unknown = sorted(set(str(item) for item in value) - AUDIENCES)
+    unknown = sorted(set(str(item) for item in value) - set(AUDIENCES))
     if not unknown:
         return []
     return [Diagnostic("SEM132", f"Declaration `{name}` has unknown audiences: {', '.join(unknown)}", span=span)]

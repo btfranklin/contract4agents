@@ -16,7 +16,7 @@ pdm add "contract4agents[openai]"
 `contract4agents.targets.toml` contains target-specific locators and options:
 
 ```toml
-schema_version = "2"
+schema_version = "1"
 
 [targets.openai]
 adapter = "openai"
@@ -301,7 +301,7 @@ snapshot = session.snapshot()
 # recovery mechanism before advancing application workflow state.
 ```
 
-The v2 closure frontier binds the exact ordered event count and digest. Resume
+The v1 closure frontier binds the exact ordered event count and digest. Resume
 only from the matching pair:
 
 ```python

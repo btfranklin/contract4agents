@@ -11,7 +11,7 @@ from typing import TypeVar
 from contract4agents.diagnostics import Diagnostic
 
 DEFAULT_TARGET_BINDINGS_FILENAME = "contract4agents.targets.toml"
-TARGET_BINDINGS_SCHEMA_VERSION = "2"
+TARGET_BINDINGS_SCHEMA_VERSION = "1"
 
 
 @dataclass(frozen=True)

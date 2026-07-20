@@ -97,7 +97,7 @@ def search_knowledge(query: str) -> dict[str, object]:
 Create `agent_contracts/contract4agents.targets.toml`:
 
 ```toml
-schema_version = "2"
+schema_version = "1"
 
 [targets.openai]
 adapter = "openai"
@@ -179,7 +179,7 @@ Create `agent_contracts/eval-data.json`:
 
 ```json
 {
-  "schema_version": "2",
+  "schema_version": "1",
   "cases": {
     "eval:SupportResponder:answers_shipping_question": {
       "inputs": {"question": "When will my order ship?"},

@@ -14,7 +14,7 @@ from contract4agents.target_bindings import (
 )
 
 VALID_BINDINGS = """
-schema_version = "2"
+schema_version = "1"
 
 [targets.openai]
 adapter = "openai"
@@ -102,25 +102,25 @@ def test_explicit_absolute_path_is_not_resolved_under_project_root(tmp_path: Pat
     [
         ("schema_version = [", "TGT001", "Invalid target bindings TOML"),
         ('schema_version = "999"\n[targets.openai]\nadapter = "openai"\n', "TGT001", "schema_version"),
-        ('schema_version = "2"\n', "TGT001", "non-empty `targets`"),
+        ('schema_version = "1"\n', "TGT001", "non-empty `targets`"),
         (
-            'schema_version = "2"\n[targets.openai]\nadapter = ""\n',
+            'schema_version = "1"\n[targets.openai]\nadapter = ""\n',
             "TGT001",
             "adapter",
         ),
         (
-            'schema_version = "2"\n[targets.openai]\nadapter = "openai"\nunknown = true\n',
+            'schema_version = "1"\n[targets.openai]\nadapter = "openai"\nunknown = true\n',
             "TGT003",
             "Unknown key `unknown`",
         ),
         (
-            'schema_version = "2"\n[targets.openai]\nadapter = "openai"\n'
+            'schema_version = "1"\n[targets.openai]\nadapter = "openai"\n'
             '[targets.openai.environments.local]\nprovider = ""\n',
             "TGT001",
             "provider",
         ),
         (
-            'schema_version = "2"\n[targets.openai]\nadapter = "openai"\n'
+            'schema_version = "1"\n[targets.openai]\nadapter = "openai"\n'
             '[targets.openai.profiles.production]\nextends = "base"\n',
             "TGT005",
             "cannot declare inheritance",
@@ -144,7 +144,7 @@ def test_reports_structured_shape_and_toml_diagnostics(
 
 def test_schema_v2_requires_every_target_to_declare_a_named_profile(tmp_path: Path) -> None:
     (tmp_path / DEFAULT_TARGET_BINDINGS_FILENAME).write_text(
-        'schema_version = "2"\n[targets.openai]\nadapter = "openai"\n'
+        'schema_version = "1"\n[targets.openai]\nadapter = "openai"\n'
     )
 
     result = load_target_bindings(tmp_path, required=True)
@@ -185,7 +185,7 @@ def test_rejects_contract_owned_keys_at_every_binding_depth(
     forbidden_path: str,
 ) -> None:
     content = (
-        'schema_version = "2"\n[targets.openai]\nadapter = "openai"\n'
+        'schema_version = "1"\n[targets.openai]\nadapter = "openai"\n'
         '[targets.openai.profiles.production]\ndefault_model = "model"\n'
         + suffix
     )
@@ -200,7 +200,7 @@ def test_rejects_contract_owned_keys_at_every_binding_depth(
 
 def test_rejects_contract_owned_keys_at_document_root(tmp_path: Path) -> None:
     content = (
-        'schema_version = "2"\n'
+        'schema_version = "1"\n'
         'control = "must be enforced"\n'
         '[targets.openai]\n'
         'adapter = "openai"\n'
@@ -218,7 +218,7 @@ def test_rejects_contract_owned_keys_at_document_root(tmp_path: Path) -> None:
 
 def test_deterministic_serialization_sorts_names_and_excludes_local_path(tmp_path: Path) -> None:
     content = """
-schema_version = "2"
+schema_version = "1"
 
 [targets.zeta]
 adapter = "zeta"

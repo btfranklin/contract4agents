@@ -1,6 +1,6 @@
 # Trace Schema Reference
 
-Contract4Agents normalized trace schema version `2` connects observed execution
+Contract4Agents normalized trace schema version `1` connects observed execution
 to the exact contract and materialization plan that governed it. JSONL is the
 portable storage form; provider-native spans remain available through
 correlation references.
@@ -9,7 +9,7 @@ correlation references.
 
 ```json
 {
-  "schema_version": "2",
+  "schema_version": "1",
   "run_id": "run-123",
   "thread_id": "thread-1",
   "event_id": "evt-000004",
@@ -177,7 +177,7 @@ validation can record the narrower fact through
 After the session has at least one normalized event, `session.snapshot()`
 returns a `TraceCaptureSnapshot` containing an
 immutable normalized trace and its closure evidence captured under the same
-session lock. The closure manifest v2 frontier records the exact event count
+session lock. The closure manifest v1 frontier records the exact event count
 and canonical SHA-256 digest of that ordered trace. A later event advances the
 frontier, so an older closure cannot be applied to the newer trace.
 
@@ -304,13 +304,13 @@ keeps absence and upper-bound claims `unverified`. Directly observed positive
 evidence can still prove a positive claim.
 
 `TraceClosureManifest` is the versioned JSON artifact used by the CLI and
-assurance bundles. Version 2 binds closure to an exact ordered event frontier;
-version 1 manifests are intentionally rejected rather than treated as negative
-assurance. Complete closure must cover exactly every attempt observed in its
-run. The OpenAI session produces closure for SDK lifecycle and response paths;
-the host uses `attest_channels(...)` for adjacent instrumentation that the
-session cannot observe. Contract4Agents validates these identities but cannot
-prove that a dishonest host disclosed work it deliberately omitted.
+assurance bundles. Version 1 binds closure to an exact ordered event frontier;
+other manifest versions are rejected rather than treated as negative assurance.
+Complete closure must cover exactly every attempt observed in its run. The
+OpenAI session produces closure for SDK lifecycle and response paths; the host
+uses `attest_channels(...)` for adjacent instrumentation that the session cannot
+observe. Contract4Agents validates these identities but cannot prove that a
+dishonest host disclosed work it deliberately omitted.
 
 ## OpenTelemetry Export
 

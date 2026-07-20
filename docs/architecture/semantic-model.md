@@ -481,9 +481,17 @@ eval clear_incident for IncidentCommander:
 
 ## Canonical IR
 
+### Pre-1.0 format-version policy
+
+Every Contract4Agents-owned serialized format keeps its version field at `"1"`
+through all `0.x` product releases. During this pre-stable period, the package
+version—not incrementing schema, IR, plan, trace, manifest, bundle, or generator
+versions—is the compatibility signal. Format-version increments begin only
+after the product has moved beyond v0.
+
 ### Identity
 
-The canonical IR is deterministic JSON with `ir_version = "2"`. It is generated
+The canonical IR is deterministic JSON with `ir_version = "1"`. It is generated
 only from parsed source and never hand-authored.
 
 Semantic IDs use readable, kind-qualified names:
@@ -510,7 +518,7 @@ repository-relative source paths, and all source spans removed.
 
 ```json
 {
-  "ir_version": "2",
+  "ir_version": "1",
   "agents": {
     "agent:IncidentCommander": {
       "name": "IncidentCommander",
@@ -572,7 +580,7 @@ assurance results join without display-name heuristics.
 ## Target bindings
 
 The default target-binding filename is `contract4agents.targets.toml`. Schema
-version `2` requires every declared target to contain at least one named profile.
+version `1` requires every declared target to contain at least one named profile.
 Profiles are complete and do not inherit. Target-level bindings are shared by
 that target; a profile supplies model selections and provider options. A profile
 must resolve a model for every canonical agent through `default_model` or an
@@ -587,7 +595,7 @@ control planes may still supply bindings programmatically; the host must persist
 the resulting named materialization plan as the auditable runtime configuration.
 
 ```toml
-schema_version = "2"
+schema_version = "1"
 
 [targets.openai]
 adapter = "openai"
@@ -653,7 +661,7 @@ addresses.
 
 ```json
 {
-  "plan_version": "3",
+  "plan_version": "1",
   "contract_digest": "sha256:contract...",
   "plan_digest": "sha256:plan...",
   "target": "openai",
@@ -756,13 +764,13 @@ and application workflow.
 
 ## Trace identity and evidence
 
-Trace schema version `2` uses an immutable run context plus event-specific
+Trace schema version `1` uses an immutable run context plus event-specific
 data. Required run identity is repeated in JSONL events so files remain
 independently inspectable:
 
 ```json
 {
-  "schema_version": "2",
+  "schema_version": "1",
   "run_id": "run-123",
   "thread_id": "thread-1",
   "event_id": "evt-000004",
@@ -935,7 +943,7 @@ The product uses these design choices:
 - Stable semantic IDs are deterministic kind-qualified names.
 - SHA-256 over canonical JSON defines contract and plan digests.
 - `materialize(...)` is the primary runtime-construction API.
-- Trace schema version `2` requires contract and plan identity.
+- Trace schema version `1` requires contract and plan identity.
 - Control results use `passed`, `violated`, and `unverified`.
 - Environment isolation requires a bound enforcing provider.
 

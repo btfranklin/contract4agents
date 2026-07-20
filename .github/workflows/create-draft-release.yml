@@ -25,6 +25,19 @@ jobs:
               uses: actions/setup-node@v7
               with:
                   node-version: "22"
+            - name: Set up Python
+              uses: actions/setup-python@v6
+              with:
+                  python-version: "3.11"
+            - name: Install PDM
+              uses: pdm-project/setup-pdm@v4
+              with:
+                  cache: true
+                  cache-dependency-path: pdm.lock
+            - name: Test language server boundary
+              run: |
+                  pdm install --group dev
+                  pdm run pytest tests/unit/test_language_server.py
             - name: Build VS Code release asset
               working-directory: editors/vscode
               run: |

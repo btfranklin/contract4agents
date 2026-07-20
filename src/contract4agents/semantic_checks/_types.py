@@ -15,6 +15,7 @@ from contract4agents.ir._type_refs import (
     TypeRef,
     parse_type_ref,
 )
+from contract4agents.language_spec import CACHE_SCOPES, RENDER_MODES
 from contract4agents.parser._values import unquote
 from contract4agents.semantic_checks._index import ProjectIndex
 
@@ -68,11 +69,11 @@ def check_datasource(datasource: DatasourceDef, index: ProjectIndex) -> list[Dia
         diagnostics.extend(
             check_type_ref(parameter.type_name, index, parameter.span, f"datasource parameter `{parameter.name}`")
         )
-    if datasource.cache not in {"none", "run", "thread"}:
+    if datasource.cache not in CACHE_SCOPES:
         diagnostics.append(
             Diagnostic("SEM011", f"Invalid datasource cache scope `{datasource.cache}`", span=datasource.span)
         )
-    if datasource.render not in {"markdown", "json", "text"}:
+    if datasource.render not in RENDER_MODES:
         diagnostics.append(
             Diagnostic("SEM012", f"Invalid datasource render mode `{datasource.render}`", span=datasource.span)
         )

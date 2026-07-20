@@ -47,7 +47,7 @@ TRACE_INSTRUMENTATION_CHANNELS: tuple[TraceInstrumentationChannel, ...] = (
     "provider_response",
     "tool",
 )
-TRACE_CLOSURE_MANIFEST_VERSION = "2"
+TRACE_CLOSURE_MANIFEST_VERSION = "1"
 
 _STATUSES = frozenset({"complete", "incomplete", "unverified"})
 _CHANNELS = frozenset(TRACE_INSTRUMENTATION_CHANNELS)

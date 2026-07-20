@@ -89,7 +89,7 @@ contract4agents eval agent_contracts --target openai --profile test
 
 An eval provider supplies scenario inputs, external context, datasource/tool
 behavior, approval decisions, execution, and semantic judge decisions. The
-built-in file provider reads schema-version `2` `eval-data.json` for
+built-in file provider reads schema-version `1` `eval-data.json` for
 deterministic offline runs. Each trial includes an explicit closure declaration;
 the provider binds that declaration to the attempts and events it constructs.
 Custom providers implement the `EvalProvider` protocol for live, replayed, or

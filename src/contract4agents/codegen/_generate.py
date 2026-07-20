@@ -6,8 +6,10 @@ import json
 import keyword
 import re
 from collections.abc import Iterable, Mapping
+from pathlib import PurePosixPath
 
 from contract4agents.codegen._model import (
+    GENERATION_TARGETS,
     GENERATOR_VERSION,
     PYDANTIC_MODELS_PATH,
     TYPESCRIPT_TYPES_PATH,
@@ -35,19 +37,29 @@ from contract4agents.ir import (
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 
 
-def generate_code(ir: CanonicalIR) -> GeneratedCode:
-    """Generate all portable language artifacts from one canonical IR graph."""
+def generate_code(ir: CanonicalIR, *, targets: Iterable[str]) -> GeneratedCode:
+    """Generate the selected portable language artifacts from canonical IR."""
 
+    requested = frozenset(targets)
+    if not requested:
+        raise CodeGenerationError("CGEN003", "At least one generation target is required")
+    unknown = requested.difference(GENERATION_TARGETS)
+    if unknown:
+        names = ", ".join(sorted(unknown))
+        raise CodeGenerationError("CGEN003", f"Unknown generation target: {names}")
     digest = contract_digest(ir)
     ordered_types = _ordered_types(ir)
-    files = FrozenMap(
-        (
-            (PYDANTIC_MODELS_PATH, generate_pydantic_models(ir, ordered_types=ordered_types)),
-            (TYPESCRIPT_TYPES_PATH, generate_typescript_types(ir, ordered_types=ordered_types)),
-            (ZOD_SCHEMAS_PATH, generate_zod_schemas(ir, ordered_types=ordered_types)),
+    files: list[tuple[PurePosixPath, str]] = []
+    if "python" in requested:
+        files.append((PYDANTIC_MODELS_PATH, generate_pydantic_models(ir, ordered_types=ordered_types)))
+    if "typescript" in requested:
+        files.extend(
+            (
+                (TYPESCRIPT_TYPES_PATH, generate_typescript_types(ir, ordered_types=ordered_types)),
+                (ZOD_SCHEMAS_PATH, generate_zod_schemas(ir, ordered_types=ordered_types)),
+            )
         )
-    )
-    return GeneratedCode(contract_digest=digest, files=files)
+    return GeneratedCode(contract_digest=digest, files=FrozenMap(files))
 
 
 def generate_pydantic_models(

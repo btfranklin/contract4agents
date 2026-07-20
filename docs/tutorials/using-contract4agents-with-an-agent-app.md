@@ -31,9 +31,14 @@ contract4agents plan agent_contracts --target openai --profile production \
   --out .contract/build/production-plan.json
 ```
 
-If application code imports generated Pydantic, TypeScript, or Zod source,
-also run `generate` into that machine-owned source directory and protect it
-with `generate --check`. The compiler bundle already contains review copies.
+If application code imports generated source, run `generate` with each target
+it consumes and protect that machine-owned source directory with the same
+target selection in `generate --check`. For example:
+
+```bash
+contract4agents generate agent_contracts --target python --out src/generated
+contract4agents generate agent_contracts --target python --out src/generated --check
+```
 
 Approve the contract digest and plan digest that correspond to the release.
 Model changes are target-profile changes; portable behavior changes are contract

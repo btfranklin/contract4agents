@@ -310,7 +310,7 @@ def test_run_spec_results_are_distinct_assurance_bundle_evidence() -> None:
     assert "BUNDLE013" in {item.code for item in explicitly_missing.diagnostics}
     assert '"status": "unverified"' in missing.files["run-spec-results.json"]
     assert complete.complete
-    assert complete.bundle_version == "4"
+    assert complete.bundle_version == "1"
     assert '"run_spec_id": "run_spec:ResearchRun"' in complete.files["run-spec-results.json"]
     assert result.evidence_digest in complete.files["run-spec-results.json"]
 

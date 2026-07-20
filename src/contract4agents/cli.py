@@ -16,7 +16,12 @@ from contract4agents.assurance import (
     semantic_diff,
     write_assurance_bundle,
 )
-from contract4agents.codegen import CodeGenerationError, generate_code, write_generated_code
+from contract4agents.codegen import (
+    GENERATION_TARGETS,
+    CodeGenerationError,
+    generate_code,
+    write_generated_code,
+)
 from contract4agents.compiler import artifact_digests, compile_project
 from contract4agents.diagnostics import ContractError, Diagnostic, raise_if_errors
 from contract4agents.eval_campaigns import CampaignConfig, CampaignThresholds, FileEvalProvider, run_campaign
@@ -107,9 +112,17 @@ def compile_cmd(root: Path, output_dir: Path, check_mode: bool) -> None:
     default=".contract/generated",
     help="Application-consumed generated-source directory.",
 )
+@click.option(
+    "--target",
+    "targets",
+    type=click.Choice(GENERATION_TARGETS),
+    multiple=True,
+    required=True,
+    help="Generated source target. Repeat to generate more than one target.",
+)
 @click.option("--check", "check_mode", is_flag=True, help="Fail if generated source is stale.")
-def generate_cmd(root: Path, output_dir: Path, check_mode: bool) -> None:
-    """Write only application-consumed Pydantic, TypeScript, and Zod source."""
+def generate_cmd(root: Path, output_dir: Path, targets: tuple[str, ...], check_mode: bool) -> None:
+    """Write selected application-consumed generated source."""
 
     try:
         artifacts = compile_project(root)
@@ -117,7 +130,7 @@ def generate_cmd(root: Path, output_dir: Path, check_mode: bool) -> None:
         # writer owns only its fixed generated files and supports freshness
         # checks, so explicit source-tree destinations are valid here.
         output_path = output_dir if output_dir.is_absolute() else Path.cwd() / output_dir
-        write_generated_code(generate_code(artifacts.ir), output_path, check=check_mode)
+        write_generated_code(generate_code(artifacts.ir, targets=targets), output_path, check=check_mode)
         click.echo("Contract4Agents generate passed")
     except ContractError as exc:
         _print_contract_error(exc)
