@@ -114,6 +114,11 @@ function. It also chooses the model for this complete named profile. Every
 declared target needs at least one profile; a profile-level default can cover all
 canonical agents, while explicit agent overrides must name canonical agents.
 
+The binding is not a business-policy implementation. A host tool that changes
+money, entitlements, or customer records must enforce its own trusted business
+rules in application code. See [Enforcing Business Policy with Host
+Tools](enforcing-business-policy.md) for a refund-eligibility example.
+
 ## 6. Check and Plan
 
 From `your-app/`, run:

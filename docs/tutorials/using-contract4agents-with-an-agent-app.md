@@ -138,6 +138,15 @@ This creates a derived runtime control, expected approval trace events, and
 assurance evidence requirements. The OpenAI materializer configures the native
 tool approval mechanism. The host supplies the actual approval decision and UI.
 
+### Approval Is Not Policy Enforcement
+
+An approval gate confirms that an authorized person or system allowed a tool
+call. It does not implement the business rule governing that call. Put rules
+such as refund eligibility, pricing limits, or entitlement changes in the
+host-owned, transactional tool implementation, then record its decision as
+evidence. [Enforcing Business Policy with Host Tools](enforcing-business-policy.md)
+walks through a 30-day refund-offer rule end to end.
+
 Explicit controls are appropriate when the rule is not already derivable:
 
 ```contract

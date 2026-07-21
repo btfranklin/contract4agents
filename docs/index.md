@@ -16,6 +16,15 @@ and assurance bundles are derived from those two authorities.
   smallest contract-first agent from scratch.
 - [Using Contract4Agents in an Application](tutorials/using-contract4agents-with-an-agent-app.md)
   covers materialization, host responsibilities, traces, and assurance.
+- [Enforcing Business Policy with Host Tools](tutorials/enforcing-business-policy.md)
+  shows where transactional rules such as refund eligibility belong, and how
+  contracts, approvals, and evidence connect to that host enforcement.
+- [Healthcare Workflows: A Safety Pattern](tutorials/healthcare-safety-pattern.md)
+  helps regulated healthcare teams decide whether Contract4Agents fits around
+  their existing access, policy, and clinical-governance controls.
+- [Vendor and Payment Changes: A Safety Pattern](tutorials/vendor-payment-safety-pattern.md)
+  shows how agents can analyze and route finance work without receiving payment
+  authority or replacing vendor-verification controls.
 - [Capture and Assure a Run](tutorials/trace-and-assure.md) completes the
   runtime path with attempt-bound OpenAI capture, closure, assessment, and a
   portable assurance bundle.
