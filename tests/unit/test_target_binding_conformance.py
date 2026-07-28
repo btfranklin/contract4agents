@@ -9,7 +9,11 @@ from pathlib import Path
 
 import pytest
 
-from contract4agents.adapters.openai import openai_target_binding_validator
+from contract4agents.adapters.openai import (
+    openai_target_binding_validator,
+    openai_target_profile_validator,
+)
+from contract4agents.diagnostics import Diagnostic
 from contract4agents.ir import (
     AgentIR,
     CanonicalIR,
@@ -198,6 +202,113 @@ def test_conformance_requires_complete_profiles_without_unknown_agent_overrides(
     assert "IncidentCommander" in result.diagnostics[1].message
 
 
+def test_conformance_validates_model_factory_signature_without_calling_it(
+    tmp_path: Path,
+) -> None:
+    _write_application_module(tmp_path)
+    bindings = _bindings(
+        tmp_path,
+        tools={"incident.fetch_logs": None},
+        datasources={"incident.timeline": None},
+        external_context={"incident_record": None},
+        profiles={
+            "test": TargetProfile(
+                default_model="test-model",
+                options={"model_factory": f"{MODULE_NAME}:model_factory"},
+            )
+        },
+    )
+
+    try:
+        result = validate_target_binding_conformance(
+            _canonical_ir(),
+            bindings,
+            "openai",
+            project_root=tmp_path,
+        )
+        with _import_path(tmp_path):
+            module = importlib.import_module(MODULE_NAME)
+
+        assert result.ok
+        assert module.CALLS == 0
+    finally:
+        sys.modules.pop(MODULE_NAME, None)
+
+
+@pytest.mark.parametrize(
+    ("locator", "code"),
+    [
+        ("not-a-locator", "TGT112"),
+        ("missing_model_factory_module:create", "TGT113"),
+        (f"{MODULE_NAME}:NOT_CALLABLE", "TGT114"),
+        (f"{MODULE_NAME}:model_factory_with_required_extra", "TGT114"),
+        (f"{MODULE_NAME}:positional_model_factory", "TGT114"),
+    ],
+)
+def test_conformance_rejects_invalid_model_factories(
+    tmp_path: Path,
+    locator: str,
+    code: str,
+) -> None:
+    _write_application_module(tmp_path)
+    bindings = _bindings(
+        tmp_path,
+        tools={"incident.fetch_logs": None},
+        datasources={"incident.timeline": None},
+        external_context={"incident_record": None},
+        profiles={
+            "test": TargetProfile(
+                default_model="test-model",
+                options={"model_factory": locator},
+            )
+        },
+    )
+
+    try:
+        result = validate_target_binding_conformance(
+            _canonical_ir(),
+            bindings,
+            "openai",
+            project_root=tmp_path,
+        )
+    finally:
+        sys.modules.pop(MODULE_NAME, None)
+
+    assert [item.code for item in result.diagnostics] == [code]
+
+
+def test_conformance_invokes_adapter_profile_validator(tmp_path: Path) -> None:
+    bindings = _bindings(
+        tmp_path,
+        tools={"incident.fetch_logs": None},
+        datasources={"incident.timeline": None},
+        external_context={"incident_record": None},
+    )
+    seen: list[tuple[str, Path]] = []
+
+    def profile_validator(
+        ir: CanonicalIR,
+        target_name: str,
+        target: TargetBinding,
+        project_root: Path,
+    ) -> tuple[Diagnostic, ...]:
+        assert ir is not None
+        assert target.adapter == "openai"
+        seen.append((target_name, project_root))
+        return ()
+
+    result = validate_target_binding_conformance(
+        _canonical_ir(),
+        bindings,
+        "openai",
+        project_root=tmp_path,
+        profile_validator=profile_validator,
+    )
+
+    assert result.ok
+    assert seen == [("openai", tmp_path.resolve())]
+
+
 @pytest.mark.parametrize(
     ("section", "entry", "expected_code"),
     [
@@ -338,6 +449,35 @@ def test_openai_conformance_accepts_canonical_web_search_binding(tmp_path: Path)
 
     assert result.ok
     assert result.diagnostics == ()
+
+
+def test_openai_conformance_rejects_model_factory(tmp_path: Path) -> None:
+    _write_application_module(tmp_path)
+    bindings = _bindings(
+        tmp_path,
+        tools={"incident.fetch_logs": None},
+        datasources={"incident.timeline": None},
+        external_context={"incident_record": None},
+        profiles={
+            "test": TargetProfile(
+                default_model="test-model",
+                options={"model_factory": f"{MODULE_NAME}:model_factory"},
+            )
+        },
+    )
+
+    try:
+        result = validate_target_binding_conformance(
+            _canonical_ir(),
+            bindings,
+            "openai",
+            project_root=tmp_path,
+            profile_validator=openai_target_profile_validator,
+        )
+    finally:
+        sys.modules.pop(MODULE_NAME, None)
+
+    assert [item.code for item in result.diagnostics] == ["TGT115"]
 
 
 def _canonical_ir() -> CanonicalIR:
@@ -481,6 +621,15 @@ def wrong_names(text, limit=10):
     return _called()
 
 def wrong_requiredness(query, limit):
+    return _called()
+
+def model_factory(*, model, options):
+    return _called()
+
+def model_factory_with_required_extra(*, model, options, region):
+    return _called()
+
+def positional_model_factory(model, /, options):
     return _called()
 """.lstrip()
     )

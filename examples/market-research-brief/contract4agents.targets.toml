@@ -31,3 +31,35 @@ default_model = "test-model"
 
 [targets.openai.profiles.production]
 default_model = "gpt-5.2"
+
+[targets.google_adk]
+adapter = "google_adk"
+
+[targets.google_adk.tools."documents.search"]
+python = "examples.market_research_brief_imports.documents:search"
+
+[targets.google_adk.tools."documents.fetch"]
+python = "examples.market_research_brief_imports.documents:fetch"
+
+[targets.google_adk.tools."current_facts.search"]
+python = "examples.market_research_brief_imports.current_facts:search"
+
+[targets.google_adk.tools."current_facts.fetch"]
+python = "examples.market_research_brief_imports.current_facts:fetch"
+
+[targets.google_adk.tools."competitors.lookup"]
+python = "examples.market_research_brief_imports.competitors:lookup"
+
+[targets.google_adk.tools."citation.format"]
+python = "examples.market_research_brief_imports.citation:format"
+
+[targets.google_adk.tools."web.search"]
+provider = "google_adk"
+tool = "google_search"
+model = "gemini-2.5-flash"
+
+[targets.google_adk.profiles.test]
+default_model = "gemini-2.5-flash"
+
+[targets.google_adk.profiles.production]
+default_model = "gemini-2.5-pro"

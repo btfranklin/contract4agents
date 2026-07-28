@@ -130,6 +130,33 @@ authentication, request compatibility, native agent-as-tool execution, and
 model behavior. A skipped live test is not evidence that a live provider path
 was exercised.
 
+## Live Strands Checks
+
+The Strands live test is opt-in and uses the normal AWS credential and region
+provider chain:
+
+```bash
+CONTRACT4AGENTS_RUN_STRANDS_LIVE=1 pdm run test:strands-live
+```
+
+It materializes a native Strands agent from the Incident Command target, calls
+Bedrock, validates `AgentResult.structured_output`, and closes a normalized
+trace attempt. Offline tests use a deterministic fake `Model`; they do not
+prove AWS authentication or Bedrock model access. A skipped live test is not
+live evidence.
+
+## Live Google ADK Checks
+
+The Google ADK live test is opt-in and requires `GOOGLE_API_KEY`:
+
+```bash
+CONTRACT4AGENTS_RUN_GOOGLE_ADK_LIVE=1 pdm run test:google-adk-live
+```
+
+It lets host-owned ADK `App`, `Runner`, and session service execute the Market
+Research Google Search agent, then asserts grounding, Search suggestion, and
+`renderedContent` evidence. A skip is not live evidence.
+
 ## Documentation
 
 ```bash

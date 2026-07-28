@@ -131,6 +131,72 @@ def test_named_profiles_produce_distinct_plan_identity() -> None:
     assert test.agents[semantic_id("agent", "IncidentCommander")].model == "test-main"
 
 
+def test_agent_model_options_override_profile_options_and_affect_plan_digest() -> None:
+    target = _bindings().targets["openai"]
+    configured_profile = TargetProfile(
+        default_model="gpt-main",
+        agents={
+            "LogInvestigator": AgentProfile(
+                model="gpt-small",
+                options={"temperature": 0.8},
+            )
+        },
+        options={
+            "environment": "in_process",
+            "model_factory": "app_models:create",
+            "temperature": 0.1,
+        },
+    )
+    first_bindings = TargetBindings(
+        Path("bindings.toml"),
+        {
+            "openai": replace(
+                target,
+                profiles={"production": configured_profile},
+            )
+        },
+    )
+    first = plan_materialization(
+        _sample_ir(network="inherited"),
+        first_bindings,
+        target="openai",
+        profile="production",
+        capabilities=_capabilities(),
+    )
+    commander = first.agents[semantic_id("agent", "IncidentCommander")]
+    investigator = first.agents[semantic_id("agent", "LogInvestigator")]
+
+    assert commander.model_options["temperature"] == 0.1
+    assert investigator.model_options["temperature"] == 0.8
+    assert (
+        commander.model_options["model_factory"]
+        == investigator.model_options["model_factory"]
+        == "app_models:create"
+    )
+
+    changed_profile = replace(
+        configured_profile,
+        options={**configured_profile.options, "temperature": 0.2},
+    )
+    second = plan_materialization(
+        _sample_ir(network="inherited"),
+        TargetBindings(
+            Path("bindings.toml"),
+            {
+                "openai": replace(
+                    target,
+                    profiles={"production": changed_profile},
+                )
+            },
+        ),
+        target="openai",
+        profile="production",
+        capabilities=_capabilities(),
+    )
+
+    assert first.plan_digest != second.plan_digest
+
+
 def test_missing_models_and_bindings_are_reported_together() -> None:
     target = TargetBinding(
         adapter="openai",
@@ -274,6 +340,48 @@ def test_openai_python_tool_approval_is_contextually_exact() -> None:
     assert grant.mechanism == "host.implementation_binding+openai.function_tool.needs_approval"
     assert control.outcome == "exact"
     assert control.mechanism == "openai.function_tool.needs_approval"
+
+
+def test_legacy_mapping_resolver_without_contextual_hooks_still_plans() -> None:
+    base = openai_planner_capabilities()
+
+    class LegacyResolver:
+        def resolve_binding(self, **kwargs):  # type: ignore[no-untyped-def]
+            return base.mapping_resolver.resolve_binding(**kwargs)  # type: ignore[union-attr]
+
+        def grant_support(self, **kwargs):  # type: ignore[no-untyped-def]
+            return base.mapping_resolver.grant_support(**kwargs)  # type: ignore[union-attr]
+
+        def approval_support(self, **kwargs):  # type: ignore[no-untyped-def]
+            return base.mapping_resolver.approval_support(**kwargs)  # type: ignore[union-attr]
+
+        def composition_support(self, **kwargs):  # type: ignore[no-untyped-def]
+            return base.mapping_resolver.composition_support(**kwargs)  # type: ignore[union-attr]
+
+    capabilities = PlannerCapabilities.create(
+        adapter=base.adapter,
+        version=base.version,
+        approval=base.approval,
+        composition=base.composition,
+        controls=base.controls,
+        isolation=base.isolation,
+        expected_event_types=base.expected_event_types,
+        mapping_resolver=LegacyResolver(),  # type: ignore[arg-type]
+    )
+
+    plan = plan_materialization(
+        _openai_ir(authorization="approval_required"),
+        _bindings(),
+        target="openai",
+        profile="production",
+        capabilities=capabilities,
+    )
+
+    assert plan.adapter.name == "openai"
+    assert (
+        plan.bindings[semantic_id("tool", "status.publish")].outcome
+        == "exact"
+    )
 
 
 def test_openai_web_search_is_exact_only_without_approval() -> None:

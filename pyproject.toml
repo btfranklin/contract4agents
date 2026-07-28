@@ -48,11 +48,17 @@ contract4agents = "contract4agents.cli:main"
 contract4agents-language-server = "contract4agents.language_server:main"
 
 [project.optional-dependencies]
+google-adk = [
+    "google-adk>=2.5.0",
+    "google-genai>=2.14.0",
+]
 openai = [
     "openai>=2.44.0",
     "openai-agents>=0.17.7",
 ]
-
+strands = [
+    "strands-agents>=1.50.2",
+]
 
 [tool.pdm]
 distribution = true
@@ -69,6 +75,8 @@ test = "pytest"
 "test:unit" = "pytest tests/unit --cov=contract4agents --cov-report=term-missing --cov-fail-under=90"
 "test:integration" = "pytest tests/integration"
 "test:openai-live" = "pytest -m live tests/integration/test_openai_live.py"
+"test:strands-live" = "pytest -m live tests/integration/test_strands_live.py"
+"test:google-adk-live" = "pytest -m live tests/integration/test_google_adk_live.py"
 "test:editor" = "npm --prefix editors/vscode test"
 docs-check = "python scripts/docs_check.py"
 lint = "ruff check src tests examples"
@@ -84,6 +92,14 @@ validate = {composite = ["validate:python", "test:editor"]}
     "contract4agents visualize examples/incident-command --target openai --profile test --out .contract/build/incident-command/visualization",
     "contract4agents eval examples/incident-command --target openai --profile test --out .contract/build/incident-command/eval-results.json",
     "contract4agents assure examples/incident-command --target openai --profile test --eval-results .contract/build/incident-command/eval-results.json --out .contract/build/incident-command/assurance",
+    "contract4agents plan examples/incident-command --target strands --profile test --out .contract/build/incident-command/strands-plan.json",
+    "contract4agents visualize examples/incident-command --target strands --profile test --out .contract/build/incident-command/strands-visualization",
+    "contract4agents eval examples/incident-command --target strands --profile test --out .contract/build/incident-command/strands-eval-results.json",
+    "contract4agents assure examples/incident-command --target strands --profile test --eval-results .contract/build/incident-command/strands-eval-results.json --out .contract/build/incident-command/strands-assurance",
+    "contract4agents plan examples/incident-command --target google_adk --profile test --out .contract/build/incident-command/google-adk-plan.json",
+    "contract4agents visualize examples/incident-command --target google_adk --profile test --out .contract/build/incident-command/google-adk-visualization",
+    "contract4agents eval examples/incident-command --target google_adk --profile test --out .contract/build/incident-command/google-adk-eval-results.json",
+    "contract4agents assure examples/incident-command --target google_adk --profile test --eval-results .contract/build/incident-command/google-adk-eval-results.json --out .contract/build/incident-command/google-adk-assurance",
     "contract4agents diff examples/incident-command examples/incident-command --out .contract/build/incident-command/diff.json",
     "contract4agents check examples/multi-lens-research",
     "contract4agents plan examples/multi-lens-research --target openai --profile test --out .contract/build/multi-lens-research/plan.json",
@@ -92,6 +108,7 @@ validate = {composite = ["validate:python", "test:editor"]}
     "contract4agents eval examples/multi-lens-research --target openai --profile test --out .contract/build/multi-lens-research/eval-results.json",
     "contract4agents check examples/market-research-brief",
     "contract4agents plan examples/market-research-brief --target openai --profile test --out .contract/build/market-research-brief/plan.json",
+    "contract4agents plan examples/market-research-brief --target google_adk --profile test --out .contract/build/market-research-brief/google-adk-plan.json",
     "contract4agents compile examples/market-research-brief --out .contract/build/market-research-brief",
     "contract4agents visualize examples/market-research-brief --target openai --profile test --out .contract/build/market-research-brief/visualization",
     "contract4agents eval examples/market-research-brief --target openai --profile test --out .contract/build/market-research-brief/eval-results.json",

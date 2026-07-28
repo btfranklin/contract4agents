@@ -25,6 +25,7 @@ class AttemptCaptureState:
     response_status: TraceClosureStatus = "incomplete"
     response_evidence_refs: set[str] = field(default_factory=set)
     reason: str = "The response-normalization path has not been closed."
+    response_failed_closed: bool = False
 
 
 def prior_attempt(

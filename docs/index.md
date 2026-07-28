@@ -50,6 +50,10 @@ and assurance bundles are derived from those two authorities.
   ownership boundaries.
 - [OpenAI Target](reference/openai-adapter.md): planning and native OpenAI
   Agents SDK materialization.
+- [Strands Target](reference/strands-adapter.md): native Strands agents,
+  interventions, typed tools, and delegation.
+- [Google ADK Target](reference/google-adk-adapter.md): native ADK agents,
+  confirmation, typed tools, delegation, and Google Search.
 - [CLI](reference/cli.md): public commands and their side effects.
 - [Run Specs](reference/run-specs.md): verification of host-owned deterministic
   workflow.

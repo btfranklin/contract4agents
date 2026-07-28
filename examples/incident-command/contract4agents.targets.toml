@@ -26,3 +26,57 @@ default_model = "test-model"
 
 [targets.openai.profiles.production]
 default_model = "gpt-5.2"
+
+[targets.strands]
+adapter = "strands"
+
+[targets.strands.tools."logs.search"]
+python = "examples.incident_command_imports.logs:search"
+
+[targets.strands.tools."deploys.list"]
+python = "examples.incident_command_imports.deploys:list"
+
+[targets.strands.tools."metrics.query"]
+python = "examples.incident_command_imports.metrics:query"
+
+[targets.strands.tools."status_page.draft_update"]
+python = "examples.incident_command_imports.status_page:draft_update"
+
+[targets.strands.datasources."incident.service"]
+python = "examples.incident_command_imports.context:service"
+
+[targets.strands.external_context.active_incident]
+python = "examples.incident_command_imports.context:active_incident"
+
+[targets.strands.profiles.test]
+default_model = "test-model"
+
+[targets.strands.profiles.production]
+default_model = "us.amazon.nova-pro-v1:0"
+
+[targets.google_adk]
+adapter = "google_adk"
+
+[targets.google_adk.tools."logs.search"]
+python = "examples.incident_command_imports.logs:search"
+
+[targets.google_adk.tools."deploys.list"]
+python = "examples.incident_command_imports.deploys:list"
+
+[targets.google_adk.tools."metrics.query"]
+python = "examples.incident_command_imports.metrics:query"
+
+[targets.google_adk.tools."status_page.draft_update"]
+python = "examples.incident_command_imports.status_page:draft_update"
+
+[targets.google_adk.datasources."incident.service"]
+python = "examples.incident_command_imports.context:service"
+
+[targets.google_adk.external_context.active_incident]
+python = "examples.incident_command_imports.context:active_incident"
+
+[targets.google_adk.profiles.test]
+default_model = "gemini-2.5-flash"
+
+[targets.google_adk.profiles.production]
+default_model = "gemini-2.5-pro"

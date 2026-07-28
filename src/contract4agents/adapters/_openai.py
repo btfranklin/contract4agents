@@ -3,10 +3,18 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from pathlib import Path
 
 from contract4agents.diagnostics import Diagnostic
-from contract4agents.ir import CompositionEdgeIR, GrantIR
+from contract4agents.ir import (
+    CanonicalIR,
+    CapabilityIR,
+    CompositionEdgeIR,
+    ControlIR,
+    GrantIR,
+)
 from contract4agents.planning import (
+    AgentPlan,
     BindingExecution,
     BindingKind,
     BindingPlan,
@@ -15,7 +23,7 @@ from contract4agents.planning import (
     PlannerCapabilities,
     in_process_isolation_support,
 )
-from contract4agents.target_bindings import BindingEntry, BindingSection
+from contract4agents.target_bindings import BindingEntry, BindingSection, TargetBinding
 
 _HOST_LOCATORS = frozenset({"python", "typescript", "module"})
 _PROVIDER_LOCATORS = frozenset({"provider", "provider_tool", "tool"})
@@ -61,6 +69,18 @@ class OpenAIMappingResolver:
             execution = "host"
         return BindingResolution(execution, MappingSupport("unsupported", None))
 
+    def binding_support(
+        self,
+        *,
+        ir: CanonicalIR,
+        capability: CapabilityIR | None,
+        kind: BindingKind,
+        locator: Mapping[str, object],
+        declared: BindingResolution,
+    ) -> BindingResolution | None:
+        del ir, capability, kind, locator, declared
+        return None
+
     def grant_support(
         self,
         *,
@@ -94,6 +114,18 @@ class OpenAIMappingResolver:
     ) -> MappingSupport | None:
         if edge.mode == "handoff" and edge.isolation_id is not None:
             return MappingSupport("unsupported", None)
+        return None
+
+    def control_support(
+        self,
+        *,
+        control: ControlIR,
+        agent: AgentPlan | None,
+        has_tools: bool,
+        tool_bindings: tuple[BindingPlan, ...],
+        declared: MappingSupport,
+    ) -> MappingSupport | None:
+        del control, agent, has_tools, tool_bindings, declared
         return None
 
 
@@ -159,6 +191,43 @@ def openai_target_binding_validator(
             ),
         ),
     )
+
+
+def openai_target_profile_validator(
+    ir: CanonicalIR,
+    target_name: str,
+    target: TargetBinding,
+    project_root: Path,
+) -> tuple[Diagnostic, ...]:
+    """Reject model factories that the OpenAI materializer does not consume."""
+
+    del ir, project_root
+    diagnostics: list[Diagnostic] = []
+    for profile_name, profile in target.profiles.items():
+        if "model_factory" in profile.options:
+            diagnostics.append(
+                Diagnostic(
+                    "TGT115",
+                    (
+                        f"OpenAI target `{target_name}` profile `{profile_name}` "
+                        "does not support `model_factory`"
+                    ),
+                    hint="Use an OpenAI model identifier and provider options.",
+                )
+            )
+        diagnostics.extend(
+            Diagnostic(
+                "TGT115",
+                (
+                    f"OpenAI target `{target_name}` profile `{profile_name}` agent "
+                    f"`{agent_name}` does not support `model_factory`"
+                ),
+                hint="Use an OpenAI model identifier and provider options.",
+            )
+            for agent_name, agent_profile in profile.agents.items()
+            if "model_factory" in agent_profile.options
+        )
+    return tuple(diagnostics)
 
 
 def openai_planner_capabilities() -> PlannerCapabilities:
@@ -234,4 +303,5 @@ __all__ = [
     "OpenAIMappingResolver",
     "openai_planner_capabilities",
     "openai_target_binding_validator",
+    "openai_target_profile_validator",
 ]

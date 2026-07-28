@@ -23,10 +23,12 @@ execution, contract-bound traces and assurance results distinguish `passed`,
 
 ## Quickstart
 
-Install the core package and the OpenAI target:
+Install the core package with the target adapters your application uses:
 
 ```bash
 pdm add "contract4agents[openai]"
+pdm add "contract4agents[strands]"
+pdm add "contract4agents[google-adk]"
 ```
 
 To explore this repository's complete Incident Command example:
@@ -158,14 +160,28 @@ reviewed_plan = result.plan
 run_result = await Runner.run(support_agent, input="Where is my order?")
 ```
 
-`result.agents` contains ordinary OpenAI Agents SDK `Agent` objects. Generated
-output types, host tools, approval hooks, delegations, and handoffs are wired
-from the contract graph and target bindings; host code does not maintain a
-parallel agent registry.
+`result.agents` contains ordinary native SDK agent objects. Generated output
+types, host tools, approval hooks, and supported composition are wired from the
+contract graph and target bindings; host code does not maintain a parallel
+agent registry.
 
 The host still owns credentials, approval decisions and UI, persistence,
-external services, and deterministic application workflow. Contract4Agents is
-not a general workflow language and does not hide provider differences.
+sessions, retries, external services, deployment, and deterministic application
+workflow. Contract4Agents is not a general workflow language and does not hide
+provider differences.
+
+The built-in targets deliberately report different mappings:
+
+| Target | Native graph | Python tools/context | Approval | Provider-native search |
+| --- | --- | --- | --- | --- |
+| OpenAI Agents SDK | `Agent`, function tools, handoffs | `exact` | `exact` for Python tools | OpenAI web search |
+| Strands Agents | `Agent`, typed tools, agents-as-tools | `exact` | `exact` through `HumanInTheLoop` | Unsupported; use an ordinary Python tool |
+| Google ADK | `LlmAgent`, custom `BaseTool`, typed sub-branches | `exact` | `exact` through tool confirmation | Schema-checked Google Search wrapper |
+
+Each target reference lists contextual `exact`, `host_enforced`, `emulated`,
+`degraded`, and `unsupported` outcomes. Neither Strands nor ADK substitutes a
+similar-looking SDK transfer for a contract handoff when history semantics do
+not match.
 
 ## Evidence, Evals, and Assurance
 
@@ -173,7 +189,7 @@ The normalized trace schema binds every event to a contract digest, plan digest,
 stable semantic IDs, provider-native correlation, provenance, and audience-safe
 redaction metadata. Identity-bound closure evidence records which attempts,
 provider responses, and instrumentation channels were completely observed at
-an exact ordered trace frontier. OpenAI sessions expose consistent non-closing
+an exact ordered trace frontier. Built-in adapter sessions expose consistent non-closing
 snapshots, validated cross-session retry continuation, and disposable router
 bindings. The same control assessor is used for controlled evals and imported
 production traces.
@@ -218,6 +234,8 @@ See [the examples guide](examples/README.md) for the common project structure.
 - [Language Reference](docs/language/contract-language.md)
 - [CLI Reference](docs/reference/cli.md)
 - [OpenAI Target Reference](docs/reference/openai-adapter.md)
+- [Strands Target Reference](docs/reference/strands-adapter.md)
+- [Google ADK Target Reference](docs/reference/google-adk-adapter.md)
 - [Trace Schema](docs/reference/trace-schema.md)
 - [Run Specs](docs/reference/run-specs.md)
 - [Evals, Controls, and Assurance](docs/evaluation/evals-controls-assurance.md)
@@ -236,8 +254,9 @@ pdm run validate
 pdm build
 ```
 
-Normal local checks do not require an API key. Opt-in OpenAI live checks are
-documented in [Validation and Quality Gates](docs/quality/validation.md).
+Normal local checks do not require provider credentials. Opt-in provider live
+checks are documented in
+[Validation and Quality Gates](docs/quality/validation.md).
 
 ## License
 

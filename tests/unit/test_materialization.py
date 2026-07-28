@@ -28,7 +28,7 @@ from contract4agents.materialization import (
     RecordingMaterializationTraceSink,
 )
 from contract4agents.materialization._types import build_pydantic_types
-from contract4agents.planning import PlanningError
+from contract4agents.planning import PlannerCapabilities, PlanningError
 from contract4agents.runtime import EnvironmentProvider, EnvironmentRunRequest, InProcessEnvironment
 from contract4agents.target_bindings import BindingEntry
 from contract4agents.tracing import NoOpNormalizedTraceSink, RecordingNormalizedTraceSink
@@ -155,6 +155,32 @@ class FakeOpenAISDK:
         )
 
 
+class CustomMaterializationProvider:
+    adapter = "custom"
+
+    def __init__(self, sdk: FakeOpenAISDK) -> None:
+        self._provider = OpenAIMaterializationProvider(sdk)
+
+    def planner_capabilities(
+        self,
+        environment: EnvironmentProvider | None,
+    ) -> PlannerCapabilities:
+        base = self._provider.planner_capabilities(environment)
+        return PlannerCapabilities.create(
+            adapter=self.adapter,
+            version=base.version,
+            approval=base.approval,
+            composition=base.composition,
+            controls=base.controls,
+            isolation=base.isolation,
+            expected_event_types=base.expected_event_types,
+            mapping_resolver=base.mapping_resolver,
+        )
+
+    def build_graph(self, **kwargs: Any) -> Any:
+        return self._provider.build_graph(**kwargs)
+
+
 def test_runtime_pydantic_types_enforce_literal_enum_membership() -> None:
     status = EnumIR(semantic_id("type", "Status"), "Status", ("accepted", "failed"))
     result = TypeIR(
@@ -211,6 +237,27 @@ def test_public_materialize_builds_and_validates_complete_native_graph(tmp_path:
     assert result_model(value="ok").value == "ok"
     with pytest.raises(ValidationError):
         result_model(value="ok", undeclared=True)
+
+
+def test_injected_provider_supports_an_unknown_matching_adapter(tmp_path: Path) -> None:
+    _write_project(tmp_path)
+    bindings = tmp_path / "contract4agents.targets.toml"
+    bindings.write_text(
+        bindings.read_text(encoding="utf-8")
+        .replace("targets.openai", "targets.custom")
+        .replace('adapter = "openai"', 'adapter = "custom"'),
+        encoding="utf-8",
+    )
+
+    result = materialize(
+        tmp_path,
+        "custom",
+        "test",
+        provider=CustomMaterializationProvider(FakeOpenAISDK()),
+    )
+
+    assert result.plan.adapter.name == "custom"
+    assert result.agents["Parent"] is result.graph.agent("Parent")
 
 
 def test_materialization_fails_if_native_graph_does_not_match_plan(tmp_path: Path) -> None:

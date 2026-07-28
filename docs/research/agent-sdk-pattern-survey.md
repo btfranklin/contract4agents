@@ -9,7 +9,7 @@ This survey captures common agent-definition patterns across four major SDKs:
 
 The goal is not to copy any one SDK. The goal is to make Contract4Agents' source language and compiler target the stable concepts that show up across them.
 
-Survey date: May 15, 2026.
+Survey reviewed: July 28, 2026.
 
 ## Sources
 
@@ -226,13 +226,21 @@ Contract4Agents does not use an SDK object model as its internal representation:
 5. Conformance tests run the same contract projects across targets while
    preserving target-specific differences and caveats.
 
-Recommended first adapter order:
+Implemented adapter order:
 
-1. OpenAI Agents SDK: implemented first because it directly represents agents,
-   tools, handoffs, structured outputs, approvals, results, and traces.
-2. Google ADK: important second target because it has config loading, session state, callbacks, and multi-language pressure.
-3. Strands: important for model-neutral and multi-agent pattern breadth.
-4. Claude Agent SDK: important for permissions, coding-agent loop semantics, MCP, subagent isolation, and session controls, but its surface is less like a simple agent class.
+1. OpenAI Agents SDK was the initial adapter because it directly represents
+   agents, tools, handoffs, structured outputs, approvals, results, and traces.
+2. Strands was the next adapter because its native agent, typed-tool,
+   intervention, and agent-as-tool surfaces fit the existing runtime-adapter
+   boundary closely.
+3. Google ADK followed with explicit caveats for model-dependent structured
+   output, confirmation, typed sub-branches, and Google Search grounding.
+
+Claude Agent SDK and Amazon Bedrock AgentCore Harness are not on the active
+adapter roadmap. The Claude material above remains comparative research, not a
+commitment to implement its bundled coding-agent loop. Harness deployment and
+desired-state concerns remain outside Contract4Agents' native runtime-adapter
+scope.
 
 This is a target roadmap, not a language dependency. A future target must
 report semantic loss in its plan instead of changing portable contract meaning.

@@ -9,6 +9,7 @@ from pathlib import Path
 
 import click
 
+from contract4agents.adapters._registry import get_adapter_registration
 from contract4agents.assurance import (
     RunSpecAssessmentManifest,
     assess_assurance_evidence,
@@ -38,6 +39,7 @@ from contract4agents.planning import (
 from contract4agents.semantics import analyze_project
 from contract4agents.target_bindings import (
     AdapterBindingValidator,
+    AdapterProfileValidator,
     TargetBindings,
     load_target_bindings,
     validate_target_binding_conformance,
@@ -77,6 +79,7 @@ def check(root: Path) -> None:
                     target_name,
                     project_root=project.root,
                     adapter_validator=_adapter_binding_validator(target_binding.adapter),
+                    profile_validator=_adapter_profile_validator(target_binding.adapter),
                 )
                 diagnostics.extend(conformance.diagnostics)
         _print_diagnostics(diagnostics)
@@ -187,21 +190,22 @@ def plan_cmd(
 
 
 def _planner_capabilities(target: str, adapter: str) -> PlannerCapabilities:
-    if adapter == "openai":
-        from contract4agents.materialization import OpenAIMaterializationProvider
-
-        return OpenAIMaterializationProvider().planner_capabilities(None)
-    raise click.ClickException(
-        f"Target `{target}` selects adapter `{adapter}`, which has no installed planner"
-    )
+    registration = get_adapter_registration(adapter)
+    if registration is None:
+        raise click.ClickException(
+            f"Target `{target}` selects adapter `{adapter}`, which has no installed planner"
+        )
+    return registration.planner_capabilities()
 
 
 def _adapter_binding_validator(adapter: str) -> AdapterBindingValidator | None:
-    if adapter == "openai":
-        from contract4agents.adapters.openai import openai_target_binding_validator
+    registration = get_adapter_registration(adapter)
+    return registration.binding_validator if registration is not None else None
 
-        return openai_target_binding_validator
-    return None
+
+def _adapter_profile_validator(adapter: str) -> AdapterProfileValidator | None:
+    registration = get_adapter_registration(adapter)
+    return registration.profile_validator if registration is not None else None
 
 
 @main.command("visualize")
@@ -503,9 +507,14 @@ def _resolve_plan(
         ir,
         loaded.bindings,
         target,
-        project_root=Path.cwd(),
+        project_root=Path(root).resolve(),
         adapter_validator=(
             _adapter_binding_validator(selected_target.adapter)
+            if selected_target is not None
+            else None
+        ),
+        profile_validator=(
+            _adapter_profile_validator(selected_target.adapter)
             if selected_target is not None
             else None
         ),

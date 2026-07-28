@@ -7,7 +7,10 @@ from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
 from contract4agents.ir import (
+    CanonicalIR,
+    CapabilityIR,
     CompositionEdgeIR,
+    ControlIR,
     FrozenJsonValue,
     FrozenMap,
     GrantIR,
@@ -56,6 +59,16 @@ class AdapterMappingResolver(Protocol):
         locator: Mapping[str, object],
     ) -> BindingResolution: ...
 
+    def binding_support(
+        self,
+        *,
+        ir: CanonicalIR,
+        capability: CapabilityIR | None,
+        kind: BindingKind,
+        locator: Mapping[str, object],
+        declared: BindingResolution,
+    ) -> BindingResolution | None: ...
+
     def grant_support(
         self,
         *,
@@ -75,6 +88,16 @@ class AdapterMappingResolver(Protocol):
         self,
         *,
         edge: CompositionEdgeIR,
+        declared: MappingSupport,
+    ) -> MappingSupport | None: ...
+
+    def control_support(
+        self,
+        *,
+        control: ControlIR,
+        agent: AgentPlan | None,
+        has_tools: bool,
+        tool_bindings: tuple[BindingPlan, ...],
         declared: MappingSupport,
     ) -> MappingSupport | None: ...
 

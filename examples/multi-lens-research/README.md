@@ -22,7 +22,7 @@ ordering without turning the contract into a workflow engine.
 
 `capabilities/research.contract` defines source search/fetch, evidence scoring,
 citation formatting, and expert review once. Agents receive explicit grants to
-the subset they need. Implementations are bound once under the OpenAI target.
+the subset they need. Implementations are bound once under each selected target.
 
 ## Honest Isolation
 
@@ -59,7 +59,8 @@ pdm run contract4agents eval examples/multi-lens-research \
 
 The test path is deterministic and requires no provider credentials. Review the
 canonical IR and plan before the eval report: they show exactly what the
-campaign was expected to execute and observe.
+campaign was expected to execute and observe. The example also includes
+`strands` and `google_adk` targets with the same named in-process environment.
 
 ## Materialize
 

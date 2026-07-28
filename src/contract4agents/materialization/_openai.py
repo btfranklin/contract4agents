@@ -12,14 +12,17 @@ from typing import Any, Protocol, cast
 from contract4agents.adapters._openai import openai_planner_capabilities
 from contract4agents.adapters._openai_names import openai_tool_name
 from contract4agents.compiler import CompilerArtifacts
-from contract4agents.ir import CanonicalIR, FrozenMap, SemanticId, format_type_ref, freeze_json
+from contract4agents.ir import CanonicalIR, FrozenMap, SemanticId
 from contract4agents.materialization._context import ContextRuntime
 from contract4agents.materialization._errors import MaterializationError, MaterializationIssue
 from contract4agents.materialization._models import (
     GraphValidationEvidence,
     NativeAgentGraph,
 )
-from contract4agents.materialization._tracing import MaterializationTraceEvent, MaterializationTraceSink
+from contract4agents.materialization._tracing import (
+    MaterializationTraceSink,
+    _emit_materialization_events,
+)
 from contract4agents.materialization._types import build_parameter_model, output_type_for
 from contract4agents.planning import MaterializationPlan, PlannerCapabilities
 from contract4agents.runtime import (
@@ -589,104 +592,6 @@ def _validate_graph(
             issues.append(MaterializationIssue("MAT405", "Native handoffs differ from planned edges", agent_id))
     if issues:
         raise MaterializationError(tuple(issues))
-
-
-def _emit_materialization_events(
-    sink: MaterializationTraceSink,
-    ir: CanonicalIR,
-    plan: MaterializationPlan,
-) -> None:
-    def emit(
-        event_type: str,
-        *,
-        semantic_id: SemanticId | None = None,
-        agent_id: SemanticId | None = None,
-        related_id: SemanticId | None = None,
-        data: Mapping[str, object] | None = None,
-    ) -> None:
-        frozen = freeze_json(data or {})
-        if not isinstance(frozen, FrozenMap):
-            raise TypeError("Materialization trace data must be an object")
-        sink.emit(
-            MaterializationTraceEvent(
-                event_type=event_type,
-                contract_digest=plan.contract_digest,
-                plan_digest=plan.plan_digest,
-                semantic_id=semantic_id,
-                agent_id=agent_id,
-                related_id=related_id,
-                data=frozen,
-            )
-        )
-
-    for agent_id, agent in ir.agents.items():
-        emit("materialization.agent.configured", semantic_id=agent_id, agent_id=agent_id)
-        emit(
-            "materialization.output_validation.configured",
-            semantic_id=agent_id,
-            agent_id=agent_id,
-            data={"output_type": format_type_ref(agent.output_type)},
-        )
-    for grant_id, grant in ir.grants.items():
-        emit(
-            "materialization.grant.configured",
-            semantic_id=grant_id,
-            agent_id=grant.agent_id,
-            related_id=grant.capability_id,
-            data={
-                "availability": grant.availability,
-                "authorization": grant.authorization,
-                "execution": grant.execution,
-            },
-        )
-        if grant.availability == "enabled":
-            emit(
-                "materialization.tool.bound",
-                semantic_id=grant.capability_id,
-                agent_id=grant.agent_id,
-                related_id=grant_id,
-            )
-        if grant.authorization == "approval_required":
-            emit(
-                "materialization.approval.configured",
-                semantic_id=grant_id,
-                agent_id=grant.agent_id,
-                related_id=grant.capability_id,
-            )
-    for edge_id, edge in ir.composition.items():
-        emit(
-            f"materialization.{edge.mode}.configured",
-            semantic_id=edge_id,
-            agent_id=edge.source_agent_id,
-            related_id=edge.target_agent_id,
-            data={"history": edge.history},
-        )
-    for context_id, context in ir.contexts.items():
-        emit(
-            "materialization.context.configured",
-            semantic_id=context_id,
-            agent_id=context.agent_id,
-            related_id=context.origin_id,
-            data={"origin": context.origin},
-        )
-    for binding_id, binding in plan.bindings.items():
-        if binding.kind in {"datasource", "external"}:
-            emit(
-                "materialization.resolver.bound",
-                semantic_id=binding_id,
-                data={"kind": binding.kind, "execution": binding.execution},
-            )
-            emit(
-                f"materialization.{binding.kind}.bound",
-                semantic_id=binding_id,
-                data={"execution": binding.execution},
-            )
-    for isolation_id, isolation in plan.isolation.items():
-        emit(
-            "materialization.isolation.configured",
-            semantic_id=isolation_id,
-            data={"environment": isolation.environment, "provider": isolation.provider},
-        )
 
 
 __all__ = [

@@ -85,9 +85,10 @@ composition investigate from TriageAgent to Investigator:
     map request = input.request
 ```
 
-The OpenAI materializer turns delegation into an agent-as-tool and handoff into
-a native SDK handoff. Host code does not maintain parallel agent-tool or handoff
-registries.
+The selected adapter maps composition only when its semantics match. OpenAI
+supports native handoffs and agent tools; Strands and Google ADK expose typed
+`history = none` delegation as tools but report contract handoffs unsupported.
+Host code does not maintain parallel agent-tool or handoff registries.
 
 Deterministic branches, loops, retries, checkpoints, stage ordering, and data
 transforms remain ordinary application code. A `run_spec` can verify that
@@ -135,8 +136,9 @@ use billing.issue_credit:
 ```
 
 This creates a derived runtime control, expected approval trace events, and
-assurance evidence requirements. The OpenAI materializer configures the native
-tool approval mechanism. The host supplies the actual approval decision and UI.
+assurance evidence requirements. Each built-in materializer configures its
+supported native tool-approval mechanism. The host supplies the actual approval
+decision, UI, pause/resume handling, and recovery policy.
 
 ### Approval Is Not Policy Enforcement
 

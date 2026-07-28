@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from contract4agents.ir import CanonicalIR, FrozenMap, IsolationProfileIR, SemanticId, contract_digest
+from contract4agents.ir import (
+    CanonicalIR,
+    CapabilityIR,
+    FrozenMap,
+    IsolationProfileIR,
+    SemanticId,
+    contract_digest,
+)
 from contract4agents.planning._errors import PlanningError, PlanningIssue
 from contract4agents.planning._models import (
     AdapterPlan,
@@ -98,6 +105,10 @@ def plan_materialization(
     composition = _resolve_composition(ir, capabilities, issues, obligations, expected_event_types)
     controls = _resolve_controls(
         ir,
+        agents,
+        resolved_bindings,
+        grants,
+        composition,
         capabilities,
         approval_support,
         issues,
@@ -201,7 +212,15 @@ def _resolve_bindings(
                 )
             )
             continue
-        resolved = _binding_plan(capability_id, capability.kind, entry, capabilities, issues)
+        resolved = _binding_plan(
+            ir,
+            capability_id,
+            capability,
+            capability.kind,
+            entry,
+            capabilities,
+            issues,
+        )
         if resolved is not None:
             plan, mapping = resolved
             result[capability_id] = plan
@@ -211,7 +230,15 @@ def _resolve_bindings(
         if entry is None:
             issues.append(PlanningIssue("PLN006", f"No external-context binding for `{external.name}`", external_id))
             continue
-        resolved = _binding_plan(external_id, "external", entry, capabilities, issues)
+        resolved = _binding_plan(
+            ir,
+            external_id,
+            None,
+            "external",
+            entry,
+            capabilities,
+            issues,
+        )
         if resolved is not None:
             plan, mapping = resolved
             result[external_id] = plan
@@ -220,7 +247,9 @@ def _resolve_bindings(
 
 
 def _binding_plan(
+    ir: CanonicalIR,
     identifier: SemanticId,
+    capability: CapabilityIR | None,
     kind: BindingKind,
     entry: BindingEntry,
     capabilities: PlannerCapabilities,
@@ -237,6 +266,21 @@ def _binding_plan(
             kind=kind,
             locator=entry.values,
         )
+        contextual_resolver = getattr(
+            capabilities.mapping_resolver,
+            "binding_support",
+            None,
+        )
+        if contextual_resolver is not None:
+            contextual = contextual_resolver(
+                ir=ir,
+                capability=capability,
+                kind=kind,
+                locator=entry.values,
+                declared=resolution,
+            )
+            if contextual is not None:
+                resolution = contextual
     _require_mapping(
         resolution.support.outcome,
         identifier,
@@ -448,6 +492,10 @@ def _resolve_composition(
 
 def _resolve_controls(
     ir: CanonicalIR,
+    agents: Mapping[SemanticId, AgentPlan],
+    bindings: Mapping[SemanticId, BindingPlan],
+    grants: Mapping[SemanticId, GrantMappingPlan],
+    composition: Mapping[SemanticId, CompositionMappingPlan],
     capabilities: PlannerCapabilities,
     approval_support: Mapping[SemanticId, MappingSupport],
     issues: list[PlanningIssue],
@@ -455,9 +503,13 @@ def _resolve_controls(
     event_types: set[str],
 ) -> dict[SemanticId, ControlMappingPlan]:
     result: dict[SemanticId, ControlMappingPlan] = {}
-    grants = ir.grants
+    canonical_grants = ir.grants
     for control_id, control in ir.controls.items():
-        derived_grant = grants.get(control.derived_from) if control.derived_from is not None else None
+        derived_grant = (
+            canonical_grants.get(control.derived_from)
+            if control.derived_from is not None
+            else None
+        )
         if derived_grant is not None and derived_grant.authorization == "approval_required":
             support = approval_support.get(derived_grant.id, capabilities.approval)
         elif control.assessment == "static":
@@ -466,6 +518,41 @@ def _resolve_controls(
             support = MappingSupport("emulated", "contract4agents.post_run_control")
         else:
             support = capabilities.controls.get(control.assessment, MappingSupport("unsupported", None))
+        if capabilities.mapping_resolver is not None:
+            contextual_resolver = getattr(
+                capabilities.mapping_resolver,
+                "control_support",
+                None,
+            )
+            if contextual_resolver is not None:
+                tool_bindings = tuple(
+                    sorted(
+                        (
+                            bindings[grant.capability_id]
+                            for grant in grants.values()
+                            if grant.agent_id == control.agent_id
+                            and grant.availability == "enabled"
+                            and grant.capability_id.kind == "tool"
+                            and grant.capability_id in bindings
+                        ),
+                        key=lambda item: str(item.id),
+                    )
+                )
+                has_composition_tools = any(
+                    edge.source_agent_id == control.agent_id
+                    and edge.mode == "delegate"
+                    and edge.outcome not in {"degraded", "unsupported"}
+                    for edge in composition.values()
+                )
+                contextual = contextual_resolver(
+                    control=control,
+                    agent=agents.get(control.agent_id),
+                    has_tools=bool(tool_bindings) or has_composition_tools,
+                    tool_bindings=tool_bindings,
+                    declared=support,
+                )
+                if contextual is not None:
+                    support = contextual
         if control.required:
             _require_mapping(support.outcome, control_id, "required control", issues)
         _consume_support(support, control_id, obligations, event_types)

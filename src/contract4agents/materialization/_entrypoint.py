@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import cast
 
-from contract4agents.adapters._openai import openai_target_binding_validator
+from contract4agents.adapters._registry import get_adapter_registration
 from contract4agents.compiler import artifact_digests, compile_project
 from contract4agents.ir import FrozenMap, SemanticId
 from contract4agents.materialization._context import ContextRuntime
@@ -18,7 +18,6 @@ from contract4agents.materialization._models import (
     MaterializationProvider,
     MaterializationResult,
 )
-from contract4agents.materialization._openai import OpenAIMaterializationProvider
 from contract4agents.materialization._tracing import NOOP_MATERIALIZATION_TRACE_SINK, MaterializationTraceSink
 from contract4agents.materialization._types import build_pydantic_types
 from contract4agents.planning import plan_materialization
@@ -53,15 +52,17 @@ def materialize(
             (MaterializationIssue("MAT101", f"Target bindings do not declare `{target}`"),)
         )
 
+    registration = get_adapter_registration(target_binding.adapter)
     conformance = validate_target_binding_conformance(
         artifacts.ir,
         resolved_bindings,
         target,
         project_root=project_root,
         adapter_validator=(
-            openai_target_binding_validator
-            if target_binding.adapter == "openai"
-            else None
+            registration.binding_validator if registration is not None else None
+        ),
+        profile_validator=(
+            registration.profile_validator if registration is not None else None
         ),
     )
     conformance_issues = tuple(
@@ -132,11 +133,17 @@ def _load_bindings(
 
 
 def _default_provider(target: TargetBinding) -> MaterializationProvider:
-    if target.adapter == "openai":
-        return OpenAIMaterializationProvider()
-    raise MaterializationError(
-        (MaterializationIssue("MAT104", f"No materialization provider for adapter `{target.adapter}`"),)
-    )
+    registration = get_adapter_registration(target.adapter)
+    if registration is None:
+        raise MaterializationError(
+            (
+                MaterializationIssue(
+                    "MAT104",
+                    f"No materialization provider for adapter `{target.adapter}`",
+                ),
+            )
+        )
+    return registration.provider_factory()
 
 
 def _load_environment(
@@ -198,7 +205,7 @@ def _resolve_implementations(root: Path, plan: object) -> FrozenMap[SemanticId, 
                     issues.append(
                         MaterializationIssue(
                             "MAT108",
-                            f"OpenAI materialization does not implement remote binding `{identifier}`",
+                            f"Adapter materialization does not implement remote binding `{identifier}`",
                             identifier,
                         )
                     )
@@ -216,6 +223,43 @@ def _resolve_implementations(root: Path, plan: object) -> FrozenMap[SemanticId, 
                         identifier,
                     )
                 )
+        for agent_id, agent in native_plan.agents.items():
+            locator = agent.model_options.get("model_factory")
+            if locator is None:
+                continue
+            if not isinstance(locator, str):
+                issues.append(
+                    MaterializationIssue(
+                        "MAT111",
+                        "Model factory locator must be a string",
+                        agent_id,
+                    )
+                )
+                continue
+            try:
+                factory = _load_project_python_ref(root, locator)
+            except Exception as exc:  # noqa: BLE001 - implementation loading boundary.
+                issues.append(
+                    MaterializationIssue(
+                        "MAT112",
+                        (
+                            f"Could not import model factory `{locator}`: "
+                            f"{type(exc).__name__}: {exc}"
+                        ),
+                        agent_id,
+                    )
+                )
+                continue
+            if not callable(factory):
+                issues.append(
+                    MaterializationIssue(
+                        "MAT113",
+                        f"Model factory `{locator}` is not callable",
+                        agent_id,
+                    )
+                )
+                continue
+            values.append((agent_id, factory))
     if issues:
         raise MaterializationError(tuple(issues))
     return FrozenMap(values)

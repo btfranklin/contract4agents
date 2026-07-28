@@ -23,6 +23,10 @@ from contract4agents.tracing._evidence import (
     TraceEvidenceStatus,
     assess_trace_evidence,
 )
+from contract4agents.tracing._google_adk import (
+    GoogleADKNormalizedTraceRouter,
+    GoogleADKNormalizedTraceSession,
+)
 from contract4agents.tracing._io import (
     TraceLoadError,
     dumps_trace_jsonl,
@@ -60,12 +64,18 @@ from contract4agents.tracing._sinks import (
     NormalizedTraceSink,
     RecordingNormalizedTraceSink,
 )
+from contract4agents.tracing._strands import (
+    StrandsNormalizedTraceRouter,
+    StrandsNormalizedTraceSession,
+)
 
 __all__ = [
     "TRACE_CLOSURE_MANIFEST_VERSION",
     "TRACE_INSTRUMENTATION_CHANNELS",
     "TRACE_SCHEMA_VERSION",
     "AtomicTraceFileSink",
+    "GoogleADKNormalizedTraceRouter",
+    "GoogleADKNormalizedTraceSession",
     "NormalizedTrace",
     "NormalizedTraceSink",
     "NoOpNormalizedTraceSink",
@@ -95,6 +105,8 @@ __all__ = [
     "TraceConformanceIssue",
     "TraceRunContext",
     "TraceSemanticRefs",
+    "StrandsNormalizedTraceRouter",
+    "StrandsNormalizedTraceSession",
     "assess_trace_evidence",
     "dumps_trace_jsonl",
     "export_open_telemetry",

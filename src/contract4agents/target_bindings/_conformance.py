@@ -23,6 +23,10 @@ AdapterBindingValidator = Callable[
     [str, BindingSection, str, BindingEntry],
     Iterable[Diagnostic],
 ]
+AdapterProfileValidator = Callable[
+    [CanonicalIR, str, TargetBinding, Path],
+    Iterable[Diagnostic],
+]
 
 _LOCATOR = re.compile(
     r"(?P<module>[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*):"
@@ -108,6 +112,7 @@ def validate_target_binding_conformance(
     *,
     project_root: Path | None = None,
     adapter_validator: AdapterBindingValidator | None = None,
+    profile_validator: AdapterProfileValidator | None = None,
 ) -> TargetBindingConformanceResult:
     """Validate one target without retaining or invoking imported application callables."""
 
@@ -148,6 +153,9 @@ def validate_target_binding_conformance(
             if resolved is not None:
                 implementations.append(resolved)
     diagnostics.extend(_profile_diagnostics(ir, target_name, target))
+    diagnostics.extend(_model_factory_diagnostics(target_name, target, root))
+    if profile_validator is not None:
+        diagnostics.extend(profile_validator(ir, target_name, target, root))
     return TargetBindingConformanceResult(target_name, tuple(diagnostics), tuple(implementations))
 
 
@@ -192,6 +200,97 @@ def _profile_diagnostics(
             for agent_name in missing_models
         )
     return diagnostics
+
+
+def _model_factory_diagnostics(
+    target_name: str,
+    target: TargetBinding,
+    project_root: Path,
+) -> list[Diagnostic]:
+    diagnostics: list[Diagnostic] = []
+    for profile_name, profile in target.profiles.items():
+        if "model_factory" in profile.options:
+            diagnostics.extend(
+                _model_factory_entry_diagnostics(
+                    profile.options["model_factory"],
+                    (
+                        f"targets.{target_name}.profiles.{profile_name}."
+                        "options.model_factory"
+                    ),
+                    project_root,
+                )
+            )
+        for agent_name, agent_profile in profile.agents.items():
+            if "model_factory" not in agent_profile.options:
+                continue
+            diagnostics.extend(
+                _model_factory_entry_diagnostics(
+                    agent_profile.options["model_factory"],
+                    (
+                        f"targets.{target_name}.profiles.{profile_name}."
+                        f"agents.{agent_name}.options.model_factory"
+                    ),
+                    project_root,
+                )
+            )
+    return diagnostics
+
+
+def _model_factory_entry_diagnostics(
+    raw_locator: object,
+    entry_name: str,
+    project_root: Path,
+) -> list[Diagnostic]:
+    if not isinstance(raw_locator, str) or _LOCATOR.fullmatch(raw_locator) is None:
+        return [
+            Diagnostic(
+                "TGT112",
+                f"Model factory `{entry_name}` must use `module:callable` syntax",
+            )
+        ]
+
+    match = _LOCATOR.fullmatch(raw_locator)
+    assert match is not None
+    module_name = match.group("module")
+    attribute = match.group("attribute")
+    try:
+        _evict_module_outside_root(project_root, module_name)
+        with _project_import_path(project_root):
+            module = importlib.import_module(module_name)
+        if attribute not in vars(module):
+            raise AttributeError(f"module `{module_name}` has no direct attribute `{attribute}`")
+        factory = vars(module)[attribute]
+    except Exception as exc:  # noqa: BLE001 - imports are a diagnostic boundary.
+        return [
+            Diagnostic(
+                "TGT113",
+                f"Could not import model factory `{raw_locator}` for `{entry_name}`",
+                hint=f"{type(exc).__name__}: {exc}",
+            )
+        ]
+
+    if not callable(factory):
+        return [
+            Diagnostic(
+                "TGT114",
+                f"Model factory `{raw_locator}` for `{entry_name}` is not callable",
+            )
+        ]
+    try:
+        signature = inspect.signature(factory, follow_wrapped=False)
+        signature.bind(model="", options={})
+    except (TypeError, ValueError) as exc:
+        return [
+            Diagnostic(
+                "TGT114",
+                (
+                    f"Model factory `{raw_locator}` for `{entry_name}` must accept "
+                    "keyword arguments `model` and `options` and no other required arguments"
+                ),
+                hint=f"{type(exc).__name__}: {exc}",
+            )
+        ]
+    return []
 
 
 def _expected_bindings(ir: CanonicalIR) -> dict[BindingSection, dict[str, CapabilityIR | SemanticId]]:
@@ -417,6 +516,8 @@ def _diagnostic_dict(diagnostic: Diagnostic) -> dict[str, object]:
 
 
 __all__ = [
+    "AdapterBindingValidator",
+    "AdapterProfileValidator",
     "BindingSection",
     "ParameterKind",
     "ResolvedImplementationIdentity",

@@ -29,6 +29,21 @@ The portable contract does not know whether another target implements the same
 capability through a host function, MCP server, remote service, or provider
 tool.
 
+The Google ADK target uses its one schema-checked native Search mapping:
+
+```toml
+[targets.google_adk.tools."web.search"]
+provider = "google_adk"
+tool = "google_search"
+model = "gemini-2.5-flash"
+```
+
+That mapping is `emulated`, not `exact`, because a typed outer tool normalizes
+the grounded child result and the host must display provider Search UI metadata.
+There is no Strands target for this project: the contract explicitly requests
+provider-hosted execution, and rebinding it to a host Python function would be
+a false equivalence.
+
 ## Assurance
 
 The explicit control requires current-fact evidence when claims depend on dated
@@ -54,7 +69,7 @@ pdm run contract4agents eval examples/market-research-brief \
 The test campaign uses deterministic local evidence and normalized trace data,
 so it needs no provider credentials. The plan still records that `web.search`
 is provider-hosted and which telemetry and host obligations would apply to a
-real run.
+real run. Use `--target google_adk` to review the corresponding Search plan.
 
 ## Materialize
 

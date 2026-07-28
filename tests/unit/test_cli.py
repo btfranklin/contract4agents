@@ -132,6 +132,48 @@ def test_cli_check_and_plan_reject_unsupported_openai_binding_shape(tmp_path: Pa
     assert "TGT111" in plan_result.output
 
 
+def test_cli_plan_resolves_model_factory_from_the_project_root(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    project = tmp_path / "project"
+    project.mkdir()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (project / "agent.contract").write_text(
+        "type Reply:\n"
+        "    text: string\n\n"
+        "agent Responder() -> Reply:\n"
+        '    goal = "Respond."\n',
+        encoding="utf-8",
+    )
+    (project / "models.py").write_text(
+        "def create_model(*, model, options):\n"
+        "    raise AssertionError('planning must not invoke the model factory')\n",
+        encoding="utf-8",
+    )
+    (project / "contract4agents.targets.toml").write_text(
+        'schema_version = "1"\n\n'
+        "[targets.strands]\n"
+        'adapter = "strands"\n\n'
+        "[targets.strands.profiles.test]\n"
+        'default_model = "test-model"\n\n'
+        "[targets.strands.profiles.test.options]\n"
+        'model_factory = "models:create_model"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(elsewhere)
+
+    result = CliRunner().invoke(
+        main,
+        ["plan", str(project), "--target", "strands", "--profile", "test"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert '"adapter": {' in result.output
+    assert '"name": "strands"' in result.output
+
+
 def test_cli_contract_first_workflow(tmp_path: Path) -> None:
     runner = CliRunner()
     build = tmp_path / "build"

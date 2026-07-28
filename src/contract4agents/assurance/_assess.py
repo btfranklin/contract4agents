@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import cast
-
 from contract4agents.assurance._models import (
     AssessorIdentity,
     AssuranceStatus,
@@ -276,7 +274,7 @@ def _explicit_result(events: tuple[TraceEvent, ...]) -> tuple[AssuranceStatus, s
         status = event.data.get("status")
         reason = event.data.get("reason")
         if status in {"passed", "violated", "unverified"} and isinstance(reason, str):
-            return cast(AssuranceStatus, status), reason
+            return status, reason
     return None
 
 

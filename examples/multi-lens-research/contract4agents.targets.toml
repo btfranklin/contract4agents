@@ -32,3 +32,69 @@ default_model = "gpt-5.2"
 
 [targets.openai.profiles.production.options]
 environment = "in_process"
+
+[targets.strands]
+adapter = "strands"
+
+[targets.strands.environments.in_process]
+provider = "contract4agents.runtime:InProcessEnvironment"
+
+[targets.strands.tools."sources.search"]
+python = "examples.multi_lens_research_imports.sources:search"
+
+[targets.strands.tools."sources.fetch"]
+python = "examples.multi_lens_research_imports.sources:fetch"
+
+[targets.strands.tools."evidence.score"]
+python = "examples.multi_lens_research_imports.evidence:score"
+
+[targets.strands.tools."citation.format"]
+python = "examples.multi_lens_research_imports.citation:format"
+
+[targets.strands.tools."expert_review.request"]
+python = "examples.multi_lens_research_imports.expert_review:request"
+
+[targets.strands.profiles.test]
+default_model = "test-model"
+
+[targets.strands.profiles.test.options]
+environment = "in_process"
+
+[targets.strands.profiles.production]
+default_model = "us.amazon.nova-pro-v1:0"
+
+[targets.strands.profiles.production.options]
+environment = "in_process"
+
+[targets.google_adk]
+adapter = "google_adk"
+
+[targets.google_adk.environments.in_process]
+provider = "contract4agents.runtime:InProcessEnvironment"
+
+[targets.google_adk.tools."sources.search"]
+python = "examples.multi_lens_research_imports.sources:search"
+
+[targets.google_adk.tools."sources.fetch"]
+python = "examples.multi_lens_research_imports.sources:fetch"
+
+[targets.google_adk.tools."evidence.score"]
+python = "examples.multi_lens_research_imports.evidence:score"
+
+[targets.google_adk.tools."citation.format"]
+python = "examples.multi_lens_research_imports.citation:format"
+
+[targets.google_adk.tools."expert_review.request"]
+python = "examples.multi_lens_research_imports.expert_review:request"
+
+[targets.google_adk.profiles.test]
+default_model = "gemini-2.5-flash"
+
+[targets.google_adk.profiles.test.options]
+environment = "in_process"
+
+[targets.google_adk.profiles.production]
+default_model = "gemini-2.5-pro"
+
+[targets.google_adk.profiles.production.options]
+environment = "in_process"

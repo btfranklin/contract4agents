@@ -2,7 +2,7 @@
 
 This is the recommended first Contract4Agents example. It defines a typed
 incident-response team whose portable contracts can be reviewed independently
-of the OpenAI implementation.
+of any SDK implementation.
 
 ## Team
 
@@ -20,7 +20,7 @@ agent-as-tool relationships. No host-maintained agent registry is needed.
 `capabilities/incident.contract` defines every shared capability once. The
 `logs.search` tool is granted to the investigator as `preapproved` and to the
 commander as `approval_required`. That difference belongs on the agent-tool
-relationship; the OpenAI binding appears only once.
+relationship; each target binds the capability once.
 
 The commander also receives values through two explicit origins:
 
@@ -53,7 +53,8 @@ pdm run contract4agents eval examples/incident-command \
 
 The `test` profile and deterministic eval data use no provider credentials.
 Planning validates binding coverage and callable shape without invoking the
-fake tools.
+fake tools. Replace `openai` with `strands` or `google_adk` to review the other
+built-in plans.
 
 ## Inspect the Result
 
@@ -75,21 +76,22 @@ explicit controls, host obligations, and expected event types.
 
 ## Materialize
 
-With the OpenAI extra installed:
+With one of the target extras installed:
 
 ```python
 from contract4agents import materialize
 
 system = materialize(
     "examples/incident-command",
-    target="openai",
+    target="strands",
     profile="production",
 )
 
 commander = system.agents["IncidentCommander"]
 ```
 
-`commander` and the specialist values are ordinary OpenAI Agents SDK objects.
+`commander` and the specialist values are ordinary objects from the selected
+SDK. OpenAI, Strands, and Google ADK target blocks are included.
 Changing the production model is a target-profile edit, not an agent-code edit.
 
 The example's local implementations are deterministic teaching fixtures. A real

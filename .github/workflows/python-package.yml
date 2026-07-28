@@ -32,7 +32,7 @@ jobs:
                   cache-dependency-path: pdm.lock
             - name: Install dependencies
               run: |
-                  pdm install --group dev --group openai
+                  pdm install --group dev --group openai --group strands --group google-adk
             - name: Validate package
               run: |
                   pdm run validate:python
