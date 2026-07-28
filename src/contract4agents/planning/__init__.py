@@ -3,10 +3,13 @@
 from contract4agents.planning._errors import PlanningError, PlanningIssue
 from contract4agents.planning._models import (
     PLAN_VERSION,
+    AdapterMappingResolver,
     AdapterPlan,
     AgentPlan,
+    BindingExecution,
     BindingKind,
     BindingPlan,
+    BindingResolution,
     CompositionMappingPlan,
     ControlMappingPlan,
     GrantMappingPlan,
@@ -30,10 +33,13 @@ from contract4agents.planning._serialization import (
 
 __all__ = [
     "PLAN_VERSION",
+    "AdapterMappingResolver",
     "AdapterPlan",
     "AgentPlan",
+    "BindingExecution",
     "BindingKind",
     "BindingPlan",
+    "BindingResolution",
     "CompositionMappingPlan",
     "ControlMappingPlan",
     "GrantMappingPlan",

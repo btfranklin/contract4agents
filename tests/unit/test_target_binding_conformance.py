@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from contract4agents.adapters.openai import openai_target_binding_validator
 from contract4agents.ir import (
     AgentIR,
     CanonicalIR,
@@ -195,6 +196,148 @@ def test_conformance_requires_complete_profiles_without_unknown_agent_overrides(
     assert [item.code for item in result.diagnostics] == ["TGT108", "TGT109"]
     assert "RemovedAgent" in result.diagnostics[0].message
     assert "IncidentCommander" in result.diagnostics[1].message
+
+
+@pytest.mark.parametrize(
+    ("section", "entry", "expected_code"),
+    [
+        (
+            "tools",
+            BindingEntry(
+                {
+                    "python": f"{MODULE_NAME}:fetch_logs",
+                    "provider": "openai",
+                    "tool": "web_search",
+                }
+            ),
+            "TGT110",
+        ),
+        (
+            "tools",
+            BindingEntry(
+                {
+                    "provider": "openai",
+                    "tool": "web_search",
+                    "provider_tool": "file_search",
+                }
+            ),
+            "TGT110",
+        ),
+        (
+            "tools",
+            BindingEntry({"endpoint": "https://example.test/tool"}),
+            "TGT111",
+        ),
+        (
+            "tools",
+            BindingEntry({"typescript": "app/tools:fetch_logs"}),
+            "TGT111",
+        ),
+        (
+            "tools",
+            BindingEntry({"provider": "openai", "tool": "file_search"}),
+            "TGT111",
+        ),
+        (
+            "datasources",
+            BindingEntry({"provider": "openai", "tool": "web_search"}),
+            "TGT111",
+        ),
+        (
+            "external_context",
+            BindingEntry({"provider": "openai", "tool": "web_search"}),
+            "TGT111",
+        ),
+    ],
+)
+def test_openai_conformance_rejects_ambiguous_or_unsupported_locators(
+    tmp_path: Path,
+    section: str,
+    entry: BindingEntry,
+    expected_code: str,
+) -> None:
+    _write_application_module(tmp_path)
+    target = TargetBinding(
+        adapter="openai",
+        tools={
+            "incident.fetch_logs": (
+                entry
+                if section == "tools"
+                else BindingEntry({"python": f"{MODULE_NAME}:fetch_logs"})
+            )
+        },
+        datasources={
+            "incident.timeline": (
+                entry
+                if section == "datasources"
+                else BindingEntry({"python": f"{MODULE_NAME}:timeline"})
+            )
+        },
+        external_context={
+            "incident_record": (
+                entry
+                if section == "external_context"
+                else BindingEntry({"python": f"{MODULE_NAME}:current_incident"})
+            )
+        },
+        profiles={"test": TargetProfile(default_model="test-model")},
+    )
+    bindings = TargetBindings(
+        tmp_path / "contract4agents.targets.toml",
+        {"openai": target},
+    )
+
+    try:
+        result = validate_target_binding_conformance(
+            _canonical_ir(),
+            bindings,
+            "openai",
+            adapter_validator=openai_target_binding_validator,
+        )
+    finally:
+        sys.modules.pop(MODULE_NAME, None)
+
+    assert [item.code for item in result.diagnostics] == [expected_code]
+
+
+def test_openai_conformance_accepts_canonical_web_search_binding(tmp_path: Path) -> None:
+    _write_application_module(tmp_path)
+    target = TargetBinding(
+        adapter="openai",
+        tools={
+            "incident.fetch_logs": BindingEntry(
+                {"provider": "openai", "tool": "web_search"}
+            )
+        },
+        datasources={
+            "incident.timeline": BindingEntry(
+                {"python": f"{MODULE_NAME}:timeline"}
+            )
+        },
+        external_context={
+            "incident_record": BindingEntry(
+                {"python": f"{MODULE_NAME}:current_incident"}
+            )
+        },
+        profiles={"test": TargetProfile(default_model="test-model")},
+    )
+    bindings = TargetBindings(
+        tmp_path / "contract4agents.targets.toml",
+        {"openai": target},
+    )
+
+    try:
+        result = validate_target_binding_conformance(
+            _canonical_ir(),
+            bindings,
+            "openai",
+            adapter_validator=openai_target_binding_validator,
+        )
+    finally:
+        sys.modules.pop(MODULE_NAME, None)
+
+    assert result.ok
+    assert result.diagnostics == ()
 
 
 def _canonical_ir() -> CanonicalIR:

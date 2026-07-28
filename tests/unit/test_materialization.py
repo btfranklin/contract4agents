@@ -20,6 +20,7 @@ from contract4agents.ir import (
     semantic_id,
 )
 from contract4agents.materialization import (
+    AgentsSDK,
     ContextResolutionError,
     MaterializationError,
     NativeAgentDescription,
@@ -241,6 +242,23 @@ def test_concrete_openai_materializer_builds_real_sdk_objects_without_live_calls
     assert all(isinstance(item, Handoff) for item in parent.handoffs)
     assert cast(FunctionTool, child.tools[0]).needs_approval is True
     assert result.plan.adapter.version != "unavailable"
+
+
+def test_openai_hosted_tool_option_errors_are_structured() -> None:
+    with pytest.raises(MaterializationError) as caught:
+        AgentsSDK().create_hosted_tool(
+            name="web.search",
+            binding=BindingEntry(
+                {
+                    "provider": "openai",
+                    "tool": "web_search",
+                    "not_a_web_search_option": True,
+                }
+            ),
+        )
+
+    assert [issue.code for issue in caught.value.issues] == ["MAT304"]
+    assert "Invalid OpenAI web-search options" in caught.value.issues[0].message
 
 
 def test_materialization_trace_sink_receives_stable_validated_configuration_events(tmp_path: Path) -> None:

@@ -92,6 +92,46 @@ def test_cli_check_validates_every_discovered_target_profile(tmp_path: Path) -> 
     assert "Responder" in result.output
 
 
+def test_cli_check_and_plan_reject_unsupported_openai_binding_shape(tmp_path: Path) -> None:
+    (tmp_path / "agent.contract").write_text(
+        "type Reply:\n"
+        "    text: string\n\n"
+        "tool lookup(query: string) -> Reply:\n"
+        '    description = "Look up a result."\n'
+        "    side_effect = false\n\n"
+        "agent Responder(query: string) -> Reply:\n"
+        "    use lookup:\n"
+        "        availability = enabled\n"
+        "        authorization = preapproved\n"
+        "        execution = provider_hosted\n"
+        '    goal = "Respond."\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "contract4agents.targets.toml").write_text(
+        'schema_version = "1"\n\n'
+        "[targets.openai]\n"
+        'adapter = "openai"\n\n'
+        "[targets.openai.tools.lookup]\n"
+        'provider = "openai"\n'
+        'tool = "file_search"\n\n'
+        "[targets.openai.profiles.test]\n"
+        'default_model = "test-model"\n',
+        encoding="utf-8",
+    )
+    runner = CliRunner()
+
+    check_result = runner.invoke(main, ["check", str(tmp_path)])
+    plan_result = runner.invoke(
+        main,
+        ["plan", str(tmp_path), "--target", "openai", "--profile", "test"],
+    )
+
+    assert check_result.exit_code != 0
+    assert "TGT111" in check_result.output
+    assert plan_result.exit_code != 0
+    assert "TGT111" in plan_result.output
+
+
 def test_cli_contract_first_workflow(tmp_path: Path) -> None:
     runner = CliRunner()
     build = tmp_path / "build"

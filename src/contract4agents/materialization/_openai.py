@@ -185,7 +185,17 @@ class AgentsSDK:
             for key, value in binding.values.items()
             if key not in {"provider", "tool", "provider_tool"}
         }
-        return cast(Any, WebSearchTool)(**options)
+        try:
+            return cast(Any, WebSearchTool)(**options)
+        except TypeError as exc:
+            raise MaterializationError(
+                (
+                    MaterializationIssue(
+                        "MAT304",
+                        f"Invalid OpenAI web-search options for `{name}`: {exc}",
+                    ),
+                )
+            ) from exc
 
     def create_delegate_tool(
         self,
@@ -336,6 +346,7 @@ class OpenAIMaterializationProvider:
             controls=base.controls,
             isolation=isolation,
             expected_event_types=base.expected_event_types,
+            mapping_resolver=base.mapping_resolver,
         )
 
     def build_graph(

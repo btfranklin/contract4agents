@@ -37,6 +37,7 @@ from contract4agents.planning import (
 )
 from contract4agents.semantics import analyze_project
 from contract4agents.target_bindings import (
+    AdapterBindingValidator,
     TargetBindings,
     load_target_bindings,
     validate_target_binding_conformance,
@@ -69,11 +70,13 @@ def check(root: Path) -> None:
         if result.ok and loaded.bindings is not None:
             ir = build_canonical_ir(project)
             for target_name in loaded.bindings.targets:
+                target_binding = loaded.bindings.targets[target_name]
                 conformance = validate_target_binding_conformance(
                     ir,
                     loaded.bindings,
                     target_name,
                     project_root=project.root,
+                    adapter_validator=_adapter_binding_validator(target_binding.adapter),
                 )
                 diagnostics.extend(conformance.diagnostics)
         _print_diagnostics(diagnostics)
@@ -191,6 +194,14 @@ def _planner_capabilities(target: str, adapter: str) -> PlannerCapabilities:
     raise click.ClickException(
         f"Target `{target}` selects adapter `{adapter}`, which has no installed planner"
     )
+
+
+def _adapter_binding_validator(adapter: str) -> AdapterBindingValidator | None:
+    if adapter == "openai":
+        from contract4agents.adapters.openai import openai_target_binding_validator
+
+        return openai_target_binding_validator
+    return None
 
 
 @main.command("visualize")
@@ -487,16 +498,22 @@ def _resolve_plan(
     _print_diagnostics(list(loaded.diagnostics))
     if not loaded.ok or loaded.bindings is None:
         raise click.ClickException("Contract4Agents target-binding load failed")
+    selected_target = loaded.bindings.targets.get(target)
     conformance = validate_target_binding_conformance(
         ir,
         loaded.bindings,
         target,
         project_root=Path.cwd(),
+        adapter_validator=(
+            _adapter_binding_validator(selected_target.adapter)
+            if selected_target is not None
+            else None
+        ),
     )
     _print_diagnostics(list(conformance.diagnostics))
     if not conformance.ok:
         raise click.ClickException("Contract4Agents target-binding conformance failed")
-    target_binding = loaded.bindings.targets.get(target)
+    target_binding = selected_target
     if target_binding is None:
         raise click.ClickException(f"Target bindings do not declare `{target}`")
     plan = plan_materialization(

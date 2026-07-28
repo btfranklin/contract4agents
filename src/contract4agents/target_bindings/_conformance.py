@@ -7,7 +7,7 @@ import inspect
 import json
 import re
 import sys
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -19,6 +19,10 @@ from contract4agents.target_bindings._models import BindingEntry, TargetBinding,
 
 BindingSection = Literal["tools", "datasources", "external_context"]
 ParameterKind = Literal["positional_only", "positional_or_keyword", "keyword_only"]
+AdapterBindingValidator = Callable[
+    [str, BindingSection, str, BindingEntry],
+    Iterable[Diagnostic],
+]
 
 _LOCATOR = re.compile(
     r"(?P<module>[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*):"
@@ -103,6 +107,7 @@ def validate_target_binding_conformance(
     target_name: str,
     *,
     project_root: Path | None = None,
+    adapter_validator: AdapterBindingValidator | None = None,
 ) -> TargetBindingConformanceResult:
     """Validate one target without retaining or invoking imported application callables."""
 
@@ -128,6 +133,8 @@ def validate_target_binding_conformance(
         diagnostics.extend(_coverage_diagnostics(target_name, section, expected_entries, configured))
         for name in sorted(set(expected_entries) & set(configured)):
             entry = configured[name]
+            if adapter_validator is not None:
+                diagnostics.extend(adapter_validator(target_name, section, name, entry))
             if "python" not in entry.values:
                 continue
             resolved, entry_diagnostics = _resolve_python_binding(

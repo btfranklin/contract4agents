@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import cast
 
+from contract4agents.adapters._openai import openai_target_binding_validator
 from contract4agents.compiler import artifact_digests, compile_project
 from contract4agents.ir import FrozenMap, SemanticId
 from contract4agents.materialization._context import ContextRuntime
@@ -57,6 +58,11 @@ def materialize(
         resolved_bindings,
         target,
         project_root=project_root,
+        adapter_validator=(
+            openai_target_binding_validator
+            if target_binding.adapter == "openai"
+            else None
+        ),
     )
     conformance_issues = tuple(
         MaterializationIssue(diagnostic.code, diagnostic.message)

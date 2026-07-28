@@ -4,13 +4,22 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, Protocol
 
-from contract4agents.ir import FrozenJsonValue, FrozenMap, SemanticId, TypeRef, freeze_json
+from contract4agents.ir import (
+    CompositionEdgeIR,
+    FrozenJsonValue,
+    FrozenMap,
+    GrantIR,
+    SemanticId,
+    TypeRef,
+    freeze_json,
+)
 
 PLAN_VERSION = "1"
 MappingOutcome = Literal["exact", "host_enforced", "emulated", "degraded", "unsupported"]
 BindingKind = Literal["tool", "datasource", "external"]
+BindingExecution = Literal["host", "provider_hosted", "remote"]
 IsolationDimension = Literal["context", "capabilities", "state", "filesystem", "network", "secrets", "return"]
 
 
@@ -30,6 +39,47 @@ class MappingSupport:
 
 
 @dataclass(frozen=True)
+class BindingResolution:
+    """Adapter mapping decision for one implementation binding."""
+
+    execution: BindingExecution
+    support: MappingSupport
+
+
+class AdapterMappingResolver(Protocol):
+    """Context-sensitive mapping decisions supplied by one target adapter."""
+
+    def resolve_binding(
+        self,
+        *,
+        kind: BindingKind,
+        locator: Mapping[str, object],
+    ) -> BindingResolution: ...
+
+    def grant_support(
+        self,
+        *,
+        grant: GrantIR,
+        binding: BindingPlan,
+        named_environment: bool,
+    ) -> MappingSupport | None: ...
+
+    def approval_support(
+        self,
+        *,
+        grant: GrantIR,
+        binding: BindingPlan,
+    ) -> MappingSupport | None: ...
+
+    def composition_support(
+        self,
+        *,
+        edge: CompositionEdgeIR,
+        declared: MappingSupport,
+    ) -> MappingSupport | None: ...
+
+
+@dataclass(frozen=True)
 class PlannerCapabilities:
     """Adapter capability facts supplied to the generic planner."""
 
@@ -40,6 +90,7 @@ class PlannerCapabilities:
     controls: FrozenMap[str, MappingSupport] = field(default_factory=FrozenMap)
     isolation: FrozenMap[str, MappingSupport] = field(default_factory=FrozenMap)
     expected_event_types: tuple[str, ...] = ()
+    mapping_resolver: AdapterMappingResolver | None = field(default=None, repr=False)
 
     @classmethod
     def create(
@@ -52,6 +103,7 @@ class PlannerCapabilities:
         controls: Mapping[str, MappingSupport] | Iterable[tuple[str, MappingSupport]] = (),
         isolation: Mapping[str, MappingSupport] | Iterable[tuple[str, MappingSupport]] = (),
         expected_event_types: Iterable[str] = (),
+        mapping_resolver: AdapterMappingResolver | None = None,
     ) -> PlannerCapabilities:
         return cls(
             adapter=adapter,
@@ -61,6 +113,7 @@ class PlannerCapabilities:
             controls=FrozenMap(controls),
             isolation=FrozenMap(isolation),
             expected_event_types=tuple(expected_event_types),
+            mapping_resolver=mapping_resolver,
         )
 
 
@@ -212,10 +265,13 @@ def _unique(values: Iterable[str], label: str) -> None:
 
 __all__ = [
     "PLAN_VERSION",
+    "AdapterMappingResolver",
     "AdapterPlan",
     "AgentPlan",
+    "BindingExecution",
     "BindingKind",
     "BindingPlan",
+    "BindingResolution",
     "CompositionMappingPlan",
     "ControlMappingPlan",
     "GrantMappingPlan",

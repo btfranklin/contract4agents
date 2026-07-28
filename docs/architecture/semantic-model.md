@@ -648,6 +648,13 @@ Every requested mapping has one status:
 - `degraded`: execution is possible only with a documented semantic loss.
 - `unsupported`: no honest implementation is available.
 
+Mapping outcomes are contextual. A target may support a semantic only for a
+particular binding kind, execution mechanism, authorization mode, isolation
+request, or composition edge. A global adapter capability is therefore not an
+`exact` claim for every binding that resembles that capability. The planner
+combines the resolved binding with the requested grant and edge semantics before
+reporting an outcome.
+
 `degraded` and `unsupported` are fatal for required guarantees. Advisory
 guidance or quality criteria may proceed with a visible caveat when their
 assessment is unavailable.

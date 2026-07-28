@@ -9,8 +9,10 @@ from contract4agents.planning._errors import PlanningError, PlanningIssue
 from contract4agents.planning._models import (
     AdapterPlan,
     AgentPlan,
+    BindingExecution,
     BindingKind,
     BindingPlan,
+    BindingResolution,
     CompositionMappingPlan,
     ControlMappingPlan,
     GrantMappingPlan,
@@ -64,10 +66,16 @@ def plan_materialization(
         )
 
     agents = _resolve_agents(ir, target_profile, issues)
-    resolved_bindings = _resolve_bindings(ir, target_binding, issues)
+    resolved_bindings, binding_support = _resolve_bindings(
+        ir,
+        target_binding,
+        capabilities,
+        issues,
+    )
     obligations: dict[tuple[str, SemanticId | None], HostObligationPlan] = {}
     expected_event_types = set(capabilities.expected_event_types)
     for binding in resolved_bindings.values():
+        _consume_support(binding_support[binding.id], binding.id, obligations, expected_event_types)
         if binding.execution == "host":
             _add_obligation(
                 obligations,
@@ -78,7 +86,7 @@ def plan_materialization(
                 ),
             )
 
-    grants = _resolve_grants(
+    grants, approval_support = _resolve_grants(
         ir,
         resolved_bindings,
         target_binding,
@@ -88,7 +96,14 @@ def plan_materialization(
         expected_event_types,
     )
     composition = _resolve_composition(ir, capabilities, issues, obligations, expected_event_types)
-    controls = _resolve_controls(ir, capabilities, issues, obligations, expected_event_types)
+    controls = _resolve_controls(
+        ir,
+        capabilities,
+        approval_support,
+        issues,
+        obligations,
+        expected_event_types,
+    )
     isolation = _resolve_isolation(
         ir,
         target_binding,
@@ -166,9 +181,11 @@ def _resolve_agents(
 def _resolve_bindings(
     ir: CanonicalIR,
     target: TargetBinding,
+    capabilities: PlannerCapabilities,
     issues: list[PlanningIssue],
-) -> dict[SemanticId, BindingPlan]:
+) -> tuple[dict[SemanticId, BindingPlan], dict[SemanticId, MappingSupport]]:
     result: dict[SemanticId, BindingPlan] = {}
+    support: dict[SemanticId, MappingSupport] = {}
     enabled = {grant.capability_id for grant in ir.grants.values() if grant.availability == "enabled"}
     for capability_id, capability in ir.capabilities.items():
         if capability.kind == "tool" and capability_id not in enabled:
@@ -184,50 +201,99 @@ def _resolve_bindings(
                 )
             )
             continue
-        resolved = _binding_plan(capability_id, capability.kind, entry, target.adapter, issues)
+        resolved = _binding_plan(capability_id, capability.kind, entry, capabilities, issues)
         if resolved is not None:
-            result[capability_id] = resolved
+            plan, mapping = resolved
+            result[capability_id] = plan
+            support[capability_id] = mapping
     for external_id, external in ir.external_contexts.items():
         entry = target.external_context.get(external.name)
         if entry is None:
             issues.append(PlanningIssue("PLN006", f"No external-context binding for `{external.name}`", external_id))
             continue
-        resolved = _binding_plan(external_id, "external", entry, target.adapter, issues)
+        resolved = _binding_plan(external_id, "external", entry, capabilities, issues)
         if resolved is not None:
-            result[external_id] = resolved
-    return result
+            plan, mapping = resolved
+            result[external_id] = plan
+            support[external_id] = mapping
+    return result, support
 
 
 def _binding_plan(
     identifier: SemanticId,
     kind: BindingKind,
     entry: BindingEntry,
-    adapter: str,
+    capabilities: PlannerCapabilities,
     issues: list[PlanningIssue],
-) -> BindingPlan | None:
-    keys = set(entry.values)
-    if keys & {"python", "typescript", "module"}:
-        execution, mechanism = "host", "host.implementation_binding"
-    elif keys & {"provider", "provider_tool", "tool"}:
-        execution, mechanism = "provider_hosted", f"{adapter}.provider_binding"
-    elif keys & {"endpoint", "url", "remote", "mcp"}:
-        execution, mechanism = "remote", "remote.implementation_binding"
-    else:
+) -> tuple[BindingPlan, MappingSupport] | None:
+    locator_families = _locator_families(entry.values)
+    if not locator_families:
         issues.append(PlanningIssue("PLN007", f"Binding `{identifier}` has no implementation locator", identifier))
         return None
+    if capabilities.mapping_resolver is None:
+        resolution = _default_binding_resolution(entry.values)
+    else:
+        resolution = capabilities.mapping_resolver.resolve_binding(
+            kind=kind,
+            locator=entry.values,
+        )
+    _require_mapping(
+        resolution.support.outcome,
+        identifier,
+        f"{kind} binding",
+        issues,
+        detail=f"adapter `{capabilities.adapter}` does not support this locator",
+    )
+    if resolution.support.outcome in {"degraded", "unsupported"}:
+        return None
+    mechanism = resolution.support.mechanism
+    if mechanism is None:
+        raise AssertionError("Supported binding resolution must declare a mechanism")
     try:
         locator = frozen_json_mapping(entry.values)
     except (TypeError, ValueError) as exc:
         issues.append(PlanningIssue("PLN010", f"Binding `{identifier}` is not portable JSON: {exc}", identifier))
         return None
-    return BindingPlan(
-        id=identifier,
-        kind=kind,
-        locator=locator,
-        outcome="exact",
-        mechanism=mechanism,
-        execution=execution,
+    return (
+        BindingPlan(
+            id=identifier,
+            kind=kind,
+            locator=locator,
+            outcome=resolution.support.outcome,
+            mechanism=mechanism,
+            execution=resolution.execution,
+        ),
+        resolution.support,
     )
+
+
+def _default_binding_resolution(locator: Mapping[str, object]) -> BindingResolution:
+    families = _locator_families(locator)
+    if families == {"host"} and "python" in locator and not ({"typescript", "module"} & set(locator)):
+        return BindingResolution(
+            "host",
+            MappingSupport("exact", "host.implementation_binding"),
+        )
+    execution: BindingExecution
+    if "provider_hosted" in families:
+        execution = "provider_hosted"
+    elif "remote" in families:
+        execution = "remote"
+    else:
+        execution = "host"
+    return BindingResolution(execution, MappingSupport("unsupported", None))
+
+
+def _locator_families(locator: Mapping[str, object]) -> set[str]:
+    keys = set(locator)
+    families: set[str] = set()
+    if keys & {"python", "typescript", "module"}:
+        families.add("host")
+    if keys & {"provider", "provider_tool", "tool"}:
+        families.add("provider_hosted")
+    if keys & {"endpoint", "url", "remote", "mcp"}:
+        families.add("remote")
+    return families
 
 
 def _resolve_grants(
@@ -238,33 +304,84 @@ def _resolve_grants(
     issues: list[PlanningIssue],
     obligations: dict[tuple[str, SemanticId | None], HostObligationPlan],
     event_types: set[str],
-) -> dict[SemanticId, GrantMappingPlan]:
+) -> tuple[dict[SemanticId, GrantMappingPlan], dict[SemanticId, MappingSupport]]:
     result: dict[SemanticId, GrantMappingPlan] = {}
+    approval_support: dict[SemanticId, MappingSupport] = {}
     for grant_id, grant in ir.grants.items():
+        failure_detail: str | None = None
         if grant.availability == "denied":
             outcome: MappingOutcome = "exact"
             mechanism: str | None = "contract.capability_denial"
+            if grant.authorization == "approval_required":
+                approval_support[grant_id] = MappingSupport(
+                    "exact",
+                    "contract.capability_denial",
+                )
         else:
             binding = bindings.get(grant.capability_id)
             if binding is None:
                 continue
             outcome = binding.outcome
             mechanism = binding.mechanism
+            named_environment = (
+                grant.execution is not None
+                and grant.execution not in {"host", "provider_hosted", "remote"}
+                and grant.execution in target.environments
+            )
             if grant.execution in {"host", "provider_hosted", "remote"}:
                 if grant.execution != binding.execution:
                     outcome = "degraded"
-                    mechanism = f"binding execution `{binding.execution}` does not satisfy `{grant.execution}`"
-            elif grant.execution is not None and grant.execution in target.environments:
+                    failure_detail = (
+                        f"binding execution `{binding.execution}` does not satisfy "
+                        f"`{grant.execution}`"
+                    )
+            elif named_environment:
                 outcome = _combine_outcomes(outcome, "host_enforced")
                 mechanism = f"{mechanism}+environment:{grant.execution}"
             elif grant.execution is not None:
                 outcome = "unsupported"
-                mechanism = f"target environment `{grant.execution}` is not declared"
+                failure_detail = f"target environment `{grant.execution}` is not declared"
+            if capabilities.mapping_resolver is not None:
+                contextual = capabilities.mapping_resolver.grant_support(
+                    grant=grant,
+                    binding=binding,
+                    named_environment=named_environment,
+                )
+                if contextual is not None:
+                    outcome = _combine_outcomes(outcome, contextual.outcome)
+                    mechanism = _combine_mechanisms(mechanism, contextual.mechanism)
+                    if contextual.outcome in {"degraded", "unsupported"}:
+                        failure_detail = (
+                            "adapter grant support is unavailable for the requested "
+                            "execution or isolation context"
+                        )
+                    _consume_support(contextual, grant_id, obligations, event_types)
             if grant.authorization == "approval_required":
-                outcome = _combine_outcomes(outcome, capabilities.approval.outcome)
-                mechanism = _combine_mechanisms(mechanism, capabilities.approval.mechanism)
-                _consume_support(capabilities.approval, grant_id, obligations, event_types)
-        _require_mapping(outcome, grant_id, "grant", issues, detail=mechanism)
+                support = capabilities.approval
+                if capabilities.mapping_resolver is not None:
+                    support = (
+                        capabilities.mapping_resolver.approval_support(
+                            grant=grant,
+                            binding=binding,
+                        )
+                        or support
+                    )
+                approval_support[grant_id] = support
+                outcome = _combine_outcomes(outcome, support.outcome)
+                mechanism = _combine_mechanisms(mechanism, support.mechanism)
+                if support.outcome in {"degraded", "unsupported"}:
+                    failure_detail = (
+                        "adapter approval support is unavailable for "
+                        f"`{binding.execution}` execution"
+                    )
+                _consume_support(support, grant_id, obligations, event_types)
+        _require_mapping(
+            outcome,
+            grant_id,
+            "grant",
+            issues,
+            detail=failure_detail or mechanism,
+        )
         result[grant_id] = GrantMappingPlan(
             id=grant_id,
             agent_id=grant.agent_id,
@@ -276,7 +393,7 @@ def _resolve_grants(
             outcome=outcome,
             mechanism=mechanism,
         )
-    return result
+    return result, approval_support
 
 
 def _resolve_composition(
@@ -288,11 +405,30 @@ def _resolve_composition(
 ) -> dict[SemanticId, CompositionMappingPlan]:
     result: dict[SemanticId, CompositionMappingPlan] = {}
     for edge_id, edge in ir.composition.items():
+        contextual_failure = False
         support = capabilities.composition.get(
             f"{edge.mode}:{edge.history}",
             capabilities.composition.get(edge.mode, MappingSupport("unsupported", None)),
         )
-        _require_mapping(support.outcome, edge_id, "composition edge", issues)
+        if capabilities.mapping_resolver is not None:
+            contextual = capabilities.mapping_resolver.composition_support(
+                edge=edge,
+                declared=support,
+            )
+            if contextual is not None:
+                support = contextual
+                contextual_failure = support.outcome in {"degraded", "unsupported"}
+        _require_mapping(
+            support.outcome,
+            edge_id,
+            "composition edge",
+            issues,
+            detail=(
+                "adapter composition support is unavailable for the requested isolation context"
+                if contextual_failure
+                else None
+            ),
+        )
         _consume_support(support, edge_id, obligations, event_types)
         result[edge_id] = CompositionMappingPlan(
             id=edge_id,
@@ -313,6 +449,7 @@ def _resolve_composition(
 def _resolve_controls(
     ir: CanonicalIR,
     capabilities: PlannerCapabilities,
+    approval_support: Mapping[SemanticId, MappingSupport],
     issues: list[PlanningIssue],
     obligations: dict[tuple[str, SemanticId | None], HostObligationPlan],
     event_types: set[str],
@@ -322,7 +459,7 @@ def _resolve_controls(
     for control_id, control in ir.controls.items():
         derived_grant = grants.get(control.derived_from) if control.derived_from is not None else None
         if derived_grant is not None and derived_grant.authorization == "approval_required":
-            support = capabilities.approval
+            support = approval_support.get(derived_grant.id, capabilities.approval)
         elif control.assessment == "static":
             support = MappingSupport("exact", "contract4agents.static_control")
         elif control.assessment == "post_run":

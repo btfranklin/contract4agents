@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 
 import pytest
 
+from contract4agents.adapters.openai import openai_planner_capabilities
 from contract4agents.ir import (
     AgentIR,
     CanonicalIR,
@@ -172,6 +173,12 @@ def test_approval_requirement_fails_closed_without_adapter_support() -> None:
     failed_ids = {issue.semantic_id for issue in caught.value.issues if issue.code == "PLN009"}
     assert semantic_id("grant", "IncidentCommander", "status.publish") in failed_ids
     assert semantic_id("control", "IncidentCommander", "approval", "status.publish") in failed_ids
+    grant_issue = next(
+        issue
+        for issue in caught.value.issues
+        if issue.semantic_id == semantic_id("grant", "IncidentCommander", "status.publish")
+    )
+    assert "approval support" in grant_issue.message
 
 
 def test_in_process_network_denial_is_reported_honestly_and_blocks_plan() -> None:
@@ -231,7 +238,7 @@ def test_required_degraded_control_blocks_while_advisory_unsupported_is_visible(
     assert plan.controls[semantic_id("control", "IncidentCommander", "advice")].outcome == "unsupported"
 
 
-def test_binding_mechanisms_distinguish_provider_hosted_and_remote() -> None:
+def test_generic_binding_resolution_fails_closed_for_provider_hosted_and_remote() -> None:
     ir = _sample_ir()
     target = _bindings().targets["openai"]
     rebound = TargetBinding(
@@ -247,26 +254,211 @@ def test_binding_mechanisms_distinguish_provider_hosted_and_remote() -> None:
     with pytest.raises(PlanningError) as caught:
         plan_materialization(ir, bindings, target="openai", profile="production", capabilities=_capabilities())
 
-    assert any(
-        "binding execution `provider_hosted` does not satisfy `host`" in issue.message
-        for issue in caught.value.issues
+    failed_ids = {issue.semantic_id for issue in caught.value.issues if issue.code == "PLN009"}
+    assert semantic_id("tool", "status.publish") in failed_ids
+    assert semantic_id("datasource", "incident.timeline") in failed_ids
+
+
+def test_openai_python_tool_approval_is_contextually_exact() -> None:
+    plan = plan_materialization(
+        _openai_ir(authorization="approval_required"),
+        _bindings(),
+        target="openai",
+        profile="production",
+        capabilities=openai_planner_capabilities(),
     )
 
-    # Bindings themselves still resolve to target-specific mechanisms before the grant mismatch blocks the plan.
-    no_grant_ir = CanonicalIR.create(
-        types=ir.types.values(),
-        capabilities=(next(item for item in ir.capabilities.values() if item.kind == "datasource"),),
-        external_contexts=ir.external_contexts.values(),
-        agents=ir.agents.values(),
-    )
+    grant = plan.grants[semantic_id("grant", "IncidentCommander", "status.publish")]
+    control = plan.controls[semantic_id("control", "IncidentCommander", "approval", "status.publish")]
+    assert grant.outcome == "exact"
+    assert grant.mechanism == "host.implementation_binding+openai.function_tool.needs_approval"
+    assert control.outcome == "exact"
+    assert control.mechanism == "openai.function_tool.needs_approval"
+
+
+def test_openai_web_search_is_exact_only_without_approval() -> None:
+    bindings = _openai_hosted_bindings()
     plan = plan_materialization(
-        no_grant_ir,
+        _openai_ir(authorization="preapproved", execution="provider_hosted"),
         bindings,
         target="openai",
         profile="production",
-        capabilities=_capabilities(),
+        capabilities=openai_planner_capabilities(),
     )
-    assert plan.bindings[semantic_id("datasource", "incident.timeline")].execution == "remote"
+
+    binding = plan.bindings[semantic_id("tool", "status.publish")]
+    grant = plan.grants[semantic_id("grant", "IncidentCommander", "status.publish")]
+    assert binding.execution == "provider_hosted"
+    assert binding.mechanism == "openai.web_search"
+    assert grant.outcome == "exact"
+
+    with pytest.raises(PlanningError) as caught:
+        plan_materialization(
+            _openai_ir(authorization="approval_required", execution="provider_hosted"),
+            bindings,
+            target="openai",
+            profile="production",
+            capabilities=openai_planner_capabilities(),
+        )
+
+    failed_ids = {issue.semantic_id for issue in caught.value.issues if issue.code == "PLN009"}
+    assert semantic_id("grant", "IncidentCommander", "status.publish") in failed_ids
+    assert semantic_id("control", "IncidentCommander", "approval", "status.publish") in failed_ids
+    grant_issue = next(
+        issue
+        for issue in caught.value.issues
+        if issue.semantic_id == semantic_id("grant", "IncidentCommander", "status.publish")
+    )
+    assert "approval support" in grant_issue.message
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        BindingEntry({"provider": "openai", "tool": "file_search"}),
+        BindingEntry({"endpoint": "https://example.test/tool"}),
+        BindingEntry({"typescript": "app/tools:publish"}),
+        BindingEntry(
+            {
+                "provider": "openai",
+                "tool": "web_search",
+                "provider_tool": "file_search",
+            }
+        ),
+    ],
+)
+def test_openai_planner_rejects_unsupported_tool_binding_shapes(
+    entry: BindingEntry,
+) -> None:
+    target = _bindings().targets["openai"]
+    rebound = TargetBinding(
+        adapter=target.adapter,
+        tools={"status.publish": entry},
+        datasources=target.datasources,
+        external_context=target.external_context,
+        environments=target.environments,
+        profiles=target.profiles,
+    )
+
+    with pytest.raises(PlanningError) as caught:
+        plan_materialization(
+            _openai_ir(authorization="preapproved"),
+            TargetBindings(Path("bindings.toml"), {"openai": rebound}),
+            target="openai",
+            profile="production",
+            capabilities=openai_planner_capabilities(),
+        )
+
+    assert any(
+        issue.code == "PLN009"
+        and issue.semantic_id == semantic_id("tool", "status.publish")
+        for issue in caught.value.issues
+    )
+
+
+def test_openai_planner_rejects_provider_hosted_datasource() -> None:
+    target = _bindings().targets["openai"]
+    rebound = TargetBinding(
+        adapter=target.adapter,
+        tools=target.tools,
+        datasources={
+            "incident.timeline": BindingEntry(
+                {"provider": "openai", "tool": "web_search"}
+            )
+        },
+        external_context=target.external_context,
+        environments=target.environments,
+        profiles=target.profiles,
+    )
+
+    with pytest.raises(PlanningError) as caught:
+        plan_materialization(
+            _openai_ir(authorization="preapproved"),
+            TargetBindings(Path("bindings.toml"), {"openai": rebound}),
+            target="openai",
+            profile="production",
+            capabilities=openai_planner_capabilities(),
+        )
+
+    assert any(
+        issue.code == "PLN009"
+        and issue.semantic_id == semantic_id("datasource", "incident.timeline")
+        for issue in caught.value.issues
+    )
+
+
+@pytest.mark.parametrize(
+    ("grant_isolation", "edge_mode", "edge_isolation", "failed_id"),
+    [
+        (
+            True,
+            "delegate",
+            False,
+            semantic_id("grant", "IncidentCommander", "status.publish"),
+        ),
+        (
+            False,
+            "handoff",
+            True,
+            semantic_id("edge", "investigate_logs"),
+        ),
+    ],
+)
+def test_openai_rejects_materializer_incompatible_isolation(
+    grant_isolation: bool,
+    edge_mode: str,
+    edge_isolation: bool,
+    failed_id: object,
+) -> None:
+    ir = _openai_ir(
+        authorization="preapproved",
+        grant_isolation=grant_isolation,
+        edge_mode=edge_mode,
+        edge_isolation=edge_isolation,
+    )
+    with pytest.raises(PlanningError) as caught:
+        plan_materialization(
+            ir,
+            _bindings(),
+            target="openai",
+            profile="production",
+            capabilities=openai_planner_capabilities(),
+        )
+
+    issue = next(item for item in caught.value.issues if item.semantic_id == failed_id)
+    assert issue.code == "PLN009"
+    assert "isolation context" in issue.message
+
+
+def test_openai_rejects_named_tool_execution_environment() -> None:
+    ir = _openai_ir(authorization="preapproved", execution="clean_room")
+    target = _bindings().targets["openai"]
+    rebound = TargetBinding(
+        adapter=target.adapter,
+        tools=target.tools,
+        datasources=target.datasources,
+        external_context=target.external_context,
+        environments={
+            **target.environments,
+            "clean_room": BindingEntry({"provider": "app:CleanRoom"}),
+        },
+        profiles=target.profiles,
+    )
+
+    with pytest.raises(PlanningError) as caught:
+        plan_materialization(
+            ir,
+            TargetBindings(Path("bindings.toml"), {"openai": rebound}),
+            target="openai",
+            profile="production",
+            capabilities=openai_planner_capabilities(),
+        )
+
+    assert any(
+        issue.code == "PLN009"
+        and issue.semantic_id == semantic_id("grant", "IncidentCommander", "status.publish")
+        for issue in caught.value.issues
+    )
 
 
 def test_named_execution_boundary_must_be_declared_by_the_target() -> None:
@@ -371,6 +563,61 @@ def _bindings() -> TargetBindings:
         },
     )
     return TargetBindings(Path("/local/not/canonical/contract4agents.targets.toml"), {"openai": target})
+
+
+def _openai_hosted_bindings() -> TargetBindings:
+    target = _bindings().targets["openai"]
+    rebound = TargetBinding(
+        adapter=target.adapter,
+        tools={
+            "status.publish": BindingEntry(
+                {"provider": "openai", "tool": "web_search"}
+            )
+        },
+        datasources=target.datasources,
+        external_context=target.external_context,
+        environments=target.environments,
+        profiles=target.profiles,
+    )
+    return TargetBindings(Path("hosted-bindings.toml"), {"openai": rebound})
+
+
+def _openai_ir(
+    *,
+    authorization: str,
+    execution: str = "host",
+    grant_isolation: bool = False,
+    edge_mode: str = "delegate",
+    edge_isolation: bool = False,
+) -> CanonicalIR:
+    base = _sample_ir(execution=execution)
+    grant = next(iter(base.grants.values()))
+    edge = next(iter(base.composition.values()))
+    resolved_grant = replace(
+        grant,
+        authorization=authorization,
+        isolation_id=grant.isolation_id if grant_isolation else None,
+    )
+    resolved_edge = replace(
+        edge,
+        mode=edge_mode,
+        history="none",
+        isolation_id=edge.isolation_id if edge_isolation else None,
+    )
+    return CanonicalIR.create(
+        types=base.types.values(),
+        capabilities=base.capabilities.values(),
+        external_contexts=base.external_contexts.values(),
+        agents=base.agents.values(),
+        grants=(resolved_grant,),
+        composition=(resolved_edge,),
+        controls=base.controls.values(),
+        isolation_profiles=(
+            base.isolation_profiles.values()
+            if grant_isolation or edge_isolation
+            else ()
+        ),
+    )
 
 
 def _sample_ir(

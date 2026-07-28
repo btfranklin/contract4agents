@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contract4agents.target_bindings._conformance import (
+    AdapterBindingValidator,
     BindingSection,
     ParameterKind,
     ResolvedImplementationIdentity,
@@ -29,6 +30,7 @@ from contract4agents.target_bindings._validation import validate_target_bindings
 
 __all__ = [
     "AgentProfile",
+    "AdapterBindingValidator",
     "BindingSection",
     "BindingEntry",
     "DEFAULT_TARGET_BINDINGS_FILENAME",

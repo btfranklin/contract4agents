@@ -25,7 +25,8 @@ adapter = "openai"
 python = "my_app.tools:search_documents"
 
 [targets.openai.tools."web.search"]
-provider = "web_search"
+provider = "openai"
+tool = "web_search"
 search_context_size = "medium"
 
 [targets.openai.datasources."account.history"]
@@ -128,6 +129,27 @@ telemetry. The application remains responsible for approval decisions and UI.
 
 Missing implementations, signature mismatches, unverified required approval
 enforcement, and unsupported remote bindings fail closed.
+
+OpenAI support is contextual rather than a global claim:
+
+| Requested mapping | OpenAI outcome |
+| --- | --- |
+| Python host tool, datasource, or external context | `exact` |
+| OpenAI `web_search` hosted tool without approval or isolation | `exact` |
+| Approval on a Python function tool | `exact` |
+| Approval on a provider-hosted tool | `unsupported` |
+| Isolated or named-environment tool grant | `unsupported` |
+| Isolated handoff | `unsupported` |
+| Isolated delegate | Determined by the selected environment's dimension support |
+| Remote or TypeScript/module locator | `unsupported` |
+| Provider-hosted datasource or external context | `unsupported` |
+| Hosted tool other than OpenAI `web_search` | `unsupported` |
+
+`contract4agents check` rejects ambiguous locator families and unsupported
+OpenAI binding shapes. Planning then evaluates combinations such as approval,
+execution, isolation, and composition against the resolved binding. SDK-version
+specific `WebSearchTool` options are validated during offline materialization
+against the installed SDK.
 
 ## Delegation and Handoff
 

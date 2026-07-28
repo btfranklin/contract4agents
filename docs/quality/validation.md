@@ -54,7 +54,11 @@ Provider-neutral planner tests should prove:
 - every required binding is present exactly once;
 - target bindings cannot override contract-owned semantics;
 - callable shape checks never invoke business code;
+- adapter binding validators reject ambiguous locator families and statically
+  unsupported binding shapes;
 - required degraded or unsupported mappings fail closed;
+- binding, approval, execution, isolation, and composition combinations use
+  contextual adapter support rather than independent global claims;
 - models, grants, controls, context, isolation, and telemetry are represented in
   the plan;
 - plan serialization and digest are deterministic.
@@ -62,7 +66,8 @@ Provider-neutral planner tests should prove:
 Adapter tests that claim SDK compatibility must construct the installed SDK's
 real native objects. Materialization tests should validate the complete graph
 against the plan and include a negative case for every required guarantee that
-can be unsupported.
+can be unsupported. Known incompatible combinations must fail during
+conformance or planning; late materializer checks remain defense in depth.
 
 ## Trace and Assurance Gates
 
