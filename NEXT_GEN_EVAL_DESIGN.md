@@ -1,408 +1,117 @@
 # Next-Generation Evaluation Design
 
-**Status:** proposal for follow-up design and implementation work.
+**Status:** revised proposal aligned with the current materialization, tracing,
+and host-owned workflow architecture.
+
+## Current Implementation Boundary
+
+The public `eval` command currently performs deterministic replay assessment.
+It loads `FileEvalProvider`, reads prewritten inputs, outputs, normalized trace
+events, closure evidence, approval decisions, and judge decisions from
+`eval-data.json`, then passes that evidence to `run_campaign(...)`.
+
+It does **not** materialize or invoke a native agent graph.
+
+That behavior is useful and should remain supported, but it must be named
+`replay`. This proposal adds a separate execution path that invokes the same
+reviewed graph used by normal materialization.
+
+The repository already supports three native target adapters:
+
+- OpenAI Agents SDK;
+- Strands Agents; and
+- Google Agent Development Kit.
+
+The public design must account for all three now. A first vertical slice may
+land on one adapter, but no OpenAI-specific assumption belongs in the portable
+campaign, lifecycle, input, or artifact models.
 
 ## Thesis
 
-Contract4Agents should materialize evaluations in the same way it materializes
-agent graphs.
-
-Today the public `eval` command is a deterministic evidence-fixture assessor:
-it loads `FileEvalProvider`, which reads prewritten inputs, outputs, normalized
-trace events, closure evidence, approval decisions, and quality decisions from
-`eval-data.json`. `run_campaign(...)` then validates and assesses that supplied
-evidence. It does **not** invoke a materialized agent or model.
-
-That is a useful replay/fixture capability, but it does not meet the intuitive
-meaning of “run an eval.” A user who has configured an agent target should not
-have to implement the difficult orchestration seam merely to execute their
-contract's `.eval` cases against the configured agent.
-
-The next-generation design should provide this user experience:
-
-```python
-runner = materialize_eval_runner(
-    "agent_contracts",
-    target="openai",
-    profile="test",
-    environment="local_fixtures",
-)
-
-report = await runner.run(trials=3)
-```
-
-```bash
-contract4agents eval agent_contracts \
-  --target openai \
-  --profile test \
-  --environment local_fixtures \
-  --trials 3
-```
-
-In this design, every trial is a real invocation of the selected target's
-materialized agent graph. Contract4Agents owns the generic plumbing; users
-provide only their application-specific fixtures, test doubles, approval
-decisions, and optional judge policy.
-
-This remains a contract-and-assurance system, not a hosted eval service or a
-general workflow language.
-
-## Why This Matters
-
-The current system's strongest value is not generic trace bucketing. It is the
-chain from declared intent to a reviewed plan to observed evidence:
+Contract4Agents should materialize evaluation execution in the same way it
+materializes agent graphs:
 
 ```text
-portable contract
-  -> target/profile materialization plan
-  -> materialized agent graph
-  -> normalized, identity-bound trace and closure
-  -> shared assessment and campaign result
+portable contract and eval cases
+  -> eval-environment overlay
+  -> one authoritative effective materialization plan
+  -> target-native graph and trial executor
+  -> identity-bound trace and closure snapshot
+  -> shared assessment
+  -> versioned campaign artifact
 ```
 
-That chain lets reviewers ask questions a generic observability pipeline cannot
-answer without rebuilding the same contract model:
+A user who has configured a target, profile, and safe eval environment should
+not have to implement the entire `EvalProvider` protocol merely to execute
+their contract's `.eval` cases.
 
-- Did a release add a capability, weaken authorization, or widen context?
-- Did the target actually implement the control as native, host-enforced,
-  emulated, degraded, or unsupported?
-- Did the observed tool call belong to the exact reviewed contract and plan?
-- Can an absence assertion be proven from complete closure, rather than from a
-  missing log line?
-- Do controlled evals and imported production traces use the same control
-  semantics?
+This remains a contract-and-assurance system. It is not a hosted eval service,
+a universal agent runtime, or a workflow engine.
 
-However, that value is incomplete when the built-in eval path does not produce
-the execution evidence it assesses. The missing live runner is therefore a
-product coherence issue, not merely a convenience feature.
+## Accepted Architectural Boundaries
+
+The implementation must preserve these existing decisions:
+
+1. **The host owns deterministic workflow.** Host code owns branching, loops,
+   retries, transformations, transactions, persistence, recovery, and terminal
+   selection. Run specs declare and assess evidence about that workflow; they
+   do not execute it.
+2. **Materialization is target-native.** OpenAI, Strands, and Google ADK retain
+   their native execution models. Portability applies to the contract,
+   execution request, normalized evidence, and assessment result—not to every
+   provider mechanism.
+3. **One effective plan governs execution and evidence.** Eval overrides apply
+   before planning, implementation import, graph construction, and trace
+   identity are finalized. A graph may not be built from a base plan and
+   patched afterward.
+4. **Tracing already owns attempt evidence, not retry policy.** Existing trace
+   sessions provide attempt identity, retry-chain validation, terminal
+   selection, snapshots, and closure. Eval execution must reuse these
+   primitives rather than create a parallel lifecycle vocabulary.
+5. **In-process execution is not a sandbox.** Sealed dependency resolution can
+   prevent accidental production fallback, but it does not enforce operating
+   system filesystem, network, process, or secret isolation.
+6. **Assessment does not enforce business policy.** Contracts, controls,
+   judges, approvals, and traces produce reviewable evidence. The host remains
+   responsible for authorization, transactional policy, idempotency, and final
+   safety checks.
 
 ## Design Goals
 
-1. **One command that actually executes the configured agent.** A configured
-   target, test profile, and eval environment should be enough to run canonical
-   `.eval` cases without users implementing `EvalProvider.execute`.
-2. **Reuse normal materialization.** The eval graph must be the same target,
-   profile, instructions, output types, grants, tool wiring, and plan used by
-   the ordinary runtime path.
-3. **Isolate only irreducibly application-specific concerns.** Users should
-   supply test data and test doubles, not campaign orchestration, trace
-   normalization, closure, assessment, or report aggregation.
-4. **Fail closed.** Missing fixture bindings, context, approval policy, model
-   driver, required telemetry, or judge evidence must be explicit failures or
-   `unverified` results. Never silently fall back to production dependencies.
-5. **Keep source authority clean.** `.contract` and `.eval` retain portable
-   semantics. Target bindings select target-specific implementations. Eval
-   environments select target-specific test implementations and must not repeat
-   agent prompts, permissions, controls, schemas, or topology.
-6. **Preserve replay.** Pre-recorded evidence remains valuable for regression,
-   incident replay, and deterministic unit-level coverage. It must be named and
-   documented honestly as replay/fixture assessment.
-7. **Provide a stable cross-target shape.** The first implementation can be
-   OpenAI Agents SDK-specific, but the public abstraction must allow future
-   targets to provide their own native runner adapter.
+1. Provide an explicit command and Python API that invoke a configured native
+   agent graph.
+2. Preserve the current file-backed path as honestly named replay assessment.
+3. Reuse normal parsing, semantic analysis, planning, materialization, runtime
+   resolution, tracing, closure, and shared assurance.
+4. Require users to supply only irreducibly application-specific fixtures,
+   test doubles, approval policy, and optional judge policy.
+5. Fail before execution when an eval environment is incomplete, unsafe, or
+   incompatible with the selected target.
+6. Structurally separate model-visible invocation inputs, host-only context,
+   evaluator-only truth, and exported report views.
+7. Give every campaign execution, trial execution, invocation, attempt,
+   approval request, trace, and artifact a causal identity.
+8. Keep execution status separate from behavioral assessment status.
+9. Produce versioned, identity-validated artifacts suitable for assurance
+   bundling and deliberate baseline comparison.
+10. Define one small cross-target trial-executor contract that OpenAI, Strands,
+    and Google ADK can implement without hiding meaningful differences.
 
 ## Non-Goals
 
-- Running arbitrary customer application workflows without any application
-  integration point.
-- Inventing fake EHR, billing, CRM, payment, or other domain logic.
-- Treating a semantic judge as an access control or business-policy engine.
-- Running production credentials, production write tools, or real sensitive
-  data by default.
-- Hiding target/provider differences behind a misleading “universal agent
-  runtime.”
-- Replacing the host's deterministic workflow, transactional policy logic,
-  persistence, retries, or recovery decisions.
-
-## Core Product Shape
-
-### Materialized evaluation result
-
-Add a public materialization entry point, with final naming to be decided:
-
-```python
-eval_runner = materialize_eval_runner(
-    root,
-    *,
-    target: str,
-    profile: str,
-    environment: str,
-    bindings: TargetBindings | Path | str | None = None,
-)
-```
-
-It should return an immutable result roughly like:
-
-```python
-@dataclass(frozen=True)
-class EvalMaterializationResult:
-    system: MaterializationResult
-    eval_plan: EvalMaterializationPlan
-    runner: MaterializedEvalRunner
-```
-
-`system` is the existing materialized native graph. `eval_plan` binds the base
-materialization plan to the selected eval environment and records exact
-implementations, caveats, and host obligations. `runner` executes `.eval`
-cases and returns the existing `CampaignResult` model (extended only where the
-new execution evidence requires it).
-
-The central invariant is:
-
-> A materialized eval runner may not construct a second, hand-maintained agent
-> registry or tool graph.
-
-It consumes the same `MaterializationResult` that ordinary runtime execution
-uses.
-
-### Trial lifecycle
-
-For every canonical eval case and trial index:
-
-```text
-1. Resolve typed case fixtures and evaluator-only hidden truth.
-2. Create a sealed eval invocation context.
-3. Resolve only eval-environment tool, datasource, and external-context bindings.
-4. Materialize or reuse the reviewed native graph.
-5. Invoke the target's native entry-agent runner.
-6. Apply the selected approval policy when a capability requests approval.
-7. Capture native spans/events through the target trace adapter.
-8. Snapshot the trace and exact closure frontier at terminal completion.
-9. Validate output and trace conformance against the contract and reviewed plan.
-10. Evaluate deterministic expectations and shared controls.
-11. Call configured quality judges for declared quality expectations.
-12. Produce one `TrialResult`, then aggregate the campaign report.
-```
-
-The report's output, trace, metrics, closure evidence, control results, and
-judge provenance must all belong to the same trial, contract digest, plan
-digest, and eval-environment digest.
-
-## Eval Environments
-
-### Why a new configuration concept is necessary
-
-Current target profiles select model identifiers and provider options. Current
-target bindings select one target-wide implementation per tool, datasource, and
-external context. That is insufficient for a safe real eval runner: a test run
-must be able to replace production integrations with narrow test doubles and
-fixture providers without changing portable contract semantics.
-
-Add a target-specific **eval environment**. It is an implementation overlay,
-not a second contract or a profile inheritance mechanism.
-
-Recommended conceptual TOML shape:
-
-```toml
-[targets.openai.eval_environments.local_fixtures]
-adapter = "openai"
-fixture_source = "acme_agent.evals.fixtures:source"
-tool_overrides = "acme_agent.evals.tools:overrides"
-datasource_overrides = "acme_agent.evals.context:datasource_overrides"
-external_context_overrides = "acme_agent.evals.context:external_overrides"
-approval_policy = "acme_agent.evals.approvals:policy"
-judge = "acme_agent.evals.judges:quality_judge"
-environment = "contract4agents.runtime:InProcessEnvironment"
-```
-
-The final schema should use explicit, inspectable per-semantic-ID mappings
-rather than an opaque catch-all object if doing so improves validation and plan
-review. The shape above illustrates responsibilities, not final syntax.
-
-The environment must not declare or override contract-owned fields such as
-agent permissions, authorization, controls, quality rubrics, output schemas,
-guidance, composition, or isolation requirements. Existing target-binding
-authority checks should extend to enforce this.
-
-### Sealed-default behavior
-
-An eval environment should be sealed by default:
-
-- unresolved tool, datasource, or external-context dependency fails;
-- production environment variables and write-capable implementations are not
-  inherited implicitly;
-- no network access exists unless the selected environment explicitly provides
-  and proves it;
-- side-effecting capabilities are denied unless the environment supplies an
-  explicit safe double or authorized sandbox implementation;
-- missing approval policy is a denial or an explicit `unverified` outcome,
-  never automatic approval;
-- missing quality judge leaves a quality result `unverified`.
-
-This prevents the most dangerous failure mode: a developer intends to run a
-test and quietly invokes production systems.
-
-### Environment variants
-
-The design should support at least three explicit modes. They are distinct
-products, not aliases for one another.
-
-| Mode | What executes | Primary use |
-| --- | --- | --- |
-| `replay` | No agent; supplied output/trace evidence | Deterministic regression, incident replay, assessor tests |
-| `materialized` | Real target-native agent graph with local/sandboxed dependencies | Default integration evals |
-| `live` | Real target-native agent graph and a deliberately configured live model | Model regression, latency/cost, controlled release gates |
-
-`replay` preserves the current `FileEvalProvider` behavior. `materialized` is
-the new default user story. `live` may share the same implementation but must
-make provider, cost, data, and side-effect posture explicit in the plan and
-report.
-
-## User-Supplied Narrow Interfaces
-
-The runner should not require users to write a general `EvalProvider`. It
-should provide small, domain-appropriate hooks instead.
-
-### Fixture source
-
-The fixture source resolves `TypeName.fixture("name")` and named values in an
-eval case. It returns data that the runner validates against canonical contract
-types. Hidden truth is evaluator-only and must never become model-visible
-context.
-
-### Test doubles and sandbox bindings
-
-Users provide ordinary implementations for external boundaries that cannot be
-invented by the framework:
-
-- host tools;
-- datasources;
-- external context;
-- remote services; and
-- possibly a controlled sandbox endpoint.
-
-The runner resolves and validates these using the same target-binding and
-callable-shape mechanisms used for normal materialization. The only difference
-is the selected eval environment supplies the implementation overlay.
-
-### Approval policy
-
-The approval policy receives a typed capability request plus scenario/trial
-identity and returns an allow/deny decision with a reason and evidence
-reference. A deterministic policy can approve or deny configured cases. A
-live/sandbox policy can route to a test approval service. It must not silently
-approve every side effect.
-
-### Quality judge
-
-Quality remains an evaluator concern. The runner passes the declared rubric,
-output, and safe trace view to a configured judge. The judge returns passed or
-violated status, reason, score if applicable, provider/version, and evidence
-references.
-
-Judge prompts and policy should live in external versioned Markdown or another
-reviewable asset, not inline in Python. The report must retain the judge
-identity, version, prompt/policy digest, and data-handling posture. The runner
-must not send evaluator-only hidden truth or sensitive fields to a judge unless
-the selected environment explicitly authorizes that boundary.
-
-### Optional host-workflow entry point
-
-Direct agent-entry invocation is sufficient for the common case. Some
-applications own deterministic orchestration around materialized agents. For
-those, support a narrow optional host entry-point binding that receives the
-materialized system and typed eval invocation context, then returns the
-selected terminal result and trace session.
-
-This is not a workflow DSL. It is the explicit escape hatch for an application
-that must exercise its real deterministic workflow rather than call one entry
-agent directly.
-
-## Target Adapter Responsibilities
-
-The first implementation is an OpenAI Agents SDK eval runner. It should:
-
-1. reuse the existing OpenAI materialization provider and native agent graph;
-2. invoke the native SDK runner for the entry agent;
-3. bind declared host tools to eval-environment implementations;
-4. route approval interruptions through the eval approval policy;
-5. install the existing normalized trace router/processor;
-6. open one trace session and one attempt identity per trial;
-7. snapshot the trace and closure from the same terminal session frontier;
-8. collect output, latency, cost, and token metrics when available; and
-9. emit explicit evidence when any target capability is unsupported or
-   degraded.
-
-Future targets implement the same small adapter contract. They may differ in
-how they invoke a native agent, intercept approval, inject context, or capture
-traces; the resulting `EvalExecution` and campaign report remain portable.
-
-The existing generic `EvalProvider` protocol should become an advanced adapter
-seam behind this materialized runner. It remains useful for unusual remote,
-replay, or organization-specific execution, but ordinary adopters should not
-need to implement it.
-
-## Plan and Evidence Model
-
-### Eval materialization plan
-
-The existing `MaterializationPlan` identifies the contract, target, profile,
-bindings, mapping outcomes, expected events, and host obligations. Eval
-execution introduces additional material facts, so it needs a companion plan
-or an explicit extension with a distinct digest.
-
-The eval plan should record:
-
-- base contract and materialization-plan digests;
-- target, profile, and eval-environment identity/digest;
-- fixture-source identity/version;
-- every tool, datasource, and external-context implementation selected for
-  testing;
-- model driver/provider identity and options;
-- approval-policy identity/version;
-- judge identity/version/prompt-policy digest;
-- environment enforcement evidence and permitted side effects/network posture;
-- expected trace channels and event types; and
-- any unsupported, degraded, or host-enforced mappings.
-
-An eval result is only comparable to a baseline when the relevant contract,
-plan, eval-environment, judge, and measurement settings are known. The report
-must make drift visible rather than treating all trials under the same case name
-as equivalent.
-
-### Trace and closure
-
-The runner must own trace lifecycle in materialized mode. It should not accept a
-best-effort trace dumped later by the host as sufficient negative evidence.
-
-For each trial, it must capture a normalized trace plus identity-bound closure
-evidence at one exact frontier. This is what makes expectations such as
-`trace.not_called(...)` meaningful. If instrumentation is incomplete, the
-result is `unverified`, even if the output looks correct.
-
-Trace exports and judge inputs need audience-specific redaction. Sensitive
-domain fixtures must not leak into generic logs, report artifacts, or external
-judges merely because a test is running.
-
-## CLI and API Surface
-
-The final public API should be small and direct.
-
-### Materialized evaluation
-
-```bash
-contract4agents eval agent_contracts \
-  --target openai \
-  --profile test \
-  --environment local_fixtures \
-  --trials 3 \
-  --out .contract/eval-results.json
-```
-
-Expected behavior:
-
-- materialize and validate the eval graph before starting trials;
-- fail before execution if the eval plan is unsupported, degraded when required,
-  or resolves an unsafe dependency;
-- execute real trials;
-- write one report with trial evidence, metrics, and comparable digests;
-- exit nonzero for violations, unverified required results, or failed campaign
-  thresholds.
-
-### Explicit replay
-
-The current fixture behavior should become explicit in the CLI and docs, for
-example:
+- Running arbitrary customer workflows without an application integration
+  point.
+- Replacing host-owned run-spec execution, retry, persistence, or recovery.
+- Inventing fake EHR, billing, CRM, payment, or other domain behavior.
+- Treating a semantic judge as an access-control or business-policy engine.
+- Running production credentials, production write tools, or sensitive data by
+  default.
+- Claiming whole-trial isolation when execution is only in-process.
+- Hiding target differences behind a misleading universal runtime.
+
+## Public Product Shape
+
+Evaluation has two explicit top-level operations:
 
 ```bash
 contract4agents eval replay agent_contracts \
@@ -411,193 +120,759 @@ contract4agents eval replay agent_contracts \
   --data eval-data.json
 ```
 
-The exact command name is open, but the distinction is not: replay assessment
-must not be represented as execution. Because this repository rejects
-compatibility shims, choose a clear final command structure and migrate docs,
-tests, and examples together rather than retaining ambiguous aliases.
+```bash
+contract4agents eval run agent_contracts \
+  --target strands \
+  --profile test \
+  --environment local_fixtures \
+  --model-source scripted \
+  --trials 3 \
+  --out .contract/eval-run
+```
 
-### Python
+`eval replay` assesses supplied evidence and never claims to invoke an agent.
+`eval run` materializes and invokes a native graph.
+
+There is no compatibility alias preserving the current ambiguous
+`contract4agents eval ...` meaning. This is a deliberate pre-1.0 command
+migration.
+
+### Independent execution dimensions
+
+`replay`, `materialized`, and `live` must not be represented as interchangeable
+values of one mode field. The plan records independent dimensions:
+
+| Dimension | Examples | Meaning |
+| --- | --- | --- |
+| execution source | `replay`, `native` | Whether evidence is supplied or produced by invocation |
+| model source | `scripted`, `provider` | Whether model behavior is deterministic or provider-backed |
+| dependency posture | `local`, `sandbox`, `external` | Where tools, datasources, and external context execute |
+| side-effect posture | `denied`, `sandboxed`, `explicit_live` | Which observable writes are permitted |
+| isolation posture | `in_process`, provider-specific sandbox identity | What boundary is actually enforced |
+
+A provider-backed model does not imply production dependencies. A scripted
+model does not imply whole-trial isolation. A native graph with test doubles is
+an integration eval, not a model-behavior eval.
+
+## Materialization Result
+
+Add a public entry point, with final naming settled during implementation:
 
 ```python
-runner = materialize_eval_runner(
+result = materialize_eval_runner(
+    root,
+    *,
+    target: str,
+    profile: str,
+    environment: str,
+    model_source: str,
+    bindings: TargetBindings | Path | str | None = None,
+    eval_bindings: EvalBindings | Path | str | None = None,
+)
+```
+
+It returns an immutable result:
+
+```python
+@dataclass(frozen=True)
+class EvalMaterializationResult:
+    eval_plan: EvalMaterializationPlan
+    system_factory: TrialSystemFactory
+    runner: MaterializedEvalRunner
+```
+
+`eval_plan` binds the effective materialization plan to the eval environment,
+execution dimensions, fixture source, policies, measurement settings, and
+adapter capabilities. `system_factory` creates a normal `MaterializationResult`
+from that plan with trial-scoped runtime services. `runner` executes canonical
+`.eval` cases and produces a versioned campaign artifact.
+
+The result does not expose one mutable `MaterializationResult` for unconditional
+reuse across every trial. The current native graph contains a mutable
+`ContextRuntime`, including run and thread caches, so reuse requires an explicit
+adapter attestation and fresh trial-scoped runtime state.
+
+The central invariant is:
+
+> A materialized eval runner may not construct a second agent registry, tool
+> graph, instruction set, grant set, or output schema.
+
+## Eval Environments and the Effective Plan
+
+### Configuration authority
+
+An `EvalEnvironment` is a named, target-specific implementation overlay. It may
+select:
+
+- fixture source;
+- tool, datasource, and external-context implementation replacements;
+- model source and target-supported model driver;
+- approval policy;
+- quality judge;
+- runtime or sandbox provider;
+- side-effect and network posture; and
+- measurement policy.
+
+It may not declare or change:
+
+- agents, instructions, guidance, or composition;
+- portable tool or datasource interfaces;
+- grants or authorization semantics;
+- controls, qualities, or operational controls;
+- output schemas; or
+- declared isolation requirements.
+
+Eval environments live in the dedicated companion file
+`contract4agents.evals.toml` by default, with an explicit path override in the
+CLI and Python API. Keeping test-only implementation locators and policies out
+of `contract4agents.targets.toml` preserves the production binding boundary.
+Each named environment declares its target and overlays only that target's
+implementation selections. The loader produces a distinct `EvalEnvironment`
+model rather than passing an opaque mapping through to user code.
+
+The version `1` shape should be explicit and semantic-ID-addressed:
+
+```toml
+schema_version = "1"
+
+[environments.local_fixtures]
+target = "strands"
+dependency_posture = "local"
+side_effect_posture = "denied"
+isolation_posture = "in_process"
+
+[environments.local_fixtures.model]
+source = "scripted"
+factory = "acme_agent.evals.models:scripted_model"
+
+[environments.local_fixtures.fixture_source]
+python = "acme_agent.evals.fixtures:source"
+version = "incident-fixtures-v3"
+
+[environments.local_fixtures.tools."status.publish"]
+python = "acme_agent.evals.tools:record_publish"
+
+[environments.local_fixtures.approval_policy]
+python = "acme_agent.evals.approvals:policy"
+version = "publish-policy-v2"
+
+[environments.local_fixtures.quality_judge]
+python = "acme_agent.evals.judges:judge"
+policy = "eval-assets/incident-quality.md"
+```
+
+Every locator is validated and recorded individually. There is no opaque
+`overrides` callable that can replace undeclared dependencies at runtime.
+
+### Planning order
+
+Planning follows one order:
+
+```text
+load contract and target bindings
+  -> select eval environment
+  -> validate overlay authority
+  -> resolve effective bindings
+  -> compute the effective MaterializationPlan
+  -> import only implementations named by that plan
+  -> build the native graph
+  -> bind trace identity to that plan digest
+```
+
+The base binding and overlay remain inspectable inputs, but the effective plan
+digest is the only plan identity used by the graph, trace, trial, assessment,
+and artifact.
+
+Changing any selected implementation, model driver, policy, or enforcement
+posture changes the eval-plan digest. Changing a fact that affects the native
+graph also changes the effective materialization-plan digest.
+
+### Sealed resolution and real isolation
+
+Sealed resolution means:
+
+- every external boundary resolves through the selected eval environment;
+- missing replacements fail instead of falling back to production bindings;
+- production environment variables and secrets are not inherited by
+  convention;
+- side-effecting capabilities are denied unless the plan names a safe double or
+  an explicitly authorized sandbox implementation;
+- missing approval policy denies the request or makes required evidence
+  unverified; and
+- missing judge evidence leaves the quality result unverified.
+
+Sealed resolution is not an operating-system security claim. The eval plan must
+record the isolation provider and the dimensions it actually enforces.
+`InProcessEnvironment` must be reported as `in_process`; it cannot claim
+filesystem, network, process, or secret isolation.
+
+## Typed Trial Data and Audience Separation
+
+The parser and semantic model must understand eval givens well enough to map
+them to the selected entry agent's typed invocation parameters. Arbitrary
+strings merged into a generic input object are not sufficient for native
+execution.
+
+Fixture resolution produces structurally separate channels:
+
+```python
+@dataclass(frozen=True)
+class ResolvedTrialData:
+    invocation: InvocationInputs
+    host_context: HostFixtureContext
+    evaluator_truth: EvaluatorTruth
+    report_view: RedactedTrialView
+```
+
+- `invocation` contains only validated entry-agent arguments.
+- `host_context` contains fixture values available to approved test doubles and
+  runtime providers, not automatically to the model.
+- `evaluator_truth` contains expected answers and scorer-only facts. It is
+  never included in an execution request, model context, generic trace event,
+  or default report serialization.
+- `report_view` is an audience-classified, redacted projection created
+  explicitly for export.
+
+Fixture references such as `TypeName.fixture("name")` resolve through a typed
+fixture source and are validated against canonical contract types before a
+trial enters `running`.
+
+Judge input is another explicit audience projection. Evaluator truth or
+sensitive host context reaches a judge only when the environment authorizes
+that exact boundary and records the disclosure posture in the eval plan.
+
+## Narrow Application Hooks
+
+Ordinary users should configure small interfaces instead of implementing one
+object that resolves inputs, executes agents, approves actions, and judges
+quality:
+
+- `FixtureSource` resolves named, versioned fixture values.
+- `ApprovalPolicy` decides one exact typed approval request.
+- `QualityJudge` assesses one declared rubric against an audience-safe result
+  view.
+- Tool, datasource, and external-context replacements use the existing runtime
+  callable contracts.
+- `ApplicationTrialExecutor` is an advanced seam only for a host-owned outer
+  workflow.
+
+Every hook has a stable identity or version and a canonical policy/configuration
+digest. Authored judge prompts and policies live in external versioned,
+reviewable assets rather than inline implementation strings. The eval plan and
+campaign artifact retain their digests and data-handling posture.
+
+## Cross-Target Trial Executor
+
+The adapter-neutral contract should be narrow:
+
+```python
+class EvalTrialExecutor(Protocol):
+    async def execute(
+        self,
+        request: MaterializedTrialRequest,
+    ) -> MaterializedTrialEvidence: ...
+```
+
+`MaterializedTrialRequest` contains:
+
+- a `MaterializationResult` created by the trial system factory;
+- the immutable eval plan;
+- campaign, trial, invocation, and initial-attempt identities;
+- validated invocation inputs;
+- approved host fixture context;
+- approval, trace-session, and measurement services; and
+- cancellation and deadline signals.
+
+It does not contain evaluator truth.
+
+`MaterializedTrialEvidence` contains:
+
+- native terminal output;
+- immutable trace and closure snapshot from one exact frontier;
+- terminal attempt selection;
+- execution timestamps and metrics;
+- provider correlation references;
+- optional host run-spec evidence; and
+- explicit adapter diagnostics and degraded/unsupported facts.
+
+The adapter registration should expose an optional eval-executor factory and
+its eval capabilities. Planning fails before trials begin when the selected
+adapter lacks a required executor or capability.
+
+The existing `EvalProvider` remains a lower-level advanced seam for replay,
+remote execution, and organization-specific integrations. It is not the normal
+materialized-eval user interface.
+
+### Target-specific responsibilities
+
+Each current adapter must define:
+
+1. how it invokes an entry agent;
+2. how it supplies model configuration or a supported scripted driver;
+3. how it intercepts or observes approval;
+4. how it creates and binds attempts;
+5. how it normalizes provider response and exception evidence;
+6. how it selects a terminal result;
+7. how it closes or snapshots the trace session;
+8. which latency, token, and cost metrics it can attest; and
+9. which features are unsupported, degraded, emulated, or host-enforced.
+
+The public request and evidence types remain portable; invocation mechanics do
+not.
+
+Model factories are target capabilities, not a portable assumption. Strands
+and Google ADK can currently select target-bound model factories; OpenAI does
+not expose the same seam. The plan must reject an unsupported `model_source`
+rather than silently substituting a live provider model.
+
+## Direct Agent Runs and Host-Owned Workflows
+
+The built-in executor handles the common case: invoke one declared entry agent
+with typed inputs.
+
+Contract4Agents does not automatically execute a declared run spec or infer an
+application workflow from composition. If an eval must exercise deterministic
+outer workflow, the application supplies an advanced trial executor that:
+
+- calls the materialized agents from host code;
+- owns branching, retry, persistence, recovery, and terminal selection;
+- uses the existing Contract4Agents trace-session and `TraceAttempt`
+  primitives;
+- closes the session and returns an immutable snapshot rather than a live
+  session object; and
+- supplies `RunSpecEvidence` for separate `assess_run_spec(...)` assessment
+  when a run spec applies.
+
+The campaign runner assesses the returned evidence. It does not take ownership
+of the host workflow or replay workflow decisions itself.
+
+## Campaign and Trial Lifecycle
+
+Execution identity and assessment status are separate.
+
+### Required identities
+
+- `campaign_id`: stable logical campaign definition selected by the user.
+- `campaign_execution_id`: unique identity for one attempted campaign run.
+- `case_id`: canonical eval semantic ID.
+- `trial_execution_id`: unique identity for one trial execution.
+- `invocation_id`: identity for one logical agent or host-workflow invocation.
+- `attempt_id`: identity for one attempt in a validated retry chain.
+
+Repeating a campaign or resuming an interrupted campaign does not reuse trial
+execution IDs accidentally. An explicit idempotency key may intentionally bind
+a retry or resume to existing persisted state.
+
+### Execution state
+
+At minimum:
+
+```text
+planned -> running -> succeeded
+                   -> failed
+                   -> cancelled
+                   -> timed_out
+                   -> invalid_evidence
+```
+
+Assessment remains:
+
+```text
+passed | violated | unverified
+```
+
+A trial can therefore be `succeeded/unverified` when execution completed but a
+judge or required trace channel is unavailable. A provider exception is
+`failed/unverified`, not merely an assurance status with its execution history
+discarded.
+
+### Persistence and recovery
+
+- Persist the campaign manifest before the first trial starts.
+- Persist each state transition and finalized trial artifact atomically.
+- Never wait for the entire campaign before writing the only durable result.
+- Resume only after validating contract, effective plan, eval plan, fixture,
+  policy, and artifact identities.
+- Reuse a completed trial only under an explicit matching idempotency key.
+- Preserve partial trace and closure evidence on failure, cancellation, or
+  timeout.
+- Treat contradictory identity or closure evidence as `invalid_evidence` and
+  make the campaign fail closed.
+
+The compiled contract and immutable plans may be reused. Mutable context,
+caches, trace sessions, invocation state, and attempt state are fresh per
+trial. A native graph may be reused only when its adapter attests that the graph
+is stateless and all mutable runtime services remain trial-scoped.
+
+## Approval Causality
+
+Approval evidence must authorize one exact action, not merely an earlier use of
+the same capability.
+
+An approval request identity binds:
+
+- campaign and trial execution IDs;
+- invocation and attempt IDs;
+- agent ID;
+- grant ID;
+- capability ID;
+- provider tool-call or request ID;
+- canonical argument digest;
+- approval-policy identity and version/digest;
+- issuance time and optional expiry; and
+- immutable evidence references.
+
+The decision repeats the request digest and records allow/deny, reason,
+decision time, policy identity, and evidence references.
+
+A tool start satisfies an approval-required control only when it matches the
+exact approved request, occurs after an unexpired allow decision, and belongs
+to the same invocation and attempt. Approval from an earlier failed attempt
+cannot authorize a retried call unless the host explicitly issues a new
+request or a declared policy permits and records transfer.
+
+## Trace Ownership and Closure
+
+The component that invokes the target owns the disposable trace session:
+
+- the built-in direct executor opens, binds, snapshots, and closes it;
+- an advanced host executor does the same around its workflow; and
+- replay loads already-finalized trace and closure evidence.
+
+The campaign runner accepts only an immutable trace/closure snapshot. It never
+accepts a live session or a best-effort trace dumped later.
+
+Finalization occurs only after native invocation has ended and the adapter has
+established instrumentation quiescence. A no-op flush or an arbitrary delay is
+not closure evidence. An adapter that cannot establish the required frontier
+returns incomplete closure, making absence-dependent claims `unverified`.
+
+Every trial trace is bound to the campaign execution, trial execution, contract,
+effective materialization plan, and eval plan. Existing run and thread identity
+remain valid provider-neutral trace fields; the eval artifact manifest carries
+the enclosing campaign/trial identities. The built-in direct executor uses the
+trial execution ID as the normalized trace `run_id`, avoiding a second
+unexplained per-trial identity.
+
+Incomplete instrumentation makes absence-dependent results `unverified`.
+Closing after an exception preserves incomplete evidence; it does not convert
+absence into proof.
+
+## Assessment Semantics
+
+Materialized and replay paths converge only after they have produced valid,
+identity-bound evidence.
+
+The shared sequence is:
+
+1. validate output shape;
+2. validate trace, plan identity, attempt chain, terminal selection, and
+   closure;
+3. evaluate deterministic eval expectations;
+4. call the existing shared behavioral control assessor;
+5. assess declared operational controls from attested execution evidence;
+6. call configured quality judges with an audience-safe view; and
+7. derive the behavioral assessment status separately from execution status.
+
+### Operational controls
+
+Operational controls are contract declarations, not aliases for campaign
+thresholds.
+
+- Per-trial latency, cost, token, and retry controls use attested trial metrics
+  and attempt evidence.
+- Volume or cross-run controls use the complete campaign artifact.
+- Missing measurement or attempt evidence produces `unverified`.
+- An adapter that cannot attest a required metric fails planning when the
+  limitation is knowable in advance.
+- Campaign thresholds remain release policy over aggregate results. They do not
+  satisfy or replace a declared operational control.
+
+The language and assessor must define the aggregation semantics for every
+supported operational expression before claiming support. Unsupported
+expressions fail closed rather than being silently ignored.
+
+## Versioned Artifacts
+
+### Campaign manifest
+
+Materialized and replay campaigns produce a versioned manifest. Version `1`
+must include:
+
+- campaign and campaign-execution identities;
+- contract digest;
+- effective materialization-plan digest;
+- eval-plan and eval-environment digests;
+- target, profile, adapter version, and execution dimensions;
+- model-source identity and provider/model options safe for export;
+- fixture dataset identity/version without raw evaluator truth;
+- approval-policy and judge identities/digests;
+- measurement and redaction-policy identities;
+- trial selection, count, seed or deterministic ordering policy;
+- per-trial execution and assessment status;
+- trace, closure, output, metrics, assessment, and diagnostic artifact digests;
+- campaign summary and threshold results; and
+- persistence/completion status.
+
+Large or sensitive evidence remains in separately digested artifacts. The
+manifest references it rather than copying raw invocation input, evaluator
+truth, provider payloads, or sensitive trace fields into every report.
+
+Assurance bundle assembly must parse and validate the supported schema version,
+contract identity, effective plan identity, eval-plan identity, completion
+state, and referenced artifact digests. An arbitrary JSON object cannot count
+as verified eval evidence.
+
+Version `1` uses a directory artifact:
+
+```text
+eval-run/
+  manifest.json
+  trials/
+    <trial-execution-id>/
+      result.json
+      trace.jsonl
+      closure.json
+      assessments.json
+```
+
+The manifest is the commit point for referenced trial artifacts. An append-only
+execution ledger or alternate artifact store may be added later without
+changing the manifest semantics.
+
+### Baseline comparability
+
+A baseline is not comparable merely because it has a digest and aggregate
+rates.
+
+The campaign computes a comparability identity from:
+
+- eval environment and effective dependency implementations;
+- target adapter and model-source posture;
+- fixture dataset and trial-selection policy;
+- approval and judge policies;
+- measurement, redaction, and aggregation policies; and
+- any other field designated invariant by the selected baseline policy.
+
+The baseline policy explicitly names which subject-under-test fields may
+differ. For example, a release comparison may deliberately allow the contract,
+effective plan, or provider model version to change while requiring the same
+fixtures, judge, dependency posture, and measurement policy.
+
+If a required invariant differs, the comparison result is `incomparable`.
+Thresholds and regression tolerances are not applied to incomparable evidence.
+The report explains every differing identity. The default policy is strict;
+allowing differences requires a named, digested policy.
+
+## Failure Semantics
+
+| Condition | Execution status | Assessment consequence |
+| --- | --- | --- |
+| Required plan mapping or eval capability is unsupported | campaign does not start | no trial assessment |
+| Eval environment resolves an unsafe or production dependency | campaign does not start | no trial assessment |
+| Native invocation completes with conforming evidence | `succeeded` | assess normally |
+| Required expectation or control is disproven | `succeeded` | `violated` |
+| Approval is denied and no prohibited action occurs | `succeeded` | depends on declared expectations and applicability |
+| Provider, tool, fixture, or host-workflow failure | `failed` | `unverified` unless captured evidence proves a violation |
+| Judge failure after valid execution | `succeeded` | affected quality result is `unverified` |
+| Deadline expires | `timed_out` | `unverified` unless captured evidence proves a violation |
+| User cancellation | `cancelled` | `unverified` unless captured evidence proves a violation |
+| Trace identity, attempt chain, or closure is contradictory | `invalid_evidence` | fail closed; assurance refuses the trial |
+| Required negative assertion lacks complete closure | unchanged | assertion is `unverified` |
+| Test double attempts a disallowed side effect | `failed` or `invalid_evidence` | explicit violation when evidence establishes the attempt |
+
+Campaign policy decides whether independent remaining trials continue after a
+normal failed or timed-out trial. Identity corruption, unsafe dependency
+resolution, or evidence contamination aborts the campaign.
+
+## Security Defaults
+
+- Eval environments are explicit, named, versioned, and digested.
+- Every external boundary resolves through the effective eval plan.
+- Production fallback is forbidden.
+- Side-effecting capabilities default to denied.
+- Live side effects require an explicit posture, implementation, policy, and
+  user acknowledgement.
+- Fixture values are typed and audience-classified.
+- Evaluator truth is structurally absent from invocation requests.
+- Raw sensitive inputs are absent from default report serialization.
+- Judges receive only a permitted redacted view.
+- Network and secret isolation are claimed only when an identified environment
+  provider enforces them.
+- Live-provider runs report model, cost, data, and retention posture.
+- Assurance bundles remain evidence packages, not compliance certification.
+
+## Python API
+
+```python
+materialized = materialize_eval_runner(
     "agent_contracts",
-    target="openai",
+    target="strands",
     profile="test",
     environment="local_fixtures",
+    model_source="scripted",
 )
 
-report = await runner.run(
+artifact = await materialized.runner.run(
     trials=3,
     thresholds=CampaignThresholds(min_pass_rate=0.95),
 )
 ```
 
-Keep lower-level functions available for adapters and tests, but make this the
-normal documented path.
+Replay remains explicit:
 
-## Failure Semantics
+```python
+artifact = await assess_replay_campaign(
+    "agent_contracts",
+    target="openai",
+    profile="test",
+    data="eval-data.json",
+)
+```
 
-The runner must distinguish failures accurately:
+Lower-level provider and assessor APIs remain available for adapters,
+application integrations, and tests.
 
-| Condition | Trial outcome |
-| --- | --- |
-| Model returns a conforming output but violates a required expectation/control | `violated` |
-| Approval is denied and the contract expects no action | potentially `passed`, depending on expectations/control applicability |
-| Model/provider/tool/judge/fixture failure | `unverified` unless supplied evidence proves a violation |
-| Missing or incomplete trace closure for a negative assertion | `unverified` |
-| Required plan mapping unsupported or unsafe eval environment | fail before campaign execution |
-| Test double attempts a disallowed side effect | explicit violation/failure with trace evidence |
+## Migration
 
-This preserves the existing asymmetric evidence rule: absence only proves a
-negative claim when the relevant channel is demonstrably closed.
-
-## Security and Safety Defaults
-
-This feature is particularly important for the business-policy and healthcare
-safety patterns in the documentation. It must not create a path that claims to
-test safety while quietly reaching production systems.
-
-Required defaults and checks include:
-
-- test environments are explicit, named, and digested;
-- all external boundaries resolve through the selected environment;
-- test fixtures are validated and audience-classified;
-- side-effecting capabilities require an explicit sandbox implementation or
-  are denied;
-- no production secrets, external context, or persistence are inherited by
-  convention;
-- live-model use is explicit and reports model, cost, and data posture;
-- quality judges receive only a permitted redacted audience view;
-- raw sensitive inputs are not copied into output reports by default; and
-- users can assemble an assurance bundle from a live eval report, but the
-  bundle remains evidence, not compliance certification.
-
-## Migration From Current Behavior
-
-1. Preserve the current file-backed implementation as a first-class replay
-   engine with truthful naming and documentation.
-2. Add eval-environment models, parsing, validation, serialization, and plan
-   digesting without changing contract source authority.
-3. Implement the OpenAI materialized runner behind the new public API.
-4. Convert one existing public example to materialized local fixtures, while
-   retaining a replay fixture for deterministic assessor coverage.
-5. Change the public `eval` command to the materialized execution story and
-   move old file semantics to an explicit replay command as part of a deliberate
-   pre-1.0 migration.
-6. Update README, language reference, CLI reference, quality guidance, example
-   docs, and all tests so no page implies that replay executes an agent.
-
-No compatibility alias should preserve the ambiguous meaning of “run eval.”
+1. Freeze and document the current file schema as replay input.
+2. Add versioned campaign artifact and lifecycle models shared by replay and
+   native execution.
+3. Add typed trial-data channels and remove evaluator truth from public trial
+   serialization.
+4. Add `EvalEnvironment`, overlay authority validation, and effective-plan
+   digesting before any native executor ships.
+5. Add the adapter-neutral executor contract and capability reporting to the
+   existing adapter registry.
+6. Implement at least one full native vertical slice, then implement the same
+   public contract for OpenAI, Strands, and Google ADK without changing the
+   portable models.
+7. Replace the CLI with explicit `eval replay` and `eval run` commands.
+8. Update README, CLI, eval-language, quality, and example documentation in the
+   same change. No page may describe replay as agent execution.
+9. Reject unversioned or identity-incomplete eval results in new assurance
+   bundles.
 
 ## Implementation Tranches
 
-### Tranche 1: semantics and plans
+### Tranche 1: identity, data, and artifacts
 
-- Define `EvalEnvironment` and `EvalMaterializationPlan` models.
-- Extend target-binding schema, loader, validation, serialization, and
-  conformance checks.
-- Prove eval environments cannot duplicate portable contract authority.
-- Add plan visualization and semantic-diff coverage for environment changes.
-- Add exact digest rules and fail-closed validation.
+- Define campaign/trial execution identity and state transitions.
+- Define typed invocation, host-context, evaluator-truth, and report channels.
+- Define the versioned campaign manifest and per-trial artifacts.
+- Add comparability policy and `incomparable` results.
+- Add incremental atomic persistence and resume validation.
 
-### Tranche 2: materialized OpenAI execution
+### Tranche 2: eval environments and planning
 
-- Introduce the eval-runner materialization entry point.
-- Reuse the existing OpenAI graph/materialization path.
-- Add typed fixture resolution, tool/context override resolution, and approval
-  interception.
-- Integrate the normalized trace router with exact snapshot/closure capture.
-- Produce `EvalExecution` directly from live native execution.
+- Define and load `EvalEnvironment`.
+- Validate overlay authority and sealed dependency coverage.
+- Compute the effective binding and one authoritative materialization plan.
+- Add eval-plan visualization and semantic-diff coverage.
+- Record model, side-effect, dependency, isolation, policy, and measurement
+  posture.
 
-### Tranche 3: judging and reports
+### Tranche 3: cross-target execution
 
-- Add a reviewable judge binding with external prompt/policy assets.
-- Redact judge inputs according to audience and environment rules.
-- Extend campaign report and assurance bundle data with eval-environment and
-  judge provenance.
-- Add cost, latency, token, and provider-error coverage from real trials.
+- Extend adapter registration with eval-executor capabilities.
+- Reuse existing materialization and provider-neutral trace sessions.
+- Implement the built-in direct-entry executor contract.
+- Add exact approval-request correlation.
+- Prove native local/scripted execution where supported and explicit
+  provider-backed execution where required.
 
-### Tranche 4: replay migration and documentation
+### Tranche 4: assessment and assurance
 
-- Rename/reposition `FileEvalProvider` behavior as replay.
-- Update CLI semantics and examples.
-- Add a complete local-fixture, materialized-eval tutorial.
-- Update the business-policy, healthcare, and vendor/payment guides to show
-  actual execution, not only evidence fixtures.
+- Integrate operational-control assessment.
+- Add audience-safe judge requests and policy provenance.
+- Validate campaign artifacts during assurance assembly.
+- Preserve behavioral, run-spec, operational, and quality results as distinct
+  evidence types.
 
-### Tranche 5: hardening and additional targets
+### Tranche 5: CLI, examples, and hardening
 
-- Add concurrency, retry, cancellation, timeout, and crash-recovery tests.
-- Verify side-effect denial and production-fallback prevention.
-- Add a remote/application-entrypoint integration path.
-- Implement the same public runner contract for additional provider targets.
+- Introduce `eval replay` and `eval run`.
+- Convert one public example to a complete native local-fixture campaign while
+  retaining replay coverage.
+- Add timeout, cancellation, retry, resume, crash, isolation, and concurrency
+  tests.
+- Add full-path acceptance tests for OpenAI, Strands, and Google ADK.
 
 ## Validation Requirements
 
-The implementation should add tests for:
+The implementation is incomplete until tests prove:
 
-- fixture types, hidden-truth audience separation, and invalid fixture failure;
-- complete replacement of declared dependencies by sealed eval environments;
-- refusal to invoke production bindings when an eval environment is selected;
-- approval allow, deny, missing, and out-of-order behavior;
-- actual OpenAI agent invocation with local fake tools;
-- normalized trace correlation, closure, and absence assertions;
-- output, control, quality, and provider-failure result semantics;
-- redaction before judge/export;
-- plan/environment/judge digest changes and baseline comparability;
-- concurrency and idempotency behavior for side-effecting test doubles; and
-- replay behavior after its explicit migration.
+- typed fixture resolution and entry-parameter validation;
+- structural absence of evaluator truth from execution, trace, judge, and
+  default report views;
+- complete replacement of production dependencies by a sealed environment;
+- honest failure of unsupported isolation claims;
+- one effective plan digest across graph, trace, trial, and artifact;
+- native entry-agent invocation for every supported target;
+- adapter-specific scripted/provider model-source validation;
+- fresh mutable runtime and trace state per trial;
+- retry-chain and terminal-attempt selection;
+- approval allow, deny, expiry, argument mismatch, wrong attempt, and
+  out-of-order behavior;
+- closure and negative-assertion semantics after success, exception, timeout,
+  and cancellation;
+- instrumentation quiescence before the final trace/closure snapshot;
+- separate execution and assessment statuses;
+- atomic trial persistence and identity-validated resume;
+- operational-control assessment from attested metrics;
+- audience-safe judge and report redaction;
+- versioned assurance ingestion and artifact-digest validation;
+- strict and policy-authorized baseline comparison, including
+  `incomparable`; and
+- replay behavior after the explicit CLI migration.
 
-At least one public example must prove the full path:
+At least one public fixture per target must prove:
 
 ```text
-contract -> plan -> materialized eval runner -> real trial -> normalized trace
--> closure -> expectation/control/quality assessment -> campaign report
+contract
+  -> eval overlay
+  -> effective plan
+  -> native graph
+  -> real trial invocation
+  -> trace and closure snapshot
+  -> expectation/control/quality assessment
+  -> versioned campaign artifact
 ```
 
-That fixture must not use a second hand-authored agent registry or prebuilt
-trace as a substitute for the materialized trial.
+Those fixtures may use deterministic model drivers where the target supports
+them, but they may not substitute a second hand-authored agent registry or a
+prebuilt trace for native execution.
 
-## Open Design Questions
+## Deferred Follow-Ups
 
-1. **Configuration shape:** should eval environments be target-level entries,
-   profile-owned entries, or separate binding files selected by CLI/API? The
-   recommended direction is target-level, named entries selected alongside a
-   complete profile, because it keeps model selection separate from dependency
-   replacement.
-2. **Model drivers:** how should deterministic scripted model behavior coexist
-   with real-provider live runs? A scripted driver is useful for integration
-   tests but must not be mislabeled as model-behavior evaluation.
-3. **Side effects:** should materialized eval environments categorically forbid
-   contract-declared side-effecting tools unless they resolve to a marked
-   sandbox, or permit explicitly approved test stores? The safe default should
-   be denial; the exact capability marker needs design.
-4. **Host workflows:** what is the smallest interface that lets applications
-   evaluate their deterministic outer workflow without turning Contract4Agents
-   into a workflow engine?
-5. **Quality judges:** should the first release support only an injected Python
-   judge callable, or ship a target-backed judge adapter with a strongly
-   reviewable external prompt asset?
-6. **Trial isolation:** when may a graph be reused across trials, and which
-   state/context/session objects must be recreated every time? Defaulting to
-   fresh trial state is safest.
-7. **Cost control:** what explicit budgets, concurrency limits, and live-model
-   acknowledgements should be required before a CLI starts an expensive live
-   campaign?
-8. **Baseline policy:** which digests must match for a baseline comparison to
-   be meaningful, and which changes should create an explicit incomparable
-   result rather than a regression verdict?
+These do not block the initial local, side-effect-denied implementation:
+
+- Add a concrete sandbox provider that can enforce filesystem, network,
+  process, and secret isolation beyond `InProcessEnvironment`.
+- Define additional acknowledgements, budgets, and concurrency controls before
+  enabling `explicit_live` side effects. Provider-backed models can ship
+  earlier with explicit model selection, denied side effects, and reported
+  cost/data posture.
+- Add graph-reuse attestations only after an adapter can prove stateless native
+  graph reuse. Fresh trial systems remain the default.
+- Add an append-only ledger or alternate artifact store behind the versioned
+  directory-manifest contract when operational demand justifies it.
 
 ## Decision Summary
 
-Proceed with a materialized eval runner. Treat it as a first-class sibling of
-normal agent materialization, not as a custom-provider convenience layer.
+Proceed with a cross-target materialized eval runner, but do not implement the
+older OpenAI-first proposal verbatim.
 
-The essential promise should be:
+The essential promise is:
 
-> Configure the narrow domain dependencies that only the application can know.
-> Contract4Agents materializes and executes the reviewed agent graph, captures
-> the evidence, and assesses the result.
+> Contract4Agents applies the selected eval overlay before planning, invokes
+> the reviewed native graph through a target adapter, captures one
+> identity-bound evidence frontier, and assesses it without exposing
+> evaluator-only truth or silently reaching production systems.
 
-If that promise cannot be met safely for a selected target/environment, planning
-must say so before a trial runs.
+For host-owned workflows, Contract4Agents assesses finalized workflow and trace
+evidence; it does not become the workflow engine.
+
+If the selected target, model source, environment, isolation provider, or
+evidence path cannot meet that promise, planning must say so before a trial
+runs.
