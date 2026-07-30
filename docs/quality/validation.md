@@ -29,7 +29,8 @@ pdm run smoke:cli
 The smoke suite exercises every public example through the supported
 contract-first path: source check, target/profile plan, compilation,
 visualization, and eval campaign. It must not depend on a second hand-authored
-runtime inventory.
+runtime inventory. `scripts/smoke_cli.py` keeps the example and target matrix
+as structured data while the PDM command remains the stable entry point.
 
 ## Generated Artifact Freshness
 
