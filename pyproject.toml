@@ -49,12 +49,12 @@ contract4agents-language-server = "contract4agents.language_server:main"
 
 [project.optional-dependencies]
 google-adk = [
-    "google-adk>=2.5.0",
-    "google-genai>=2.14.0",
+    "google-adk>=2.6.0",
+    "google-genai>=2.16.0",
 ]
 openai = [
-    "openai>=2.44.0",
-    "openai-agents>=0.17.7",
+    "openai>=2.51.0",
+    "openai-agents>=0.19.1",
 ]
 strands = [
     "strands-agents>=1.50.2",
@@ -143,8 +143,8 @@ files = ["src"]
 dev = [
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
-    "ruff>=0.15.20",
-    "mypy>=2.1.0",
+    "ruff>=0.16.1",
+    "mypy>=2.3.0",
     "pytest-asyncio>=1.4.0",
     "types-jsonschema>=4.26.0.20260518",
 ]
