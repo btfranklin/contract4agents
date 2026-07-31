@@ -31,7 +31,8 @@ produces `unverified`. Semantic work is never reported as skipped-and-passed.
 
 ## Deterministic and Live Providers
 
-`FileEvalProvider` reads deterministic judge decisions from `eval-data.json`.
+`FileEvalProvider` reads deterministic replay judge decisions from
+`eval-data.json`.
 A custom `EvalProvider.judge` implementation can call OpenAI or another judge
 service and return `JudgeDecision`.
 

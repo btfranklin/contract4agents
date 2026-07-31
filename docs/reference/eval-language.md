@@ -2,7 +2,7 @@
 
 `.eval` files declare scenarios against canonical agent IDs. The selected
 target plan supplies the runtime inventory and expected event types; eval source
-contains only case inputs and outcome expectations.
+contains portable scenario givens and outcome expectations.
 
 ```contract
 eval answers_from_current_evidence for ResearchLead:
@@ -17,14 +17,16 @@ eval answers_from_current_evidence for ResearchLead:
 
 ## Givens
 
-`given <name> = <value>` supplies an agent input or named eval-provider value.
-`TypeName.fixture("name")` requests a provider-owned fixture whose result must
-conform to the named contract type. `hidden_truth` values are evaluator-only
-and must not enter model instructions or ordinary runtime context.
+`given <name> = <value>` supplies a portable scenario value. The built-in
+`FileEvalProvider` combines literal givens with the case and trial `invocation`
+objects from `eval-data.json`. Custom providers resolve the same typed
+invocation boundary. Typed `TypeName.fixture("name")` resolution is reserved
+for the future native runner and is not performed by replay.
 
-The built-in `FileEvalProvider` resolves these values from `eval-data.json`.
-Other `EvalProvider` implementations may supply live application inputs,
-replayed data, external context, datasources, approvals, and judge decisions.
+Replay data keeps host fixture context, evaluator truth, and redacted report
+data in separate `host_context`, `evaluator_truth`, and `report` objects.
+Evaluator truth must not enter invocation input, model instructions, ordinary
+runtime context, judge requests, or default report output.
 
 ## Deterministic Expectations
 
@@ -78,8 +80,8 @@ default and do not enter the model prompt.
 
 ## Hidden Truth
 
-Hidden truth may use scalar values or explicit matcher objects in deterministic
-eval data:
+The `evaluator_truth` object may contain scalar hidden-truth values or explicit
+matcher objects:
 
 ```json
 {"contains_all": ["rollback", "checkout-api"]}
@@ -89,16 +91,19 @@ eval data:
 {"contains_any": ["revert", "disable"]}
 ```
 
-The hidden-truth loader and assessor are evaluation concerns. Hidden values
-must be omitted from runtime inputs and audience views that include the model.
+The hidden-truth loader and assessor are evaluation concerns. The provider
+passes this object only through the typed evaluator channel; hidden values are
+structurally unavailable to replay execution and omitted from ordinary report
+serialization.
 
 ## Campaign Results
 
-Each trial finishes as `passed`, `violated`, or `unverified`. Campaign reports
+Each trial finishes as `passed`, `violated`, or `unverified`. Replay reports
 separate deterministic expectations, contract control results, quality results,
-trace evidence, and provider failures. Repeated campaigns add rates,
-uncertainty intervals, latency/cost/token summaries, threshold checks, and
-baseline comparisons.
+trace evidence, and provider failures. They expose an invocation digest and an
+explicit redacted `report` projection, never generic raw `inputs`. Repeated
+campaigns add rates, uncertainty intervals, latency/cost/token summaries,
+threshold checks, and baseline comparisons.
 
 ## Run-Spec Relations
 

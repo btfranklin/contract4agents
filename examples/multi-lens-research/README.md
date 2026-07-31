@@ -53,13 +53,14 @@ pdm run contract4agents compile examples/multi-lens-research \
 pdm run contract4agents plan examples/multi-lens-research \
   --target openai --profile test \
   --out .contract/build/multi-lens-research/plan.json
-pdm run contract4agents eval examples/multi-lens-research \
+pdm run contract4agents eval replay examples/multi-lens-research \
   --target openai --profile test
 ```
 
-The test path is deterministic and requires no provider credentials. Review the
-canonical IR and plan before the eval report: they show exactly what the
-campaign was expected to execute and observe. The example also includes
+The replay path is deterministic and requires no provider credentials. It
+assesses supplied output and trace evidence without invoking the planned graph.
+Review the canonical IR and plan before the replay report: they show exactly
+what the supplied evidence is assessed against. The example also includes
 `strands` and `google_adk` targets with the same named in-process environment.
 
 ## Materialize

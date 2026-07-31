@@ -35,6 +35,7 @@ def test_cli_help_and_check() -> None:
     help_result = runner.invoke(main, ["--help"])
     check_result = runner.invoke(main, ["check", str(EXAMPLE)])
     eval_help = runner.invoke(main, ["eval", "--help"])
+    replay_help = runner.invoke(main, ["eval", "replay", "--help"])
 
     assert help_result.exit_code == 0
     assert {"assess", "assure", "compile", "diff", "eval", "generate", "plan"} <= set(
@@ -43,7 +44,9 @@ def test_cli_help_and_check() -> None:
     assert "through assurance" in help_result.output
     assert check_result.exit_code == 0
     assert "passed" in check_result.output
-    assert "target profile" in eval_help.output
+    assert "replay" in eval_help.output
+    assert "replayed evidence" in replay_help.output
+    assert "--target" in replay_help.output
 
 
 def test_cli_check_keeps_projects_without_target_bindings_provider_neutral(tmp_path: Path) -> None:
@@ -207,10 +210,11 @@ def test_cli_contract_first_workflow(tmp_path: Path) -> None:
     write_trace_jsonl(trace, evaluated_trace)
     closure_path.write_text(TraceClosureManifest((evaluated_closure,)).to_json())
 
-    eval_run = runner.invoke(
+    eval_replay = runner.invoke(
         main,
         [
             "eval",
+            "replay",
             str(EXAMPLE),
             "--target",
             "openai",
@@ -220,8 +224,8 @@ def test_cli_contract_first_workflow(tmp_path: Path) -> None:
             str(eval_results),
         ],
     )
-    assert eval_run.exit_code == 0, eval_run.output
-    assert "1 passed, 0 violated, 0 unverified" in eval_run.output
+    assert eval_replay.exit_code == 0, eval_replay.output
+    assert "1 passed, 0 violated, 0 unverified" in eval_replay.output
 
     assessment = runner.invoke(
         main,
@@ -480,11 +484,12 @@ def test_cli_assure_assesses_versioned_run_spec_evidence(tmp_path: Path) -> None
     assert run_specs["results"][0]["status"] == "passed"
 
 
-def test_cli_eval_requires_provider_data(tmp_path: Path) -> None:
+def test_cli_eval_replay_requires_provider_data(tmp_path: Path) -> None:
     result = CliRunner().invoke(
         main,
         [
             "eval",
+            "replay",
             str(EXAMPLE),
             "--target",
             "openai",
@@ -499,7 +504,24 @@ def test_cli_eval_requires_provider_data(tmp_path: Path) -> None:
     assert "Could not load eval data" in result.output
 
 
-def test_cli_eval_campaign_identity_tracks_the_selected_named_profile(
+def test_cli_eval_removed_ambiguous_command_form() -> None:
+    result = CliRunner().invoke(
+        main,
+        [
+            "eval",
+            str(EXAMPLE),
+            "--target",
+            "openai",
+            "--profile",
+            "test",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "No such command" in result.output
+
+
+def test_cli_eval_replay_identity_tracks_the_selected_named_profile(
     tmp_path: Path,
     monkeypatch,
 ) -> None:  # type: ignore[no-untyped-def]
@@ -542,6 +564,7 @@ def test_cli_eval_campaign_identity_tracks_the_selected_named_profile(
             main,
             [
                 "eval",
+                "replay",
                 str(EXAMPLE),
                 "--target",
                 "openai",

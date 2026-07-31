@@ -1,8 +1,9 @@
 # Deterministic Eval Data
 
-Public examples use deterministic data to exercise contracts, plans, traces,
-controls, and quality criteria without provider credentials. The data is an
-eval-provider input, not a second description of the agent system.
+Public examples use deterministic replay data to exercise contracts, plans,
+traces, controls, and quality criteria without provider credentials. The data
+is supplied evidence, not a second description of the agent system and not a
+native execution request.
 
 ## Responsibilities
 
@@ -13,9 +14,12 @@ Contracts and the target plan already define:
 - controls, rubrics, and expected event types;
 - input and output schemas.
 
-`eval-data.json` supplies only case-specific facts:
+`eval-data.json` supplies only case-specific replay facts:
 
-- fixture values and optional trial input overrides;
+- invocation values and optional trial overrides;
+- host-only fixture context;
+- evaluator-only truth;
+- an explicit redacted report projection;
 - normalized output and trace events;
 - approval decisions;
 - semantic judge decisions;
@@ -31,12 +35,19 @@ agent factories, tool registries, or output-type mappings.
   "schema_version": "1",
   "cases": {
     "eval:IncidentCommander:discovers_checkout_cause": {
-      "inputs": {
-        "hidden_truth": {
-          "likely_cause": {
-            "contains_all": ["deploy", "checkout-api"]
-          }
+      "invocation": {
+        "request_id": "incident-checkout-latency"
+      },
+      "host_context": {
+        "fixture_dataset": "incident-command-v1"
+      },
+      "evaluator_truth": {
+        "likely_cause": {
+          "contains_all": ["deploy", "checkout-api"]
         }
+      },
+      "report": {
+        "fixture": "checkout-latency"
       },
       "trials": [
         {
@@ -87,10 +98,16 @@ agent factories, tool registries, or output-type mappings.
 }
 ```
 
-The loader fills run IDs, contract/plan digests, default provider correlation,
+The loader shallow-merges case and trial values within each of the four
+audience channels. `.eval` givens enter only `invocation`. It fills run IDs,
+contract/plan digests, default provider correlation,
 event and attempt IDs, terminal-attempt selections, parent relationships,
 evidence references, provenance, and safe
 redaction metadata when omitted. Explicit values are still strictly validated.
+
+Replay reports serialize an invocation digest and the explicit `report`
+projection. Raw invocation, host context, evaluator truth, and the removed
+generic `inputs` field are not exported.
 
 ## Seed Scripts
 

@@ -261,7 +261,12 @@ def visualize_cmd(
         _print_contract_error(exc)
 
 
-@main.command("eval")
+@main.group("eval")
+def eval_group() -> None:
+    """Assess declared eval cases."""
+
+
+@eval_group.command("replay")
 @click.argument("root", type=click.Path(path_type=Path), default=".", required=False)
 @click.option("--target", required=True, help="Target adapter name.")
 @click.option("--profile", required=True, help="Complete test profile name.")
@@ -271,7 +276,7 @@ def visualize_cmd(
 @click.option("--min-pass-rate", type=click.FloatRange(min=0, max=1), default=None)
 @click.option("--max-violation-rate", type=click.FloatRange(min=0, max=1), default=None)
 @click.option("--out", "output_path", type=click.Path(path_type=Path), default=None)
-def eval_cmd(
+def eval_replay_cmd(
     root: Path,
     target: str,
     profile: str,
@@ -282,7 +287,7 @@ def eval_cmd(
     max_violation_rate: float | None,
     output_path: Path | None,
 ) -> None:
-    """Run contract-derived eval cases with a target profile and data provider."""
+    """Assess contract-derived eval cases from replayed evidence."""
     try:
         ir, plan, _bindings = _resolve_plan(root, target, profile, bindings_path)
         provider_path = data_path or Path(root) / "eval-data.json"
@@ -303,13 +308,13 @@ def eval_cmd(
             )
         )
         rendered = json.dumps(report.to_dict(), indent=2, sort_keys=True) + "\n"
-        destination = output_path or Path(root) / ".contract" / "eval-results.json"
+        destination = output_path or Path(root) / ".contract" / "eval-replay.json"
         destination = destination if destination.is_absolute() else Path.cwd() / destination
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(rendered)
         rates = report.summary.rates
         click.echo(
-            f"Eval campaign: {rates.passed} passed, {rates.violated} violated, "
+            f"Eval replay: {rates.passed} passed, {rates.violated} violated, "
             f"{rates.unverified} unverified ({rates.total} trials)"
         )
         click.echo(f"Results written to {destination}")
@@ -319,7 +324,7 @@ def eval_cmd(
             if item.status != "passed"
         )
         if rates.violated or rates.unverified or failed_comparisons:
-            raise click.ClickException("Contract4Agents eval failed")
+            raise click.ClickException("Contract4Agents eval replay failed")
     except ContractError as exc:
         _print_contract_error(exc)
     except PlanningError as exc:
@@ -329,7 +334,7 @@ def eval_cmd(
     except Exception as exc:
         if isinstance(exc, click.ClickException):
             raise
-        raise click.ClickException(f"Contract4Agents eval failed: {exc}") from exc
+        raise click.ClickException(f"Contract4Agents eval replay failed: {exc}") from exc
 
 
 @main.command("assess")

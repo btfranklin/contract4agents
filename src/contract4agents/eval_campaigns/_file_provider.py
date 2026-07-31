@@ -9,11 +9,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from contract4agents.eval_campaigns._models import TrialMetrics
+from contract4agents.eval_campaigns._models import (
+    EvaluatorTruth,
+    FinalizedTrialEvidence,
+    HostFixtureContext,
+    InvocationInputs,
+    RedactedTrialView,
+    ResolvedTrialData,
+    TrialMetrics,
+)
 from contract4agents.eval_campaigns._provider import (
     ApprovalDecision,
     ApprovalRequest,
-    EvalExecution,
     EvalExecutionRequest,
     EvalProviderError,
     JudgeDecision,
@@ -66,17 +73,27 @@ class FileEvalProvider:
                 f"Unsupported eval-data schema_version `{root.get('schema_version')}`"
             )
         cases = _object("eval data cases", root.get("cases"))
+        _validate_cases(cases)
         return cls(cases, path.name)
 
-    async def resolve_inputs(self, case: EvalIR, *, trial_index: int) -> Mapping[str, object]:
+    async def resolve_trial_data(self, case: EvalIR, *, trial_index: int) -> ResolvedTrialData:
         case_data = self._case(case.id)
         trial = self._trial(case.id, trial_index)
-        resolved = {name: thaw_json(value) for name, value in case.givens.items()}
-        resolved.update(_object("case inputs", case_data.get("inputs", {})))
-        resolved.update(_object("trial inputs", trial.get("inputs", {})))
-        return resolved
+        invocation = {name: thaw_json(value) for name, value in case.givens.items()}
+        invocation.update(_object("case invocation", case_data.get("invocation", {})))
+        invocation.update(_object("trial invocation", trial.get("invocation", {})))
+        return ResolvedTrialData(
+            invocation=InvocationInputs(invocation),
+            host_context=HostFixtureContext(
+                _merged_channel("host_context", case_data, trial)
+            ),
+            evaluator_truth=EvaluatorTruth(
+                _merged_channel("evaluator_truth", case_data, trial)
+            ),
+            report_view=RedactedTrialView(_merged_channel("report", case_data, trial)),
+        )
 
-    async def execute(self, request: EvalExecutionRequest) -> EvalExecution:
+    async def execute(self, request: EvalExecutionRequest) -> FinalizedTrialEvidence:
         trial = self._trial(request.case.id, request.trial_index)
         output = _object("trial output", trial.get("output"))
         events = _array("trial events", trial.get("events"))
@@ -97,7 +114,7 @@ class FileEvalProvider:
             evidence_refs=_strings("closure evidence_refs", closure_data.get("evidence_refs")),
         )
         metrics = _metrics(_object("trial metrics", trial.get("metrics", {})))
-        return EvalExecution(output, trace, closure, metrics)
+        return FinalizedTrialEvidence("succeeded", output, trace, closure, metrics)
 
     async def approve(self, request: ApprovalRequest) -> ApprovalDecision | None:
         trial = self._trial(request.case_id, _trial_index(request.trial_id))
@@ -284,6 +301,52 @@ def _metrics(value: Mapping[str, object]) -> TrialMetrics:
         input_tokens=_optional_int("input_tokens", value.get("input_tokens")),
         output_tokens=_optional_int("output_tokens", value.get("output_tokens")),
     )
+
+
+def _merged_channel(
+    key: str,
+    case_data: Mapping[str, object],
+    trial: Mapping[str, object],
+) -> dict[str, object]:
+    merged = dict(_object(f"case {key}", case_data.get(key, {})))
+    merged.update(_object(f"trial {key}", trial.get(key, {})))
+    return merged
+
+
+def _validate_cases(cases: Mapping[str, object]) -> None:
+    case_keys = {"evaluator_truth", "host_context", "invocation", "report", "trials"}
+    trial_keys = {
+        "approvals",
+        "closure",
+        "evaluator_truth",
+        "events",
+        "host_context",
+        "invocation",
+        "judges",
+        "metrics",
+        "output",
+        "report",
+    }
+    for case_id, value in cases.items():
+        case = _object(f"case `{case_id}`", value)
+        _reject_unknown_keys(f"case `{case_id}`", case, case_keys)
+        for index, trial_value in enumerate(
+            _array(f"case `{case_id}` trials", case.get("trials")),
+            start=1,
+        ):
+            trial = _object(f"case `{case_id}` trial {index}", trial_value)
+            _reject_unknown_keys(f"case `{case_id}` trial {index}", trial, trial_keys)
+
+
+def _reject_unknown_keys(
+    label: str,
+    value: Mapping[str, object],
+    allowed: set[str],
+) -> None:
+    unknown = sorted(set(value) - allowed)
+    if unknown:
+        rendered = ", ".join(f"`{key}`" for key in unknown)
+        raise EvalProviderError(f"{label} contains unsupported fields: {rendered}")
 
 
 def _trial_index(trial_id: str) -> int:

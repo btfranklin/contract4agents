@@ -16,7 +16,11 @@ from contract4agents.eval_campaigns._models import (
     CaseResult,
     ComparisonResult,
     EvalInventory,
+    EvaluatorTruth,
+    FinalizedTrialEvidence,
     QualityResult,
+    RedactedTrialView,
+    ResolvedTrialData,
     ResultSummary,
     TrialMetrics,
     TrialResult,
@@ -25,6 +29,7 @@ from contract4agents.eval_campaigns._models import (
 from contract4agents.eval_campaigns._provider import (
     EvalExecutionRequest,
     EvalProvider,
+    JudgeOutcome,
     JudgeRequest,
 )
 from contract4agents.ir import CanonicalIR, EvalIR, SemanticId, contract_digest
@@ -97,53 +102,114 @@ async def _run_trial(
     schemas: Mapping[str, dict[str, object]],
 ) -> TrialResult:
     trial_id = f"trial:{case.id}:{trial_index + 1:04d}"
+    trial_data: ResolvedTrialData | None = None
     try:
-        inputs = await provider.resolve_inputs(case, trial_index=trial_index)
-        execution = await provider.execute(
+        trial_data = await provider.resolve_trial_data(case, trial_index=trial_index)
+        evidence = await provider.execute(
             EvalExecutionRequest(
                 case=case,
                 trial_id=trial_id,
                 trial_index=trial_index,
-                inputs=inputs,
+                invocation=trial_data.invocation,
+                host_context=trial_data.host_context,
                 contract_digest=plan.contract_digest,
                 plan_digest=plan.plan_digest,
                 inventory=inventory,
             )
         )
     except Exception as exc:  # noqa: BLE001 - provider failures become explicit unverified trials.
+        evidence = FinalizedTrialEvidence(
+            "failed",
+            None,
+            None,
+            None,
+            TrialMetrics(),
+            f"Eval provider failed: {exc}",
+        )
+
+    judge_outcomes: Mapping[SemanticId, JudgeOutcome] = {}
+    if evidence.execution_status == "succeeded":
+        assert evidence.output is not None
+        assert evidence.trace is not None
+        validate_trace_conformance(ir, plan, evidence.trace)
+        judge_outcomes = await _resolve_judge_outcomes(
+            case,
+            trial_id,
+            evidence,
+            ir,
+            provider,
+        )
+    return assess_finalized_evidence(
+        ir=ir,
+        plan=plan,
+        case=case,
+        trial_id=trial_id,
+        evidence=evidence,
+        evaluator_truth=(
+            trial_data.evaluator_truth if trial_data is not None else EvaluatorTruth()
+        ),
+        invocation_digest=(
+            trial_data.invocation.digest if trial_data is not None else None
+        ),
+        report_view=(
+            trial_data.report_view if trial_data is not None else RedactedTrialView()
+        ),
+        judge_outcomes=judge_outcomes,
+        schemas=schemas,
+    )
+
+
+def assess_finalized_evidence(
+    *,
+    ir: CanonicalIR,
+    plan: MaterializationPlan,
+    case: EvalIR,
+    trial_id: str,
+    evidence: FinalizedTrialEvidence,
+    evaluator_truth: EvaluatorTruth,
+    invocation_digest: str | None,
+    report_view: RedactedTrialView,
+    judge_outcomes: Mapping[SemanticId, JudgeOutcome],
+    schemas: Mapping[str, dict[str, object]],
+) -> TrialResult:
+    """Assess already finalized evidence without acquiring or executing a trial."""
+
+    if evidence.execution_status == "failed":
         return TrialResult(
             case_id=str(case.id),
             trial_id=trial_id,
             status="unverified",
-            inputs=locals().get("inputs", {}),
-            output=None,
-            trace=None,
+            invocation_digest=invocation_digest,
+            report_view=report_view,
+            output=evidence.output,
+            trace=evidence.trace,
             expectations=(),
             controls=(),
             qualities=(),
             trace_evidence=None,
-            trace_closure=None,
-            metrics=TrialMetrics(),
-            diagnostic=f"Eval provider failed: {exc}",
+            trace_closure=evidence.closure,
+            metrics=evidence.metrics,
+            diagnostic=evidence.diagnostic,
         )
 
-    validate_trace_conformance(ir, plan, execution.trace)
+    assert evidence.output is not None
+    assert evidence.trace is not None
+    assert evidence.closure is not None
+    validate_trace_conformance(ir, plan, evidence.trace)
     trace_evidence = assess_trace_evidence(
-        execution.trace,
+        evidence.trace,
         plan.expected_event_types,
-        closure=execution.trace_closure,
+        closure=evidence.closure,
     )
-    hidden_truth_value = inputs.get("hidden_truth", {})
-    hidden_truth = hidden_truth_value if isinstance(hidden_truth_value, Mapping) else {}
     expectations = tuple(
         assess_expectation(
             expression,
-            output=execution.output,
-            trace=execution.trace,
+            output=evidence.output,
+            trace=evidence.trace,
             trace_evidence=trace_evidence,
             ir=ir,
             schemas=schemas,
-            hidden_truth=hidden_truth,
+            hidden_truth=evaluator_truth.values,
         )
         for expression in case.expectations
     )
@@ -152,14 +218,12 @@ async def _run_trial(
     }
     controls = tuple(
         result
-        for result in assess_controls(ir, plan, execution.trace, closure=execution.trace_closure)
+        for result in assess_controls(ir, plan, evidence.trace, closure=evidence.closure)
         if SemanticId.parse(result.control_id) in case_control_ids
     )
     qualities = tuple(
-        [
-            await _judge_quality(case, trial_id, quality_id, execution.output, execution.trace, ir, provider)
-            for quality_id in case.quality_ids
-        ]
+        _quality_result(quality_id, ir, judge_outcomes.get(quality_id))
+        for quality_id in case.quality_ids
     )
     required_control_ids = {
         str(control.id)
@@ -179,30 +243,57 @@ async def _run_trial(
         case_id=str(case.id),
         trial_id=trial_id,
         status=status,
-        inputs=inputs,
-        output=execution.output,
-        trace=execution.trace,
+        invocation_digest=invocation_digest,
+        report_view=report_view,
+        output=evidence.output,
+        trace=evidence.trace,
         expectations=expectations,
         controls=controls,
         qualities=qualities,
         trace_evidence=trace_evidence,
-        trace_closure=execution.trace_closure,
-        metrics=execution.metrics,
+        trace_closure=evidence.closure,
+        metrics=evidence.metrics,
+        diagnostic=evidence.diagnostic,
     )
 
 
-async def _judge_quality(
+async def _resolve_judge_outcomes(
     case: EvalIR,
     trial_id: str,
-    quality_id: SemanticId,
-    output: Mapping[str, object],
-    trace: object,
+    evidence: FinalizedTrialEvidence,
     ir: CanonicalIR,
     provider: EvalProvider,
-) -> QualityResult:
-    from contract4agents.tracing import NormalizedTrace
+) -> Mapping[SemanticId, JudgeOutcome]:
+    assert evidence.output is not None
+    assert evidence.trace is not None
+    outcomes: dict[SemanticId, JudgeOutcome] = {}
+    for quality_id in case.quality_ids:
+        quality = ir.qualities.get(quality_id)
+        if quality is None:
+            continue
+        try:
+            decision = await provider.judge(
+                JudgeRequest(
+                    case.id,
+                    trial_id,
+                    quality.id,
+                    quality.rubric,
+                    evidence.output,
+                    evidence.trace,
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 - judge failures remain explicit.
+            outcomes[quality_id] = JudgeOutcome(None, f"Judge failed: {exc}")
+        else:
+            outcomes[quality_id] = JudgeOutcome(decision)
+    return outcomes
 
-    assert isinstance(trace, NormalizedTrace)
+
+def _quality_result(
+    quality_id: SemanticId,
+    ir: CanonicalIR,
+    outcome: JudgeOutcome | None,
+) -> QualityResult:
     quality = ir.qualities.get(quality_id)
     if quality is None:
         return QualityResult(
@@ -211,17 +302,14 @@ async def _judge_quality(
             "The eval references an unknown quality rubric.",
             AssessorIdentity("contract4agents", "1"),
         )
-    try:
-        decision = await provider.judge(
-            JudgeRequest(case.id, trial_id, quality.id, quality.rubric, output, trace)
-        )
-    except Exception as exc:  # noqa: BLE001 - judge failures must not disappear or become passes.
+    if outcome is not None and outcome.diagnostic is not None:
         return QualityResult(
             str(quality.id),
             "unverified",
-            f"Judge failed: {exc}",
+            outcome.diagnostic,
             AssessorIdentity("unavailable-judge", "0"),
         )
+    decision = outcome.decision if outcome is not None else None
     if decision is None:
         return QualityResult(
             str(quality.id),
@@ -337,4 +425,4 @@ def _comparison(name: str, actual: float | None, operator: str, target: float) -
     )
 
 
-__all__ = ["run_campaign"]
+__all__ = ["assess_finalized_evidence", "run_campaign"]

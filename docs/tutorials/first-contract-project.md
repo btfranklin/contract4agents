@@ -187,7 +187,8 @@ Create `agent_contracts/eval-data.json`:
   "schema_version": "1",
   "cases": {
     "eval:SupportResponder:answers_shipping_question": {
-      "inputs": {"question": "When will my order ship?"},
+      "invocation": {"question": "When will my order ship?"},
+      "report": {"fixture": "shipping-question"},
       "trials": [
         {
           "output": {
@@ -230,20 +231,23 @@ Create `agent_contracts/eval-data.json`:
 }
 ```
 
-Now run the eval:
+Now replay the supplied eval evidence:
 
 ```bash
-contract4agents eval agent_contracts --target openai --profile development
+contract4agents eval replay agent_contracts \
+  --target openai \
+  --profile development
 ```
 
-This first eval is deliberately offline and repeatable. It proves that the
-declared output and expected tool call are assessed correctly before you connect
-the same contract to live or recorded executions.
+This first replay is deliberately offline and repeatable. It assesses the
+supplied output and trace against the declared output and expected tool call; it
+does not invoke the native agent or tool. That makes it useful before you
+connect the same contract to live or application-owned execution.
 
 ## Next Step
 
 You now have the first executable loop: contract, binding, plan, materialized
-agent, and deterministic eval. Continue with
+agent, and deterministic replay assessment. Continue with
 [Capture and Assure a Run](trace-and-assure.md) to add production trace capture,
 instrumentation closure, control assessment, and an assurance bundle. For
 multiple agents, context providers, approvals, and host-ownership boundaries,

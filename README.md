@@ -200,11 +200,13 @@ evidence. Controls and run specs remain distinct assurance results. Retried
 invocations can carry portable attempt identity and an explicit selected
 terminal attempt without moving retry or recovery decisions out of host code.
 
-`.eval` files name scenarios and expectations. The target/profile eval workflow
+`.eval` files name scenarios and expectations. The target/profile `eval replay`
+workflow assesses supplied evidence without invoking the planned graph. It
 derives its agent, capability, grant, control, and event-type inventory from the
 contract and plan; users do not restate the runtime in a fixture manifest.
-Repeated campaigns report pass, violation, and unverified rates with uncertainty,
-latency and cost summaries, thresholds, and optional baseline comparisons.
+Repeated replay campaigns report pass, violation, and unverified rates with
+uncertainty, latency and cost summaries, thresholds, and optional baseline
+comparisons.
 
 Assurance bundles join the canonical contract, materialization plan, normalized
 traces, trace closure, control results, eval summaries, and semantic diffs into

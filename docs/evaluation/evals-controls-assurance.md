@@ -79,23 +79,35 @@ The compiler derives the runtime inventory from the canonical IR and the
 materialization plan. The eval case does not repeat agent factories, tool
 registries, permissions, output types, or expected agent counts.
 
-## Campaign Execution
+## Replay Campaigns
 
-The public eval path selects the same target and profile used for planning:
+The public replay path selects the same target and profile used for planning:
 
 ```bash
-contract4agents eval agent_contracts --target openai --profile test
+contract4agents eval replay agent_contracts --target openai --profile test
 ```
 
-An eval provider supplies scenario inputs, external context, datasource/tool
-behavior, approval decisions, execution, and semantic judge decisions. The
-built-in file provider reads schema-version `1` `eval-data.json` for
-deterministic offline runs. Each trial includes an explicit closure declaration;
-the provider binds that declaration to the attempts and events it constructs.
-Custom providers implement the `EvalProvider` protocol for live, replayed, or
-application-integrated execution. `EvalExecution` returns both a normalized
-trace and its `TraceClosureEvidence`; a custom provider cannot authorize
-absence-dependent results with event-family occurrence alone.
+The built-in `FileEvalProvider` reads schema-version `1` `eval-data.json` and
+supplies prerecorded output, normalized trace events, trace closure, approval
+decisions, judge decisions, and metrics. It does not materialize or invoke the
+planned graph. Each closure declaration is bound to the attempts and events the
+provider constructs.
+
+Every provider resolves trial data into four typed audience channels:
+
+- `invocation`: values approved for execution;
+- `host_context`: trial-scoped host data that is not automatically
+  model-visible;
+- `evaluator_truth`: scorer-only facts;
+- `report_view`: an explicitly redacted projection for ordinary output.
+
+`EvalExecutionRequest` receives only invocation and host context.
+`FinalizedTrialEvidence` carries supplied execution status, output, trace,
+closure, metrics, and diagnostics into the shared provider-free assessor.
+Evaluator truth reaches deterministic assessment separately and is absent from
+execution requests, judge requests, traces by default, and replay report
+serialization. Reports bind invocation data by digest and serialize only the
+explicit redacted projection under `report`.
 
 Campaigns support repeated trials, pass/violation/unverified rates, Wilson
 uncertainty intervals, latency and cost summaries, thresholds, and baseline
@@ -104,13 +116,14 @@ disappearing or becoming passes.
 
 ## Shared Assessment
 
-`assess_controls(ir, plan, trace, closure=trace_closure)` is the common
-provider-neutral assessor. It
-uses the plan's requested mechanisms and expected event types when evaluating
-contract controls. Eval campaigns and production trace assessment call this
-same API. Both paths first validate trace conformance against the canonical
-contract and reviewed plan; invalid digests, undeclared capabilities, and
-missing or contradictory tool/grant identities are rejected before scoring.
+`assess_finalized_evidence(...)` is the shared trial boundary for replay
+acquisition and future native acquisition. It invokes no agent, fixture
+resolver, approval source, or judge. It validates conformance and assesses
+deterministic expectations, controls, explicit judge outcomes, and trace
+evidence. Internally it uses the same
+`assess_controls(ir, plan, trace, closure=trace_closure)` API as production
+trace assessment. Invalid digests, undeclared capabilities, and missing or
+contradictory tool/grant identities are rejected before scoring.
 
 Continuous monitoring is an operational pattern outside the contract language:
 a scheduler, trace pipeline, or observability service repeatedly invokes the

@@ -149,9 +149,10 @@ Contract4Agents features exercised:
 Why it is a good fixture:
 
 - It proves a portable capability can select a provider-native implementation
-  without making the offline eval campaign call the network.
+  without making the offline replay campaign call the network.
 - It makes freshness and source category visible in outputs.
-- It validates richer public examples with the same `eval` command as Incident Command.
+- It validates richer public examples with the same `eval replay` command as
+  Incident Command.
 
 ## Recommended Fixture Order
 

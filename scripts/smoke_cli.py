@@ -140,12 +140,12 @@ def _target_steps(
                 ),
             )
         )
-    eval_results = output / _artifact_name(target.name, "eval-results.json")
+    eval_results = output / _artifact_name(target.name, "eval-replay.json")
     if target.evaluate:
         steps.append(
             SmokeStep(
-                f"Evaluate {example.name} for {target.name}",
-                ("eval", *common, "--out", str(eval_results)),
+                f"Replay {example.name} evidence for {target.name}",
+                ("eval", "replay", *common, "--out", str(eval_results)),
             )
         )
     if target.assure:

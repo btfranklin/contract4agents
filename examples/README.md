@@ -11,7 +11,7 @@ example-name/
   assurance.contract              controls, quality, operational controls
   composition.contract            named delegation and handoff edges
   contract4agents.targets.toml     target implementations and profiles
-  eval-data.json                   deterministic offline provider data
+  eval-data.json                   deterministic offline replay evidence
 ```
 
 The contract project is canonical for semantic behavior. Target bindings do
@@ -29,13 +29,14 @@ pdm run contract4agents check ROOT
 pdm run contract4agents compile ROOT --out .contract/build/example
 pdm run contract4agents plan ROOT --target openai --profile test \
   --out .contract/build/example/plan.json
-pdm run contract4agents eval ROOT --target openai --profile test
+pdm run contract4agents eval replay ROOT --target openai --profile test
 pdm run contract4agents visualize ROOT --target openai --profile test \
   --out .contract/build/example/visualization
 ```
 
-The `test` profile and file-backed eval data require no provider credentials.
-Generated `.contract/` output is disposable.
+The `test` profile and file-backed replay evidence require no provider
+credentials. This command assesses supplied output and trace evidence; it does
+not invoke the planned graph. Generated `.contract/` output is disposable.
 
 Run `generate` separately only when an application imports generated types,
 and select only the language targets it consumes. For example:

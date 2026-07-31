@@ -47,14 +47,15 @@ pdm run contract4agents compile examples/incident-command \
 pdm run contract4agents plan examples/incident-command \
   --target openai --profile test \
   --out .contract/build/incident-command/plan.json
-pdm run contract4agents eval examples/incident-command \
+pdm run contract4agents eval replay examples/incident-command \
   --target openai --profile test
 ```
 
-The `test` profile and deterministic eval data use no provider credentials.
-Planning validates binding coverage and callable shape without invoking the
-fake tools. Replace `openai` with `strands` or `google_adk` to review the other
-built-in plans.
+The `test` profile and deterministic replay evidence use no provider
+credentials. Replay assesses supplied output and trace evidence; it does not
+invoke the planned graph or fake tools. Planning validates binding coverage and
+callable shape without invoking the fake tools. Replace `openai` with `strands`
+or `google_adk` to review the other built-in plans.
 
 ## Inspect the Result
 

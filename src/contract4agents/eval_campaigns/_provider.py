@@ -6,9 +6,15 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from contract4agents.eval_campaigns._models import EvalInventory, TrialMetrics
+from contract4agents.eval_campaigns._models import (
+    EvalInventory,
+    FinalizedTrialEvidence,
+    HostFixtureContext,
+    InvocationInputs,
+    ResolvedTrialData,
+)
 from contract4agents.ir import EvalIR, FrozenJsonValue, FrozenMap, SemanticId, freeze_json
-from contract4agents.tracing import NormalizedTrace, TraceClosureEvidence
+from contract4agents.tracing import NormalizedTrace
 
 
 class EvalProviderError(RuntimeError):
@@ -20,30 +26,17 @@ class EvalExecutionRequest:
     case: EvalIR
     trial_id: str
     trial_index: int
-    inputs: Mapping[str, object]
+    invocation: InvocationInputs
+    host_context: HostFixtureContext
     contract_digest: str
     plan_digest: str
     inventory: EvalInventory
 
     def __post_init__(self) -> None:
-        frozen = freeze_json(self.inputs)
-        if not isinstance(frozen, FrozenMap):
-            raise TypeError("Eval execution inputs must be a JSON object")
-        object.__setattr__(self, "inputs", frozen)
-
-
-@dataclass(frozen=True)
-class EvalExecution:
-    output: Mapping[str, object]
-    trace: NormalizedTrace
-    trace_closure: TraceClosureEvidence
-    metrics: TrialMetrics = field(default_factory=TrialMetrics)
-
-    def __post_init__(self) -> None:
-        frozen = freeze_json(self.output)
-        if not isinstance(frozen, FrozenMap):
-            raise TypeError("Eval execution output must be a JSON object")
-        object.__setattr__(self, "output", frozen)
+        if not isinstance(self.invocation, InvocationInputs):
+            raise TypeError("Eval execution invocation must be InvocationInputs")
+        if not isinstance(self.host_context, HostFixtureContext):
+            raise TypeError("Eval execution host context must be HostFixtureContext")
 
 
 @dataclass(frozen=True)
@@ -104,12 +97,24 @@ class JudgeDecision:
         object.__setattr__(self, "evidence_refs", _references(self.evidence_refs))
 
 
+@dataclass(frozen=True)
+class JudgeOutcome:
+    decision: JudgeDecision | None
+    diagnostic: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.decision is not None and self.diagnostic is not None:
+            raise ValueError("Judge outcome cannot contain both a decision and a diagnostic")
+        if self.diagnostic is not None:
+            _require_text("Judge diagnostic", self.diagnostic)
+
+
 class EvalProvider(Protocol):
     """Everything target-specific needed to run a portable eval campaign."""
 
-    async def resolve_inputs(self, case: EvalIR, *, trial_index: int) -> Mapping[str, object]: ...
+    async def resolve_trial_data(self, case: EvalIR, *, trial_index: int) -> ResolvedTrialData: ...
 
-    async def execute(self, request: EvalExecutionRequest) -> EvalExecution: ...
+    async def execute(self, request: EvalExecutionRequest) -> FinalizedTrialEvidence: ...
 
     async def approve(self, request: ApprovalRequest) -> ApprovalDecision | None: ...
 
@@ -145,10 +150,10 @@ def _require_text(label: str, value: str) -> None:
 __all__ = [
     "ApprovalDecision",
     "ApprovalRequest",
-    "EvalExecution",
     "EvalExecutionRequest",
     "EvalProvider",
     "EvalProviderError",
     "JudgeDecision",
+    "JudgeOutcome",
     "JudgeRequest",
 ]

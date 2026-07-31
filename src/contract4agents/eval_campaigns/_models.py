@@ -7,6 +7,7 @@ import json
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import Literal
 
 from contract4agents.assurance import (
     AssessorIdentity,
@@ -23,6 +24,49 @@ from contract4agents.tracing import (
 
 TrialStatus = AssuranceStatus
 ComparisonStatus = AssuranceStatus
+ExecutionStatus = Literal["succeeded", "failed"]
+
+
+@dataclass(frozen=True)
+class _TrialDataChannel:
+    values: Mapping[str, object] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "values", _freeze_object(self.values))
+
+    def to_dict(self) -> dict[str, object]:
+        thawed = _thaw(self.values)
+        assert isinstance(thawed, dict)
+        return thawed
+
+
+class InvocationInputs(_TrialDataChannel):
+    """Validated values approved for the entry-agent invocation."""
+
+    @property
+    def digest(self) -> str:
+        encoded = canonical_json(self.to_dict()).encode()
+        return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+
+class HostFixtureContext(_TrialDataChannel):
+    """Trial-scoped host data that is not automatically model-visible."""
+
+
+class EvaluatorTruth(_TrialDataChannel):
+    """Scorer-only expected answers that must never reach execution."""
+
+
+class RedactedTrialView(_TrialDataChannel):
+    """Explicit trial data approved for ordinary report serialization."""
+
+
+@dataclass(frozen=True)
+class ResolvedTrialData:
+    invocation: InvocationInputs
+    host_context: HostFixtureContext
+    evaluator_truth: EvaluatorTruth
+    report_view: RedactedTrialView
 
 
 @dataclass(frozen=True)
@@ -134,6 +178,30 @@ class TrialMetrics:
             "output_tokens": self.output_tokens,
             "total_tokens": self.total_tokens,
         }
+
+
+@dataclass(frozen=True)
+class FinalizedTrialEvidence:
+    execution_status: ExecutionStatus
+    output: Mapping[str, object] | None
+    trace: NormalizedTrace | None
+    closure: TraceClosureEvidence | None
+    metrics: TrialMetrics = field(default_factory=TrialMetrics)
+    diagnostic: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.execution_status not in {"succeeded", "failed"}:
+            raise ValueError(f"Unsupported execution status `{self.execution_status}`")
+        if self.execution_status == "succeeded" and (
+            self.output is None or self.trace is None or self.closure is None
+        ):
+            raise ValueError("Succeeded trial evidence requires output, trace, and closure")
+        if self.execution_status == "failed" and self.diagnostic is None:
+            raise ValueError("Failed trial evidence requires an execution diagnostic")
+        if self.output is not None:
+            object.__setattr__(self, "output", _freeze_object(self.output))
+        if self.diagnostic is not None:
+            _require_text("execution diagnostic", self.diagnostic)
 
 
 @dataclass(frozen=True)
@@ -316,7 +384,8 @@ class TrialResult:
     case_id: str
     trial_id: str
     status: TrialStatus
-    inputs: Mapping[str, object]
+    invocation_digest: str | None
+    report_view: RedactedTrialView
     output: Mapping[str, object] | None
     trace: NormalizedTrace | None
     expectations: tuple[ExpectationResult, ...]
@@ -331,7 +400,8 @@ class TrialResult:
         _require_text("case_id", self.case_id)
         _require_text("trial_id", self.trial_id)
         _require_status(self.status)
-        object.__setattr__(self, "inputs", _freeze_object(self.inputs))
+        if self.invocation_digest is not None:
+            _require_text("invocation_digest", self.invocation_digest)
         if self.output is not None:
             object.__setattr__(self, "output", _freeze_object(self.output))
         object.__setattr__(self, "expectations", tuple(self.expectations))
@@ -351,10 +421,11 @@ class TrialResult:
             "controls": [item.to_dict() for item in self.controls],
             "diagnostic": self.diagnostic,
             "expectations": [item.to_dict() for item in self.expectations],
-            "inputs": _thaw(self.inputs),
+            "invocation_digest": self.invocation_digest,
             "metrics": self.metrics.to_dict(),
             "output": _thaw(self.output) if self.output is not None else None,
             "qualities": [item.to_dict() for item in self.qualities],
+            "report": self.report_view.to_dict(),
             "status": self.status,
             "trace_evidence": (
                 self.trace_evidence.to_dict() if self.trace_evidence is not None else None
@@ -542,12 +613,19 @@ __all__ = [
     "CampaignThresholds",
     "CaseResult",
     "ComparisonResult",
+    "EvaluatorTruth",
     "EvalInventory",
+    "ExecutionStatus",
     "ExpectationResult",
+    "FinalizedTrialEvidence",
+    "HostFixtureContext",
+    "InvocationInputs",
     "MetricsSummary",
     "NumericSummary",
     "QualityResult",
     "RateSummary",
+    "RedactedTrialView",
+    "ResolvedTrialData",
     "ResultSummary",
     "TrialMetrics",
     "TrialResult",

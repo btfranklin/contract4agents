@@ -2,11 +2,10 @@
   "schema_version": "1",
   "cases": {
     "eval:IncidentCommander:discovers_checkout_cause": {
-      "inputs": {
-        "hidden_truth": {
-          "likely_cause": "deploy 8f31c2 changed payment timeout handling and caused checkout payment timeouts"
-        }
+      "evaluator_truth": {
+        "likely_cause": "deploy 8f31c2 changed payment timeout handling and caused checkout payment timeouts"
       },
+      "report": {"fixture": "checkout-latency"},
       "trials": [
         {
           "output": {

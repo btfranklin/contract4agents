@@ -12,8 +12,15 @@ from contract4agents.eval_campaigns import (
     BaselineTolerance,
     CampaignConfig,
     CampaignThresholds,
+    EvalExecutionRequest,
     EvalProviderError,
+    EvaluatorTruth,
     FileEvalProvider,
+    HostFixtureContext,
+    InvocationInputs,
+    JudgeRequest,
+    RedactedTrialView,
+    ResolvedTrialData,
     run_campaign,
 )
 from contract4agents.ir import (
@@ -42,7 +49,12 @@ from contract4agents.planning import (
 from contract4agents.tracing import TraceConformanceError
 
 
-def _ir(*, missing_judge: bool = False, negative_expectation: bool = False) -> CanonicalIR:
+def _ir(
+    *,
+    missing_judge: bool = False,
+    negative_expectation: bool = False,
+    hidden_truth_expectation: bool = False,
+) -> CanonicalIR:
     agent_id = semantic_id("agent", "SupportAgent")
     capability_id = semantic_id("tool", "status.publish")
     grant_id = semantic_id("grant", "SupportAgent", "status.publish")
@@ -57,6 +69,8 @@ def _ir(*, missing_judge: bool = False, negative_expectation: bool = False) -> C
             "trace.tool_called(status.publish)",
         )
     )
+    if hidden_truth_expectation:
+        expectations = (*expectations, "output discovers hidden_truth.expected_message")
     return CanonicalIR.create(
         types=(
             TypeIR(
@@ -271,7 +285,9 @@ def _write_eval_data(
                 "schema_version": "1",
                 "cases": {
                     "eval:SupportAgent:publishes_status": {
-                        "inputs": {"tenant": "acme"},
+                        "invocation": {"tenant": "acme"},
+                        "host_context": {"region": "us-west"},
+                        "report": {"fixture": "support-status"},
                         "trials": closed_trials,
                     }
                 },
@@ -359,6 +375,97 @@ async def test_campaign_runs_repeated_trials_and_reports_deterministic_statistic
     assert json.loads(result.to_json()) == result.to_dict()
     with pytest.raises(FrozenInstanceError):
         result.campaign_id = "changed"  # type: ignore[misc]
+
+
+@pytest.mark.asyncio
+async def test_trial_data_audiences_are_structurally_separate_and_reports_are_redacted(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "eval-data.json"
+    _write_eval_data(
+        path,
+        trials=[
+            {
+                "output": {"status": "ok", "message": "Published"},
+                "events": _event_data(),
+                "judges": {
+                    "quality:SupportAgent:useful": {
+                        "status": "passed",
+                        "reason": "Useful and direct.",
+                    }
+                },
+            }
+        ],
+    )
+    payload = json.loads(path.read_text())
+    case_data = payload["cases"]["eval:SupportAgent:publishes_status"]
+    case_data["invocation"] = {"tenant": "case-invocation-secret"}
+    case_data["host_context"] = {"region": "case-host-secret"}
+    case_data["evaluator_truth"] = {
+        "expected_message": {"contains_all": ["Published"]},
+        "private_note": "evaluator-secret",
+    }
+    case_data["report"] = {"fixture": "safe-support-fixture"}
+    case_data["trials"][0]["invocation"] = {"tenant": "trial-invocation-secret"}
+    case_data["trials"][0]["host_context"] = {"region": "trial-host-secret"}
+    path.write_text(json.dumps(payload))
+    delegate = FileEvalProvider.load(path)
+    ir = _ir(hidden_truth_expectation=True)
+    plan = _plan(ir)
+    resolved = await delegate.resolve_trial_data(
+        next(iter(ir.evals.values())),
+        trial_index=0,
+    )
+
+    assert isinstance(resolved, ResolvedTrialData)
+    assert isinstance(resolved.invocation, InvocationInputs)
+    assert isinstance(resolved.host_context, HostFixtureContext)
+    assert isinstance(resolved.evaluator_truth, EvaluatorTruth)
+    assert isinstance(resolved.report_view, RedactedTrialView)
+    assert resolved.invocation.values["tenant"] == "trial-invocation-secret"
+    assert resolved.host_context.values["region"] == "trial-host-secret"
+    assert resolved.evaluator_truth.values["private_note"] == "evaluator-secret"
+
+    class RecordingProvider:
+        def __init__(self) -> None:
+            self.execution_request: EvalExecutionRequest | None = None
+            self.judge_request: JudgeRequest | None = None
+
+        async def resolve_trial_data(self, case, *, trial_index):  # type: ignore[no-untyped-def]
+            return await delegate.resolve_trial_data(case, trial_index=trial_index)
+
+        async def execute(self, request: EvalExecutionRequest):  # type: ignore[no-untyped-def]
+            self.execution_request = request
+            return await delegate.execute(request)
+
+        async def judge(self, request: JudgeRequest):  # type: ignore[no-untyped-def]
+            self.judge_request = request
+            return await delegate.judge(request)
+
+    provider = RecordingProvider()
+    result = await run_campaign(ir, plan, provider, CampaignConfig("audience-separation"))
+    request = provider.execution_request
+    judge_request = provider.judge_request
+
+    assert request is not None
+    assert request.invocation.values["tenant"] == "trial-invocation-secret"
+    assert request.host_context.values["region"] == "trial-host-secret"
+    assert not hasattr(request, "inputs")
+    assert not hasattr(request, "evaluator_truth")
+    assert not hasattr(request, "report_view")
+    assert judge_request is not None
+    assert not hasattr(judge_request, "evaluator_truth")
+
+    trial = result.cases[0].trials[0]
+    serialized = trial.to_dict()
+    rendered = json.dumps(serialized)
+    assert trial.status == "passed"
+    assert serialized["invocation_digest"] == resolved.invocation.digest
+    assert serialized["report"] == {"fixture": "safe-support-fixture"}
+    assert "inputs" not in serialized
+    assert "trial-invocation-secret" not in rendered
+    assert "trial-host-secret" not in rendered
+    assert "evaluator-secret" not in rendered
 
 
 @pytest.mark.asyncio
@@ -470,4 +577,24 @@ def test_file_provider_rejects_unknown_eval_data_version(tmp_path: Path) -> None
     path.write_text(json.dumps({"schema_version": "99", "cases": {}}))
 
     with pytest.raises(EvalProviderError, match="Unsupported eval-data schema_version"):
+        FileEvalProvider.load(path)
+
+
+def test_file_provider_rejects_removed_generic_inputs_field(tmp_path: Path) -> None:
+    path = tmp_path / "eval-data.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": "1",
+                "cases": {
+                    "eval:SupportAgent:publishes_status": {
+                        "inputs": {"hidden_truth": {"secret": "must not leak"}},
+                        "trials": [],
+                    }
+                },
+            }
+        )
+    )
+
+    with pytest.raises(EvalProviderError, match="unsupported fields: `inputs`"):
         FileEvalProvider.load(path)

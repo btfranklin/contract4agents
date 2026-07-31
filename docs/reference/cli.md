@@ -108,18 +108,19 @@ Options:
 The command writes deterministic graph data, Mermaid source, and standalone
 HTML. Missing layers remain visibly unavailable rather than inferred.
 
-## `eval [ROOT]`
+## `eval replay [ROOT]`
 
-Run a target/profile eval campaign using normalized contract-bound evidence.
+Assess a target/profile eval campaign from supplied normalized contract-bound
+evidence. Replay does not materialize or invoke the planned graph.
 
 ```bash
-contract4agents eval agent_contracts \
+contract4agents eval replay agent_contracts \
   --target openai \
   --profile test \
   --trials 5 \
   --min-pass-rate 0.8 \
   --max-violation-rate 0.1 \
-  --out .contract/eval-results.json
+  --out .contract/eval-replay.json
 ```
 
 Options:
@@ -127,16 +128,19 @@ Options:
 - `--target NAME`: required.
 - `--profile NAME`: required.
 - `--bindings PATH`: optional target-binding override.
-- `--data PATH`: file-backed eval data; default `ROOT/eval-data.json`.
+- `--data PATH`: file-backed replay data; default `ROOT/eval-data.json`.
 - `--trials N`: trials per eval case; default `1`.
 - `--min-pass-rate RATE`: optional campaign threshold from `0` to `1`.
 - `--max-violation-rate RATE`: optional threshold from `0` to `1`.
-- `--out PATH`: default `ROOT/.contract/eval-results.json`.
+- `--out PATH`: default `ROOT/.contract/eval-replay.json`.
 
 The command compiles, plans, derives the runtime inventory, runs every canonical
-eval case through `FileEvalProvider`, assesses trace evidence, expectations,
-controls, and quality, and writes a deterministic JSON report. Any violated or
-unverified trial or failed threshold produces a nonzero exit.
+eval case through `FileEvalProvider`, and assesses the supplied output, trace,
+closure, and judge evidence against expectations, controls, and quality
+rubrics. The report contains an invocation digest and an explicit redacted
+`report` projection rather than raw invocation, host-context, or evaluator-truth
+values. Any violated or unverified trial or failed threshold produces a nonzero
+exit.
 
 ## `assess [ROOT]`
 

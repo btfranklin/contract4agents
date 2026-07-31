@@ -62,14 +62,15 @@ pdm run contract4agents compile examples/market-research-brief \
 pdm run contract4agents plan examples/market-research-brief \
   --target openai --profile test \
   --out .contract/build/market-research-brief/plan.json
-pdm run contract4agents eval examples/market-research-brief \
+pdm run contract4agents eval replay examples/market-research-brief \
   --target openai --profile test
 ```
 
-The test campaign uses deterministic local evidence and normalized trace data,
-so it needs no provider credentials. The plan still records that `web.search`
-is provider-hosted and which telemetry and host obligations would apply to a
-real run. Use `--target google_adk` to review the corresponding Search plan.
+The replay campaign uses deterministic local output and normalized trace
+evidence, so it needs no provider credentials and does not invoke the planned
+graph. The plan still records that `web.search` is provider-hosted and which
+telemetry and host obligations would apply to a real run. Use
+`--target google_adk` to review the corresponding Search plan.
 
 ## Materialize
 

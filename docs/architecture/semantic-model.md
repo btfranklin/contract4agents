@@ -848,24 +848,26 @@ was assessed, `not_applicable` when a conditional control's `when` expression
 was proven false, and `unverified` when the condition could not be established.
 A false condition passes vacuously; an unknown condition never does.
 
-## Eval campaigns
+## Eval replay campaigns
 
-The public eval workflow consumes the contract project and a test profile:
+The public replay workflow consumes the contract project and a test profile:
 
 ```bash
-contract4agents eval agent_contracts --target openai --profile test
+contract4agents eval replay agent_contracts --target openai --profile test
 ```
 
-The test profile binds deterministic tool, datasource, external-context,
-approval, and judge providers. `.eval` cases supply scenario inputs and
-expectations. The contract and plan supply agent, capability grant,
-authorization, control, and event-type inventory; no test-data provider repeats
-them.
+The file-backed provider supplies prerecorded normalized evidence and never
+invokes the planned graph. `.eval` cases supply scenario givens and
+expectations. Replay data separates invocation, host context, evaluator truth,
+and the explicit redacted report projection. The contract and plan supply
+agent, capability grant, authorization, control, and event-type inventory; no
+test-data provider repeats them.
 
-An eval campaign records:
+A replay campaign records:
 
 - Case and trial IDs.
 - Contract and plan digests.
+- Invocation digests and explicitly redacted report views.
 - Deterministic expectation results.
 - Control results.
 - Quality results with judge provenance.
@@ -873,9 +875,11 @@ An eval campaign records:
 - Trial counts, pass and violation rates, thresholds, and confidence intervals.
 - Baseline digest and regression results when configured.
 
-The same control assessor is used for offline eval traces and production trace
-assessment. Continuous monitoring is an external operational pattern that
-repeats this assessment as complete traces arrive.
+Replay acquisition and future native acquisition converge on the same
+provider-free finalized-evidence assessor. The same control assessor is used for
+offline replay traces and production trace assessment. Continuous monitoring is
+an external operational pattern that repeats this assessment as complete traces
+arrive.
 
 ## Assurance bundle and semantic diff
 
@@ -912,6 +916,7 @@ compile
 generate
 plan
 eval
+  replay
 assess
 assure
 diff

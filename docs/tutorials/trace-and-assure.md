@@ -153,14 +153,14 @@ Observed violations fail assessment. Missing or insufficient evidence remains
 
 ## Assemble the Assurance Bundle
 
-Run the deterministic eval from the first tutorial and record the provenance
-for this review:
+Replay the deterministic evidence from the first tutorial and record the
+provenance for this review:
 
 ```bash
-contract4agents eval agent_contracts \
+contract4agents eval replay agent_contracts \
   --target openai \
   --profile development \
-  --out .contract/evidence/eval-results.json
+  --out .contract/evidence/eval-replay.json
 
 printf '{"source":"support-service release review"}\n' \
   > .contract/evidence/provenance.json
@@ -174,7 +174,7 @@ contract4agents assure agent_contracts \
   --profile development \
   --trace .contract/evidence/support-run-123/trace.jsonl \
   --trace-closure .contract/evidence/support-run-123/trace-closure.json \
-  --eval-results .contract/evidence/eval-results.json \
+  --eval-results .contract/evidence/eval-replay.json \
   --provenance .contract/evidence/provenance.json \
   --out .contract/assurance/support-run-123
 ```

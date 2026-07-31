@@ -28,9 +28,10 @@ pdm run smoke:cli
 
 The smoke suite exercises every public example through the supported
 contract-first path: source check, target/profile plan, compilation,
-visualization, and eval campaign. It must not depend on a second hand-authored
-runtime inventory. `scripts/smoke_cli.py` keeps the example and target matrix
-as structured data while the PDM command remains the stable entry point.
+visualization, and eval replay campaign. Replay must consume supplied evidence,
+must not invoke a native graph, and must not depend on a second hand-authored
+runtime inventory. `scripts/smoke_cli.py` keeps the example and target matrix as
+structured data while the PDM command remains the stable entry point.
 
 ## Generated Artifact Freshness
 
@@ -77,6 +78,12 @@ Tests should cover:
 - duplicate, broken, cyclic, mixed-digest, and malformed trace rejection;
 - stable semantic references and provider correlation;
 - audience redaction before serialization and export;
+- replay audience separation among invocation, host context, evaluator truth,
+  and redacted report data;
+- absence of evaluator truth from execution requests, judge requests, traces,
+  and ordinary replay reports;
+- replay reports exporting only the invocation digest and explicit redacted
+  report projection, never raw generic inputs;
 - trace-evidence assessment against plan event types;
 - missing evidence becoming `unverified`;
 - identical control results in eval and production-trace assessment;
