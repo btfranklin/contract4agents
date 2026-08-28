@@ -5,6 +5,7 @@ from __future__ import annotations
 from contract4agents.assurance._assess import assess_controls
 from contract4agents.assurance._bundle import AssuranceBundle, assemble_assurance_bundle
 from contract4agents.assurance._inputs import RunSpecAssessmentManifest
+from contract4agents.assurance._operational import assess_operational_controls
 from contract4agents.assurance._run_specs import assess_run_spec
 from contract4agents.ir import CanonicalIR
 from contract4agents.materialization import GraphValidationEvidence
@@ -37,6 +38,11 @@ def assess_assurance_evidence(
     control_results = (
         assess_controls(contract, plan, trace, closure=control_closure)
         if trace is not None
+        else None
+    )
+    operational_control_results = (
+        assess_operational_controls(contract, plan, trace, closure=control_closure)
+        if trace is not None and contract.operational_controls
         else None
     )
     selections = (
@@ -76,6 +82,7 @@ def assess_assurance_evidence(
         eval_results=eval_results,
         provenance=provenance,
         materialization_evidence=materialization_evidence,
+        operational_control_results=operational_control_results,
     )
 
 

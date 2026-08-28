@@ -390,3 +390,22 @@ response normalization.
 
 See [Validation and Quality Gates](../quality/validation.md) before interpreting
 a skipped live check as coverage.
+
+## Provider evidence
+
+`OpenAINormalizedTraceSession.record_result(...)` reports a successful
+`provider.outcome.reported` event and derives aggregate usage from the public
+`result.context_wrapper.usage` object. It records requests, input, cached
+input, output, reasoning, and total tokens when the SDK exposes them. A result
+without usage produces an unavailable usage report; it never turns missing
+values into zero.
+
+`normalize_exception_responses(...)` first retains only the SDK's public raw
+response receipts, then reports outcome facts from documented Agents SDK
+exception types and stable structured attributes such as `status_code`,
+`request_id`, `response_id`, and a safe provider error code. HTTP 401, 403, and
+429 facts are conservative inferred authentication, authorization, and rate
+limit categories. Exception text, class-name matching, response bodies, and
+prompts are not used as primary taxonomy or stored. Provider outcome and usage
+events do not select retries, fallback models, cancellation, deadlines, or
+costs; those remain host responsibilities.

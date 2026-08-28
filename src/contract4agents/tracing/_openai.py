@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import math
 import threading
 from collections.abc import Iterable, Mapping
 from contextvars import ContextVar, Token
@@ -35,11 +37,26 @@ from contract4agents.tracing._openai_utils import (
     text_attr,
     timestamp,
 )
+from contract4agents.tracing._provider_evidence import (
+    EvidenceState,
+    ProviderOutcome,
+    ProviderOutcomeCategory,
+    ProviderOutcomeEvidence,
+    ProviderOutcomePhase,
+    ProviderUsageEvidence,
+)
 from contract4agents.tracing._session import NormalizedTraceSessionCore
 from contract4agents.tracing._sinks import NormalizedTraceSink
 
 _OPENAI_CAPTURED_CHANNELS: frozenset[TraceInstrumentationChannel] = frozenset(
-    {"agent", "composition", "handoff", "output", "provider_response", "tool"}
+    {
+        "agent",
+        "composition",
+        "handoff",
+        "output",
+        "provider_response",
+        "tool",
+    }
 )
 _MISSING = object()
 
@@ -340,7 +357,37 @@ class OpenAINormalizedTraceSession(NormalizedTraceSessionCore):
             raise TypeError("Agents SDK result must expose raw_responses")
         if not isinstance(raw_responses, Iterable) or isinstance(raw_responses, str | bytes | Mapping):
             raise TypeError("Agents SDK result raw_responses must be an iterable of responses")
-        return self.normalize_response_events(raw_responses, agent=agent, attempt=attempt)
+        events = self.normalize_response_events(raw_responses, agent=agent, attempt=attempt)
+        selected = self._require_attempt(attempt)
+        agent_id = self._require_agent(agent)
+        response_ids = tuple(
+            str(event.data["response_identity"])
+            for event in events
+            if event.event_type == "provider.response.normalized"
+            and "response_identity" in event.data
+        )
+        self.record_provider_outcome(
+            ProviderOutcomeEvidence(
+                agent_id=agent_id,
+                attempt_id=selected.attempt_id,
+                invocation_id=selected.invocation_id,
+                attempt_number=selected.number,
+                phase="response",
+                outcome="succeeded",
+                category="transport",
+                state="observed",
+                classifier_provenance="openai-agents-sdk.result",
+                response_id=response_ids[-1] if response_ids else None,
+                response_received=bool(response_ids),
+            ),
+            attempt=selected,
+        )
+        self.record_provider_usage(
+            _openai_usage_evidence(result, agent_id=agent_id, attempt=selected),
+            attempt=selected,
+            provider_identity=response_ids[-1] if response_ids else selected.attempt_id,
+        )
+        return events
 
     def normalize_exception_responses(
         self,
@@ -369,7 +416,57 @@ class OpenAINormalizedTraceSession(NormalizedTraceSessionCore):
         else:
             state.response_status = "unverified"
             state.reason = "The exception did not expose raw response evidence."
+        self._record_openai_exception_outcome(exception, agent_id=agent_id, attempt=selected)
+        self.record_provider_usage(
+            _openai_usage_evidence(
+                getattr(getattr(exception, "run_data", None), "context_wrapper", None),
+                agent_id=agent_id,
+                attempt=selected,
+            ),
+            attempt=selected,
+            provider_identity=(
+                _safe_text_attr(exception, "response_id")
+                or _safe_text_attr(exception, "request_id")
+                or selected.attempt_id
+            ),
+        )
         return events
+
+    def _record_openai_exception_outcome(
+        self,
+        exception: BaseException,
+        *,
+        agent_id: SemanticId,
+        attempt: TraceAttempt,
+    ) -> None:
+        outcome, category, phase, state = _classify_openai_exception(exception)
+        status_code = _safe_int_attr(exception, "status_code")
+        request_id = _safe_text_attr(exception, "request_id")
+        response_id = _safe_text_attr(exception, "response_id")
+        error_code = _safe_code_attr(exception, "code")
+        retry_after = _safe_float_attr(exception, "retry_after_seconds")
+        if retry_after is None:
+            retry_after = _safe_float_attr(exception, "retry_after")
+        self.record_provider_outcome(
+            ProviderOutcomeEvidence(
+                agent_id=agent_id,
+                attempt_id=attempt.attempt_id,
+                invocation_id=attempt.invocation_id,
+                attempt_number=attempt.number,
+                phase=phase,
+                outcome=outcome,
+                category=category,
+                state=state,
+                classifier_provenance="openai-agents-sdk.exception-attributes",
+                http_status=status_code,
+                provider_error_code=error_code,
+                request_id=request_id,
+                response_id=response_id,
+                retry_after_seconds=retry_after,
+                response_received=response_id is not None,
+            ),
+            attempt=attempt,
+        )
 
     def _record(
         self,
@@ -423,3 +520,128 @@ __all__ = [
     "normalize_openai_response_events",
     "resolve_provider_tool_grant",
 ]
+
+
+def _openai_usage_evidence(
+    value: object,
+    *,
+    agent_id: SemanticId,
+    attempt: TraceAttempt,
+) -> ProviderUsageEvidence:
+    usage = getattr(value, "context_wrapper", value)
+    usage = getattr(usage, "usage", None)
+    if usage is None:
+        return ProviderUsageEvidence(
+            scope="attempt",
+            coverage="unavailable",
+            aggregation_identity=attempt.attempt_id,
+            aggregation_basis="one OpenAI Agents SDK host attempt",
+            provenance="openai-agents-sdk.context_wrapper.usage",
+            agent_id=agent_id,
+            attempt_id=attempt.attempt_id,
+            invocation_id=attempt.invocation_id,
+        )
+    input_details = getattr(usage, "input_tokens_details", None)
+    output_details = getattr(usage, "output_tokens_details", None)
+    request_count = _safe_nonnegative_int(getattr(usage, "requests", None))
+    input_tokens = _safe_nonnegative_int(getattr(usage, "input_tokens", None))
+    cached_input_tokens = _safe_nonnegative_int(getattr(input_details, "cached_tokens", None))
+    output_tokens = _safe_nonnegative_int(getattr(usage, "output_tokens", None))
+    reasoning_tokens = _safe_nonnegative_int(getattr(output_details, "reasoning_tokens", None))
+    total_tokens = _safe_nonnegative_int(getattr(usage, "total_tokens", None))
+    if cached_input_tokens is not None and input_tokens is not None and cached_input_tokens > input_tokens:
+        cached_input_tokens = None
+    numeric_facts = (
+        request_count,
+        input_tokens,
+        cached_input_tokens,
+        output_tokens,
+        reasoning_tokens,
+        total_tokens,
+    )
+    if not any(value is not None for value in numeric_facts):
+        coverage = "unavailable"
+    elif input_tokens is None or output_tokens is None or total_tokens is None:
+        coverage = "partial"
+    else:
+        if total_tokens != input_tokens + output_tokens:
+            total_tokens = None
+            coverage = "partial"
+        else:
+            coverage = "complete"
+    return ProviderUsageEvidence(
+        scope="attempt",
+        coverage=coverage,  # type: ignore[arg-type]
+        aggregation_identity=attempt.attempt_id,
+        aggregation_basis="OpenAI Agents SDK aggregate context_wrapper.usage",
+        provenance="openai-agents-sdk.context_wrapper.usage",
+        request_count=request_count,
+        input_tokens=input_tokens,
+        cached_input_tokens=cached_input_tokens,
+        output_tokens=output_tokens,
+        reasoning_tokens=reasoning_tokens,
+        total_tokens=total_tokens,
+        agent_id=agent_id,
+        attempt_id=attempt.attempt_id,
+        invocation_id=attempt.invocation_id,
+    )
+
+
+def _classify_openai_exception(
+    exception: BaseException,
+) -> tuple[ProviderOutcome, ProviderOutcomeCategory, ProviderOutcomePhase, EvidenceState]:
+    """Classify only documented Agents SDK types and stable structured facts."""
+
+    try:
+        from agents.exceptions import MCPToolCancellationError, ModelRefusalError, ModelTimeoutError
+    except ImportError:  # pragma: no cover - optional dependency
+        timeout_match = refusal_match = cancellation_match = False
+    else:
+        timeout_match = isinstance(exception, ModelTimeoutError)
+        refusal_match = isinstance(exception, ModelRefusalError)
+        cancellation_match = isinstance(exception, MCPToolCancellationError)
+    if timeout_match:
+        return "failed", "provider_timeout", "transport", "observed"
+    if refusal_match:
+        return "refused", "refusal", "response", "observed"
+    if cancellation_match:
+        return "cancelled", "cancelled", "cancellation", "observed"
+    status = _safe_int_attr(exception, "status_code")
+    if status in {401}:
+        return "failed", "authentication", "transport", "inferred"
+    if status in {403}:
+        return "failed", "authorization", "transport", "inferred"
+    if status in {429}:
+        return "failed", "rate_limit", "transport", "inferred"
+    # asyncio cancellation is host lifecycle evidence, not provider cancellation.
+    if isinstance(exception, asyncio.CancelledError):
+        return "unknown", "unknown", "transport", "unverified"
+    return "failed", "provider_error", "transport", "inferred"
+
+
+def _safe_text_attr(value: object, name: str) -> str | None:
+    candidate = getattr(value, name, None)
+    return candidate.strip() if isinstance(candidate, str) and candidate.strip() else None
+
+
+def _safe_code_attr(value: object, name: str) -> str | None:
+    candidate = _safe_text_attr(value, name)
+    if candidate is None or len(candidate) > 128:
+        return None
+    return candidate if all(char.isalnum() or char in "._:-" for char in candidate) else None
+
+
+def _safe_int_attr(value: object, name: str) -> int | None:
+    candidate = getattr(value, name, None)
+    return candidate if isinstance(candidate, int) and not isinstance(candidate, bool) and candidate >= 0 else None
+
+
+def _safe_float_attr(value: object, name: str) -> float | None:
+    candidate = getattr(value, name, None)
+    if isinstance(candidate, bool) or not isinstance(candidate, int | float):
+        return None
+    return float(candidate) if candidate >= 0 and math.isfinite(candidate) else None
+
+
+def _safe_nonnegative_int(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None

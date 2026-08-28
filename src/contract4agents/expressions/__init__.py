@@ -16,6 +16,11 @@ from contract4agents.expressions._model import (
     ExpressionKind,
     ParsedExpression,
 )
+from contract4agents.expressions._operational import (
+    OperationalMetric,
+    ParsedOperationalRequirement,
+    parse_operational_requirement,
+)
 from contract4agents.expressions._refs import referenced_output_fields, referenced_trace_targets, referenced_type
 from contract4agents.expressions._source_refs import ExpressionSourceReference, expression_source_references
 from contract4agents.expressions._trace_ops import TraceOp
@@ -28,6 +33,9 @@ __all__ = [
     "ExpressionSourceReference",
     "ExpressionKind",
     "ParsedExpression",
+    "OperationalMetric",
+    "ParsedOperationalRequirement",
+    "parse_operational_requirement",
     "TraceOp",
     "parse_contract_expression",
     "parse_expectation",

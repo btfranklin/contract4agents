@@ -31,6 +31,7 @@ from contract4agents.assurance._models import (
     ControlApplicability,
     ControlResult,
 )
+from contract4agents.assurance._operational import OperationalControlResult, assess_operational_controls
 from contract4agents.assurance._run_specs import (
     RunSpecAssertionResult,
     RunSpecEvidence,
@@ -52,6 +53,7 @@ __all__ = [
     "BundleDiagnostic",
     "ControlApplicability",
     "ControlResult",
+    "OperationalControlResult",
     "DiffArea",
     "DiffChange",
     "DiffImpact",
@@ -69,6 +71,7 @@ __all__ = [
     "RunSpecStageResult",
     "assemble_assurance_bundle",
     "assess_controls",
+    "assess_operational_controls",
     "assess_assurance_evidence",
     "assess_run_spec",
     "diff_contracts",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from contract4agents.expressions import ExpressionError, parse_operational_requirement
 from contract4agents.ir import (
     CanonicalIR,
     CapabilityIR,
@@ -29,6 +30,7 @@ from contract4agents.planning._models import (
     MappingOutcome,
     MappingSupport,
     MaterializationPlan,
+    OperationalControlMappingPlan,
     PlannerCapabilities,
     frozen_json_mapping,
 )
@@ -124,6 +126,12 @@ def plan_materialization(
         obligations,
         expected_event_types,
     )
+    operational_controls = _resolve_operational_controls(
+        ir,
+        issues,
+        obligations,
+        expected_event_types,
+    )
     if issues:
         raise PlanningError(tuple(issues))
     resolved_artifact_digests = artifact_digests or {}
@@ -147,7 +155,69 @@ def plan_materialization(
             sorted(obligations.values(), key=lambda item: (item.code, str(item.semantic_id), item.description))
         ),
         expected_event_types=tuple(sorted(expected_event_types)),
+        operational_controls=FrozenMap(
+            (item.id, item) for item in operational_controls.values()
+        ),
     )
+
+
+def _resolve_operational_controls(
+    ir: CanonicalIR,
+    issues: list[PlanningIssue],
+    obligations: dict[tuple[str, SemanticId | None], HostObligationPlan],
+    event_types: set[str],
+) -> dict[SemanticId, OperationalControlMappingPlan]:
+    """Resolve the intentionally small single-run operational-control surface."""
+
+    result: dict[SemanticId, OperationalControlMappingPlan] = {}
+    for control_id, control in ir.operational_controls.items():
+        outcome: MappingOutcome = "emulated"
+        mechanism: str | None = "contract4agents.single_run_operational_assessor"
+        evidence: tuple[str, ...]
+        if control.window is not None:
+            outcome = "unsupported"
+            mechanism = None
+            evidence = ()
+        else:
+            try:
+                parsed = parse_operational_requirement(control.requirement)
+            except ExpressionError:
+                outcome = "unsupported"
+                mechanism = None
+                evidence = ()
+            else:
+                if parsed.metric == "duration":
+                    evidence = ("agent.started", "agent.completed", "agent.failed")
+                elif parsed.metric in {"provider_request_count", "input_tokens", "output_tokens", "total_tokens"}:
+                    evidence = ("provider.usage.reported",)
+                elif parsed.metric == "failed_provider_call_count":
+                    evidence = ("provider.outcome.reported",)
+                else:
+                    evidence = ("attempt.selected",)
+                event_types.update(evidence)
+        if outcome == "unsupported":
+            # The plan is fail-closed for declared operational requirements.
+            pass
+        else:
+            _add_obligation(
+                obligations,
+                HostObligationPlan(
+                    "host.provide_operational_evidence",
+                    f"Provide normalized trace and closure evidence for operational control `{control_id}`.",
+                    control_id,
+                ),
+            )
+        result[control_id] = OperationalControlMappingPlan(
+            id=control_id,
+            agent_id=control.agent_id,
+            severity=control.severity,
+            requirement=control.requirement,
+            window=control.window,
+            outcome=outcome,
+            mechanism=mechanism,
+            expected_evidence=evidence,
+        )
+    return result
 
 
 def _resolve_agents(

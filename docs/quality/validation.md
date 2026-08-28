@@ -85,6 +85,10 @@ Tests should cover:
 - replay reports exporting only the invocation digest and explicit redacted
   report projection, never raw generic inputs;
 - trace-evidence assessment against plan event types;
+- provider outcome and usage evidence states, safe extraction, aggregation
+  identity, and terminal-failure closure;
+- operational-control planning, deterministic serialization, single-run
+  assessment, unsupported windows, upper-bound asymmetry, and bundle replay;
 - missing evidence becoming `unverified`;
 - identical control results in eval and production-trace assessment;
 - deterministic assurance bundle assembly and internal digest verification;

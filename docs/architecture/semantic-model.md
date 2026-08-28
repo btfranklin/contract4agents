@@ -65,6 +65,21 @@ Guidance is model-facing prose; controls and qualities state assessable
 requirements. Target bindings connect portable semantics to implementations,
 and isolation profiles state each required boundary explicitly.
 
+Operational controls are planned mappings, not provider instructions. The plan
+records the declared expression, target agent, support outcome, mechanism, and
+expected normalized evidence. The current assessor supports only single-run
+duration, provider request/token usage, failed provider calls, attempts, and
+retries. Windowed or unsupported expressions remain explicit unsupported
+mappings until a telemetry provider supplies the required cross-run evidence.
+
+Provider outcome and usage events carry allowlisted, content-free facts. An
+adapter may observe and normalize provider evidence, but it does not retry,
+choose a fallback model, execute cancellation, enforce deadlines or budgets,
+persist traces, or decide host continuation. Usage aggregation identities are
+required so repeated callbacks cannot silently inflate a claim. Explicit
+terminal provider failure closes the outcome observation; it does not by
+itself violate output conformance or prove a retry policy.
+
 ## Source model
 
 ### Portable declarations

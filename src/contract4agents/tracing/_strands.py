@@ -19,10 +19,24 @@ from contract4agents.tracing._native_session import (
     NativeHookTraceRouterCore,
     NativeHookTraceSession,
 )
+from contract4agents.tracing._provider_evidence import (
+    ProviderOutcome,
+    ProviderOutcomeCategory,
+    ProviderOutcomeEvidence,
+    ProviderOutcomePhase,
+    ProviderUsageEvidence,
+)
 from contract4agents.tracing._sinks import NormalizedTraceSink
 
 _STRANDS_CAPTURED_CHANNELS: frozenset[TraceInstrumentationChannel] = frozenset(
-    {"agent", "approval", "composition", "output", "provider_response", "tool"}
+    {
+        "agent",
+        "approval",
+        "composition",
+        "output",
+        "provider_response",
+        "tool",
+    }
 )
 
 
@@ -111,6 +125,7 @@ class StrandsNormalizedTraceSession(NativeHookTraceSession):
             prior_closure=prior_closure,
         )
         self._native_sequence = 0
+        self._reported_failure_keys: set[str] = set()
 
     def record_approval(
         self,
@@ -206,6 +221,40 @@ class StrandsNormalizedTraceSession(NativeHookTraceSession):
                     semantic=semantic,
                     provider_identity=identity,
                 )
+            # The public AgentResult shape always exposes metrics and
+            # stop_reason.  Keep compatibility with minimal hook fakes that
+            # predate provider evidence and expose neither.
+            if getattr(result, "metrics", None) is not None or stop_reason is not None:
+                attempt = self._current_attempt()
+                state = self._attempts.get(attempt.attempt_id) if attempt is not None else None
+                agent_id = state.agent_id if state is not None else semantic.agent_id
+                if attempt is not None and agent_id is not None:
+                    stop_outcome, stop_category, stop_phase = _strands_stop_outcome(stop_reason)
+                    self.record_provider_outcome(
+                        ProviderOutcomeEvidence(
+                            agent_id=agent_id,
+                            attempt_id=attempt.attempt_id,
+                            invocation_id=attempt.invocation_id,
+                            attempt_number=attempt.number,
+                            phase=stop_phase,
+                            outcome=stop_outcome,
+                            category=stop_category,
+                            state="observed",
+                            classifier_provenance="strands.AgentResult.stop_reason",
+                            response_id=identity,
+                            response_received=True,
+                        ),
+                        provider_identity=identity,
+                    )
+                    self.record_provider_usage(
+                        _strands_usage_evidence(
+                            result,
+                            agent_id=agent_id,
+                            attempt=attempt,
+                            identity=identity,
+                        ),
+                        provider_identity=identity,
+                    )
         else:
             self._record_native_event(
                 event_type="agent.failed",
@@ -216,6 +265,37 @@ class StrandsNormalizedTraceSession(NativeHookTraceSession):
             self._mark_response_unverified(
                 "The Strands invocation failed without a normalized result."
             )
+            attempt = self._current_attempt()
+            state = self._attempts.get(attempt.attempt_id) if attempt is not None else None
+            agent_id = state.agent_id if state is not None else semantic.agent_id
+            if attempt is not None and agent_id is not None:
+                self.record_provider_outcome(
+                    ProviderOutcomeEvidence(
+                        agent_id=agent_id,
+                        attempt_id=attempt.attempt_id,
+                        invocation_id=attempt.invocation_id,
+                        attempt_number=attempt.number,
+                        phase="transport",
+                        outcome="failed",
+                        category="unknown",
+                        state="observed",
+                        classifier_provenance="strands.after_invocation.exception",
+                        response_received=False,
+                    ),
+                )
+                self.record_provider_usage(
+                    ProviderUsageEvidence(
+                        scope="attempt",
+                        coverage="unavailable",
+                        aggregation_identity=attempt.attempt_id,
+                        aggregation_basis="one failed Strands Agent invocation",
+                        provenance="strands.AgentResult.metrics.accumulated_usage",
+                        agent_id=agent_id,
+                        attempt_id=attempt.attempt_id,
+                        invocation_id=attempt.invocation_id,
+                    ),
+                    provider_identity=identity,
+                )
         self._end_provider_run()
 
     def _on_model_start(self, event: object) -> None:
@@ -246,6 +326,43 @@ class StrandsNormalizedTraceSession(NativeHookTraceSession):
                 provider_identity=identity,
                 data={"error": True},
             )
+            failure_key = self._require_provider_trace_id() + ":" + identity
+            if failure_key not in self._reported_failure_keys:
+                self._reported_failure_keys.add(failure_key)
+                attempt = self._current_attempt()
+                agent_id = (
+                    self._native_agent_semantic(getattr(event, "agent", None)).agent_id
+                    or self._maybe_current_agent_id()
+                )
+                if attempt is not None and agent_id is not None:
+                    self.record_provider_outcome(
+                        ProviderOutcomeEvidence(
+                            agent_id=agent_id,
+                            attempt_id=attempt.attempt_id,
+                            invocation_id=attempt.invocation_id,
+                            attempt_number=attempt.number,
+                            phase="transport",
+                            outcome="failed",
+                            category="unknown",
+                            state="observed",
+                            classifier_provenance="strands.after_model.exception",
+                            response_received=False,
+                        ),
+                        provider_identity=identity,
+                    )
+                    self.record_provider_usage(
+                        ProviderUsageEvidence(
+                            scope="model_call",
+                            coverage="unavailable",
+                            aggregation_identity=identity,
+                            aggregation_basis="one failed Strands model hook",
+                            provenance="strands.after_model.exception",
+                            agent_id=agent_id,
+                            attempt_id=attempt.attempt_id,
+                            invocation_id=attempt.invocation_id,
+                        ),
+                        provider_identity=identity,
+                    )
             self._mark_response_unverified(
                 "The Strands model hook reported an exception without response evidence."
             )
@@ -390,6 +507,88 @@ def _tool_name(event: object) -> str | None:
 
 def _is_structured_output_tool(native_tool: object | None) -> bool:
     return getattr(native_tool, "tool_type", None) == "structured_output"
+
+
+def _strands_usage_value(value: object, name: str) -> int | None:
+    if isinstance(value, Mapping):
+        candidate = value.get(name)
+    else:
+        candidate = getattr(value, name, None)
+    return candidate if isinstance(candidate, int) and not isinstance(candidate, bool) and candidate >= 0 else None
+
+
+def _strands_usage_evidence(
+    result: object,
+    *,
+    agent_id: object,
+    attempt: object,
+    identity: str,
+) -> ProviderUsageEvidence:
+    from contract4agents.ir import SemanticId
+    from contract4agents.tracing._models import TraceAttempt
+
+    if not isinstance(agent_id, SemanticId) or not isinstance(attempt, TraceAttempt):
+        raise TypeError("Strands usage evidence requires normalized agent and attempt identities")
+    metrics = getattr(result, "metrics", None)
+    usage = getattr(metrics, "accumulated_usage", None)
+    if usage is None:
+        return ProviderUsageEvidence(
+            scope="attempt",
+            coverage="unavailable",
+            aggregation_identity=attempt.attempt_id,
+            aggregation_basis="one Strands AgentResult",
+            provenance="strands.AgentResult.metrics.accumulated_usage",
+            agent_id=agent_id,
+            attempt_id=attempt.attempt_id,
+            invocation_id=attempt.invocation_id,
+        )
+    input_tokens = _strands_usage_value(usage, "inputTokens")
+    output_tokens = _strands_usage_value(usage, "outputTokens")
+    total_tokens = _strands_usage_value(usage, "totalTokens")
+    cached_input_tokens = _strands_usage_value(usage, "cacheReadInputTokens")
+    if cached_input_tokens is not None and input_tokens is not None and cached_input_tokens > input_tokens:
+        cached_input_tokens = None
+    if not any(
+        value is not None
+        for value in (input_tokens, cached_input_tokens, output_tokens, total_tokens)
+    ):
+        coverage = "unavailable"
+    elif input_tokens is not None and output_tokens is not None and total_tokens is not None:
+        if total_tokens != input_tokens + output_tokens:
+            total_tokens = None
+            coverage = "partial"
+        else:
+            coverage = "complete"
+    else:
+        coverage = "partial"
+    return ProviderUsageEvidence(
+        scope="attempt",
+        coverage=coverage,  # type: ignore[arg-type]
+        aggregation_identity=attempt.attempt_id,
+        aggregation_basis="Strands AgentResult.metrics.accumulated_usage",
+        provenance="strands.AgentResult.metrics.accumulated_usage",
+        request_count=None,
+        input_tokens=input_tokens,
+        cached_input_tokens=cached_input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=total_tokens,
+        agent_id=agent_id,
+        attempt_id=attempt.attempt_id,
+        invocation_id=attempt.invocation_id,
+    )
+
+
+def _strands_stop_outcome(
+    stop_reason: object,
+) -> tuple[ProviderOutcome, ProviderOutcomeCategory, ProviderOutcomePhase]:
+    if stop_reason == "cancelled":
+        return "cancelled", "cancelled", "cancellation"
+    if stop_reason in {"content_filtered", "guardrail_intervened"}:
+        return "refused", "refusal", "response"
+    if stop_reason in {"interrupt", "checkpoint"}:
+        # Host interruption/checkpoint is not a provider cancellation claim.
+        return "unknown", "unknown", "response"
+    return "succeeded", "transport", "response"
 
 
 __all__ = ["StrandsNormalizedTraceRouter", "StrandsNormalizedTraceSession"]

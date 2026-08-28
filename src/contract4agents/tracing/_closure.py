@@ -34,6 +34,8 @@ TraceInstrumentationChannel = Literal[
     "handoff",
     "output",
     "provider_response",
+    "provider_outcome",
+    "provider_usage",
     "tool",
 ]
 TRACE_INSTRUMENTATION_CHANNELS: tuple[TraceInstrumentationChannel, ...] = (
@@ -45,6 +47,8 @@ TRACE_INSTRUMENTATION_CHANNELS: tuple[TraceInstrumentationChannel, ...] = (
     "handoff",
     "output",
     "provider_response",
+    "provider_outcome",
+    "provider_usage",
     "tool",
 )
 TRACE_CLOSURE_MANIFEST_VERSION = "1"
@@ -125,11 +129,20 @@ class TraceAttemptClosure:
     response_ids: tuple[str, ...] = ()
     evidence_refs: tuple[str, ...] = ()
     reason: str = "Attempt instrumentation was assessed."
+    # These fields are optional for pre-provider-evidence traces.  A new
+    # adapter reports them explicitly; old imported traces remain valid but
+    # cannot claim outcome or usage closure.
+    outcome_status: TraceClosureStatus | None = None
+    usage_status: TraceClosureStatus | None = None
 
     def __post_init__(self) -> None:
         self.agent_id.require_kind("agent")
         _status("lifecycle_status", self.lifecycle_status)
         _status("response_status", self.response_status)
+        if self.outcome_status is not None:
+            _status("outcome_status", self.outcome_status)
+        if self.usage_status is not None:
+            _status("usage_status", self.usage_status)
         _text("reason", self.reason)
         object.__setattr__(self, "provider_trace_ids", _references("Provider trace ID", self.provider_trace_ids))
         object.__setattr__(self, "response_ids", _references("Provider response ID", self.response_ids))
@@ -141,7 +154,19 @@ class TraceAttemptClosure:
 
     @property
     def complete(self) -> bool:
-        return self.lifecycle_status == self.response_status == "complete"
+        return (
+            self.lifecycle_status == self.response_status == "complete"
+            and self.outcome_status in {None, "complete"}
+            and self.usage_status in {None, "complete"}
+        )
+
+    @property
+    def outcome_closed(self) -> bool:
+        return self.outcome_status == "complete"
+
+    @property
+    def usage_closed(self) -> bool:
+        return self.usage_status == "complete"
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -153,24 +178,30 @@ class TraceAttemptClosure:
             "reason": self.reason,
             "response_ids": list(self.response_ids),
             "response_status": self.response_status,
+            "outcome_status": self.outcome_status,
+            "usage_status": self.usage_status,
         }
 
     @classmethod
     def from_dict(cls, value: object) -> TraceAttemptClosure:
         payload = json_object("attempt closure", value)
+        required = {
+            "agent_id",
+            "attempt",
+            "evidence_refs",
+            "lifecycle_status",
+            "provider_trace_ids",
+            "reason",
+            "response_ids",
+            "response_status",
+        }
+        missing = sorted(required - set(payload))
+        if missing:
+            raise ValueError(f"attempt closure is missing required fields: {', '.join(missing)}")
         require_exact_keys(
             "attempt closure",
             payload,
-            {
-                "agent_id",
-                "attempt",
-                "evidence_refs",
-                "lifecycle_status",
-                "provider_trace_ids",
-                "reason",
-                "response_ids",
-                "response_status",
-            },
+            required | {"outcome_status", "usage_status"},
         )
         return cls(
             attempt=TraceAttempt.from_dict(payload["attempt"]),
@@ -181,6 +212,8 @@ class TraceAttemptClosure:
             response_ids=json_strings("response_ids", payload["response_ids"]),
             evidence_refs=json_strings("evidence_refs", payload["evidence_refs"]),
             reason=json_string("reason", payload["reason"]),
+            outcome_status=_optional_status(payload.get("outcome_status")),
+            usage_status=_optional_status(payload.get("usage_status")),
         )
 
 
@@ -236,7 +269,21 @@ class TraceClosureEvidence:
         return f"sha256:{hashlib.sha256(payload.encode()).hexdigest()}"
 
     def covers(self, channel: TraceInstrumentationChannel) -> bool:
+        if channel == "provider_outcome":
+            return self.covers_provider_outcome()
+        if channel == "provider_usage":
+            return self.covers_provider_usage()
         return self.complete and channel in self.channels
+
+    def covers_provider_outcome(self) -> bool:
+        return self.status != "incomplete" and "provider_outcome" in self.channels and all(
+            item.outcome_closed for item in self.attempts
+        )
+
+    def covers_provider_usage(self) -> bool:
+        return self.status != "incomplete" and "provider_usage" in self.channels and all(
+            item.usage_closed for item in self.attempts
+        )
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -409,6 +456,18 @@ def validate_trace_closure(trace: NormalizedTrace, closure: TraceClosureEvidence
             raise TraceClosureError(
                 f"Attempt `{item.attempt.attempt_id}` response IDs do not match normalization receipts"
             )
+        if item.outcome_status == "complete" and not any(
+            event.event_type == "provider.outcome.reported" for event in attempt_events
+        ):
+            raise TraceClosureError(
+                f"Attempt `{item.attempt.attempt_id}` outcome closure has no outcome report"
+            )
+        if item.usage_status == "complete" and not any(
+            event.event_type == "provider.usage.reported" for event in attempt_events
+        ):
+            raise TraceClosureError(
+                f"Attempt `{item.attempt.attempt_id}` usage closure has no usage report"
+            )
 
 
 def _validate_retry_chains(attempts: tuple[TraceAttemptClosure, ...]) -> None:
@@ -427,6 +486,15 @@ def _validate_retry_chains(attempts: tuple[TraceAttemptClosure, ...]) -> None:
 def _status(label: str, value: str) -> None:
     if value not in _STATUSES:
         raise ValueError(f"Unsupported {label} `{value}`")
+
+
+def _optional_status(value: object) -> TraceClosureStatus | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise TypeError("Closure status must be a string or null")
+    _status("closure status", value)
+    return cast(TraceClosureStatus, value)
 
 
 def _text(label: str, value: str) -> None:

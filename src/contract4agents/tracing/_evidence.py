@@ -95,18 +95,20 @@ def assess_trace_evidence(
         if closure.context.run_id != selected_run_id:
             raise TraceClosureError("Trace closure run_id does not match the selected run")
     observed = tuple(sorted({event.event_type for event in selected.events}))
-    observed_expected = tuple(item for item in expected if item in observed)
+    observed_expected = tuple(
+        item for item in expected if any(_event_satisfies(item, candidate) for candidate in observed)
+    )
     evidence_refs = tuple(
         sorted(
             {
                 f"trace-event:{event.event_id}"
                 for event in selected.events
-                if event.event_type in expected
+                if any(_event_satisfies(item, event.event_type) for item in expected)
             }
             | {
                 reference
                 for event in selected.events
-                if event.event_type in expected
+                if any(_event_satisfies(item, event.event_type) for item in expected)
                 for reference in event.evidence_refs
             }
         )
@@ -182,6 +184,17 @@ def _normalized_event_types(values: Collection[str]) -> tuple[str, ...]:
             raise ValueError("Expected event types must be non-empty strings")
         normalized.add(value)
     return tuple(sorted(normalized))
+
+
+def _event_satisfies(expected: str, observed: str) -> bool:
+    """Treat terminal provider success and failure as one response family."""
+
+    if expected == observed:
+        return True
+    return {
+        "provider.response.normalized",
+        "provider.response.failed",
+    } == {expected, observed}
 
 
 def _normalized_references(values: tuple[str, ...]) -> tuple[str, ...]:

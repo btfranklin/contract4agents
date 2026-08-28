@@ -20,6 +20,7 @@ from contract4agents.planning._models import (
     MappingOutcome,
     MappingSupport,
     MaterializationPlan,
+    OperationalControlMappingPlan,
     PlannerCapabilities,
     in_process_isolation_support,
 )
@@ -42,6 +43,7 @@ __all__ = [
     "BindingResolution",
     "CompositionMappingPlan",
     "ControlMappingPlan",
+    "OperationalControlMappingPlan",
     "GrantMappingPlan",
     "HostObligationPlan",
     "IsolationDimension",

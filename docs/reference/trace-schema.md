@@ -241,6 +241,41 @@ Only provider status, model metadata when exposed by the SDK, response/request
 correlation, and call IDs are retained. Queries, actions, prompts, and results
 are not copied into normalized events.
 
+## Provider outcome and usage evidence
+
+The normalized event types `provider.outcome.reported` and
+`provider.usage.reported` carry small, content-free evidence objects. The
+public frozen `ProviderOutcomeEvidence` model describes an attempt phase,
+outcome, normalized category, evidence state, classifier provenance, and safe
+HTTP, provider-code, request, response, retry-hint, and response-received
+facts. `ProviderUsageEvidence` describes one response, model-call, attempt, or
+run aggregation, its coverage, token/request values, aggregation identity and
+basis, and provenance.
+
+Missing values are `None`. An observed zero is not missing evidence. Usage
+totals and other non-negative integer facts are validated before an event is
+accepted. Aggregation identities let assessors ignore repeated callbacks and
+reject contradictory duplicates. Prompts, messages, model outputs, tool
+payloads, exception text, response bodies, credentials, and provider secrets
+are not valid evidence fields.
+
+An explicit provider terminal failure closes the outcome observation with a
+`failed`, `refused`, or `cancelled` claim when the provider supplies the
+required structured fact. A host timeout or `asyncio` cancellation alone does
+not prove a provider timeout or cancellation. A usage event with
+`coverage = "unavailable"` closes the usage observation, but it cannot prove a
+token or request threshold. Missing hooks and absent terminal events remain
+incomplete or unverified. A provider response failure is an alternative to a
+normalized response success in event-family assessment; plans do not require
+both mutually exclusive event types.
+
+Provider usage and outcome closure are separate from response normalization.
+`TraceAttemptClosure.outcome_status` and `usage_status` state whether each
+observation path closed. `TraceClosureEvidence.covers_provider_outcome(...)`
+and `covers_provider_usage(...)` require complete identity-bound closure for
+all attempts. `output.schema_failed` remains the structured-output claim and
+is not converted into a second transport failure.
+
 ## Provenance and Redaction
 
 `provenance` records where the normalized evidence came from. `redaction`

@@ -224,6 +224,20 @@ class ControlMappingPlan:
 
 
 @dataclass(frozen=True)
+class OperationalControlMappingPlan:
+    """Materialization support for one operational-control expression."""
+
+    id: SemanticId = field(metadata={"canonical": False})
+    agent_id: SemanticId
+    severity: str
+    requirement: str
+    window: str | None
+    outcome: MappingOutcome
+    mechanism: str | None
+    expected_evidence: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class IsolationDimensionPlan:
     requested: str
     outcome: MappingOutcome
@@ -262,6 +276,9 @@ class MaterializationPlan:
     artifact_digests: FrozenMap[str, str]
     host_obligations: tuple[HostObligationPlan, ...]
     expected_event_types: tuple[str, ...]
+    operational_controls: FrozenMap[SemanticId, OperationalControlMappingPlan] = field(
+        default_factory=FrozenMap
+    )
     plan_version: str = field(default=PLAN_VERSION, init=False)
 
     @property
@@ -297,6 +314,7 @@ __all__ = [
     "BindingResolution",
     "CompositionMappingPlan",
     "ControlMappingPlan",
+    "OperationalControlMappingPlan",
     "GrantMappingPlan",
     "HostObligationPlan",
     "IsolationDimension",

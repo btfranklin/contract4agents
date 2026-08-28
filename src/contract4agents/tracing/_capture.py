@@ -26,6 +26,10 @@ class AttemptCaptureState:
     response_evidence_refs: set[str] = field(default_factory=set)
     reason: str = "The response-normalization path has not been closed."
     response_failed_closed: bool = False
+    outcome_status: TraceClosureStatus | None = None
+    usage_status: TraceClosureStatus | None = None
+    outcome_evidence_refs: set[str] = field(default_factory=set)
+    usage_evidence_refs: set[str] = field(default_factory=set)
 
 
 def prior_attempt(
@@ -148,6 +152,8 @@ def _attempt_closure(
         else "incomplete"
     )
     evidence_refs = set(state.response_evidence_refs)
+    evidence_refs.update(state.outcome_evidence_refs)
+    evidence_refs.update(state.usage_evidence_refs)
     evidence_refs.update(
         f"provider:{provider}:{trace_id}" for trace_id in state.provider_trace_ids
     )
@@ -160,6 +166,8 @@ def _attempt_closure(
         response_ids=tuple(state.response_ids),
         evidence_refs=tuple(evidence_refs),
         reason=state.reason,
+        outcome_status=state.outcome_status,
+        usage_status=state.usage_status,
     )
 
 
