@@ -419,7 +419,7 @@ def assess_cmd(
     "materialization_evidence_path",
     type=click.Path(path_type=Path),
     default=None,
-    help="Materialized-schema conformance evidence from the native graph.",
+    help="Materialized configuration and schema conformance evidence from the native graph.",
 )
 @click.option(
     "--trace-closure",

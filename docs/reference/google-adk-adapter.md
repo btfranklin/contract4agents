@@ -95,6 +95,14 @@ code, run synchronous callables off the event-loop thread, await asynchronous
 callables, and validate the returned value. Approval-required tools do not call
 application code until ADK supplies an affirmative `ToolConfirmation`.
 
+Materialization evidence reads public `LlmAgent` identity, instruction, model,
+output, and tool properties where ADK exposes them. Tool declarations currently
+use ADK's private `_get_declaration()` boundary because no public declaration
+accessor exists; this path is version-checked and fails closed when it cannot
+read a declaration. A custom model factory proves only exact argument transfer
+and the returned `BaseLlm` type. It does not prove that the host or ADK applies
+opaque provider settings.
+
 ## Google Search
 
 The adapter recognizes one provider-native search locator:

@@ -91,7 +91,10 @@ declared source expression. Contract4Agents does not substitute Strands Swarm,
 Graph, or Workflow behavior for a contract handoff.
 
 Agents are constructed with `retry_strategy=None` and without a Strands session
-manager. Delegate tools use `child.as_tool(preserve_context=False)`, so each
+manager. These constructor values are retained as generated-wrapper evidence;
+the current SDK does not provide a reliable public readback accessor. They do
+not prove host retry, cancellation, deadline, persistence, or fallback
+behavior. Delegate tools use `child.as_tool(preserve_context=False)`, so each
 delegate invocation starts from the child agent's construction baseline.
 Applications requiring independent concurrent state must materialize
 independent graphs or otherwise provide independent agent instances.

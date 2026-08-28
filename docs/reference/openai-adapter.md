@@ -231,8 +231,10 @@ system = materialize(
 
 Events identify the contract and plan digests and the stable semantic IDs for
 constructed agents, tools, grants, approvals, composition edges, output types,
-context, datasources, and isolation mechanisms. Runtime provider spans should
-be correlated into the normalized trace schema.
+context, datasources, and isolation mechanisms. The graph validation evidence
+also reads public native agent/model-settings properties, tool approval flags,
+inventories, output mode, and schemas. Runtime provider spans remain separate
+and should be correlated into the normalized trace schema.
 
 Use the supplied Agents SDK tracing processor for runtime correlation:
 

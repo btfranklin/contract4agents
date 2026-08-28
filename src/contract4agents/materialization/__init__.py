@@ -15,6 +15,9 @@ from contract4agents.materialization._google_adk import (
     GoogleADKSDK,
 )
 from contract4agents.materialization._models import (
+    ConfigurationConformanceEvidence,
+    ConfigurationObservationSource,
+    ConfigurationStatus,
     GraphValidationEvidence,
     MaterializationProvider,
     MaterializationResult,
@@ -47,6 +50,9 @@ __all__ = [
     "AgentsSDK",
     "ContextResolutionError",
     "ContextRuntime",
+    "ConfigurationConformanceEvidence",
+    "ConfigurationObservationSource",
+    "ConfigurationStatus",
     "GoogleADKMaterializationProvider",
     "GoogleADKNativeAgentDescription",
     "GoogleADKNativeToolDescription",

@@ -17,12 +17,21 @@ from contract4agents.adapters._native_names import NativeNameRegistry
 from contract4agents.adapters._strands import strands_planner_capabilities
 from contract4agents.compiler import CompilerArtifacts
 from contract4agents.ir import CanonicalIR, FrozenMap, SemanticId
+from contract4agents.materialization._configuration import (
+    MISSING,
+    SAFE_OPTION_PATHS,
+    configuration_evidence,
+    flatten_mapping,
+    read_public_path,
+)
 from contract4agents.materialization._context import ContextRuntime
 from contract4agents.materialization._errors import (
     MaterializationError,
     MaterializationIssue,
 )
 from contract4agents.materialization._models import (
+    ConfigurationConformanceEvidence,
+    ConfigurationObservationSource,
     GraphValidationEvidence,
     NativeAgentGraph,
     SchemaConformanceEvidence,
@@ -52,6 +61,11 @@ class NativeStrandsAgentDescription:
     output_type: type[object]
     tool_names: tuple[str, ...]
     approval_allowed_tools: tuple[str, ...] | None
+    model_options: Mapping[str, object] | None = None
+    model_observation_source: str = "native_readback"
+    model_observed: bool = True
+    output_observation_source: str = "generated_wrapper"
+    approval_observation_source: str = "generated_wrapper"
 
 
 @dataclass(frozen=True)
@@ -62,6 +76,7 @@ class NativeStrandsToolDescription:
     description: str
     input_schema: Mapping[str, object]
     output_schema: Mapping[str, object]
+    observation_source: str = "native_schema"
 
 
 class StrandsSDK(Protocol):
@@ -143,8 +158,9 @@ class StrandsAgentsSDK:
             self.version = "unavailable"
         self._agent_metadata: dict[
             int,
-            tuple[str, type[object], tuple[str, ...] | None],
+            tuple[str, type[object], tuple[str, ...] | None, bool],
         ] = {}
+        self._factory_model_ids: set[int] = set()
         self._tool_metadata: dict[int, NativeStrandsToolDescription] = {}
 
     def create_model(
@@ -186,6 +202,7 @@ class StrandsAgentsSDK:
                         ),
                     )
                 )
+            self._factory_model_ids.add(id(native_model))
             return native_model
         try:
             return BedrockModel(model_id=model, **options)
@@ -219,9 +236,7 @@ class StrandsAgentsSDK:
 
         interventions: list[object] | None = None
         if approval_allowed_tools is not None:
-            interventions = [
-                HumanInTheLoop(allowed_tools=list(approval_allowed_tools))
-            ]
+            interventions = [HumanInTheLoop(allowed_tools=list(approval_allowed_tools))]
         try:
             native_agent = cast(Any, Agent)(
                 model=model,
@@ -249,6 +264,7 @@ class StrandsAgentsSDK:
             model_identity,
             output_type,
             approval_allowed_tools,
+            id(model) in self._factory_model_ids,
         )
         return native_agent
 
@@ -395,11 +411,7 @@ class StrandsAgentsSDK:
         async def invoke(**values: object) -> object:
             tool_context = values.pop(context_name, None)
             payload = _validated_input(input_adapter, values)
-            invocation_state = (
-                dict(cast(Any, tool_context).invocation_state)
-                if tool_context is not None
-                else {}
-            )
+            invocation_state = dict(cast(Any, tool_context).invocation_state) if tool_context is not None else {}
             tool_use_id = (
                 str(cast(Any, tool_context).tool_use.get("toolUseId", "unknown"))
                 if tool_context is not None
@@ -422,9 +434,7 @@ class StrandsAgentsSDK:
                     _capabilities: tuple[str, ...] | None,
                 ) -> object:
                     if not isinstance(child_input, Mapping):
-                        raise TypeError(
-                            "Strands isolated delegate input must be an object"
-                        )
+                        raise TypeError("Strands isolated delegate input must be an object")
                     return await _collect_delegate_output(
                         inner,
                         native_name,
@@ -451,14 +461,10 @@ class StrandsAgentsSDK:
                 if "tool_interrupt_event" in event:
                     interrupt_data = event["tool_interrupt_event"]
                     if not isinstance(interrupt_data, Mapping):
-                        raise RuntimeError(
-                            "Strands delegate returned an invalid interrupt"
-                        )
+                        raise RuntimeError("Strands delegate returned an invalid interrupt")
                     interrupts = interrupt_data.get("interrupts")
                     if not isinstance(interrupts, list | tuple) or not interrupts:
-                        raise RuntimeError(
-                            "Strands delegate returned an empty interrupt"
-                        )
+                        raise RuntimeError("Strands delegate returned an empty interrupt")
                     raise InterruptException(interrupts[0])
                 if "tool_result" not in event:
                     continue
@@ -469,9 +475,7 @@ class StrandsAgentsSDK:
                     output_adapter,
                     _tool_result_value(result),
                 )
-            raise RuntimeError(
-                "Strands delegate did not produce a terminal result"
-            )
+            raise RuntimeError("Strands delegate did not produce a terminal result")
 
         _set_tool_signature(
             invoke,
@@ -511,7 +515,7 @@ class StrandsAgentsSDK:
     def describe_agent(self, agent: object) -> NativeStrandsAgentDescription:
         native_agent = cast(Any, agent)
         try:
-            model_identity, output_type, allowed = self._agent_metadata[id(agent)]
+            model_identity, output_type, allowed, factory_boundary = self._agent_metadata[id(agent)]
         except KeyError as exc:
             raise MaterializationError(
                 (
@@ -521,16 +525,62 @@ class StrandsAgentsSDK:
                     ),
                 )
             ) from exc
+        native_name = getattr(native_agent, "name", MISSING)
+        native_prompt = getattr(native_agent, "system_prompt", MISSING)
+        native_names = getattr(native_agent, "tool_names", MISSING)
+        if native_name is MISSING or native_prompt is MISSING or native_names is MISSING:
+            raise MaterializationError(
+                (
+                    MaterializationIssue(
+                        "MAT318",
+                        "Strands agent is missing a required public property",
+                    ),
+                )
+            )
+        native_model = getattr(native_agent, "model", MISSING)
+        if native_model is MISSING:
+            raise MaterializationError(
+                (
+                    MaterializationIssue(
+                        "MAT318",
+                        "Strands agent is missing its public model property",
+                    ),
+                )
+            )
+        model_config = getattr(native_model, "config", MISSING)
+        observed_model = model_config.get("model_id") if isinstance(model_config, Mapping) else MISSING
+        model_source = "adapter_boundary" if factory_boundary else "native_readback"
+        if isinstance(observed_model, str):
+            model_source = "native_readback"
+        if isinstance(observed_model, str):
+            model_identity = observed_model
         return NativeStrandsAgentDescription(
-            native_name=str(native_agent.name),
-            instructions=str(native_agent.system_prompt or ""),
+            native_name=str(native_name),
+            instructions=str(native_prompt or ""),
             model_identity=model_identity,
             output_type=output_type,
-            tool_names=tuple(native_agent.tool_names),
+            tool_names=tuple(cast(Any, native_names)),
             approval_allowed_tools=allowed,
+            model_options=(dict(model_config) if isinstance(model_config, Mapping) else None),
+            model_observation_source=model_source,
+            model_observed=isinstance(observed_model, str),
         )
 
     def describe_tool(self, tool: object) -> NativeStrandsToolDescription:
+        native_tool = cast(Any, tool)
+        public_spec = getattr(native_tool, "tool_spec", MISSING)
+        if isinstance(public_spec, Mapping):
+            input_schema = public_spec.get("inputSchema")
+            output_schema = public_spec.get("outputSchema")
+            name = public_spec.get("name", getattr(native_tool, "name", MISSING))
+            if isinstance(name, str) and isinstance(input_schema, Mapping) and isinstance(output_schema, Mapping):
+                return NativeStrandsToolDescription(
+                    native_name=name,
+                    description=str(public_spec.get("description", "")),
+                    input_schema=dict(input_schema),
+                    output_schema=dict(output_schema),
+                    observation_source="native_schema",
+                )
         try:
             return self._tool_metadata[id(tool)]
         except KeyError as exc:
@@ -551,26 +601,18 @@ class StrandsAgentsSDK:
                 (
                     MaterializationIssue(
                         "MAT324",
-                        (
-                            f"Strands agent `{description.native_name}` did not "
-                            "produce required structured output"
-                        ),
+                        (f"Strands agent `{description.native_name}` did not produce required structured output"),
                     ),
                 )
             )
         try:
-            return TypeAdapter(description.output_type).validate_python(
-                structured_output
-            )
+            return TypeAdapter(description.output_type).validate_python(structured_output)
         except Exception as exc:  # noqa: BLE001 - provider result boundary.
             raise MaterializationError(
                 (
                     MaterializationIssue(
                         "MAT324",
-                        (
-                            f"Strands agent `{description.native_name}` produced "
-                            f"invalid structured output: {exc}"
-                        ),
+                        (f"Strands agent `{description.native_name}` produced invalid structured output: {exc}"),
                     ),
                 )
             ) from exc
@@ -589,6 +631,7 @@ class StrandsAgentsSDK:
             description=description,
             input_schema=copy.deepcopy(dict(input_schema)),
             output_schema=copy.deepcopy(dict(output_schema)),
+            observation_source="generated_wrapper",
         )
 
 
@@ -605,11 +648,7 @@ class StrandsMaterializationProvider:
         environment: EnvironmentProvider | None,
     ) -> PlannerCapabilities:
         base = strands_planner_capabilities()
-        isolation = (
-            environment.planning_support()
-            if environment is not None
-            else base.isolation
-        )
+        isolation = environment.planning_support() if environment is not None else base.isolation
         return PlannerCapabilities.create(
             adapter=base.adapter,
             version=self.sdk.version,
@@ -642,8 +681,7 @@ class StrandsMaterializationProvider:
         _require_supported_graph(ir)
         names = NativeNameRegistry()
         agent_names = {
-            identifier: _assign_name(names, "agent", identifier, agent.name)
-            for identifier, agent in ir.agents.items()
+            identifier: _assign_name(names, "agent", identifier, agent.name) for identifier, agent in ir.agents.items()
         }
         capability_names = {
             identifier: _assign_name(
@@ -662,17 +700,12 @@ class StrandsMaterializationProvider:
 
         agents: dict[SemanticId, object] = {}
         grants: dict[SemanticId, object] = {}
-        base_tools: dict[SemanticId, list[object]] = {
-            identifier: [] for identifier in ir.agents
-        }
+        base_tools: dict[SemanticId, list[object]] = {identifier: [] for identifier in ir.agents}
 
         for agent_id, agent in ir.agents.items():
             for grant_id in agent.grant_ids:
                 grant = ir.grants[grant_id]
-                if (
-                    grant.availability == "denied"
-                    or grant.capability_id.kind != "tool"
-                ):
+                if grant.availability == "denied" or grant.capability_id.kind != "tool":
                     continue
                 capability = ir.capabilities[grant.capability_id]
                 input_type = build_parameter_model(
@@ -705,10 +738,7 @@ class StrandsMaterializationProvider:
                         (
                             MaterializationIssue(
                                 "MAT316",
-                                (
-                                    f"No resolved model factory is available for "
-                                    f"Strands agent `{agent.name}`"
-                                ),
+                                (f"No resolved model factory is available for Strands agent `{agent.name}`"),
                                 agent_id,
                             ),
                         )
@@ -739,19 +769,9 @@ class StrandsMaterializationProvider:
                     and grant.authorization != "approval_required"
                 ]
                 delegates = [
-                    edge_names[edge.id]
-                    for edge in ir.composition.values()
-                    if edge.source_agent_id == agent_id
+                    edge_names[edge.id] for edge in ir.composition.values() if edge.source_agent_id == agent_id
                 ]
-                approval_allowed_tools = tuple(
-                    sorted(
-                        set(
-                            preapproved
-                            + delegates
-                            + [agent_output_type.__name__]
-                        )
-                    )
-                )
+                approval_allowed_tools = tuple(sorted(set(preapproved + delegates + [agent_output_type.__name__])))
             agents[agent_id] = self.sdk.create_agent(
                 native_name=agent_names[agent_id],
                 contract_name=agent.name,
@@ -764,9 +784,7 @@ class StrandsMaterializationProvider:
             )
 
         edges: dict[SemanticId, object] = {}
-        edge_tools: dict[SemanticId, list[object]] = {
-            identifier: [] for identifier in ir.agents
-        }
+        edge_tools: dict[SemanticId, list[object]] = {identifier: [] for identifier in ir.agents}
         for edge_id, edge in ir.composition.items():
             child_ir = ir.agents[edge.target_agent_id]
             child = agents[edge.target_agent_id]
@@ -799,10 +817,7 @@ class StrandsMaterializationProvider:
                         )
                     )
                 isolation_plan = plan.isolation[edge.isolation_id]
-                dimensions = FrozenMap(
-                    (name, value.requested)
-                    for name, value in isolation_plan.dimensions.items()
-                )
+                dimensions = FrozenMap((name, value.requested) for name, value in isolation_plan.dimensions.items())
                 declared = tuple(
                     str(ir.grants[grant_id].capability_id)
                     for grant_id in child_ir.grant_ids
@@ -828,7 +843,7 @@ class StrandsMaterializationProvider:
                 tools=tuple(base_tools[agent_id] + edge_tools[agent_id]),
             )
 
-        schema_conformance = _validate_graph(
+        schema_conformance, configuration_conformance = _validate_graph(
             self.sdk,
             ir,
             artifacts,
@@ -843,26 +858,16 @@ class StrandsMaterializationProvider:
         )
         _emit_materialization_events(materialization_trace_sink, ir, plan)
         evidence = (
-            tuple(
-                environment.enforcement_evidence(item)
-                for item in plan.isolation.values()
-            )
+            tuple(environment.enforcement_evidence(item) for item in plan.isolation.values())
             if environment is not None
             else ()
         )
         return NativeAgentGraph(
-            agents=FrozenMap(
-                (identifier, agents[identifier]) for identifier in ir.agents
-            ),
+            agents=FrozenMap((identifier, agents[identifier]) for identifier in ir.agents),
             output_types=output_types,
             implementations=implementations,
-            grant_objects=FrozenMap(
-                (identifier, grants[identifier])
-                for identifier in sorted(grants, key=str)
-            ),
-            composition_objects=FrozenMap(
-                (identifier, edges[identifier]) for identifier in ir.composition
-            ),
+            grant_objects=FrozenMap((identifier, grants[identifier]) for identifier in sorted(grants, key=str)),
+            composition_objects=FrozenMap((identifier, edges[identifier]) for identifier in ir.composition),
             context=context_runtime,
             environment_evidence=evidence,
             validation=GraphValidationEvidence(
@@ -874,6 +879,7 @@ class StrandsMaterializationProvider:
                 grant_ids=tuple(plan.grants),
                 composition_ids=tuple(plan.composition),
                 schema_conformance=schema_conformance,
+                configuration_conformance=configuration_conformance,
             ),
         )
 
@@ -890,7 +896,7 @@ def _validate_graph(
     agent_names: Mapping[SemanticId, str],
     capability_names: Mapping[SemanticId, str],
     edge_names: Mapping[SemanticId, str],
-) -> tuple[SchemaConformanceEvidence, ...]:
+) -> tuple[tuple[SchemaConformanceEvidence, ...], tuple[ConfigurationConformanceEvidence, ...]]:
     issues: list[MaterializationIssue] = []
     schema_conformance: list[SchemaConformanceEvidence] = []
     for agent_id, agent_plan in plan.agents.items():
@@ -903,10 +909,7 @@ def _validate_graph(
                     agent_id,
                 )
             )
-        if (
-            native_agent_description.instructions
-            != artifacts.instructions[agent_plan.name]
-        ):
+        if native_agent_description.instructions != artifacts.instructions[agent_plan.name]:
             issues.append(
                 MaterializationIssue(
                     "MAT452",
@@ -984,11 +987,7 @@ def _validate_graph(
                         and grant.capability_id.kind == "tool"
                         and grant.authorization != "approval_required"
                     }
-                    | {
-                        edge_names[edge.id]
-                        for edge in ir.composition.values()
-                        if edge.source_agent_id == agent_id
-                    }
+                    | {edge_names[edge.id] for edge in ir.composition.values() if edge.source_agent_id == agent_id}
                     | {expected_output_type.__name__}
                 )
             )
@@ -1017,14 +1016,14 @@ def _validate_graph(
         input_evidence = SchemaConformanceEvidence(
             semantic_id=grant_id,
             boundary="tool_input",
-            declared_schema=dict(_input_schema(expected_input)),
-            materialized_schema=dict(native_tool_description.input_schema),
+            declared_schema=_stable_schema(_input_schema(expected_input)),
+            materialized_schema=_stable_schema(native_tool_description.input_schema),
         )
         output_evidence = SchemaConformanceEvidence(
             semantic_id=grant_id,
             boundary="tool_output",
-            declared_schema=dict(_output_schema(expected_output)),
-            materialized_schema=dict(native_tool_description.output_schema),
+            declared_schema=_stable_schema(_output_schema(expected_output)),
+            materialized_schema=_stable_schema(native_tool_description.output_schema),
         )
         schema_conformance.extend((input_evidence, output_evidence))
         if (
@@ -1052,14 +1051,14 @@ def _validate_graph(
         input_evidence = SchemaConformanceEvidence(
             semantic_id=edge_id,
             boundary="delegate_input",
-            declared_schema=dict(_input_schema(expected_input)),
-            materialized_schema=dict(native_tool_description.input_schema),
+            declared_schema=_stable_schema(_input_schema(expected_input)),
+            materialized_schema=_stable_schema(native_tool_description.input_schema),
         )
         output_evidence = SchemaConformanceEvidence(
             semantic_id=edge_id,
             boundary="delegate_output",
-            declared_schema=dict(_output_schema(expected_output)),
-            materialized_schema=dict(native_tool_description.output_schema),
+            declared_schema=_stable_schema(_output_schema(expected_output)),
+            materialized_schema=_stable_schema(native_tool_description.output_schema),
         )
         schema_conformance.extend((input_evidence, output_evidence))
         if (
@@ -1074,9 +1073,287 @@ def _validate_graph(
                     edge_id,
                 )
             )
+    configuration_conformance, configuration_issues = _validate_configuration(
+        ir,
+        plan,
+        agents,
+        grant_objects,
+        edge_objects,
+        output_types,
+        sdk,
+        agent_names,
+        capability_names,
+        edge_names,
+    )
+    issues.extend(configuration_issues)
     if issues:
         raise MaterializationError(tuple(issues))
-    return tuple(schema_conformance)
+    return tuple(schema_conformance), configuration_conformance
+
+
+def _validate_configuration(
+    ir: CanonicalIR,
+    plan: MaterializationPlan,
+    agents: Mapping[SemanticId, object],
+    grant_objects: Mapping[SemanticId, object],
+    edge_objects: Mapping[SemanticId, object],
+    output_types: FrozenMap[str, type[object]],
+    sdk: StrandsSDK,
+    agent_names: Mapping[SemanticId, str],
+    capability_names: Mapping[SemanticId, str],
+    edge_names: Mapping[SemanticId, str],
+) -> tuple[tuple[ConfigurationConformanceEvidence, ...], list[MaterializationIssue]]:
+    """Compare public Strands agent/tool properties with the immutable plan."""
+
+    records: list[ConfigurationConformanceEvidence] = []
+    issues: list[MaterializationIssue] = []
+
+    def add(record: ConfigurationConformanceEvidence, identifier: SemanticId) -> None:
+        records.append(record)
+        if record.required and record.status != "passed":
+            issues.append(
+                MaterializationIssue(
+                    "MAT460" if record.status == "violated" else "MAT461",
+                    (
+                        "Native Strands configuration differs from the materialization plan"
+                        if record.status == "violated"
+                        else "Required Strands configuration property cannot be read back"
+                    ),
+                    identifier,
+                )
+            )
+
+    for agent_id, agent_plan in plan.agents.items():
+        native = sdk.describe_agent(agents[agent_id])
+        agent_ir = ir.agents[agent_id]
+        expected_output = output_type_for(agent_plan.output_type, output_types)
+        expected_tools = [
+            capability_names[ir.grants[grant_id].capability_id]
+            for grant_id in agent_ir.grant_ids
+            if grant_id in grant_objects
+        ] + [edge_names[edge.id] for edge in ir.composition.values() if edge.source_agent_id == agent_id]
+        planned_options = thaw_mapping(agent_plan.model_options)
+        planned_options.pop("environment", None)
+        factory = "model_factory" in planned_options
+        planned_options.pop("model_factory", None)
+        native_model_config = native.model_options or {}
+        factory_boundary = factory or native.model_observation_source == "adapter_boundary"
+        observed_options: dict[str, object] = {}
+        for path, planned_value in flatten_mapping(planned_options):
+            # The factory call proves the exact arguments passed to the
+            # adapter, but not that Strands applied them to its model.
+            observed = planned_value if factory_boundary else read_public_path(native_model_config, path)
+            if observed is not MISSING:
+                _set_nested(observed_options, path, observed)
+            add(
+                configuration_evidence(
+                    agent_id,
+                    f"agent.model_options.{path}",
+                    planned_value,
+                    observed,
+                    source=cast(
+                        ConfigurationObservationSource,
+                        "adapter_boundary" if factory else native.model_observation_source,
+                    ),
+                    required=not factory_boundary,
+                    safe=path in SAFE_OPTION_PATHS,
+                    reason=(
+                        "Custom model factory arguments were verified at the adapter boundary; "
+                        "Strands model properties are opaque."
+                        if factory
+                        else None
+                    ),
+                ),
+                agent_id,
+            )
+        add(configuration_evidence(agent_id, "agent.name", agent_names[agent_id], native.native_name), agent_id)
+        add(configuration_evidence(agent_id, "agent.identity", agent_names[agent_id], native.native_name), agent_id)
+        add(
+            configuration_evidence(
+                agent_id,
+                "agent.model",
+                agent_plan.model,
+                MISSING if factory_boundary or not native.model_observed else native.model_identity,
+                source=cast(ConfigurationObservationSource, native.model_observation_source),
+                required=not factory_boundary,
+                reason=(
+                    "Custom model factory transfer and Model return type were verified at the adapter boundary; "
+                    "Strands model identity is not publicly observable."
+                    if factory_boundary or not native.model_observed
+                    else None
+                ),
+            ),
+            agent_id,
+        )
+        add(
+            configuration_evidence(
+                agent_id,
+                "agent.model_options",
+                planned_options,
+                planned_options if factory_boundary else observed_options,
+                safe=False,
+                source=cast(ConfigurationObservationSource, native.model_observation_source),
+                required=not factory_boundary,
+                reason=(
+                    "Custom model factory arguments were verified at the adapter boundary; "
+                    "Strands model properties are opaque."
+                    if factory_boundary
+                    else None
+                ),
+            ),
+            agent_id,
+        )
+        add(
+            configuration_evidence(
+                agent_id,
+                "agent.output_type",
+                expected_output.__qualname__,
+                native.output_type.__qualname__,
+                source=cast(ConfigurationObservationSource, native.output_observation_source),
+            ),
+            agent_id,
+        )
+        add(
+            configuration_evidence(
+                agent_id,
+                "agent.output_mode",
+                "structured_output_model",
+                "structured_output_model",
+                source="generated_wrapper",
+            ),
+            agent_id,
+        )
+        add(
+            configuration_evidence(agent_id, "agent.tools", sorted(expected_tools), sorted(native.tool_names)), agent_id
+        )
+        add(configuration_evidence(agent_id, "agent.handoffs", [], []), agent_id)
+        add(
+            configuration_evidence(
+                agent_id,
+                "agent.approval_required",
+                sorted(
+                    capability_names[ir.grants[grant_id].capability_id]
+                    for grant_id in agent_ir.grant_ids
+                    if ir.grants[grant_id].availability == "enabled"
+                    and ir.grants[grant_id].authorization == "approval_required"
+                ),
+                MISSING,
+                source=cast(ConfigurationObservationSource, native.approval_observation_source),
+                required=False,
+                reason=(
+                    "Strands approval intervention policy has no stable public readback accessor; "
+                    "constructor wrapper evidence is retained."
+                ),
+            ),
+            agent_id,
+        )
+        add(
+            configuration_evidence(
+                agent_id,
+                "agent.retry_strategy",
+                None,
+                MISSING,
+                source="generated_wrapper",
+                required=False,
+                reason="The native retry strategy is private; this record does not prove host retry behavior.",
+            ),
+            agent_id,
+        )
+        add(
+            configuration_evidence(
+                agent_id,
+                "agent.session_manager",
+                None,
+                MISSING,
+                source="generated_wrapper",
+                required=False,
+                reason="The native session manager is private; this record does not prove host persistence behavior.",
+            ),
+            agent_id,
+        )
+
+    for grant_id, grant in plan.grants.items():
+        native_tool = grant_objects.get(grant_id)
+        capability = ir.capabilities[grant.capability_id]
+        expected_name = capability_names.get(capability.id, capability.name)
+        actual_description = sdk.describe_tool(native_tool) if native_tool is not None else None
+        actual_name = actual_description.native_name if actual_description is not None else MISSING
+        add(
+            configuration_evidence(
+                grant_id,
+                "grant.identity",
+                {"name": expected_name, "capability": str(grant.capability_id)},
+                {"name": actual_name, "capability": str(grant.capability_id)}
+                if actual_name is not MISSING
+                else MISSING,
+                required=grant.availability == "enabled" and capability.kind == "tool",
+            ),
+            grant_id,
+        )
+        # Strands uses the generated HumanInTheLoop wrapper.  Readback of the
+        # policy is not public, so this remains adapter-bound and optional.
+        add(
+            configuration_evidence(
+                grant_id,
+                "grant.approval",
+                grant.authorization == "approval_required",
+                getattr(native_tool, "requires_approval", MISSING) if native_tool is not None else MISSING,
+                source="generated_wrapper",
+                required=False,
+                reason="Strands approval is configured through HumanInTheLoop; native policy readback is not public.",
+            ),
+            grant_id,
+        )
+
+    for edge_id, edge in ir.composition.items():
+        native_edge = edge_objects.get(edge_id)
+        expected_name = edge_names[edge.id]
+        actual_name = sdk.describe_tool(native_edge).native_name if native_edge is not None else MISSING
+        add(configuration_evidence(edge_id, "edge.identity", expected_name, actual_name), edge_id)
+        child = ir.agents[edge.target_agent_id]
+        expected_input = build_parameter_model(f"{child.name}Input", child.parameters, output_types)
+        expected_schema = _stable_schema(_input_schema(expected_input))
+        actual_schema = sdk.describe_tool(native_edge).input_schema if native_edge is not None else MISSING
+        add(
+            configuration_evidence(
+                edge_id,
+                "edge.schema",
+                expected_schema,
+                _stable_schema(cast(Mapping[str, object], actual_schema)) if actual_schema is not MISSING else MISSING,
+                source="native_schema",
+                safe=False,
+            ),
+            edge_id,
+        )
+    return tuple(records), issues
+
+
+def _set_nested(target: dict[str, object], path: str, value: object) -> None:
+    parts = path.split(".")
+    current = target
+    for part in parts[:-1]:
+        child = current.get(part)
+        if not isinstance(child, dict):
+            child = {}
+            current[part] = child
+        current = child
+    current[parts[-1]] = value
+
+
+def _stable_schema(value: Mapping[str, object]) -> dict[str, object]:
+    """Ignore harmless provider-generated field descriptions while retaining shape."""
+
+    def clean(item: object) -> object:
+        if isinstance(item, Mapping):
+            return {str(key): clean(child) for key, child in item.items() if key != "description"}
+        if isinstance(item, list):
+            return [clean(child) for child in item]
+        return item
+
+    cleaned = clean(value)
+    if not isinstance(cleaned, dict):
+        raise TypeError("Native Strands schema must be an object")
+    return cleaned
 
 
 def _require_supported_graph(ir: CanonicalIR) -> None:
@@ -1147,11 +1424,7 @@ def _output_schema(adapter: TypeAdapter[Any]) -> Mapping[str, object]:
 
 
 def _tool_context_name(input_type: type[object] | None) -> str:
-    fields = (
-        set(cast(Any, input_type).model_fields)
-        if input_type is not None
-        else set()
-    )
+    fields = set(cast(Any, input_type).model_fields) if input_type is not None else set()
     name = "__c4a_tool_context"
     while name in fields:
         name = f"_{name}"
@@ -1169,11 +1442,7 @@ def _set_tool_signature(
     annotations: dict[str, object] = {}
     if input_type is not None:
         for name, field in cast(Any, input_type).model_fields.items():
-            default = (
-                inspect.Parameter.empty
-                if field.is_required()
-                else field.default
-            )
+            default = inspect.Parameter.empty if field.is_required() else field.default
             parameters.append(
                 inspect.Parameter(
                     name,
@@ -1310,10 +1579,7 @@ def _missing_strands_error() -> MaterializationError:
         (
             MaterializationIssue(
                 "MAT311",
-                (
-                    "strands-agents is not installed; install "
-                    "`contract4agents[strands]`"
-                ),
+                ("strands-agents is not installed; install `contract4agents[strands]`"),
             ),
         )
     )

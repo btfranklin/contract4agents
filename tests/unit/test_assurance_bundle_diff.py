@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import cast
+
+import pytest
 
 from contract4agents.adapters.openai import openai_planner_capabilities
 from contract4agents.assurance import (
@@ -26,7 +29,12 @@ from contract4agents.ir import (
     parse_type_ref,
     semantic_id,
 )
-from contract4agents.materialization import GraphValidationEvidence, SchemaConformanceEvidence
+from contract4agents.materialization import (
+    ConfigurationConformanceEvidence,
+    GraphValidationEvidence,
+    SchemaConformanceEvidence,
+)
+from contract4agents.materialization._configuration import MISSING, configuration_evidence
 from contract4agents.parser import parse_project
 from contract4agents.planning import MaterializationPlan, plan_materialization
 from contract4agents.target_bindings import load_target_bindings
@@ -182,6 +190,55 @@ def test_assurance_bundle_is_deterministic_verified_and_explicit_about_missing_e
     assert '"status": "unverified"' in incomplete.files["control-results.json"]
 
 
+@pytest.mark.parametrize(
+    ("observed", "status"),
+    ((True, "violated"), (MISSING, "unverified")),
+)
+def test_required_additional_configuration_record_emits_bundle017(
+    observed: object,
+    status: str,
+) -> None:
+    root = Path("examples/incident-command")
+    ir = build_canonical_ir(parse_project(root))
+    loaded = load_target_bindings(root, required=True)
+    assert loaded.bindings is not None
+    plan = plan_materialization(
+        ir,
+        loaded.bindings,
+        target="openai",
+        profile="test",
+        capabilities=openai_planner_capabilities(),
+    )
+    evidence = _materialization_evidence(ir, plan)
+    agent_id = next(iter(plan.agents))
+    extra = configuration_evidence(
+        agent_id,
+        "agent.model_settings.store",
+        False,
+        observed,
+        required=True,
+    )
+    assert extra.status == status
+    evidence = replace(
+        evidence,
+        configuration_conformance=evidence.configuration_conformance + (extra,),
+    )
+
+    assert not evidence.complete
+    bundle = assemble_assurance_bundle(
+        ir,
+        plan,
+        normalized_trace_jsonl=None,
+        control_results=None,
+        eval_results=None,
+        provenance=None,
+        materialization_evidence=evidence,
+    )
+
+    diagnostic = next(item for item in bundle.diagnostics if item.code == "BUNDLE017")
+    assert f"{agent_id}:agent.model_settings.store ({status})" in diagnostic.message
+
+
 def _materialization_evidence(ir: CanonicalIR, plan: MaterializationPlan) -> GraphValidationEvidence:
     schema = {"additionalProperties": False, "properties": {}, "type": "object"}
     checks = [
@@ -200,6 +257,28 @@ def _materialization_evidence(ir: CanonicalIR, plan: MaterializationPlan) -> Gra
         for edge in ir.composition.values()
         if edge.mode == "delegate" and ir.agents[edge.target_agent_id].parameters
     )
+    configuration = tuple(
+        ConfigurationConformanceEvidence(agent_id, property_path, status="passed")
+        for agent_id in plan.agents
+        for property_path in (
+            "agent.name",
+            "agent.identity",
+            "agent.model",
+            "agent.model_options",
+            "agent.output_type",
+            "agent.output_mode",
+            "agent.tools",
+            "agent.handoffs",
+        )
+    ) + tuple(
+        ConfigurationConformanceEvidence(grant_id, property_path, status="passed")
+        for grant_id in plan.grants
+        for property_path in ("grant.identity", "grant.approval")
+    ) + tuple(
+        ConfigurationConformanceEvidence(edge_id, property_path, status="passed")
+        for edge_id in plan.composition
+        for property_path in ("edge.identity", "edge.schema")
+    )
     return GraphValidationEvidence(
         adapter=plan.adapter.name,
         adapter_version=plan.adapter.version,
@@ -209,6 +288,7 @@ def _materialization_evidence(ir: CanonicalIR, plan: MaterializationPlan) -> Gra
         grant_ids=tuple(plan.grants),
         composition_ids=tuple(plan.composition),
         schema_conformance=tuple(checks),
+        configuration_conformance=configuration,
     )
 
 

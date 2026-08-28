@@ -27,7 +27,11 @@ from contract4agents.ir import (
     parse_type_ref,
     semantic_id,
 )
-from contract4agents.materialization import GraphValidationEvidence, SchemaConformanceEvidence
+from contract4agents.materialization import (
+    ConfigurationConformanceEvidence,
+    GraphValidationEvidence,
+    SchemaConformanceEvidence,
+)
 from contract4agents.planning import AdapterPlan, AgentPlan, MaterializationPlan
 from contract4agents.tracing import (
     NormalizedTrace,
@@ -516,6 +520,28 @@ def _materialization_evidence(
     plan: MaterializationPlan,
 ) -> GraphValidationEvidence:
     schema = {"additionalProperties": False, "properties": {}, "type": "object"}
+    configuration = tuple(
+        ConfigurationConformanceEvidence(agent_id, property_path, status="passed")
+        for agent_id in plan.agents
+        for property_path in (
+            "agent.name",
+            "agent.identity",
+            "agent.model",
+            "agent.model_options",
+            "agent.output_type",
+            "agent.output_mode",
+            "agent.tools",
+            "agent.handoffs",
+        )
+    ) + tuple(
+        ConfigurationConformanceEvidence(grant_id, property_path, status="passed")
+        for grant_id in plan.grants
+        for property_path in ("grant.identity", "grant.approval")
+    ) + tuple(
+        ConfigurationConformanceEvidence(edge_id, property_path, status="passed")
+        for edge_id in plan.composition
+        for property_path in ("edge.identity", "edge.schema")
+    )
     return GraphValidationEvidence(
         adapter=plan.adapter.name,
         adapter_version=plan.adapter.version,
@@ -528,6 +554,7 @@ def _materialization_evidence(
             SchemaConformanceEvidence(agent_id, "agent_output", schema, schema)
             for agent_id in ir.agents
         ),
+        configuration_conformance=configuration,
     )
 
 
