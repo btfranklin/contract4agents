@@ -2,7 +2,7 @@ type Request:
     incident_id: string
 
 type Evidence:
-    entries: list[string]
+    entries: list[string](min_items=1,max_items=20)
 
 type Decision:
     summary: string

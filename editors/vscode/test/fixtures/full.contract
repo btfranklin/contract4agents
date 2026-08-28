@@ -7,6 +7,7 @@ type ResearchRequest:
     topic: string
     as_of: datetime?
     tags: list[string]
+    bounded_tags: list[string](min_items=1,max_items=20)?
     metadata: map[string,string]
     limit: integer = 5
     threshold: float = 0.75

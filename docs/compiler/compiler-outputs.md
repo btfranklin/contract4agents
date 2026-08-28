@@ -32,7 +32,8 @@ docs/
   plans, traces, and assurance results.
 - `schemas/` contains standalone JSON Schema derived from structural types and
   string enums. Portable string and numeric bounds become `minLength`,
-  `maxLength`, `minimum`, and `maximum` keywords.
+  `maxLength`, `minimum`, and `maximum` keywords. List cardinality becomes
+  `minItems` and `maxItems`.
 - `instructions/` contains only model-visible goals, guidance, composition
   descriptions, and controls whose audience explicitly includes `model`.
 - `docs/` contains reviewer-facing summaries generated from the IR.
@@ -71,7 +72,10 @@ TypeScript interfaces and their Zod schemas. `generate --check` checks only the
 selected targets, so separate invocations may safely share an output root.
 Generated source includes the contract digest and should not be edited manually.
 Generated Pydantic and Zod validators enforce the same portable bounds as the
-compiler JSON Schema.
+compiler JSON Schema. String lengths use Unicode code-point counts in all
+targets. Datetimes use the shared RFC 3339 subset with a literal `T` and a
+required `Z` or numeric offset; generated Python retains aware `datetime`
+objects, while generated TypeScript represents the lexical value as a string.
 
 Unsafe destinations report `COMPILE002`. The compiler refuses the project root,
 the current working directory, and obvious source-owned directories.

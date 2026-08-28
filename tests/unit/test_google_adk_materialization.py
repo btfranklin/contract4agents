@@ -74,8 +74,9 @@ class FakeAgent:
 class FakeGoogleADKSDK:
     version = "fake-google-adk-2.5"
 
-    def __init__(self, *, drop_tools: bool = False) -> None:
+    def __init__(self, *, drop_tools: bool = False, drop_list_bounds: bool = False) -> None:
         self.drop_tools = drop_tools
+        self.drop_list_bounds = drop_list_bounds
         self.model_factories: dict[str, object | None] = {}
 
     def create_agent(
@@ -117,10 +118,15 @@ class FakeGoogleADKSDK:
         requires_approval: bool,
     ) -> object:
         del description
+        input_schema = _input_schema(input_type)
+        output_schema = output_adapter.json_schema()
+        if self.drop_list_bounds:
+            input_schema = _without_list_bounds(input_schema)
+            output_schema = _without_list_bounds(output_schema)
         return FakeTool(
             native_name,
-            _input_schema(input_type),
-            output_adapter.json_schema(),
+            input_schema,
+            output_schema,
             implementation,
             requires_approval,
         )
@@ -154,10 +160,15 @@ class FakeGoogleADKSDK:
         output_adapter: TypeAdapter[Any],
     ) -> object:
         del description
+        input_schema = _input_schema(input_type)
+        output_schema = output_adapter.json_schema()
+        if self.drop_list_bounds:
+            input_schema = _without_list_bounds(input_schema)
+            output_schema = _without_list_bounds(output_schema)
         return FakeTool(
             native_name,
-            _input_schema(input_type),
-            output_adapter.json_schema(),
+            input_schema,
+            output_schema,
             child=child,
         )
 
@@ -181,10 +192,15 @@ class FakeGoogleADKSDK:
             declared_capabilities,
             environment,
         )
+        input_schema = _input_schema(input_type)
+        output_schema = output_adapter.json_schema()
+        if self.drop_list_bounds:
+            input_schema = _without_list_bounds(input_schema)
+            output_schema = _without_list_bounds(output_schema)
         return FakeTool(
             native_name,
-            _input_schema(input_type),
-            output_adapter.json_schema(),
+            input_schema,
+            output_schema,
             child=child,
         )
 
@@ -218,6 +234,25 @@ def _input_schema(input_type: type[object] | None) -> Mapping[str, object]:
     if input_type is None:
         return {"type": "object", "properties": {}, "additionalProperties": False}
     return input_type.model_json_schema()  # type: ignore[attr-defined,no-any-return]
+
+
+def _without_list_bounds(schema: Mapping[str, object]) -> dict[str, object]:
+    result = dict(schema)
+    properties = result.get("properties")
+    if isinstance(properties, Mapping):
+        result["properties"] = {
+            name: (
+                {
+                    key: value
+                    for key, value in property_schema.items()
+                    if key not in {"minItems", "maxItems"}
+                }
+                if isinstance(property_schema, Mapping) and property_schema.get("type") == "array"
+                else property_schema
+            )
+            for name, property_schema in properties.items()
+        }
+    return result
 
 
 def test_google_adk_provider_builds_and_validates_typed_graph(

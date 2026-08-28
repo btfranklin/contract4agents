@@ -95,6 +95,12 @@ code, run synchronous callables off the event-loop thread, await asynchronous
 callables, and validate the returned value. Approval-required tools do not call
 application code until ADK supplies an affirmative `ToolConfirmation`.
 
+The adapter reads back native ADK parameter and output schemas during offline
+materialization. Portable list cardinality must remain visible as `minItems`
+and `maxItems`; a missing or changed bound fails conformance. This proves the
+schema evidence exposed by the installed SDK, not provider-wide constrained
+decoding for every model and tool combination.
+
 ## Google Search
 
 The adapter recognizes one provider-native search locator:

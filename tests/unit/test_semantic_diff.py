@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import pytest
+
 from contract4agents.assurance import (
     SemanticDiff,
     diff_contracts,
@@ -153,3 +155,42 @@ def test_diff_objects_and_plan_outcomes_report_worsening_and_improvement() -> No
     assert combined.has_breaking_changes
     assert combined.to_dict()["has_breaking_changes"] is True
     assert '"security_critical"' in combined.to_json()
+
+
+@pytest.mark.parametrize(
+    ("before_type", "after_type"),
+    [
+        ("list[string]", "list[string](min_items=1)"),
+        ("list[string](min_items=1)", "list[string](min_items=2)"),
+        ("list[string](max_items=20)", "list[string](max_items=10)"),
+    ],
+)
+def test_list_cardinality_additions_and_tightenings_are_breaking(
+    before_type: str,
+    after_type: str,
+) -> None:
+    before = CanonicalIR.create(
+        types=(
+            TypeIR(
+                semantic_id("type", "Result"),
+                "Result",
+                (TypeFieldIR("items", parse_type_ref(before_type)),),
+            ),
+        )
+    )
+    after = CanonicalIR.create(
+        types=(
+            TypeIR(
+                semantic_id("type", "Result"),
+                "Result",
+                (TypeFieldIR("items", parse_type_ref(after_type)),),
+            ),
+        )
+    )
+
+    changes = diff_contracts(before, after)
+
+    assert len(changes) == 1
+    assert changes[0].impact == "breaking"
+    assert changes[0].before == before_type
+    assert changes[0].after == after_type

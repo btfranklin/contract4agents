@@ -84,13 +84,15 @@ def test_pydantic_generation_covers_portable_types_defaults_and_forward_refs() -
     source = generate_pydantic_models(ir)
 
     assert "from datetime import datetime" in source
+    assert "from contract4agents" not in source
+    assert "def parse_portable_datetime(value: object) -> datetime:" in source
     assert 'model_config = ConfigDict(extra="forbid")' in source
     assert "address: Address" in source
     assert "aliases: list[str] = []" in source
     assert "labels: dict[str, str]" in source
     assert "score: float | None = None" in source
     assert "active: bool = True" in source
-    assert "opened_at: datetime" in source
+    assert "opened_at: Annotated[datetime, BeforeValidator(parse_portable_datetime)]" in source
     assert "for _model in (Address, Incident):" in source
 
     namespace: dict[str, Any] = {"__name__": "generated_contract_models"}
@@ -165,7 +167,7 @@ def test_typescript_and_zod_generation_cover_all_portable_type_forms() -> None:
     assert "labels: z.record(z.string(), z.string())," in zod
     assert "score: z.number().nullable().default(null)," in zod
     assert "active: z.boolean().default(true)," in zod
-    assert "opened_at: z.string().datetime()," in zod
+    assert "opened_at: portableDatetime()," in zod
     assert ".strict()," in zod
 
 
@@ -189,7 +191,8 @@ def test_constrained_types_generate_runtime_validators() -> None:
 
     assert "Annotated[int, Field(ge=1, le=5)]" in python
     assert "text: string;" in typescript
-    assert "z.string().min(1).max(20)" in zod
+    assert "Array.from(value).length >= 1" in zod
+    assert "Array.from(value).length <= 20" in zod
     assert "z.number().int().min(1).max(5)" in zod
     assert "z.number().min(0).max(1).nullable()" in zod
     with pytest.raises(ValueError):

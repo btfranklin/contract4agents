@@ -49,6 +49,12 @@ extra, or digest-stale compiler files. Generated-source checks cover only the
 explicitly selected targets. Generated files are disposable and must not be
 edited by hand.
 
+Portable constraint tests run a shared corpus through JSON Schema with format
+checking, materialized and generated Pydantic models, and an executed generated
+Zod module. The corpus covers Unicode code-point lengths, nested list bounds,
+aware RFC 3339 datetimes, naive and space-separated datetimes, impossible dates,
+and malformed offsets.
+
 ## Planner and Materializer Gates
 
 Provider-neutral planner tests should prove:

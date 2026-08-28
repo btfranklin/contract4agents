@@ -44,6 +44,7 @@ const contractExpectations = [
   ["topic: string", "string", "support.type.primitive.contract4agents"],
   ["as_of: datetime?", "?", "storage.modifier.nullable.contract4agents"],
   ["tags: list[string]", "list", "storage.type.collection.contract4agents"],
+  ["bounded_tags: list[string]", "min_items", "keyword.operator.type-constraint.contract4agents"],
   ["metadata: map[string,string]", "map", "storage.type.collection.contract4agents"],
   ["limit: integer = 5", "=", "keyword.operator.assignment.contract4agents"],
   ["tool sources.search", "tool", "keyword.declaration.capability.contract4agents"],
