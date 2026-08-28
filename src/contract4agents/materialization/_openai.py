@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import dataclasses
 import importlib.metadata
+import inspect
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol, cast
+
+from pydantic import BaseModel, TypeAdapter
 
 from contract4agents.adapters._openai import openai_planner_capabilities
 from contract4agents.adapters._openai_names import openai_tool_name
@@ -18,12 +21,17 @@ from contract4agents.materialization._errors import MaterializationError, Materi
 from contract4agents.materialization._models import (
     GraphValidationEvidence,
     NativeAgentGraph,
+    SchemaConformanceEvidence,
 )
 from contract4agents.materialization._tracing import (
     MaterializationTraceSink,
     _emit_materialization_events,
 )
-from contract4agents.materialization._types import build_parameter_model, output_type_for
+from contract4agents.materialization._types import (
+    build_parameter_model,
+    output_type_for,
+    type_adapter_for,
+)
 from contract4agents.planning import MaterializationPlan, PlannerCapabilities
 from contract4agents.runtime import (
     EnvironmentProvider,
@@ -38,8 +46,15 @@ class NativeAgentDescription:
     instructions: str
     model: str
     output_type: type[object]
+    output_schema: Mapping[str, object]
     tools: tuple[object, ...]
     handoffs: tuple[object, ...]
+
+
+@dataclass(frozen=True)
+class NativeToolDescription:
+    name: str
+    input_schema: Mapping[str, object]
 
 
 class OpenAISDK(Protocol):
@@ -64,6 +79,8 @@ class OpenAISDK(Protocol):
         name: str,
         description: str,
         implementation: object,
+        input_type: type[object] | None,
+        output_adapter: TypeAdapter[Any],
         requires_approval: bool,
     ) -> object: ...
 
@@ -103,6 +120,12 @@ class OpenAISDK(Protocol):
     def attach(self, agent: object, *, tools: tuple[object, ...], handoffs: tuple[object, ...]) -> None: ...
 
     def describe(self, agent: object) -> NativeAgentDescription: ...
+
+    def describe_tool(self, tool: object) -> NativeToolDescription: ...
+
+    def input_schema(self, input_type: type[object] | None) -> Mapping[str, object]: ...
+
+    def output_schema(self, output_type: type[object]) -> Mapping[str, object]: ...
 
 
 class AgentsSDK:
@@ -155,19 +178,45 @@ class AgentsSDK:
         name: str,
         description: str,
         implementation: object,
+        input_type: type[object] | None,
+        output_adapter: TypeAdapter[Any],
         requires_approval: bool,
     ) -> object:
-        from agents import function_tool
+        from agents import FunctionTool
 
         if not callable(implementation):
             raise MaterializationError(
                 (MaterializationIssue("MAT303", f"Implementation for `{name}` is not callable"),)
             )
-        return function_tool(
-            name_override=openai_tool_name(name),
-            description_override=description or None,
+        input_adapter = TypeAdapter(input_type) if input_type is not None else None
+
+        async def invoke_tool(_context: object, input_json: str) -> object:
+            payload = json.loads(input_json)
+            if input_adapter is None:
+                if payload != {}:
+                    raise ValueError(f"Tool `{name}` does not accept parameters")
+                arguments: dict[str, object] = {}
+            else:
+                parsed = input_adapter.validate_python(payload)
+                if not isinstance(parsed, BaseModel):
+                    raise TypeError(f"Tool `{name}` input did not produce a Pydantic model")
+                arguments = parsed.model_dump()
+            if inspect.iscoroutinefunction(implementation):
+                result = await cast(Any, implementation)(**arguments)
+            else:
+                import asyncio
+
+                result = await asyncio.to_thread(cast(Any, implementation), **arguments)
+            return output_adapter.validate_python(result)
+
+        return FunctionTool(
+            name=openai_tool_name(name),
+            description=description,
+            params_json_schema=dict(self.input_schema(input_type)),
+            on_invoke_tool=invoke_tool,
+            strict_json_schema=True,
             needs_approval=requires_approval,
-        )(implementation)
+        )
 
     def create_hosted_tool(self, *, name: str, binding: BindingEntry) -> object:
         provider = binding.values.get("provider")
@@ -321,15 +370,46 @@ class AgentsSDK:
         native_agent.handoffs = list(handoffs)
 
     def describe(self, agent: object) -> NativeAgentDescription:
+        from agents import AgentOutputSchema
+
         native_agent = cast(Any, agent)
+        output_type = cast(type[object], native_agent.output_type)
         return NativeAgentDescription(
             name=str(native_agent.name),
             instructions=str(native_agent.instructions),
             model=str(native_agent.model),
-            output_type=cast(type[object], native_agent.output_type),
+            output_type=output_type,
+            output_schema=cast(dict[str, object], AgentOutputSchema(output_type).json_schema()),
             tools=tuple(native_agent.tools),
             handoffs=tuple(native_agent.handoffs),
         )
+
+    def describe_tool(self, tool: object) -> NativeToolDescription:
+        native_tool = cast(Any, tool)
+        schema = getattr(native_tool, "params_json_schema", None)
+        if not isinstance(schema, dict):
+            raise MaterializationError(
+                (MaterializationIssue("MAT309", "OpenAI tool does not expose a parameter schema"),)
+            )
+        return NativeToolDescription(
+            name=str(native_tool.name),
+            input_schema=cast(dict[str, object], schema),
+        )
+
+    def input_schema(self, input_type: type[object] | None) -> Mapping[str, object]:
+        from agents.strict_schema import ensure_strict_json_schema
+
+        schema = (
+            cast(dict[str, object], cast(Any, input_type).model_json_schema())
+            if input_type is not None
+            else {"type": "object", "properties": {}, "additionalProperties": False}
+        )
+        return cast(dict[str, object], ensure_strict_json_schema(schema))
+
+    def output_schema(self, output_type: type[object]) -> Mapping[str, object]:
+        from agents import AgentOutputSchema
+
+        return cast(dict[str, object], AgentOutputSchema(output_type).json_schema())
 
 
 class OpenAIMaterializationProvider:
@@ -426,10 +506,17 @@ class OpenAIMaterializationProvider:
                 if plan.bindings[capability.id].execution == "provider_hosted":
                     native_tool = self.sdk.create_hosted_tool(name=capability.name, binding=binding)
                 else:
+                    input_type = build_parameter_model(
+                        f"{agent.name}_{capability.name}_Input",
+                        capability.parameters,
+                        output_types,
+                    )
                     native_tool = self.sdk.create_function_tool(
                         name=capability.name,
                         description=capability.description,
                         implementation=implementations[capability.id],
+                        input_type=input_type,
+                        output_adapter=type_adapter_for(capability.output_type, output_types),
                         requires_approval=grant.authorization == "approval_required",
                     )
                 grants[grant_id] = native_tool
@@ -507,7 +594,7 @@ class OpenAIMaterializationProvider:
                 handoffs=tuple(handoffs[agent_id]),
             )
 
-        _validate_graph(
+        schema_conformance = _validate_graph(
             self.sdk,
             ir,
             artifacts,
@@ -534,10 +621,14 @@ class OpenAIMaterializationProvider:
             context=context_runtime,
             environment_evidence=evidence,
             validation=GraphValidationEvidence(
+                adapter=self.adapter,
+                adapter_version=self.sdk.version,
+                contract_digest=artifacts.contract_digest,
                 plan_digest=plan.plan_digest,
                 agent_ids=tuple(plan.agents),
                 grant_ids=tuple(plan.grants),
                 composition_ids=tuple(plan.composition),
+                schema_conformance=schema_conformance,
             ),
         )
 
@@ -551,8 +642,9 @@ def _validate_graph(
     grant_objects: Mapping[SemanticId, object],
     edge_objects: Mapping[SemanticId, object],
     output_types: FrozenMap[str, type[object]],
-) -> None:
+) -> tuple[SchemaConformanceEvidence, ...]:
     issues: list[MaterializationIssue] = []
+    schema_conformance: list[SchemaConformanceEvidence] = []
     for agent_id, agent_plan in plan.agents.items():
         native = sdk.describe(agents[agent_id])
         if native.name != agent_plan.name:
@@ -566,6 +658,15 @@ def _validate_graph(
         expected_output = output_type_for(agent_plan.output_type, output_types)
         if native.output_type is not expected_output:
             issues.append(MaterializationIssue("MAT403", "Native output type differs from plan", agent_id))
+        output_evidence = SchemaConformanceEvidence(
+            semantic_id=agent_id,
+            boundary="agent_output",
+            declared_schema=dict(sdk.output_schema(expected_output)),
+            materialized_schema=dict(native.output_schema),
+        )
+        schema_conformance.append(output_evidence)
+        if not output_evidence.matches:
+            issues.append(MaterializationIssue("MAT407", "Native output schema differs from contract", agent_id))
 
         expected_tools = [
             grant_objects[grant_id]
@@ -590,13 +691,53 @@ def _validate_graph(
             for item in expected_handoffs
         ):
             issues.append(MaterializationIssue("MAT405", "Native handoffs differ from planned edges", agent_id))
+    for grant_id, native_tool in grant_objects.items():
+        grant = ir.grants[grant_id]
+        capability = ir.capabilities[grant.capability_id]
+        if plan.bindings[capability.id].execution == "provider_hosted":
+            continue
+        input_type = build_parameter_model(
+            f"{ir.agents[grant.agent_id].name}_{capability.name}_Input",
+            capability.parameters,
+            output_types,
+        )
+        native_tool_description = sdk.describe_tool(native_tool)
+        evidence = SchemaConformanceEvidence(
+            semantic_id=grant_id,
+            boundary="tool_input",
+            declared_schema=dict(sdk.input_schema(input_type)),
+            materialized_schema=dict(native_tool_description.input_schema),
+        )
+        schema_conformance.append(evidence)
+        if native_tool_description.name != openai_tool_name(capability.name) or not evidence.matches:
+            issues.append(MaterializationIssue("MAT408", "Native tool schema differs from contract", grant_id))
+    for edge_id, native_tool in edge_objects.items():
+        edge = ir.composition[edge_id]
+        if edge.mode != "delegate":
+            continue
+        child = ir.agents[edge.target_agent_id]
+        input_type = build_parameter_model(f"{child.name}Input", child.parameters, output_types)
+        if input_type is None:
+            continue
+        native_tool_description = sdk.describe_tool(native_tool)
+        evidence = SchemaConformanceEvidence(
+            semantic_id=edge_id,
+            boundary="delegate_input",
+            declared_schema=dict(sdk.input_schema(input_type)),
+            materialized_schema=dict(native_tool_description.input_schema),
+        )
+        schema_conformance.append(evidence)
+        if native_tool_description.name != openai_tool_name(edge.name) or not evidence.matches:
+            issues.append(MaterializationIssue("MAT409", "Native delegate schema differs from contract", edge_id))
     if issues:
         raise MaterializationError(tuple(issues))
+    return tuple(schema_conformance)
 
 
 __all__ = [
     "AgentsSDK",
     "NativeAgentDescription",
+    "NativeToolDescription",
     "OpenAIMaterializationProvider",
     "OpenAISDK",
 ]

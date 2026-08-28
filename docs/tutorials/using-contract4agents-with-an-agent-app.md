@@ -57,6 +57,8 @@ system = materialize(
 
 triage_agent = system.agents["TriageAgent"]
 plan = system.plan
+structural_types = system.structural_output_types
+materialization_evidence = system.graph.validation.to_json()
 ```
 
 The materializer:
@@ -68,10 +70,32 @@ The materializer:
 5. generates native structured-output types;
 6. builds all agent shells;
 7. resolves tools, approvals, delegations, and handoffs across the graph;
-8. validates the native objects against the plan.
+8. reads back native tool and output schemas and validates them against the
+   contract;
+9. returns deterministic materialization evidence for assurance.
 
 Required unsupported or degraded mappings stop this process. There is no silent
 fallback to a weaker interpretation.
+
+## Structural Output and Domain Validation
+
+The generated output types enforce the portable contract structure. They do not
+import application Pydantic models and do not run application validators inside
+a provider SDK output parser. The host runs business rules after the SDK returns
+the structural output.
+
+Use `system.structural_output_types` when host code needs the generated types.
+Keep prose limits, graph completeness, database checks, and other application
+rules in a separate host validation step. This order keeps provider usage and
+structural failures visible even when an application rule rejects the result.
+
+Normalized trace sessions provide separate content-free methods for this step:
+`record_host_domain_validation_started(...)`,
+`record_host_domain_validation_accepted(...)`, and
+`record_host_domain_validation_failure(...)`. These events use the
+`host_domain` phase. `output.accepted` and `output.schema_failed` use the
+`contract_structure` phase. A host domain failure does not rewrite the
+structural-output assurance result.
 
 ## Composition and Workflow
 
@@ -223,9 +247,10 @@ They do not duplicate behavioral controls.
 ## Release Assurance
 
 For a release or incident review, assemble an assurance bundle containing the
-approved canonical IR and plan, normalized traces, trace closure, trace-evidence
-and control results, eval campaign summaries, and semantic diffs. Verify the
-bundle's digest references before review.
+approved canonical IR and plan, `system.graph.validation` evidence, normalized
+traces, trace closure, trace-evidence and control results, eval campaign
+summaries, and semantic diffs. Verify the bundle's digest references before
+review.
 
 A useful release gate asks:
 

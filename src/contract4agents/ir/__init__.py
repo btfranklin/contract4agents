@@ -47,6 +47,7 @@ from contract4agents.ir._serialization import (
 )
 from contract4agents.ir._type_refs import (
     PRIMITIVE_NAMES,
+    ConstrainedTypeRef,
     ListTypeRef,
     MapTypeRef,
     NamedTypeRef,
@@ -73,6 +74,7 @@ __all__ = [
     "CapabilityKind",
     "CompositionEdgeIR",
     "CompositionMode",
+    "ConstrainedTypeRef",
     "ContextOrigin",
     "ContextRequirementIR",
     "ControlIR",

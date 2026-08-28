@@ -16,6 +16,7 @@ closed, assesses declared controls, and assembles the review bundle.
 | Artifact | What it establishes |
 | --- | --- |
 | `NormalizedTrace` | What events were observed under one contract and plan |
+| `GraphValidationEvidence` | Which final native schemas matched the contract |
 | `TraceClosureEvidence` | Which attempts and instrumentation channels were completely captured |
 | `TraceFrontier` | The exact ordered trace snapshot attested by the closure |
 | `TraceCaptureSnapshot` | One internally consistent trace-plus-closure pair |
@@ -100,6 +101,9 @@ async def run_support_request() -> None:
     snapshot = session.closed_snapshot
     evidence_dir = Path(".contract/evidence/support-run-123")
     evidence_dir.mkdir(parents=True, exist_ok=True)
+    (evidence_dir / "materialization-conformance.json").write_text(
+        system.graph.validation.to_json()
+    )
     write_trace_jsonl(evidence_dir / "trace.jsonl", snapshot.trace)
     (evidence_dir / "trace-closure.json").write_text(
         TraceClosureManifest((snapshot.closure,)).to_json()
@@ -172,6 +176,7 @@ Then assemble the declared, planned, observed, and assessed artifacts:
 contract4agents assure agent_contracts \
   --target openai \
   --profile development \
+  --materialization-evidence .contract/evidence/support-run-123/materialization-conformance.json \
   --trace .contract/evidence/support-run-123/trace.jsonl \
   --trace-closure .contract/evidence/support-run-123/trace-closure.json \
   --eval-results .contract/evidence/eval-replay.json \
@@ -183,6 +188,10 @@ Contracts declaring a `run_spec` also pass one versioned
 `--run-spec-evidence` manifest covering every trace run. Run-spec selection and
 stage evidence remain host-owned; the CLI computes the assessment rather than
 accepting a caller-authored passing result.
+
+The materialization evidence must come from the same contract, plan, adapter,
+and adapter version as the assurance bundle. Missing or incomplete schema
+coverage makes the bundle unverified.
 
 The assurance bundle is portable review evidence for release review, incident
 analysis, or compliance export. It is not a legal certification and does not

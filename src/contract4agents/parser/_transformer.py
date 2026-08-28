@@ -217,6 +217,33 @@ class _ModuleTransformer(Transformer[Any, Any]):
         raw_type = str(items[1])
         return FieldDef(str(name), raw_type.rstrip("?"), raw_type.endswith("?"), span=_span(self.path, name))
 
+    def named_type_ref(self, items: list[Any]) -> str:
+        return str(items[0])
+
+    def list_type_ref(self, items: list[Any]) -> str:
+        return f"list[{items[0]}]"
+
+    def map_type_ref(self, items: list[Any]) -> str:
+        return f"map[string,{items[0]}]"
+
+    def type_constraint(self, items: list[Any]) -> str:
+        return f"{items[0]}={items[1]}"
+
+    def constraint_block(self, items: list[Any]) -> tuple[str, ...]:
+        return tuple(str(item) for item in items)
+
+    def nullable_suffix(self, items: list[Any]) -> str:
+        return "?"
+
+    def type_ref(self, items: list[Any]) -> str:
+        source = str(items[0])
+        constraints = next((item for item in items[1:] if isinstance(item, tuple)), ())
+        if constraints:
+            source += f"({','.join(constraints)})"
+        if "?" in items[1:]:
+            source += "?"
+        return source
+
     def grant_stmt(self, items: list[Any]) -> GrantDef:
         name = _token(items[0])
         attrs = _assignment_attrs(items[1:])
@@ -327,7 +354,7 @@ class _AgentParts:
 class _CallableParts:
     name: Token
     params: list[FieldDef]
-    return_type: Token
+    return_type: str
     body: list[Any]
 
 
@@ -371,7 +398,7 @@ def _callable_parts(items: list[Any]) -> _CallableParts:
     if cursor < len(items) and _is_field_list(items[cursor]):
         params = cast(list[FieldDef], items[cursor])
         cursor += 1
-    return_type = _token(items[cursor])
+    return_type = str(items[cursor])
     return _CallableParts(name, params, return_type, items[cursor + 1 :])
 
 

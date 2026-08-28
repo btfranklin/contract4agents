@@ -9,6 +9,7 @@ import pytest
 
 from contract4agents import compile_project, materialize
 from contract4agents.adapters._openai_names import openai_tool_name
+from contract4agents.assurance import assess_controls
 from contract4agents.ir import SemanticId
 from contract4agents.tracing import (
     AtomicTraceFileSink,
@@ -153,6 +154,50 @@ def test_openai_processor_correlates_native_spans_without_copying_provider_paylo
     assert trace.events[1].provider.trace_id == "trace-provider"
     assert trace.events[1].parent_event_id == "openai:span-agent:started"
     assert all("sensitive" not in json.dumps(event.to_dict()) for event in trace.events)
+
+
+def test_host_domain_validation_is_distinct_from_contract_structure() -> None:
+    project = ROOT / "examples" / "incident-command"
+    artifacts = compile_project(project)
+    system = materialize(project, "openai", "test")
+    session = OpenAINormalizedTraceRouter().open_session(
+        artifacts.ir,
+        system.plan,
+        run_id="run-domain-validation",
+    )
+    attempt = TraceAttempt("commander:1", "commander-attempt-1", 1)
+
+    with session:
+        with session.bind_attempt(attempt, agent="IncidentCommander"):
+            session.record_output_accepted(agent="IncidentCommander", attempt=attempt)
+            session.record_host_domain_validation_started(agent="IncidentCommander", attempt=attempt)
+            session.record_host_domain_validation_failure(
+                agent="IncidentCommander",
+                attempt=attempt,
+                evidence_refs=("host:domain-validator",),
+            )
+            session.record_terminal_attempt(
+                agent="IncidentCommander",
+                attempt=attempt,
+                outcome="succeeded",
+            )
+
+    trace = session.normalized_trace()
+    validation_events = [event for event in trace.events if event.event_type.startswith("output.")]
+    assert [event.event_type for event in validation_events] == [
+        "output.accepted",
+        "output.domain_validation.started",
+        "output.domain_validation.failed",
+    ]
+    assert validation_events[0].data["validation_phase"] == "contract_structure"
+    assert validation_events[1].data["validation_phase"] == "host_domain"
+    assert set(validation_events[2].data) == {"attempt", "validation_phase"}
+    output_result = next(
+        result
+        for result in assess_controls(artifacts.ir, system.plan, trace)
+        if result.control_id == "control:IncidentCommander:output_conformance"
+    )
+    assert output_result.status == "passed"
 
 
 def test_openai_processors_capture_only_their_bound_sdk_trace() -> None:

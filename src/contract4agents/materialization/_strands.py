@@ -25,6 +25,7 @@ from contract4agents.materialization._errors import (
 from contract4agents.materialization._models import (
     GraphValidationEvidence,
     NativeAgentGraph,
+    SchemaConformanceEvidence,
 )
 from contract4agents.materialization._tracing import (
     MaterializationTraceSink,
@@ -826,7 +827,7 @@ class StrandsMaterializationProvider:
                 tools=tuple(base_tools[agent_id] + edge_tools[agent_id]),
             )
 
-        _validate_graph(
+        schema_conformance = _validate_graph(
             self.sdk,
             ir,
             artifacts,
@@ -864,10 +865,14 @@ class StrandsMaterializationProvider:
             context=context_runtime,
             environment_evidence=evidence,
             validation=GraphValidationEvidence(
+                adapter=self.adapter,
+                adapter_version=self.sdk.version,
+                contract_digest=artifacts.contract_digest,
                 plan_digest=plan.plan_digest,
                 agent_ids=tuple(plan.agents),
                 grant_ids=tuple(plan.grants),
                 composition_ids=tuple(plan.composition),
+                schema_conformance=schema_conformance,
             ),
         )
 
@@ -884,8 +889,9 @@ def _validate_graph(
     agent_names: Mapping[SemanticId, str],
     capability_names: Mapping[SemanticId, str],
     edge_names: Mapping[SemanticId, str],
-) -> None:
+) -> tuple[SchemaConformanceEvidence, ...]:
     issues: list[MaterializationIssue] = []
+    schema_conformance: list[SchemaConformanceEvidence] = []
     for agent_id, agent_plan in plan.agents.items():
         native_agent_description = sdk.describe_agent(agents[agent_id])
         if native_agent_description.native_name != agent_names[agent_id]:
@@ -921,6 +927,21 @@ def _validate_graph(
                 MaterializationIssue(
                     "MAT454",
                     "Native Strands output type differs from plan",
+                    agent_id,
+                )
+            )
+        output_evidence = SchemaConformanceEvidence(
+            semantic_id=agent_id,
+            boundary="agent_output",
+            declared_schema=dict(TypeAdapter(expected_output).json_schema()),
+            materialized_schema=dict(TypeAdapter(native_agent_description.output_type).json_schema()),
+        )
+        schema_conformance.append(output_evidence)
+        if not output_evidence.matches:
+            issues.append(
+                MaterializationIssue(
+                    "MAT459",
+                    "Native Strands output schema differs from contract",
                     agent_id,
                 )
             )
@@ -992,12 +1013,23 @@ def _validate_graph(
             capability.output_type,
             output_types,
         )
+        input_evidence = SchemaConformanceEvidence(
+            semantic_id=grant_id,
+            boundary="tool_input",
+            declared_schema=dict(_input_schema(expected_input)),
+            materialized_schema=dict(native_tool_description.input_schema),
+        )
+        output_evidence = SchemaConformanceEvidence(
+            semantic_id=grant_id,
+            boundary="tool_output",
+            declared_schema=dict(_output_schema(expected_output)),
+            materialized_schema=dict(native_tool_description.output_schema),
+        )
+        schema_conformance.extend((input_evidence, output_evidence))
         if (
             native_tool_description.native_name != capability_names[capability.id]
-            or dict(native_tool_description.input_schema)
-            != dict(_input_schema(expected_input))
-            or dict(native_tool_description.output_schema)
-            != dict(_output_schema(expected_output))
+            or not input_evidence.matches
+            or not output_evidence.matches
         ):
             issues.append(
                 MaterializationIssue(
@@ -1016,12 +1048,23 @@ def _validate_graph(
             output_types,
         )
         expected_output = type_adapter_for(child.output_type, output_types)
+        input_evidence = SchemaConformanceEvidence(
+            semantic_id=edge_id,
+            boundary="delegate_input",
+            declared_schema=dict(_input_schema(expected_input)),
+            materialized_schema=dict(native_tool_description.input_schema),
+        )
+        output_evidence = SchemaConformanceEvidence(
+            semantic_id=edge_id,
+            boundary="delegate_output",
+            declared_schema=dict(_output_schema(expected_output)),
+            materialized_schema=dict(native_tool_description.output_schema),
+        )
+        schema_conformance.extend((input_evidence, output_evidence))
         if (
             native_tool_description.native_name != edge_names[edge_id]
-            or dict(native_tool_description.input_schema)
-            != dict(_input_schema(expected_input))
-            or dict(native_tool_description.output_schema)
-            != dict(_output_schema(expected_output))
+            or not input_evidence.matches
+            or not output_evidence.matches
         ):
             issues.append(
                 MaterializationIssue(
@@ -1032,6 +1075,7 @@ def _validate_graph(
             )
     if issues:
         raise MaterializationError(tuple(issues))
+    return tuple(schema_conformance)
 
 
 def _require_supported_graph(ir: CanonicalIR) -> None:

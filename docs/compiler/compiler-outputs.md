@@ -31,7 +31,8 @@ docs/
 - `ir/contract-digest.txt` identifies the exact contract revision used by
   plans, traces, and assurance results.
 - `schemas/` contains standalone JSON Schema derived from structural types and
-  string enums.
+  string enums. Portable string and numeric bounds become `minLength`,
+  `maxLength`, `minimum`, and `maximum` keywords.
 - `instructions/` contains only model-visible goals, guidance, composition
   descriptions, and controls whose audience explicitly includes `model`.
 - `docs/` contains reviewer-facing summaries generated from the IR.
@@ -69,6 +70,8 @@ The `python` target emits Pydantic models. The `typescript` target emits
 TypeScript interfaces and their Zod schemas. `generate --check` checks only the
 selected targets, so separate invocations may safely share an output root.
 Generated source includes the contract digest and should not be edited manually.
+Generated Pydantic and Zod validators enforce the same portable bounds as the
+compiler JSON Schema.
 
 Unsafe destinations report `COMPILE002`. The compiler refuses the project root,
 the current working directory, and obvious source-owned directories.
@@ -78,3 +81,8 @@ the current working directory, and obvious source-owned directories.
 `contract4agents.targets.toml` is not compiler input. `plan` and `materialize`
 join target bindings to the canonical IR after compilation and report target
 support without changing portable semantics.
+
+Materialization also reads the final native tool and output schemas. It compares
+them with the schemas derived from the contract. A mismatch stops
+materialization. The returned `graph.validation` object contains deterministic
+schema conformance records for assurance review.

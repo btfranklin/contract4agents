@@ -242,7 +242,7 @@ class NormalizedTraceSessionCore:
             ),
             event_type="output.schema_failed",
             agent=agent_id,
-            data={"attempt": selected.to_dict()},
+            data={"attempt": selected.to_dict(), "validation_phase": "contract_structure"},
             evidence_refs=evidence_refs,
             provenance_source="host-output-schema-validation",
         )
@@ -264,9 +264,78 @@ class NormalizedTraceSessionCore:
             ),
             event_type="output.accepted",
             agent=agent_id,
-            data={"attempt": selected.to_dict()},
+            data={"attempt": selected.to_dict(), "validation_phase": "contract_structure"},
             evidence_refs=evidence_refs,
             provenance_source="adapter-output-schema-validation",
+        )
+
+    def record_host_domain_validation_started(
+        self,
+        *,
+        agent: str | SemanticId,
+        attempt: TraceAttempt | None = None,
+        evidence_refs: tuple[str, ...] = (),
+    ) -> TraceEvent:
+        """Record that the host started application-owned domain validation."""
+
+        return self._record_host_domain_validation(
+            agent=agent,
+            attempt=attempt,
+            outcome="started",
+            evidence_refs=evidence_refs,
+        )
+
+    def record_host_domain_validation_accepted(
+        self,
+        *,
+        agent: str | SemanticId,
+        attempt: TraceAttempt | None = None,
+        evidence_refs: tuple[str, ...] = (),
+    ) -> TraceEvent:
+        """Record that application-owned domain validation accepted the output."""
+
+        return self._record_host_domain_validation(
+            agent=agent,
+            attempt=attempt,
+            outcome="accepted",
+            evidence_refs=evidence_refs,
+        )
+
+    def record_host_domain_validation_failure(
+        self,
+        *,
+        agent: str | SemanticId,
+        attempt: TraceAttempt | None = None,
+        evidence_refs: tuple[str, ...] = (),
+    ) -> TraceEvent:
+        """Record a content-free application-owned domain validation failure."""
+
+        return self._record_host_domain_validation(
+            agent=agent,
+            attempt=attempt,
+            outcome="failed",
+            evidence_refs=evidence_refs,
+        )
+
+    def _record_host_domain_validation(
+        self,
+        *,
+        agent: str | SemanticId,
+        attempt: TraceAttempt | None,
+        outcome: Literal["started", "accepted", "failed"],
+        evidence_refs: tuple[str, ...],
+    ) -> TraceEvent:
+        selected, agent_id = self._require_attempt_agent(attempt, agent)
+        return self._record_host_event(
+            event_id=(
+                f"contract4agents:{agent_id}:attempt:{selected.attempt_id}:"
+                f"host-domain-validation-{outcome}"
+            ),
+            event_type=f"output.domain_validation.{outcome}",
+            agent=agent_id,
+            data={"attempt": selected.to_dict(), "validation_phase": "host_domain"},
+            evidence_refs=evidence_refs,
+            provenance_source="host-domain-validation",
         )
 
     def record_terminal_attempt(

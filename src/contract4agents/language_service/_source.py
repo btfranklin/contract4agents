@@ -128,18 +128,22 @@ class _TreeIndexer:
 
     def _callable(self, tree: Tree[Any], kind: SymbolKind) -> None:
         tokens = _direct_tokens(tree)
-        name, return_type = tokens[0], tokens[-1]
+        name = tokens[0]
+        return_type = _required_child(tree, "type_ref")
+        return_detail = self._source_for(return_type)
         selection = self._definition(name, kind)
         children = self._parameters(tree, str(name))
         self._type_references(return_type, owner=str(name))
         block = _child(tree, "assignment_block")
         if block is not None:
             self._assignment_block(block, kind, str(name))
-        detail = f"{name}(...) -> {return_type}"
+        detail = f"{name}(...) -> {return_detail}"
         self._record_declaration(tree, str(name), kind, selection, tuple(children), detail)
 
     def _index_external_context_def(self, tree: Tree[Any]) -> None:
-        name, type_token = _direct_tokens(tree)
+        name = _direct_tokens(tree)[0]
+        type_token = _required_child(tree, "type_ref")
+        type_detail = self._source_for(type_token)
         selection = self._definition(name, "external_context")
         self._type_references(type_token, owner=str(name))
         block = _child(tree, "assignment_block")
@@ -150,7 +154,7 @@ class _TreeIndexer:
             str(name),
             "external_context",
             selection,
-            detail=f"{name} -> {type_token}",
+            detail=f"{name} -> {type_detail}",
         )
 
     def _index_isolation_def(self, tree: Tree[Any]) -> None:
@@ -256,7 +260,9 @@ class _TreeIndexer:
         if params is None:
             return declarations
         for param in _children(params, "param"):
-            name, type_token = _direct_tokens(param)
+            name = _direct_tokens(param)[0]
+            type_token = _required_child(param, "type_ref")
+            type_detail = self._source_for(type_token)
             name_range = _token_range(name)
             self._add(
                 str(name),
@@ -268,7 +274,7 @@ class _TreeIndexer:
             )
             self._type_references(type_token, owner=owner)
             declarations.append(
-                SourceDeclaration(str(name), "field", _tree_range(param), name_range, str(type_token))
+                SourceDeclaration(str(name), "field", _tree_range(param), name_range, type_detail)
             )
         return declarations
 
@@ -281,7 +287,8 @@ class _TreeIndexer:
 
     def _context(self, tree: Tree[Any], agent: str) -> None:
         tokens = _direct_tokens(tree)
-        name, type_token, origin = tokens[:3]
+        name, origin = tokens[:2]
+        type_token = _required_child(tree, "type_ref")
         self._add(
             str(name),
             _token_range(name),
@@ -292,8 +299,8 @@ class _TreeIndexer:
         )
         self._type_references(type_token, owner=agent)
         self._add(str(origin), _token_range(origin), "value", context="context.origin", container=agent)
-        if len(tokens) > 3:
-            source = tokens[3]
+        if len(tokens) > 2:
+            source = tokens[2]
             if str(origin) == "datasource":
                 self._reference(source, "datasource", context="context.source", container=agent)
             elif str(origin) == "external":
@@ -404,13 +411,17 @@ class _TreeIndexer:
                 container=owner,
             )
 
-    def _type_references(self, token: Token, *, owner: str) -> None:
-        for match in _TYPE_NAME_RE.finditer(str(token)):
+    def _type_references(self, source_item: Token | Tree[Any], *, owner: str) -> None:
+        source = self._source_for(source_item)
+        source_range = _source_range(source_item)
+        for match in _TYPE_NAME_RE.finditer(source):
+            if re.match(r"\s*=", source[match.end() :]):
+                continue
             name = match.group(0)
             if name in _PRIMITIVE_TYPES:
                 self._add(
                     name,
-                    _token_slice_range(token, match.start(), match.end()),
+                    _range_inside(source_range, match.start(), match.end()),
                     "value",
                     context="type.primitive",
                     container=owner,
@@ -418,12 +429,17 @@ class _TreeIndexer:
                 continue
             self._add(
                 name,
-                _token_slice_range(token, match.start(), match.end()),
+                _range_inside(source_range, match.start(), match.end()),
                 "reference",
                 symbol=SymbolId("type", name),
                 context="type.reference",
                 container=owner,
             )
+
+    def _source_for(self, source_item: Token | Tree[Any]) -> str:
+        if isinstance(source_item, Token):
+            return str(source_item)
+        return _source_text(self.source, _tree_range(source_item)).strip()
 
     def _definition(
         self,
@@ -492,6 +508,13 @@ def _child(tree: Tree[Any], data: str) -> Tree[Any] | None:
     return next((item for item in tree.children if isinstance(item, Tree) and item.data == data), None)
 
 
+def _required_child(tree: Tree[Any], data: str) -> Tree[Any]:
+    child = _child(tree, data)
+    if child is None:
+        raise ValueError(f"Expected `{data}` in `{tree.data}`")
+    return child
+
+
 def _children(tree: Tree[Any], data: str) -> list[Tree[Any]]:
     return [item for item in tree.children if isinstance(item, Tree) and item.data == data]
 
@@ -515,6 +538,12 @@ def _token_range(token: Token) -> SourceRange:
 def _token_slice_range(token: Token, start: int, end: int) -> SourceRange:
     token_range = _token_range(token)
     return _range_inside(token_range, start, end)
+
+
+def _source_range(source_item: Token | Tree[Any]) -> SourceRange:
+    if isinstance(source_item, Token):
+        return _token_range(source_item)
+    return _tree_range(source_item)
 
 
 def _range_inside(source_range: SourceRange, start: int, end: int) -> SourceRange:

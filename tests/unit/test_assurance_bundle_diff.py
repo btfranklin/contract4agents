@@ -26,8 +26,9 @@ from contract4agents.ir import (
     parse_type_ref,
     semantic_id,
 )
+from contract4agents.materialization import GraphValidationEvidence, SchemaConformanceEvidence
 from contract4agents.parser import parse_project
-from contract4agents.planning import plan_materialization
+from contract4agents.planning import MaterializationPlan, plan_materialization
 from contract4agents.target_bindings import load_target_bindings
 from contract4agents.tracing import (
     NormalizedTrace,
@@ -134,6 +135,7 @@ def test_assurance_bundle_is_deterministic_verified_and_explicit_about_missing_e
         ),
         ("fixture:closure",),
     )
+    materialization_evidence = _materialization_evidence(ir, plan)
     first = assemble_assurance_bundle(
         ir,
         plan,
@@ -142,6 +144,7 @@ def test_assurance_bundle_is_deterministic_verified_and_explicit_about_missing_e
         control_results=(result,),
         eval_results={"campaigns": []},
         provenance={"sources": ["test"]},
+        materialization_evidence=materialization_evidence,
     )
     second = assemble_assurance_bundle(
         ir,
@@ -151,6 +154,7 @@ def test_assurance_bundle_is_deterministic_verified_and_explicit_about_missing_e
         control_results=(result,),
         eval_results={"campaigns": []},
         provenance={"sources": ["test"]},
+        materialization_evidence=materialization_evidence,
     )
 
     assert first.files == second.files
@@ -173,8 +177,39 @@ def test_assurance_bundle_is_deterministic_verified_and_explicit_about_missing_e
         "BUNDLE002",
         "BUNDLE003",
         "BUNDLE004",
+        "BUNDLE016",
     }
     assert '"status": "unverified"' in incomplete.files["control-results.json"]
+
+
+def _materialization_evidence(ir: CanonicalIR, plan: MaterializationPlan) -> GraphValidationEvidence:
+    schema = {"additionalProperties": False, "properties": {}, "type": "object"}
+    checks = [
+        SchemaConformanceEvidence(agent_id, "agent_output", schema, schema)
+        for agent_id in ir.agents
+    ]
+    checks.extend(
+        SchemaConformanceEvidence(grant.id, "tool_input", schema, schema)
+        for grant in ir.grants.values()
+        if grant.availability == "enabled"
+        and grant.capability_id.kind == "tool"
+        and plan.bindings[grant.capability_id].execution == "host"
+    )
+    checks.extend(
+        SchemaConformanceEvidence(edge.id, "delegate_input", schema, schema)
+        for edge in ir.composition.values()
+        if edge.mode == "delegate" and ir.agents[edge.target_agent_id].parameters
+    )
+    return GraphValidationEvidence(
+        adapter=plan.adapter.name,
+        adapter_version=plan.adapter.version,
+        contract_digest=plan.contract_digest,
+        plan_digest=plan.plan_digest,
+        agent_ids=tuple(plan.agents),
+        grant_ids=tuple(plan.grants),
+        composition_ids=tuple(plan.composition),
+        schema_conformance=tuple(checks),
+    )
 
 
 def _small_ir(*, authorization: str, extra_field: bool, include_grant: bool) -> CanonicalIR:

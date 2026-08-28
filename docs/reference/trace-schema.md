@@ -143,6 +143,23 @@ while a general selected attempt failure without schema evidence is
 `unverified`. A separate operational control may impose a stricter policy such
 as allowing no failed attempts.
 
+## Output validation phases
+
+`output.accepted` and `output.schema_failed` carry
+`data.validation_phase = "contract_structure"`. They describe validation
+against generated portable contract types.
+
+The host can record a later application check with:
+
+- `output.domain_validation.started`;
+- `output.domain_validation.accepted`;
+- `output.domain_validation.failed`.
+
+These events carry `data.validation_phase = "host_domain"`. They contain
+attempt identity and evidence references, but no raw output or validation
+message. A host domain failure does not change the result of the derived
+contract output-conformance control.
+
 Provider-hosted tools are also visible in Agents SDK model responses. Normalize
 those response items after each run:
 

@@ -16,10 +16,20 @@ def clean_list_item(raw: str) -> str:
 
 
 def split_default(raw: str) -> tuple[str, str | None]:
-    if "=" not in raw:
-        return raw.strip(), None
-    left, right = raw.split("=", 1)
-    return left.strip(), right.strip()
+    depth = 0
+    in_string = False
+    quote = ""
+    for index, char in enumerate(raw):
+        if char in {"'", '"'} and (not in_string or char == quote):
+            in_string = not in_string
+            quote = char if in_string else ""
+        elif not in_string and char in "([":
+            depth += 1
+        elif not in_string and char in ")]":
+            depth -= 1
+        elif char == "=" and depth == 0 and not in_string:
+            return raw[:index].strip(), raw[index + 1 :].strip()
+    return raw.strip(), None
 
 
 def split_csv(raw: str) -> list[str]:

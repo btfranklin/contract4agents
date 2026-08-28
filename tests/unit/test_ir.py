@@ -55,6 +55,12 @@ def test_semantic_ids_are_kind_qualified_and_round_trip() -> None:
         ("list[ string? ]", "list[string?]"),
         ("map[string,IncidentRequest]", "map[string,type:IncidentRequest]"),
         ("list[map[string, list[type:IncidentRequest]?]]", "list[map[string,list[type:IncidentRequest]?]]"),
+        (
+            "string(max_length=4000, min_length=1)?",
+            "string(min_length=1,max_length=4000)?",
+        ),
+        ("integer(minimum=-5, maximum=10)", "integer(minimum=-5,maximum=10)"),
+        ("float(minimum=0.25,maximum=1)", "float(minimum=0.25,maximum=1)"),
     ],
 )
 def test_type_ref_parser_covers_the_portable_recursive_subset(source: str, canonical: str) -> None:
@@ -71,6 +77,13 @@ def test_type_ref_parser_covers_the_portable_recursive_subset(source: str, canon
         "string??",
         "set[string]",
         "type:",
+        "boolean(minimum=0)",
+        "string(minimum=1)",
+        "integer(min_length=1)",
+        "integer(minimum=2,maximum=1)",
+        "string(min_length=-1)",
+        "string(min_length=1.5)",
+        "float(minimum=1,minimum=2)",
     ],
 )
 def test_type_ref_parser_rejects_nonportable_or_malformed_types(source: str) -> None:

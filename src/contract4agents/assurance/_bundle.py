@@ -13,6 +13,7 @@ from pathlib import Path
 from contract4agents.assurance._models import ControlResult
 from contract4agents.assurance._run_specs import RunSpecResult, RunSpecSelection
 from contract4agents.ir import CanonicalIR, FrozenMap, canonical_ir_data, contract_digest
+from contract4agents.materialization import GraphValidationEvidence
 from contract4agents.planning import MaterializationPlan, materialization_plan_data
 from contract4agents.tracing import (
     TRACE_CLOSURE_MANIFEST_VERSION,
@@ -56,6 +57,7 @@ def assemble_assurance_bundle(
     control_results: tuple[ControlResult, ...] | None,
     eval_results: object | None,
     provenance: object | None,
+    materialization_evidence: GraphValidationEvidence | None = None,
     trace_closures: tuple[TraceClosureEvidence, ...] | None = None,
     run_spec_results: tuple[RunSpecResult, ...] | None = None,
     run_spec_selections: tuple[RunSpecSelection, ...] | None = None,
@@ -66,6 +68,36 @@ def assemble_assurance_bundle(
     if plan.contract_digest != expected_digest:
         raise ValueError(f"Plan contract digest `{plan.contract_digest}` does not match contract `{expected_digest}`")
     diagnostics: list[BundleDiagnostic] = []
+    materialization: object
+    if materialization_evidence is None:
+        diagnostics.append(
+            BundleDiagnostic(
+                "BUNDLE016",
+                "Materialized-schema conformance evidence is missing.",
+                "materialization-conformance.json",
+            )
+        )
+        materialization = {"schema_conformance": [], "status": "unverified"}
+    else:
+        if materialization_evidence.contract_digest != expected_digest:
+            raise ValueError("Materialization evidence does not match the bundle contract")
+        if materialization_evidence.plan_digest != plan.plan_digest:
+            raise ValueError("Materialization evidence does not match the bundle plan")
+        if materialization_evidence.adapter != plan.adapter.name:
+            raise ValueError("Materialization evidence does not match the planned adapter")
+        if materialization_evidence.adapter_version != plan.adapter.version:
+            raise ValueError("Materialization evidence does not match the planned adapter version")
+        missing_boundaries = _missing_schema_boundaries(contract, plan, materialization_evidence)
+        inventory_mismatches = _materialization_inventory_mismatches(plan, materialization_evidence)
+        if not materialization_evidence.complete or missing_boundaries or inventory_mismatches:
+            details = ", ".join((*inventory_mismatches, *missing_boundaries))
+            message = "Materialized-schema conformance evidence is incomplete."
+            if details:
+                message += f" Missing: {details}."
+            diagnostics.append(
+                BundleDiagnostic("BUNDLE017", message, "materialization-conformance.json")
+            )
+        materialization = materialization_evidence.to_dict()
     trace = _required_text(
         "normalized-trace.jsonl",
         normalized_trace_jsonl,
@@ -179,6 +211,7 @@ def assemble_assurance_bundle(
     files: dict[str, str] = {
         "contract.snapshot.json": _pretty_json(canonical_ir_data(contract)),
         "materialization-plan.json": _pretty_json(materialization_plan_data(plan)),
+        "materialization-conformance.json": _pretty_json(materialization),
         "normalized-trace.jsonl": trace,
         "trace-closure.json": _pretty_json(
             TraceClosureManifest(closures=closures).to_dict()
@@ -215,6 +248,45 @@ def assemble_assurance_bundle(
         files=FrozenMap(files),
         diagnostics=tuple(diagnostics),
     )
+
+
+def _missing_schema_boundaries(
+    contract: CanonicalIR,
+    plan: MaterializationPlan,
+    evidence: GraphValidationEvidence,
+) -> tuple[str, ...]:
+    observed = {(item.semantic_id, item.boundary) for item in evidence.schema_conformance if item.matches}
+    expected: set[tuple[object, str]] = set()
+    for agent_id in contract.agents:
+        if not any(
+            (agent_id, boundary) in observed
+            for boundary in ("agent_output", "host_structural_output")
+        ):
+            expected.add((agent_id, "agent_output"))
+    for grant in contract.grants.values():
+        if grant.availability != "enabled" or grant.capability_id.kind != "tool":
+            continue
+        if plan.bindings[grant.capability_id].execution == "host":
+            expected.add((grant.id, "tool_input"))
+    for edge in contract.composition.values():
+        if edge.mode == "delegate" and contract.agents[edge.target_agent_id].parameters:
+            expected.add((edge.id, "delegate_input"))
+    missing = expected - observed
+    return tuple(sorted(f"{identifier}:{boundary}" for identifier, boundary in missing))
+
+
+def _materialization_inventory_mismatches(
+    plan: MaterializationPlan,
+    evidence: GraphValidationEvidence,
+) -> tuple[str, ...]:
+    mismatches = []
+    if evidence.agent_ids != tuple(plan.agents):
+        mismatches.append("agent inventory")
+    if evidence.grant_ids != tuple(plan.grants):
+        mismatches.append("grant inventory")
+    if evidence.composition_ids != tuple(plan.composition):
+        mismatches.append("composition inventory")
+    return tuple(mismatches)
 
 
 def verify_assurance_bundle(bundle: AssuranceBundle) -> tuple[BundleDiagnostic, ...]:

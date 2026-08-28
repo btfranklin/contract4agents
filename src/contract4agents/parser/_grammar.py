@@ -30,12 +30,12 @@ MODULE_GRAMMAR = r"""
     enum_block: _INDENT enum_value* _DEDENT
     enum_value: ESCAPED_STRING _NEWLINE
 
-    tool_def: "tool" DOTTED_NAME _LPAR params? _RPAR "->" PARAM_TYPE ":" assignment_block?
+    tool_def: "tool" DOTTED_NAME _LPAR params? _RPAR "->" type_ref ":" assignment_block?
 
-    datasource_def: "datasource" DOTTED_NAME _LPAR params? _RPAR "->" PARAM_TYPE ":" assignment_block?
+    datasource_def: "datasource" DOTTED_NAME _LPAR params? _RPAR "->" type_ref ":" assignment_block?
     assignment_block: _NEWLINE _INDENT assignment* _DEDENT
 
-    external_context_def: "external_context" DOTTED_NAME "->" PARAM_TYPE ":" assignment_block?
+    external_context_def: "external_context" DOTTED_NAME "->" type_ref ":" assignment_block?
 
     isolation_def: "isolation" NAME ":" assignment_block?
 
@@ -51,10 +51,10 @@ MODULE_GRAMMAR = r"""
     agent_def: "agent" NAME _LPAR params? _RPAR "->" NAME ":" agent_block?
     agent_block: _NEWLINE _INDENT agent_stmt* _DEDENT
     params: param (_COMMA _NEWLINE* param)* _COMMA?
-    param: NAME ":" PARAM_TYPE
+    param: NAME ":" type_ref
     ?agent_stmt: grant_stmt | context_stmt | assignment
     grant_stmt: "use" DOTTED_NAME ":" assignment_block?
-    context_stmt: "context" NAME ":" PARAM_TYPE "from" CONTEXT_KIND DOTTED_NAME? (":" context_block | _NEWLINE)
+    context_stmt: "context" NAME ":" type_ref "from" CONTEXT_KIND DOTTED_NAME? (":" context_block | _NEWLINE)
     context_block: _NEWLINE _INDENT map_stmt+ _DEDENT
 
     assignment: NAME "=" assignment_value _NEWLINE
@@ -80,7 +80,14 @@ MODULE_GRAMMAR = r"""
     _RSQB: "]"
     _COMMA: ","
     CONTEXT_KIND: "invocation" | "parent" | "handoff" | "stage" | "datasource" | "external"
-    PARAM_TYPE.1: /[A-Za-z_][A-Za-z0-9_.]*(?:\[[A-Za-z0-9_.,?\[\]]+\])?\??/
+    type_ref: type_primary constraint_block? nullable_suffix?
+    ?type_primary: NAME                  -> named_type_ref
+        | "list" _LSQB type_ref _RSQB  -> list_type_ref
+        | "map" _LSQB "string" _COMMA type_ref _RSQB -> map_type_ref
+    constraint_block: _LPAR type_constraint (_COMMA type_constraint)* _RPAR
+    type_constraint: NAME "=" SIGNED_NUMBER
+    nullable_suffix: "?"
+
     DOTTED_NAME.2: /[A-Za-z_][A-Za-z0-9_.]*/
     NAME: /[A-Za-z_][A-Za-z0-9_]*/
     SCALAR_VALUE: /[^ \t\n\[]+[^\n]*/
@@ -90,6 +97,7 @@ MODULE_GRAMMAR = r"""
     _NEWLINE: /(\r?\n[ \t]*)+/
 
     %import common.ESCAPED_STRING
+    %import common.SIGNED_NUMBER
     %declare _INDENT _DEDENT
     %ignore /[ \t\f]+/
     %ignore COMMENT

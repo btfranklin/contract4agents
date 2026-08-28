@@ -7,6 +7,7 @@ from contract4agents.assurance._bundle import AssuranceBundle, assemble_assuranc
 from contract4agents.assurance._inputs import RunSpecAssessmentManifest
 from contract4agents.assurance._run_specs import assess_run_spec
 from contract4agents.ir import CanonicalIR
+from contract4agents.materialization import GraphValidationEvidence
 from contract4agents.planning import MaterializationPlan
 from contract4agents.tracing import (
     NormalizedTrace,
@@ -25,6 +26,7 @@ def assess_assurance_evidence(
     run_spec_evidence: RunSpecAssessmentManifest | None,
     eval_results: object | None,
     provenance: object | None,
+    materialization_evidence: GraphValidationEvidence | None = None,
 ) -> AssuranceBundle:
     """Assess raw trace/run-spec evidence and assemble a deterministic bundle."""
 
@@ -73,6 +75,7 @@ def assess_assurance_evidence(
         run_spec_results=run_spec_results,
         eval_results=eval_results,
         provenance=provenance,
+        materialization_evidence=materialization_evidence,
     )
 
 

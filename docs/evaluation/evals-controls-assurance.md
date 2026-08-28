@@ -166,6 +166,7 @@ An assurance bundle is a deterministic evidence package containing:
 
 - canonical contract IR and contract digest;
 - materialization plan and plan digest;
+- final materialized-schema conformance evidence;
 - normalized trace JSONL;
 - versioned, identity-bound trace-closure evidence;
 - control results whose reasons and evidence reflect trace evidence;
@@ -179,11 +180,18 @@ Bundle verification checks internal digest references and records missing
 evidence. A bundle is review evidence, not a claim that a legal or regulatory
 standard has been certified.
 
+`materialization-conformance.json` records each checked semantic boundary, the
+declared schema, the materialized schema, and both digests. Assurance is
+unverified when this evidence is absent, stale, incomplete, or does not cover
+required agent outputs, host tool inputs, and typed delegate inputs. This check
+proves the materialized schema shape. It does not run host business rules.
+
 `assess_assurance_evidence(...)` is the library-level orchestration entry point.
-It accepts raw normalized trace, closure-manifest, and run-spec manifest objects,
-computes control and run-spec results, and delegates deterministic packaging to
-`assemble_assurance_bundle(...)`. Call the lower-level assembler only when the
-application already owns those assessed result objects.
+It accepts raw normalized trace, closure-manifest, run-spec manifest, and graph
+validation evidence objects, computes control and run-spec results, and
+delegates deterministic packaging to `assemble_assurance_bundle(...)`. Call the
+lower-level assembler only when the application already owns those assessed
+result objects.
 
 Run-spec bundle input includes explicit `RunSpecSelection` evidence for every
 run. A selection may name one declared run spec or state that none applied.

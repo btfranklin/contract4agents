@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal, cast
+from typing import Annotated, Any, Literal, cast
 
 from pydantic import ConfigDict, Field, create_model
 
 from contract4agents.ir import (
     CanonicalIR,
+    ConstrainedTypeRef,
     EnumIR,
     FrozenMap,
     ListTypeRef,
@@ -125,6 +126,14 @@ def _annotation(type_ref: TypeRef, output_types: FrozenMap[str, Any]) -> Any:
             "boolean": bool,
             "datetime": datetime,
         }[type_ref.name]
+    if isinstance(type_ref, ConstrainedTypeRef):
+        metadata = Field(
+            ge=type_ref.minimum,
+            le=type_ref.maximum,
+            min_length=type_ref.min_length,
+            max_length=type_ref.max_length,
+        )
+        return Annotated[_annotation(type_ref.item, output_types), metadata]
     if isinstance(type_ref, NamedTypeRef):
         return output_types[type_ref.type_id.parts[0]]
     if isinstance(type_ref, NullableTypeRef):

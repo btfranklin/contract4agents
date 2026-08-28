@@ -769,6 +769,16 @@ The materializer owns agent construction, generated output types, capability
 attachment, and composition wiring; the host supplies only declared bindings
 and application workflow.
 
+Validation includes the final native parameter and output schemas that the SDK
+exposes. Each check joins a semantic ID and schema boundary to the declared and
+materialized schemas. A mismatch blocks materialization. The resulting graph
+validation evidence is a required assurance input.
+
+Generated output types contain only portable contract structure. Application
+domain validators run after the SDK returns. Contract trace events identify
+`contract_structure` and `host_domain` as separate validation phases. The host
+owns domain validation execution and its evidence references.
+
 ## Trace identity and evidence
 
 Trace schema version `1` uses an immutable run context plus event-specific
@@ -890,6 +900,7 @@ summary.html
 attestation.json
 contract.snapshot.json
 materialization-plan.json
+materialization-conformance.json
 normalized-trace.jsonl
 control-results.json
 eval-results.json

@@ -27,6 +27,7 @@ from contract4agents.compiler import artifact_digests, compile_project
 from contract4agents.diagnostics import ContractError, Diagnostic, raise_if_errors
 from contract4agents.eval_campaigns import CampaignConfig, CampaignThresholds, FileEvalProvider, run_campaign
 from contract4agents.ir import CanonicalIR, build_canonical_ir
+from contract4agents.materialization import GraphValidationEvidence
 from contract4agents.output_paths import validate_output_dir
 from contract4agents.parser import parse_project
 from contract4agents.planning import (
@@ -414,6 +415,13 @@ def assess_cmd(
     help="Normalized trace JSONL to include and assess.",
 )
 @click.option(
+    "--materialization-evidence",
+    "materialization_evidence_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Materialized-schema conformance evidence from the native graph.",
+)
+@click.option(
     "--trace-closure",
     "trace_closure_path",
     type=click.Path(path_type=Path),
@@ -447,6 +455,7 @@ def assure_cmd(
     profile: str,
     bindings_path: Path | None,
     trace_path: Path | None,
+    materialization_evidence_path: Path | None,
     trace_closure_path: Path | None,
     run_spec_path: Path | None,
     eval_results: Path | None,
@@ -468,6 +477,11 @@ def assure_cmd(
         run_spec_evidence=run_spec_manifest,
         eval_results=_load_json_file(eval_results),
         provenance=_load_json_file(provenance),
+        materialization_evidence=(
+            GraphValidationEvidence.load(materialization_evidence_path)
+            if materialization_evidence_path is not None
+            else None
+        ),
     )
     destination = output_dir if output_dir.is_absolute() else Path.cwd() / output_dir
     write_assurance_bundle(bundle, destination)

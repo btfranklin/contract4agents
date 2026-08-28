@@ -27,6 +27,7 @@ from contract4agents.ir import (
     parse_type_ref,
     semantic_id,
 )
+from contract4agents.materialization import GraphValidationEvidence, SchemaConformanceEvidence
 from contract4agents.planning import AdapterPlan, AgentPlan, MaterializationPlan
 from contract4agents.tracing import (
     NormalizedTrace,
@@ -282,6 +283,7 @@ def test_run_spec_results_are_distinct_assurance_bundle_evidence() -> None:
         "control_results": (),
         "eval_results": {"campaigns": []},
         "provenance": {"sources": ["test"]},
+        "materialization_evidence": _materialization_evidence(ir, plan),
     }
 
     missing = assemble_assurance_bundle(ir, plan, **common)
@@ -337,6 +339,7 @@ def test_assurance_bundle_accepts_explicit_no_applicable_run_spec() -> None:
         control_results=(),
         eval_results={"campaigns": []},
         provenance={"sources": ["test"]},
+        materialization_evidence=_materialization_evidence(ir, plan),
         run_spec_selections=(
             RunSpecSelection(
                 "run-1",
@@ -505,6 +508,26 @@ def _plan(ir: CanonicalIR) -> MaterializationPlan:
         FrozenMap(),
         (),
         ("agent.started",),
+    )
+
+
+def _materialization_evidence(
+    ir: CanonicalIR,
+    plan: MaterializationPlan,
+) -> GraphValidationEvidence:
+    schema = {"additionalProperties": False, "properties": {}, "type": "object"}
+    return GraphValidationEvidence(
+        adapter=plan.adapter.name,
+        adapter_version=plan.adapter.version,
+        contract_digest=plan.contract_digest,
+        plan_digest=plan.plan_digest,
+        agent_ids=tuple(plan.agents),
+        grant_ids=tuple(plan.grants),
+        composition_ids=tuple(plan.composition),
+        schema_conformance=tuple(
+            SchemaConformanceEvidence(agent_id, "agent_output", schema, schema)
+            for agent_id in ir.agents
+        ),
     )
 
 

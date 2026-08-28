@@ -12,6 +12,7 @@ from contract4agents.diagnostics import raise_if_errors
 from contract4agents.ir import (
     AgentIR,
     CanonicalIR,
+    ConstrainedTypeRef,
     EnumIR,
     FrozenMap,
     ListTypeRef,
@@ -168,6 +169,16 @@ def _schema_for_ref(type_ref: TypeRef, referenced: set[str]) -> dict[str, object
             "datetime": {"type": "string", "format": "date-time"},
         }
         return primitive_schemas[type_ref.name]
+    if isinstance(type_ref, ConstrainedTypeRef):
+        schema = _schema_for_ref(type_ref.item, referenced)
+        constraints = (
+            ("minimum", type_ref.minimum),
+            ("maximum", type_ref.maximum),
+            ("minLength", type_ref.min_length),
+            ("maxLength", type_ref.max_length),
+        )
+        schema.update((name, value) for name, value in constraints if value is not None)
+        return schema
     if isinstance(type_ref, NamedTypeRef):
         name = type_ref.type_id.parts[0]
         referenced.add(name)

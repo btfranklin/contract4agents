@@ -11,6 +11,7 @@ from contract4agents.materialization._google_adk import (
     ADKSDK,
     GoogleADKMaterializationProvider,
     GoogleADKNativeAgentDescription,
+    GoogleADKNativeToolDescription,
     GoogleADKSDK,
 )
 from contract4agents.materialization._models import (
@@ -18,10 +19,12 @@ from contract4agents.materialization._models import (
     MaterializationProvider,
     MaterializationResult,
     NativeAgentGraph,
+    SchemaConformanceEvidence,
 )
 from contract4agents.materialization._openai import (
     AgentsSDK,
     NativeAgentDescription,
+    NativeToolDescription,
     OpenAIMaterializationProvider,
     OpenAISDK,
 )
@@ -46,6 +49,7 @@ __all__ = [
     "ContextRuntime",
     "GoogleADKMaterializationProvider",
     "GoogleADKNativeAgentDescription",
+    "GoogleADKNativeToolDescription",
     "GoogleADKSDK",
     "GraphValidationEvidence",
     "MaterializationError",
@@ -56,6 +60,8 @@ __all__ = [
     "MaterializationTraceSink",
     "NativeAgentDescription",
     "NativeAgentGraph",
+    "NativeToolDescription",
+    "SchemaConformanceEvidence",
     "NativeStrandsAgentDescription",
     "NativeStrandsToolDescription",
     "NoOpMaterializationTraceSink",

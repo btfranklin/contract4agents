@@ -19,6 +19,7 @@ from contract4agents.codegen._model import (
 )
 from contract4agents.ir import (
     CanonicalIR,
+    ConstrainedTypeRef,
     EnumIR,
     FrozenJsonValue,
     FrozenMap,
@@ -78,9 +79,17 @@ def generate_pydantic_models(
     ]
     if _uses_primitive(types, "datetime"):
         lines.extend(["from datetime import datetime", ""])
+    typing_imports: list[str] = []
     if any(isinstance(type_def, EnumIR) for type_def in types):
-        lines.extend(["from typing import Literal", ""])
-    lines.extend(["from pydantic import BaseModel, ConfigDict", ""])
+        typing_imports.append("Literal")
+    if _uses_constraints(types):
+        typing_imports.append("Annotated")
+    if typing_imports:
+        lines.extend([f"from typing import {', '.join(sorted(typing_imports))}", ""])
+    pydantic_imports = ["BaseModel", "ConfigDict"]
+    if _uses_constraints(types):
+        pydantic_imports.append("Field")
+    lines.extend([f"from pydantic import {', '.join(pydantic_imports)}", ""])
 
     for type_def in types:
         if isinstance(type_def, EnumIR):
@@ -193,6 +202,15 @@ def _python_type(type_ref: TypeRef) -> str:
             "boolean": "bool",
             "datetime": "datetime",
         }[type_ref.name]
+    if isinstance(type_ref, ConstrainedTypeRef):
+        values = (
+            ("ge", type_ref.minimum),
+            ("le", type_ref.maximum),
+            ("min_length", type_ref.min_length),
+            ("max_length", type_ref.max_length),
+        )
+        constraints = ", ".join(f"{name}={value!r}" for name, value in values if value is not None)
+        return f"Annotated[{_python_type(type_ref.item)}, Field({constraints})]"
     if isinstance(type_ref, NamedTypeRef):
         return type_ref.type_id.parts[0]
     if isinstance(type_ref, NullableTypeRef):
@@ -211,6 +229,8 @@ def _typescript_type(type_ref: TypeRef) -> str:
             "boolean": "boolean",
             "datetime": "string",
         }[type_ref.name]
+    if isinstance(type_ref, ConstrainedTypeRef):
+        return _typescript_type(type_ref.item)
     if isinstance(type_ref, NamedTypeRef):
         return type_ref.type_id.parts[0]
     if isinstance(type_ref, NullableTypeRef):
@@ -229,6 +249,15 @@ def _zod_type(type_ref: TypeRef) -> str:
             "boolean": "z.boolean()",
             "datetime": "z.string().datetime()",
         }[type_ref.name]
+    if isinstance(type_ref, ConstrainedTypeRef):
+        source = _zod_type(type_ref.item)
+        values = (
+            ("min", type_ref.minimum),
+            ("max", type_ref.maximum),
+            ("min", type_ref.min_length),
+            ("max", type_ref.max_length),
+        )
+        return source + "".join(f".{name}({value!r})" for name, value in values if value is not None)
     if isinstance(type_ref, NamedTypeRef):
         return f"z.lazy(() => {type_ref.type_id.parts[0]}Schema)"
     if isinstance(type_ref, NullableTypeRef):
@@ -320,6 +349,8 @@ def _named_dependencies(type_ref: TypeRef) -> Iterable[SemanticId]:
         yield from _named_dependencies(type_ref.item)
     elif isinstance(type_ref, MapTypeRef):
         yield from _named_dependencies(type_ref.value)
+    elif isinstance(type_ref, ConstrainedTypeRef):
+        return
 
 
 def _uses_primitive(types: tuple[TypeDeclarationIR, ...], primitive: str) -> bool:
@@ -334,10 +365,31 @@ def _uses_primitive(types: tuple[TypeDeclarationIR, ...], primitive: str) -> boo
 def _contains_primitive(type_ref: TypeRef, primitive: str) -> bool:
     if isinstance(type_ref, PrimitiveTypeRef):
         return type_ref.name == primitive
+    if isinstance(type_ref, ConstrainedTypeRef):
+        return type_ref.item.name == primitive
     if isinstance(type_ref, NullableTypeRef | ListTypeRef):
         return _contains_primitive(type_ref.item, primitive)
     if isinstance(type_ref, MapTypeRef):
         return _contains_primitive(type_ref.value, primitive)
+    return False
+
+
+def _uses_constraints(types: tuple[TypeDeclarationIR, ...]) -> bool:
+    return any(
+        _contains_constraints(type_field.type_ref)
+        for type_def in types
+        if isinstance(type_def, TypeIR)
+        for type_field in type_def.fields
+    )
+
+
+def _contains_constraints(type_ref: TypeRef) -> bool:
+    if isinstance(type_ref, ConstrainedTypeRef):
+        return True
+    if isinstance(type_ref, NullableTypeRef | ListTypeRef):
+        return _contains_constraints(type_ref.item)
+    if isinstance(type_ref, MapTypeRef):
+        return _contains_constraints(type_ref.value)
     return False
 
 

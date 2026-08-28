@@ -13,11 +13,11 @@ type ResearchQuestion:
     as_of: datetime
 
 type Evidence:
-    source_id: string
-    confidence: float
+    source_id: string(min_length=1,max_length=200)
+    confidence: float(minimum=0,maximum=1)
     tags: list[string]
     metadata: map[string,string]
-    note: string?
+    note: string(max_length=2000)?
 
 enum VerificationStatus:
     "accepted"
@@ -31,6 +31,19 @@ type Verification:
 The scalar types are `string`, `integer`, `float`, `boolean`, and `datetime`.
 Collections use `list[T]` and `map[string,T]`. Add `?` for nullability. Defaults
 follow the field type after `=`.
+
+The portable constrained subset is:
+
+- `string(min_length=N,max_length=N)`;
+- `integer(minimum=N,maximum=N)`;
+- `float(minimum=N,maximum=N)`.
+
+Each bound is optional, but a constrained type must declare at least one bound.
+String length bounds are non-negative integers. Integer bounds must be integers.
+The minimum cannot be greater than the maximum. Constraints can be used in type
+fields, tool and datasource parameters, context, lists, maps, and nullable
+types. For example, `integer(minimum=1,maximum=100)?` is a nullable bounded
+integer. Defaults must satisfy enum membership and declared constraints.
 
 `str`, `int`, `bool`, `T[]`, and `type ... from python` are not aliases. Code is
 generated outward from native contract types.
@@ -46,7 +59,7 @@ Tools are canonical provider-neutral interfaces:
 
 ```contract
 tool sources.search(
-    query: string,
+    query: string(min_length=1,max_length=4000),
     as_of: datetime
 ) -> Evidence:
     description = "Search dated evidence."

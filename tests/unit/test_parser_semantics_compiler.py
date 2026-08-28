@@ -224,6 +224,49 @@ def test_compile_check_detects_stale_artifacts(tmp_path: Path) -> None:
     assert caught.value.diagnostics[0].code == "COMPILE001"
 
 
+def test_constrained_types_compile_into_closed_json_schemas(tmp_path: Path) -> None:
+    (tmp_path / "bounded.contract").write_text(
+        """\
+type Query:
+    text: string(min_length=1,max_length=4000)
+    limit: integer(minimum=1,maximum=100)?
+    score: float(minimum=0,maximum=1) = 0.5
+
+tool records.lookup(query: string(min_length=1, max_length=4000), limit: integer(minimum=1,maximum=100)?) -> Query:
+    description = "Look up bounded records."
+    side_effect = false
+"""
+    )
+
+    artifacts = compile_project(tmp_path)
+    schema = artifacts.schemas["Query"]
+
+    assert schema["additionalProperties"] is False
+    assert schema["properties"] == {
+        "text": {"type": "string", "minLength": 1, "maxLength": 4000},
+        "limit": {
+            "anyOf": [
+                {"type": "integer", "minimum": 1, "maximum": 100},
+                {"type": "null"},
+            ]
+        },
+        "score": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.5},
+    }
+
+
+def test_constrained_default_fails_semantic_validation(tmp_path: Path) -> None:
+    (tmp_path / "invalid.contract").write_text(
+        """\
+type Query:
+    text: string(min_length=2,max_length=10) = "x"
+"""
+    )
+
+    diagnostics = analyze_project(parse_project(tmp_path)).diagnostics
+
+    assert [item.code for item in diagnostics] == ["SEM017"]
+
+
 def test_compile_rejects_output_inside_source_root(tmp_path: Path) -> None:
     (tmp_path / "project.contract").write_text("type Result:\n    ok: boolean\n")
 

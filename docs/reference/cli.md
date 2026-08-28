@@ -181,6 +181,7 @@ observed evidence.
 contract4agents assure agent_contracts \
   --target openai \
   --profile production \
+  --materialization-evidence materialization-conformance.json \
   --trace run.trace.jsonl \
   --trace-closure run.trace-closure.json \
   --run-spec-evidence run-spec-evidence.json \
@@ -193,6 +194,8 @@ Options:
 
 - `--target NAME`, `--profile NAME`: required.
 - `--bindings PATH`: optional binding override.
+- `--materialization-evidence PATH`: optional graph validation evidence from
+  `materialize(...).graph.validation`. It is required for a complete bundle.
 - `--trace PATH`: optional normalized trace.
 - `--trace-closure PATH`: optional versioned closure manifest covering every
   trace run at its exact ordered event frontier.

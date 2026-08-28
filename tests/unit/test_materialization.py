@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import asyncio
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
 from pydantic import ValidationError
 
 from contract4agents import materialize
+from contract4agents.adapters._openai_names import openai_tool_name
 from contract4agents.ir import (
     CanonicalIR,
     EnumIR,
@@ -22,10 +26,13 @@ from contract4agents.ir import (
 from contract4agents.materialization import (
     AgentsSDK,
     ContextResolutionError,
+    GraphValidationEvidence,
     MaterializationError,
     NativeAgentDescription,
+    NativeToolDescription,
     OpenAIMaterializationProvider,
     RecordingMaterializationTraceSink,
+    SchemaConformanceEvidence,
 )
 from contract4agents.materialization._types import build_pydantic_types
 from contract4agents.planning import PlannerCapabilities, PlanningError
@@ -37,6 +44,7 @@ from contract4agents.tracing import NoOpNormalizedTraceSink, RecordingNormalized
 @dataclass
 class FakeTool:
     name: str
+    input_schema: Mapping[str, object] = field(default_factory=dict)
     implementation: object | None = None
     requires_approval: bool = False
     environment: EnvironmentProvider | None = None
@@ -66,8 +74,9 @@ class FakeAgent:
 class FakeOpenAISDK:
     version = "fake-openai-1"
 
-    def __init__(self, *, drop_attached_tools: bool = False) -> None:
+    def __init__(self, *, drop_attached_tools: bool = False, drift_tool_schema: bool = False) -> None:
         self.drop_attached_tools = drop_attached_tools
+        self.drift_tool_schema = drift_tool_schema
 
     def create_agent(
         self,
@@ -87,13 +96,26 @@ class FakeOpenAISDK:
         name: str,
         description: str,
         implementation: object,
+        input_type: type[object] | None,
+        output_adapter: object,
         requires_approval: bool,
     ) -> object:
-        del description
-        return FakeTool(name, implementation, requires_approval)
+        del description, output_adapter
+        schema = dict(self.input_schema(input_type))
+        if self.drift_tool_schema:
+            properties = cast(dict[str, object], schema.get("properties", {}))
+            if properties:
+                first = next(iter(properties))
+                properties[first] = {"type": "string"}
+        return FakeTool(
+            openai_tool_name(name),
+            schema,
+            implementation,
+            requires_approval,
+        )
 
     def create_hosted_tool(self, *, name: str, binding: BindingEntry) -> object:
-        return FakeTool(name, binding)
+        return FakeTool(name, implementation=binding)
 
     def create_delegate_tool(
         self,
@@ -103,8 +125,8 @@ class FakeOpenAISDK:
         child: object,
         input_type: type[object] | None,
     ) -> object:
-        del description, child, input_type
-        return FakeTool(name)
+        del description, child
+        return FakeTool(openai_tool_name(name), self.input_schema(input_type))
 
     def create_isolated_delegate_tool(
         self,
@@ -118,9 +140,10 @@ class FakeOpenAISDK:
         declared_capabilities: tuple[str, ...],
         environment: EnvironmentProvider,
     ) -> object:
-        del description, child, input_type
+        del description, child
         return FakeTool(
-            name,
+            openai_tool_name(name),
+            self.input_schema(input_type),
             environment=environment,
             isolation_id=isolation_id,
             dimensions=requested_dimensions,
@@ -150,9 +173,22 @@ class FakeOpenAISDK:
             agent.instructions,
             agent.model,
             agent.output_type,
+            self.output_schema(agent.output_type),
             tuple(agent.tools),
             tuple(agent.handoffs),
         )
+
+    def describe_tool(self, tool: object) -> NativeToolDescription:
+        assert isinstance(tool, FakeTool)
+        return NativeToolDescription(tool.name, tool.input_schema)
+
+    def input_schema(self, input_type: type[object] | None) -> Mapping[str, object]:
+        if input_type is None:
+            return {"type": "object", "properties": {}, "additionalProperties": False}
+        return cast(dict[str, object], cast(Any, input_type).model_json_schema())
+
+    def output_schema(self, output_type: type[object]) -> Mapping[str, object]:
+        return cast(dict[str, object], cast(Any, output_type).model_json_schema())
 
 
 class CustomMaterializationProvider:
@@ -211,6 +247,7 @@ def test_public_materialize_builds_and_validates_complete_native_graph(tmp_path:
     assert result.plan.adapter.version == "fake-openai-1"
     assert "instructions/Parent.md" in result.plan.artifact_digests
     assert result.graph.validation.plan_digest == result.plan.plan_digest
+    assert result.structural_output_types == result.graph.output_types
     assert len(result.agents) == 3
     assert result.agents["Parent"] is result.graph.agent("Parent")
     parent = result.graph.agent("Parent")
@@ -221,7 +258,9 @@ def test_public_materialize_builds_and_validates_complete_native_graph(tmp_path:
     assert isinstance(reviewer, FakeAgent)
     assert parent.model == "test-model"
     assert "Delegate to `Child`" in parent.instructions
-    assert [item.name for item in parent.tools if isinstance(item, FakeTool)] == ["ask_child"]
+    assert [item.name for item in parent.tools if isinstance(item, FakeTool)] == [
+        openai_tool_name("ask_child"),
+    ]
     assert [item.name for item in parent.handoffs if isinstance(item, FakeHandoff)] == ["send_review"]
     assert cast(FakeHandoff, parent.handoffs[0]).child is reviewer
 
@@ -274,6 +313,27 @@ def test_materialization_fails_if_native_graph_does_not_match_plan(tmp_path: Pat
     assert "MAT404" in {issue.code for issue in caught.value.issues}
 
 
+def test_materialization_fails_if_final_tool_schema_drops_contract_constraints(tmp_path: Path) -> None:
+    _write_project(tmp_path)
+    contract_path = tmp_path / "system.contract"
+    contract_path.write_text(
+        contract_path.read_text().replace(
+            "tool records.lookup(query: string)",
+            "tool records.lookup(query: string(min_length=1,max_length=4000))",
+        )
+    )
+
+    with pytest.raises(MaterializationError) as caught:
+        materialize(
+            tmp_path,
+            "openai",
+            "test",
+            provider=OpenAIMaterializationProvider(FakeOpenAISDK(drift_tool_schema=True)),
+        )
+
+    assert "MAT408" in {issue.code for issue in caught.value.issues}
+
+
 def test_concrete_openai_materializer_builds_real_sdk_objects_without_live_calls(tmp_path: Path) -> None:
     from agents import Agent, FunctionTool, Handoff
 
@@ -289,6 +349,56 @@ def test_concrete_openai_materializer_builds_real_sdk_objects_without_live_calls
     assert all(isinstance(item, Handoff) for item in parent.handoffs)
     assert cast(FunctionTool, child.tools[0]).needs_approval is True
     assert result.plan.adapter.version != "unavailable"
+
+
+def test_openai_tool_uses_contract_schema_instead_of_callable_annotations(tmp_path: Path) -> None:
+    from agents import FunctionTool
+
+    _write_project(tmp_path)
+    contract_path = tmp_path / "system.contract"
+    contract_path.write_text(
+        contract_path.read_text().replace(
+            "tool records.lookup(query: string)",
+            "tool records.lookup(query: string(min_length=1,max_length=4000))",
+        )
+    )
+
+    result = materialize(tmp_path, "openai", "test")
+    tool = cast(FunctionTool, cast(Any, result.graph.agent("Child")).tools[0])
+    query_schema = cast(dict[str, object], tool.params_json_schema["properties"])["query"]
+
+    assert query_schema == {"maxLength": 4000, "minLength": 1, "title": "Query", "type": "string"}
+    assert tool.params_json_schema["additionalProperties"] is False
+    assert result.graph.validation.complete
+    round_trip = type(result.graph.validation).from_dict(result.graph.validation.to_dict())
+    assert round_trip == result.graph.validation
+    evidence_path = tmp_path / "materialization-conformance.json"
+    evidence_path.write_text(result.graph.validation.to_json())
+    assert GraphValidationEvidence.load(evidence_path) == result.graph.validation
+    with pytest.raises(ValueError, match="Invalid graph validation evidence JSON"):
+        GraphValidationEvidence.from_json("{")
+    inconsistent = json.loads(result.graph.validation.to_json())
+    inconsistent["complete"] = not inconsistent["complete"]
+    with pytest.raises(ValueError, match="completeness is inconsistent"):
+        GraphValidationEvidence.from_dict(inconsistent)
+    inconsistent = json.loads(result.graph.validation.to_json())
+    inconsistent["schema_conformance"][0]["declared_digest"] = "sha256:incorrect"
+    with pytest.raises(ValueError, match="Declared schema digest is inconsistent"):
+        GraphValidationEvidence.from_dict(inconsistent)
+    inconsistent = json.loads(result.graph.validation.to_json())
+    inconsistent["schema_conformance"][0]["materialized_digest"] = "sha256:incorrect"
+    with pytest.raises(ValueError, match="Materialized schema digest is inconsistent"):
+        GraphValidationEvidence.from_dict(inconsistent)
+    with pytest.raises(TypeError, match="must be an object"):
+        GraphValidationEvidence.from_dict([])
+    with pytest.raises(ValueError, match="boundary cannot be empty"):
+        SchemaConformanceEvidence(semantic_id("agent", "Worker"), "", {}, {})
+    with pytest.raises(TypeError, match="requires object schemas"):
+        SchemaConformanceEvidence(semantic_id("agent", "Worker"), "agent_output", [], {})
+    validated = asyncio.run(tool.on_invoke_tool(SimpleNamespace(), '{"query":"record-1"}'))
+    assert validated.value == "record-1"
+    with pytest.raises(ValidationError):
+        asyncio.run(tool.on_invoke_tool(SimpleNamespace(), '{"query":""}'))
 
 
 def test_openai_hosted_tool_option_errors_are_structured() -> None:

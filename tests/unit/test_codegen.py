@@ -169,6 +169,33 @@ def test_typescript_and_zod_generation_cover_all_portable_type_forms() -> None:
     assert ".strict()," in zod
 
 
+def test_constrained_types_generate_runtime_validators() -> None:
+    bounded = TypeIR(
+        semantic_id("type", "Bounded"),
+        "Bounded",
+        (
+            TypeFieldIR("text", parse_type_ref("string(min_length=1,max_length=20)")),
+            TypeFieldIR("count", parse_type_ref("integer(minimum=1,maximum=5)")),
+            TypeFieldIR("score", parse_type_ref("float(minimum=0,maximum=1)?")),
+        ),
+    )
+    ir = CanonicalIR.create(types=(bounded,))
+
+    python = generate_pydantic_models(ir)
+    typescript = generate_typescript_types(ir)
+    zod = generate_zod_schemas(ir)
+    namespace: dict[str, Any] = {"__name__": "generated_bounded_models"}
+    exec(compile(python, "<generated>", "exec"), namespace)
+
+    assert "Annotated[int, Field(ge=1, le=5)]" in python
+    assert "text: string;" in typescript
+    assert "z.string().min(1).max(20)" in zod
+    assert "z.number().int().min(1).max(5)" in zod
+    assert "z.number().min(0).max(1).nullable()" in zod
+    with pytest.raises(ValueError):
+        namespace["Bounded"](text="", count=0, score=2)
+
+
 def test_enum_generation_is_native_and_validates_in_pydantic() -> None:
     status = EnumIR(semantic_id("type", "Status"), "Status", ("accepted", "follow_up", "failed"))
     result = TypeIR(

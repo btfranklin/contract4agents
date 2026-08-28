@@ -12,6 +12,7 @@ from typing import TypeAlias, cast
 from contract4agents.ir._ids import SemanticId
 from contract4agents.ir._model import CanonicalIR
 from contract4agents.ir._type_refs import (
+    ConstrainedTypeRef,
     ListTypeRef,
     MapTypeRef,
     NamedTypeRef,
@@ -63,7 +64,10 @@ def _canonical_value(value: object) -> CanonicalJsonValue:
         return value
     if isinstance(value, SemanticId):
         return str(value)
-    if isinstance(value, PrimitiveTypeRef | NamedTypeRef | NullableTypeRef | ListTypeRef | MapTypeRef):
+    if isinstance(
+        value,
+        PrimitiveTypeRef | ConstrainedTypeRef | NamedTypeRef | NullableTypeRef | ListTypeRef | MapTypeRef,
+    ):
         return format_type_ref(value)
     if isinstance(value, Mapping):
         result: dict[str, CanonicalJsonValue] = {}

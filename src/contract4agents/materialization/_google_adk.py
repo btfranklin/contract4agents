@@ -26,6 +26,7 @@ from contract4agents.materialization._errors import (
 from contract4agents.materialization._models import (
     GraphValidationEvidence,
     NativeAgentGraph,
+    SchemaConformanceEvidence,
 )
 from contract4agents.materialization._tracing import (
     MaterializationTraceSink,
@@ -67,6 +68,13 @@ class GoogleADKNativeAgentDescription:
     output_type: type[object]
     output_mode: OutputMode
     tools: tuple[object, ...]
+
+
+@dataclass(frozen=True)
+class GoogleADKNativeToolDescription:
+    native_name: str
+    input_schema: Mapping[str, object]
+    output_schema: Mapping[str, object]
 
 
 class GoogleADKSDK(Protocol):
@@ -140,6 +148,8 @@ class GoogleADKSDK(Protocol):
     def attach(self, agent: object, *, tools: tuple[object, ...]) -> None: ...
 
     def describe(self, agent: object) -> GoogleADKNativeAgentDescription: ...
+
+    def describe_tool(self, tool: object) -> GoogleADKNativeToolDescription: ...
 
 
 class ADKSDK:
@@ -540,6 +550,26 @@ class ADKSDK:
                 )
             ) from exc
 
+    def describe_tool(self, tool: object) -> GoogleADKNativeToolDescription:
+        native_tool = cast(Any, tool)
+        declaration_factory = getattr(native_tool, "_get_declaration", None)
+        if not callable(declaration_factory):
+            raise MaterializationError(
+                (MaterializationIssue("MAT331", "Google ADK tool does not expose its declaration"),)
+            )
+        declaration = declaration_factory()
+        input_schema = getattr(declaration, "parameters_json_schema", None)
+        output_schema = getattr(declaration, "response_json_schema", None)
+        if not isinstance(input_schema, dict) or not isinstance(output_schema, dict):
+            raise MaterializationError(
+                (MaterializationIssue("MAT331", "Google ADK tool declaration has no JSON schemas"),)
+            )
+        return GoogleADKNativeToolDescription(
+            native_name=str(declaration.name),
+            input_schema=cast(dict[str, object], input_schema),
+            output_schema=cast(dict[str, object], output_schema),
+        )
+
 
 class GoogleADKMaterializationProvider:
     """Construct a complete Google ADK-native graph from a reviewed plan."""
@@ -751,7 +781,7 @@ class GoogleADKMaterializationProvider:
                 tools=tuple(base_tools[agent_id] + edge_tools[agent_id]),
             )
 
-        _validate_graph(
+        schema_conformance = _validate_graph(
             self.sdk,
             ir,
             artifacts,
@@ -788,10 +818,14 @@ class GoogleADKMaterializationProvider:
             context=context_runtime,
             environment_evidence=evidence,
             validation=GraphValidationEvidence(
+                adapter=self.adapter,
+                adapter_version=self.sdk.version,
+                contract_digest=artifacts.contract_digest,
                 plan_digest=plan.plan_digest,
                 agent_ids=tuple(plan.agents),
                 grant_ids=tuple(plan.grants),
                 composition_ids=tuple(plan.composition),
+                schema_conformance=schema_conformance,
             ),
         )
 
@@ -821,15 +855,7 @@ def _contract_tool(
             )
         ) from exc
 
-    input_schema = (
-        cast(type[BaseModel], input_type).model_json_schema()
-        if input_type is not None
-        else {
-            "type": "object",
-            "properties": {},
-            "additionalProperties": False,
-        }
-    )
+    input_schema = _input_schema(input_type)
 
     class ContractTool(BaseTool):
         def __init__(self) -> None:
@@ -865,6 +891,12 @@ def _contract_tool(
             return await invoke(dict(args), tool_context)
 
     return ContractTool()
+
+
+def _input_schema(input_type: type[object] | None) -> Mapping[str, object]:
+    if input_type is None:
+        return {"type": "object", "properties": {}, "additionalProperties": False}
+    return cast(dict[str, object], cast(Any, input_type).model_json_schema())
 
 
 def _single_turn_child(child: object) -> object:
@@ -1054,8 +1086,9 @@ def _validate_graph(
     edge_objects: Mapping[SemanticId, object],
     output_types: FrozenMap[str, type[object]],
     names: NativeNameRegistry,
-) -> None:
+) -> tuple[SchemaConformanceEvidence, ...]:
     issues: list[MaterializationIssue] = []
+    schema_conformance: list[SchemaConformanceEvidence] = []
     for agent_id, agent_plan in plan.agents.items():
         native = sdk.describe(agents[agent_id])
         expected_name = names.assign("agent", agent_id, agent_plan.name)
@@ -1101,6 +1134,22 @@ def _validate_graph(
                     agent_id,
                 )
             )
+        expected_output_schema = cast(dict[str, object], TypeAdapter(expected_output).json_schema())
+        output_evidence = SchemaConformanceEvidence(
+            semantic_id=agent_id,
+            boundary=("agent_output" if expected_mode == "native" else "host_structural_output"),
+            declared_schema=expected_output_schema,
+            materialized_schema=cast(dict[str, object], TypeAdapter(native.output_type).json_schema()),
+        )
+        schema_conformance.append(output_evidence)
+        if not output_evidence.matches:
+            issues.append(
+                MaterializationIssue(
+                    "MAT427",
+                    "Native Google ADK output schema differs from contract",
+                    agent_id,
+                )
+            )
         expected_tools = [
             grant_objects[grant_id]
             for grant_id in ir.agents[agent_id].grant_ids
@@ -1121,14 +1170,78 @@ def _validate_graph(
                     agent_id,
                 )
             )
+    for grant_id, native_tool in grant_objects.items():
+        grant = ir.grants[grant_id]
+        capability = ir.capabilities[grant.capability_id]
+        expected_input = build_parameter_model(
+            f"{ir.agents[grant.agent_id].name}_{capability.name.replace('.', '_')}Input",
+            capability.parameters,
+            output_types,
+        )
+        expected_output = type_adapter_for(capability.output_type, output_types)
+        native_tool_description = sdk.describe_tool(native_tool)
+        input_evidence = SchemaConformanceEvidence(
+            semantic_id=grant_id,
+            boundary="tool_input",
+            declared_schema=dict(_input_schema(expected_input)),
+            materialized_schema=dict(native_tool_description.input_schema),
+        )
+        output_evidence = SchemaConformanceEvidence(
+            semantic_id=grant_id,
+            boundary="tool_output",
+            declared_schema=dict(expected_output.json_schema()),
+            materialized_schema=dict(native_tool_description.output_schema),
+        )
+        schema_conformance.extend((input_evidence, output_evidence))
+        if (
+            native_tool_description.native_name != names.assign("tool", capability.id, capability.name)
+            or not input_evidence.matches
+            or not output_evidence.matches
+        ):
+            issues.append(
+                MaterializationIssue(
+                    "MAT428",
+                    "Native Google ADK tool schema differs from contract",
+                    grant_id,
+                )
+            )
+    for edge_id, native_tool in edge_objects.items():
+        edge = ir.composition[edge_id]
+        child = ir.agents[edge.target_agent_id]
+        expected_input = build_parameter_model(f"{child.name}Input", child.parameters, output_types)
+        expected_output = type_adapter_for(child.output_type, output_types)
+        native_tool_description = sdk.describe_tool(native_tool)
+        input_evidence = SchemaConformanceEvidence(
+            semantic_id=edge_id,
+            boundary="delegate_input",
+            declared_schema=dict(_input_schema(expected_input)),
+            materialized_schema=dict(native_tool_description.input_schema),
+        )
+        output_evidence = SchemaConformanceEvidence(
+            semantic_id=edge_id,
+            boundary="delegate_output",
+            declared_schema=dict(expected_output.json_schema()),
+            materialized_schema=dict(native_tool_description.output_schema),
+        )
+        schema_conformance.extend((input_evidence, output_evidence))
+        if (
+            native_tool_description.native_name != names.assign("delegate", edge_id, edge.name)
+            or not input_evidence.matches
+            or not output_evidence.matches
+        ):
+            issues.append(
+                MaterializationIssue("MAT429", "Native Google ADK delegate schema differs from contract", edge_id)
+            )
     if issues:
         raise MaterializationError(tuple(issues))
+    return tuple(schema_conformance)
 
 
 __all__ = [
     "ADKSDK",
     "GoogleADKMaterializationProvider",
     "GoogleADKNativeAgentDescription",
+    "GoogleADKNativeToolDescription",
     "GoogleADKOutputValidationError",
     "GoogleADKSDK",
     "OutputMode",

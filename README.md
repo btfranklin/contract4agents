@@ -165,6 +165,12 @@ types, host tools, approval hooks, and supported composition are wired from the
 contract graph and target bindings; host code does not maintain a parallel
 agent registry.
 
+Portable string lengths and numeric ranges are enforced in compiler JSON
+Schema, generated validators, and native tool schemas. Materialization reads
+back the final native schemas and returns conformance evidence in
+`result.graph.validation`. Generated output types enforce contract structure;
+application domain validation remains a post-SDK host step.
+
 The host still owns credentials, approval decisions and UI, persistence,
 sessions, retries, external services, deployment, and deterministic application
 workflow. Contract4Agents is not a general workflow language and does not hide
@@ -208,9 +214,10 @@ Repeated replay campaigns report pass, violation, and unverified rates with
 uncertainty, latency and cost summaries, thresholds, and optional baseline
 comparisons.
 
-Assurance bundles join the canonical contract, materialization plan, normalized
-traces, trace closure, control results, eval summaries, and semantic diffs into
-one portable review package. Missing or incomplete evidence remains explicitly `unverified`.
+Assurance bundles join the canonical contract, materialization plan,
+materialized-schema conformance, normalized traces, trace closure, control
+results, eval summaries, and semantic diffs into one portable review package.
+Missing or incomplete evidence remains explicitly `unverified`.
 This is useful evidence for compliance and release review; it is not a legal
 certification by itself.
 

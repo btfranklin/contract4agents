@@ -36,6 +36,7 @@ from contract4agents.materialization._google_adk import (
     ADKSDK,
     GoogleADKMaterializationProvider,
     GoogleADKNativeAgentDescription,
+    GoogleADKNativeToolDescription,
     OutputMode,
 )
 from contract4agents.materialization._types import build_pydantic_types
@@ -51,6 +52,8 @@ from contract4agents.target_bindings import (
 @dataclass
 class FakeTool:
     name: str
+    input_schema: Mapping[str, object] = field(default_factory=dict)
+    output_schema: Mapping[str, object] = field(default_factory=dict)
     implementation: object | None = None
     requires_approval: bool = False
     child: object | None = None
@@ -113,8 +116,14 @@ class FakeGoogleADKSDK:
         output_adapter: TypeAdapter[Any],
         requires_approval: bool,
     ) -> object:
-        del description, input_type, output_adapter
-        return FakeTool(native_name, implementation, requires_approval)
+        del description
+        return FakeTool(
+            native_name,
+            _input_schema(input_type),
+            output_adapter.json_schema(),
+            implementation,
+            requires_approval,
+        )
 
     def create_google_search_tool(
         self,
@@ -127,8 +136,13 @@ class FakeGoogleADKSDK:
         output_adapter: TypeAdapter[Any],
         requires_approval: bool,
     ) -> object:
-        del child_name, description, binding, input_type, output_adapter
-        return FakeTool(native_name, requires_approval=requires_approval)
+        del child_name, description, binding
+        return FakeTool(
+            native_name,
+            _input_schema(input_type),
+            output_adapter.json_schema(),
+            requires_approval=requires_approval,
+        )
 
     def create_delegate_tool(
         self,
@@ -139,8 +153,13 @@ class FakeGoogleADKSDK:
         input_type: type[object] | None,
         output_adapter: TypeAdapter[Any],
     ) -> object:
-        del description, input_type, output_adapter
-        return FakeTool(native_name, child=child)
+        del description
+        return FakeTool(
+            native_name,
+            _input_schema(input_type),
+            output_adapter.json_schema(),
+            child=child,
+        )
 
     def create_isolated_delegate_tool(
         self,
@@ -157,14 +176,17 @@ class FakeGoogleADKSDK:
     ) -> object:
         del (
             description,
-            input_type,
-            output_adapter,
             isolation_id,
             requested_dimensions,
             declared_capabilities,
             environment,
         )
-        return FakeTool(native_name, child=child)
+        return FakeTool(
+            native_name,
+            _input_schema(input_type),
+            output_adapter.json_schema(),
+            child=child,
+        )
 
     def attach(self, agent: object, *, tools: tuple[object, ...]) -> None:
         assert isinstance(agent, FakeAgent)
@@ -182,6 +204,20 @@ class FakeGoogleADKSDK:
             output_mode=agent.output_mode,
             tools=tuple(agent.tools),
         )
+
+    def describe_tool(self, tool: object) -> GoogleADKNativeToolDescription:
+        assert isinstance(tool, FakeTool)
+        return GoogleADKNativeToolDescription(
+            tool.name,
+            tool.input_schema,
+            tool.output_schema,
+        )
+
+
+def _input_schema(input_type: type[object] | None) -> Mapping[str, object]:
+    if input_type is None:
+        return {"type": "object", "properties": {}, "additionalProperties": False}
+    return input_type.model_json_schema()  # type: ignore[attr-defined,no-any-return]
 
 
 def test_google_adk_provider_builds_and_validates_typed_graph(
@@ -274,7 +310,8 @@ async def test_concrete_adk_tool_validates_approval_sync_async_and_outputs() -> 
         calls.append((query, threading.get_ident()))
         return {"summary": query.upper()}
 
-    tool = ADKSDK().create_function_tool(
+    sdk = ADKSDK()
+    tool = sdk.create_function_tool(
         native_name="c4a_tool_lookup_deadbeef",
         description="Look up a record.",
         implementation=sync_lookup,
@@ -285,6 +322,10 @@ async def test_concrete_adk_tool_validates_approval_sync_async_and_outputs() -> 
     waiting = _ToolContext()
     rejected = _ToolContext(confirmed=False)
     approved = _ToolContext(confirmed=True)
+    description = sdk.describe_tool(tool)
+
+    assert description.input_schema == input_type.model_json_schema()
+    assert description.output_schema == output_adapter.json_schema()
 
     assert await tool.run_async(
         args={"query": "wait"},

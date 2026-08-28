@@ -356,6 +356,7 @@ def test_cli_assure_assesses_versioned_run_spec_evidence(tmp_path: Path) -> None
     run_spec_path = tmp_path / "run-spec-evidence.json"
     eval_path = tmp_path / "eval.json"
     provenance_path = tmp_path / "provenance.json"
+    materialization_path = tmp_path / "materialization-conformance.json"
     output_dir = tmp_path / "assurance"
     write_trace_jsonl(trace_path, assurance_trace)
     closure_path.write_text(
@@ -452,6 +453,7 @@ def test_cli_assure_assesses_versioned_run_spec_evidence(tmp_path: Path) -> None
     run_spec_path.write_text(json.dumps(manifest.to_dict()))
     eval_path.write_text(json.dumps(campaign.to_dict()))
     provenance_path.write_text(json.dumps({"source": "unit-test"}))
+    materialization_path.write_text(json.dumps(materialized.graph.validation.to_dict()))
 
     result = CliRunner().invoke(
         main,
@@ -464,6 +466,8 @@ def test_cli_assure_assesses_versioned_run_spec_evidence(tmp_path: Path) -> None
             "test",
             "--trace",
             str(trace_path),
+            "--materialization-evidence",
+            str(materialization_path),
             "--trace-closure",
             str(closure_path),
             "--run-spec-evidence",
