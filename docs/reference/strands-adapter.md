@@ -69,6 +69,8 @@ Profile options are merged with agent overrides. Checking and planning inspect
 but do not call the factory. Materialization calls it once per agent with the
 selected model and remaining options; `model_factory` and `environment` are
 excluded. The return value must implement `strands.models.Model`.
+Nested options reach `BedrockModel` or the configured model factory as ordinary
+dictionaries and lists.
 
 ## Semantic Support
 

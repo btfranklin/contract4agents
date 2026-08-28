@@ -46,6 +46,12 @@ default_model = "gpt-5.2"
 
 [targets.openai.profiles.production.agents.ResearchAgent]
 model = "gpt-5.6-luna"
+
+[targets.openai.profiles.production.options.retry]
+max_retries = 0
+
+[targets.openai.profiles.production.agents.ResearchAgent.options.reasoning]
+effort = "high"
 ```
 
 Every target has at least one named profile. Profiles are complete and do not
@@ -59,6 +65,10 @@ credentials and may select a target and profile; target-binding files never
 interpolate environment variables. Programmatic bindings remain useful for
 tests and control planes, but the resulting named plan must be persisted as the
 auditable configuration used for the run.
+
+Nested provider options use TOML tables and arrays. Materialization converts the
+immutable plan values to ordinary dictionaries and lists before it constructs
+OpenAI Agents SDK `ModelSettings`.
 
 Python locators use `module:attribute`. Planning may import a locator to inspect
 its callable signature, but it never calls application code.

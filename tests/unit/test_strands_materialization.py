@@ -14,7 +14,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from contract4agents import compile_project, materialize
 from contract4agents.adapters._native_names import native_name
-from contract4agents.ir import FrozenMap, SemanticId, semantic_id
+from contract4agents.ir import FrozenMap, SemanticId, freeze_json, semantic_id
 from contract4agents.materialization import (
     MaterializationError,
     RecordingMaterializationTraceSink,
@@ -345,6 +345,60 @@ def test_concrete_strands_model_factory_wraps_failures(
         )
 
     assert [issue.code for issue in caught.value.issues] == [code]
+
+
+def test_concrete_strands_model_options_are_thawed_before_bedrock_validation() -> None:
+    from botocore.validate import ParamValidator
+
+    frozen = freeze_json(
+        {
+            "additional_request_fields": {
+                "reasoning_config": {"type": "enabled", "budget_tokens": 1024}
+            }
+        }
+    )
+    assert isinstance(frozen, FrozenMap)
+
+    model = cast(
+        Any,
+        StrandsAgentsSDK().create_model(
+            model="global.anthropic.claude-sonnet-4-6",
+            model_options=frozen,
+            factory=None,
+        ),
+    )
+    request = model.format_request(
+        [{"role": "user", "content": [{"text": "test"}]}]
+    )
+
+    assert isinstance(request["additionalModelRequestFields"], dict)
+    assert isinstance(request["additionalModelRequestFields"]["reasoning_config"], dict)
+    operation = model.client.meta.service_model.operation_model("ConverseStream")
+    errors = ParamValidator().validate(request, operation.input_shape)
+    assert not errors.has_errors(), errors.generate_report()
+
+
+def test_concrete_strands_model_factory_receives_thawed_options() -> None:
+    from strands.models.bedrock import BedrockModel
+
+    captured: dict[str, object] = {}
+
+    def factory(*, model: str, options: dict[str, object]) -> object:
+        captured.update(options)
+        return BedrockModel(model_id=model)
+
+    frozen = freeze_json({"custom": {"entries": [{"enabled": True}]}})
+    assert isinstance(frozen, FrozenMap)
+
+    StrandsAgentsSDK().create_model(
+        model="test-model",
+        model_options=frozen,
+        factory=factory,
+    )
+
+    assert captured == {"custom": {"entries": [{"enabled": True}]}}
+    assert isinstance(captured["custom"], dict)
+    assert isinstance(cast(dict[str, object], captured["custom"])["entries"], list)
 
 
 @pytest.mark.parametrize("async_lookup", [False, True])

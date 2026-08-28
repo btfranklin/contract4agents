@@ -28,6 +28,7 @@ from contract4agents.materialization._models import (
     NativeAgentGraph,
     SchemaConformanceEvidence,
 )
+from contract4agents.materialization._options import thaw_mapping
 from contract4agents.materialization._tracing import (
     MaterializationTraceSink,
     _emit_materialization_events,
@@ -194,7 +195,7 @@ class ADKSDK:
                 )
             ) from exc
 
-        options = _thaw_mapping(model_options)
+        options = thaw_mapping(model_options)
         options.pop("environment", None)
         options.pop("model_factory", None)
         native_model: object
@@ -1010,18 +1011,6 @@ def _load_prompt(name: str) -> str:
         .joinpath(name)
     )
     return resource.read_text(encoding="utf-8")
-
-
-def _thaw_mapping(values: Mapping[str, object]) -> dict[str, object]:
-    return {name: _thaw(value) for name, value in values.items()}
-
-
-def _thaw(value: object) -> object:
-    if isinstance(value, Mapping):
-        return {str(name): _thaw(child) for name, child in value.items()}
-    if isinstance(value, tuple):
-        return [_thaw(child) for child in value]
-    return value
 
 
 def _output_mode(

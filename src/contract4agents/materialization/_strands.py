@@ -27,6 +27,7 @@ from contract4agents.materialization._models import (
     NativeAgentGraph,
     SchemaConformanceEvidence,
 )
+from contract4agents.materialization._options import thaw_mapping
 from contract4agents.materialization._tracing import (
     MaterializationTraceSink,
     _emit_materialization_events,
@@ -154,7 +155,7 @@ class StrandsAgentsSDK:
         factory: object | None,
     ) -> object:
         Model, BedrockModel = _strands_model_types()
-        options = dict(model_options)
+        options = thaw_mapping(model_options)
         if factory is not None:
             if not callable(factory):
                 raise MaterializationError(

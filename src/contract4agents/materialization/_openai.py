@@ -23,6 +23,7 @@ from contract4agents.materialization._models import (
     NativeAgentGraph,
     SchemaConformanceEvidence,
 )
+from contract4agents.materialization._options import thaw_mapping
 from contract4agents.materialization._tracing import (
     MaterializationTraceSink,
     _emit_materialization_events,
@@ -153,11 +154,11 @@ class AgentsSDK:
             raise MaterializationError(
                 (MaterializationIssue("MAT301", "openai-agents is not installed"),)
             ) from exc
-        options = dict(model_options)
+        options = thaw_mapping(model_options)
         options.pop("environment", None)
         try:
             settings = cast(Any, ModelSettings)(**options) if options else None
-        except TypeError as exc:
+        except (TypeError, ValueError) as exc:
             raise MaterializationError(
                 (MaterializationIssue("MAT302", f"Invalid OpenAI model options for `{name}`: {exc}"),)
             ) from exc

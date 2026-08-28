@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
-from pydantic import ValidationError
+from pydantic import ValidationError, create_model
 
 from contract4agents import materialize
 from contract4agents.adapters._openai_names import openai_tool_name
@@ -20,6 +20,7 @@ from contract4agents.ir import (
     SemanticId,
     TypeFieldIR,
     TypeIR,
+    freeze_json,
     parse_type_ref,
     semantic_id,
 )
@@ -349,6 +350,84 @@ def test_concrete_openai_materializer_builds_real_sdk_objects_without_live_calls
     assert all(isinstance(item, Handoff) for item in parent.handoffs)
     assert cast(FunctionTool, child.tools[0]).needs_approval is True
     assert result.plan.adapter.version != "unavailable"
+
+
+def test_concrete_openai_materializer_supports_nested_profile_and_agent_options(
+    tmp_path: Path,
+) -> None:
+    from agents import ModelRetrySettings
+    from openai.types.shared import Reasoning
+
+    _write_project(tmp_path)
+    bindings = tmp_path / "contract4agents.targets.toml"
+    bindings.write_text(
+        bindings.read_text(encoding="utf-8")
+        + """\
+
+[targets.openai.profiles.test.options.retry]
+max_retries = 0
+
+[targets.openai.profiles.test.agents.Child.options.reasoning]
+effort = "high"
+""",
+        encoding="utf-8",
+    )
+
+    result = materialize(tmp_path, "openai", "test")
+
+    parent_settings = cast(Any, result.agents["Parent"]).model_settings
+    child_settings = cast(Any, result.agents["Child"]).model_settings
+    assert isinstance(parent_settings.retry, ModelRetrySettings)
+    assert parent_settings.retry.max_retries == 0
+    assert isinstance(child_settings.retry, ModelRetrySettings)
+    assert isinstance(child_settings.reasoning, Reasoning)
+    assert child_settings.reasoning.effort == "high"
+    assert result.graph.validation.complete
+
+
+def test_concrete_openai_sdk_recursively_thaws_pass_through_model_options() -> None:
+    frozen = freeze_json(
+        {
+            "extra_body": {"custom": {"flags": ["one", "two"]}},
+            "tool_choice": {"server_label": "server", "name": "tool"},
+        }
+    )
+    assert isinstance(frozen, FrozenMap)
+
+    agent = AgentsSDK().create_agent(
+        name="NestedOptions",
+        instructions="Return a result.",
+        model="test-model",
+        model_options=frozen,
+        output_type=create_model("NestedOptionsOutput", value=(str, ...)),
+        tools=(),
+    )
+
+    settings = cast(Any, agent).model_settings
+    assert settings.extra_body == {"custom": {"flags": ["one", "two"]}}
+    assert isinstance(settings.extra_body, dict)
+    assert isinstance(settings.extra_body["custom"], dict)
+    assert isinstance(settings.extra_body["custom"]["flags"], list)
+    assert settings.tool_choice.server_label == "server"
+    assert settings.tool_choice.name == "tool"
+
+
+def test_openai_model_option_validation_errors_are_structured() -> None:
+    frozen = freeze_json({"retry": {"backoff": {"initial_delay": -0.1}}})
+    assert isinstance(frozen, FrozenMap)
+
+    with pytest.raises(MaterializationError) as caught:
+        AgentsSDK().create_agent(
+            name="InvalidOptions",
+            instructions="Return a result.",
+            model="test-model",
+            model_options=frozen,
+            output_type=create_model("InvalidOptionsOutput", value=(str, ...)),
+            tools=(),
+        )
+
+    assert [issue.code for issue in caught.value.issues] == ["MAT302"]
+    assert "Invalid OpenAI model options" in caught.value.issues[0].message
 
 
 def test_openai_tool_uses_contract_schema_instead_of_callable_annotations(tmp_path: Path) -> None:

@@ -390,7 +390,11 @@ def test_concrete_adk_agent_uses_factory_once_without_reapplying_options() -> No
         description="Factory-backed agent.",
         instructions="Produce an answer.",
         model="custom-model",
-        model_options={"model_factory": "app:factory", "temperature": 0.2},
+        model_options={
+            "model_factory": "app:factory",
+            "temperature": 0.2,
+            "custom": {"entries": ({"enabled": True},)},
+        },
         model_factory=factory,
         input_type=None,
         output_type=output_type,
@@ -398,7 +402,12 @@ def test_concrete_adk_agent_uses_factory_once_without_reapplying_options() -> No
         tools=(),
     )
 
-    assert calls == [("custom-model", {"temperature": 0.2})]
+    assert calls == [
+        (
+            "custom-model",
+            {"temperature": 0.2, "custom": {"entries": [{"enabled": True}]}},
+        )
+    ]
     assert isinstance(agent.model, FakeModel)
     assert agent.output_schema is None
     assert agent.generate_content_config.temperature is None
