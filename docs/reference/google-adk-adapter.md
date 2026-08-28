@@ -101,6 +101,14 @@ and `maxItems`; a missing or changed bound fails conformance. This proves the
 schema evidence exposed by the installed SDK, not provider-wide constrained
 decoding for every model and tool combination.
 
+Materialization evidence reads public `LlmAgent` identity, instruction, model,
+output, and tool properties where ADK exposes them. Tool declarations currently
+use ADK's private `_get_declaration()` boundary because no public declaration
+accessor exists; this path is version-checked and fails closed when it cannot
+read a declaration. A custom model factory proves only exact argument transfer
+and the returned `BaseLlm` type. It does not prove that the host or ADK applies
+opaque provider settings.
+
 ## Google Search
 
 The adapter recognizes one provider-native search locator:

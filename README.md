@@ -167,7 +167,7 @@ agent registry.
 
 Portable string lengths and numeric ranges are enforced in compiler JSON
 Schema, generated validators, and native tool schemas. Materialization reads
-back the final native schemas and returns conformance evidence in
+back final native configuration and schemas and returns conformance evidence in
 `result.graph.validation`. Generated output types enforce contract structure;
 application domain validation remains a post-SDK host step.
 
@@ -215,7 +215,7 @@ uncertainty, latency and cost summaries, thresholds, and optional baseline
 comparisons.
 
 Assurance bundles join the canonical contract, materialization plan,
-materialized-schema conformance, normalized traces, trace closure, control
+materialized configuration and schema conformance, normalized traces, trace closure, control
 results, eval summaries, and semantic diffs into one portable review package.
 Missing or incomplete evidence remains explicitly `unverified`.
 This is useful evidence for compliance and release review; it is not a legal

@@ -18,12 +18,21 @@ from contract4agents.adapters._google_adk import google_adk_planner_capabilities
 from contract4agents.adapters._native_names import NativeNameRegistry
 from contract4agents.compiler import CompilerArtifacts
 from contract4agents.ir import CanonicalIR, FrozenMap, SemanticId
+from contract4agents.materialization._configuration import (
+    MISSING,
+    SAFE_OPTION_PATHS,
+    configuration_evidence,
+    flatten_mapping,
+    read_public_path,
+)
 from contract4agents.materialization._context import ContextRuntime
 from contract4agents.materialization._errors import (
     MaterializationError,
     MaterializationIssue,
 )
 from contract4agents.materialization._models import (
+    ConfigurationConformanceEvidence,
+    ConfigurationObservationSource,
     GraphValidationEvidence,
     NativeAgentGraph,
     SchemaConformanceEvidence,
@@ -45,11 +54,9 @@ from contract4agents.target_bindings import BindingEntry, TargetBinding
 OutputMode = Literal["native", "emulated"]
 _ToolInvoker = Callable[[dict[str, object], object], Awaitable[object]]
 _OutputValidationObserver = Callable[[str, bool], None]
-_OUTPUT_VALIDATION_OBSERVER: ContextVar[_OutputValidationObserver | None] = (
-    ContextVar(
-        "contract4agents_google_adk_output_validation_observer",
-        default=None,
-    )
+_OUTPUT_VALIDATION_OBSERVER: ContextVar[_OutputValidationObserver | None] = ContextVar(
+    "contract4agents_google_adk_output_validation_observer",
+    default=None,
 )
 
 
@@ -69,6 +76,9 @@ class GoogleADKNativeAgentDescription:
     output_type: type[object]
     output_mode: OutputMode
     tools: tuple[object, ...]
+    model_options: Mapping[str, object] | None = None
+    model_observation_source: str = "native_readback"
+    model_observed: bool = True
 
 
 @dataclass(frozen=True)
@@ -76,6 +86,7 @@ class GoogleADKNativeToolDescription:
     native_name: str
     input_schema: Mapping[str, object]
     output_schema: Mapping[str, object]
+    requires_approval: bool | None = None
 
 
 class GoogleADKSDK(Protocol):
@@ -187,10 +198,7 @@ class ADKSDK:
                 (
                     MaterializationIssue(
                         "MAT321",
-                        (
-                            "google-adk is not installed; install "
-                            "`contract4agents[google-adk]`"
-                        ),
+                        ("google-adk is not installed; install `contract4agents[google-adk]`"),
                     ),
                 )
             ) from exc
@@ -216,10 +224,7 @@ class ADKSDK:
                     (
                         MaterializationIssue(
                             "MAT323",
-                            (
-                                f"Google ADK model factory for `{semantic_name}` "
-                                f"failed: {type(exc).__name__}: {exc}"
-                            ),
+                            (f"Google ADK model factory for `{semantic_name}` failed: {type(exc).__name__}: {exc}"),
                         ),
                     )
                 ) from exc
@@ -228,10 +233,7 @@ class ADKSDK:
                     (
                         MaterializationIssue(
                             "MAT324",
-                            (
-                                f"Google ADK model factory for `{semantic_name}` "
-                                "must return `google.adk.models.BaseLlm`"
-                            ),
+                            (f"Google ADK model factory for `{semantic_name}` must return `google.adk.models.BaseLlm`"),
                         ),
                     )
                 )
@@ -253,18 +255,13 @@ class ADKSDK:
         generate_config: object | None = None
         if model_factory is None:
             try:
-                generate_config = cast(Any, types.GenerateContentConfig)(
-                    **options
-                )
+                generate_config = cast(Any, types.GenerateContentConfig)(**options)
             except (TypeError, ValueError) as exc:
                 raise MaterializationError(
                     (
                         MaterializationIssue(
                             "MAT326",
-                            (
-                                f"Invalid Google ADK model options for "
-                                f"`{semantic_name}`: {exc}"
-                            ),
+                            (f"Invalid Google ADK model options for `{semantic_name}`: {exc}"),
                         ),
                     )
                 ) from exc
@@ -310,6 +307,9 @@ class ADKSDK:
             output_type=output_type,
             output_mode=output_mode,
             tools=tuple(tools),
+            model_options=dict(options),
+            model_observation_source=("adapter_boundary" if model_factory is not None else "native_readback"),
+            model_observed=model_factory is None,
         )
         return agent
 
@@ -374,10 +374,7 @@ class ADKSDK:
                 (
                     MaterializationIssue(
                         "MAT321",
-                        (
-                            "google-adk is not installed; install "
-                            "`contract4agents[google-adk]`"
-                        ),
+                        ("google-adk is not installed; install `contract4agents[google-adk]`"),
                     ),
                 )
             ) from exc
@@ -395,7 +392,7 @@ class ADKSDK:
                         "MAT329",
                         (
                             f"Google Search binding `{native_name}` must declare only "
-                            "`provider = \"google_adk\"`, `tool = \"google_search\"`, "
+                            '`provider = "google_adk"`, `tool = "google_search"`, '
                             "and an explicit `gemini-2*` model"
                         ),
                     ),
@@ -418,6 +415,26 @@ class ADKSDK:
             include_plugins=True,
             propagate_grounding_metadata=True,
         )
+        inner_agent = getattr(search_tool, "agent", MISSING)
+        inner_properties_match = inner_agent is MISSING or (
+            inner_agent is search_agent
+            and getattr(search_agent, "name", MISSING) == child_name
+            and getattr(search_agent, "model", MISSING) == model
+            and tuple(getattr(search_agent, "tools", ())) == (google_search,)
+            and getattr(search_agent, "include_contents", MISSING) == "none"
+            and getattr(search_agent, "mode", MISSING) == "single_turn"
+            and getattr(search_agent, "disallow_transfer_to_parent", MISSING) is True
+            and getattr(search_agent, "disallow_transfer_to_peers", MISSING) is True
+        )
+        if not inner_properties_match:
+            raise MaterializationError(
+                (
+                    MaterializationIssue(
+                        "MAT330",
+                        "Google Search hosted inner agent failed public native conformance",
+                    ),
+                )
+            )
         input_adapter = TypeAdapter(input_type)
 
         async def invoke(args: dict[str, object], tool_context: object) -> object:
@@ -536,11 +553,15 @@ class ADKSDK:
             output_type=description.output_type,
             output_mode=description.output_mode,
             tools=tools,
+            model_options=description.model_options,
+            model_observation_source=description.model_observation_source,
+            model_observed=description.model_observed,
         )
 
     def describe(self, agent: object) -> GoogleADKNativeAgentDescription:
+        native_agent = cast(Any, agent)
         try:
-            return self._descriptions[id(agent)]
+            metadata = self._descriptions[id(agent)]
         except KeyError as exc:
             raise MaterializationError(
                 (
@@ -550,9 +571,69 @@ class ADKSDK:
                     ),
                 )
             ) from exc
+        native_name = getattr(native_agent, "name", MISSING)
+        instruction = getattr(native_agent, "instruction", MISSING)
+        if instruction is MISSING:
+            instruction = getattr(native_agent, "instructions", MISSING)
+        native_tools = getattr(native_agent, "tools", MISSING)
+        native_output_schema = getattr(native_agent, "output_schema", MISSING)
+        if (
+            native_name is MISSING
+            or instruction is MISSING
+            or native_tools is MISSING
+            or native_output_schema is MISSING
+        ):
+            raise MaterializationError(
+                (
+                    MaterializationIssue(
+                        "MAT330",
+                        "Google ADK agent is missing a required public property",
+                    ),
+                )
+            )
+        native_model = getattr(native_agent, "model", MISSING)
+        input_type = getattr(native_agent, "input_schema", metadata.input_type)
+        output_type = metadata.output_type
+        if isinstance(native_output_schema, type):
+            output_type = cast(type[object], native_output_schema)
+        if native_output_schema is None:
+            output_mode: OutputMode = "emulated"
+        else:
+            output_mode = "native"
+        model_identity = metadata.model
+        source = metadata.model_observation_source
+        model_observed = False
+        if isinstance(native_model, str):
+            model_identity = native_model
+            source = "native_readback"
+            model_observed = True
+        return GoogleADKNativeAgentDescription(
+            semantic_name=metadata.semantic_name,
+            native_name=str(native_name),
+            instructions=(str(instruction) if instruction is not MISSING else metadata.instructions),
+            model=model_identity,
+            input_type=(input_type if isinstance(input_type, type) or input_type is None else metadata.input_type),
+            output_type=output_type,
+            output_mode=output_mode,
+            tools=tuple(cast(Any, native_tools)),
+            model_options=metadata.model_options,
+            model_observation_source=source,
+            model_observed=model_observed,
+        )
 
     def describe_tool(self, tool: object) -> GoogleADKNativeToolDescription:
         native_tool = cast(Any, tool)
+        # ADK has no public declaration accessor on BaseTool.  Keep this
+        # private call isolated and fail closed if the installed major changes.
+        if self.version != "unavailable" and self.version.split(".", 1)[0] not in {"1", "2"}:
+            raise MaterializationError(
+                (
+                    MaterializationIssue(
+                        "MAT331",
+                        "Google ADK private tool declaration API is unsupported for this version",
+                    ),
+                )
+            )
         declaration_factory = getattr(native_tool, "_get_declaration", None)
         if not callable(declaration_factory):
             raise MaterializationError(
@@ -569,6 +650,11 @@ class ADKSDK:
             native_name=str(declaration.name),
             input_schema=cast(dict[str, object], input_schema),
             output_schema=cast(dict[str, object], output_schema),
+            requires_approval=(
+                cast(bool, native_tool.requires_approval)
+                if isinstance(getattr(native_tool, "requires_approval", None), bool)
+                else None
+            ),
         )
 
 
@@ -585,11 +671,7 @@ class GoogleADKMaterializationProvider:
         environment: EnvironmentProvider | None,
     ) -> PlannerCapabilities:
         base = google_adk_planner_capabilities()
-        isolation = (
-            environment.planning_support()
-            if environment is not None
-            else base.isolation
-        )
+        isolation = environment.planning_support() if environment is not None else base.isolation
         return PlannerCapabilities.create(
             adapter=base.adapter,
             version=self.sdk.version,
@@ -618,17 +700,12 @@ class GoogleADKMaterializationProvider:
         names = NativeNameRegistry()
         agents: dict[SemanticId, object] = {}
         grants: dict[SemanticId, object] = {}
-        base_tools: dict[SemanticId, list[object]] = {
-            identifier: [] for identifier in ir.agents
-        }
+        base_tools: dict[SemanticId, list[object]] = {identifier: [] for identifier in ir.agents}
 
         for agent_id, agent in ir.agents.items():
             for grant_id in agent.grant_ids:
                 grant = ir.grants[grant_id]
-                if (
-                    grant.availability == "denied"
-                    or grant.capability_id.kind != "tool"
-                ):
+                if grant.availability == "denied" or grant.capability_id.kind != "tool":
                     continue
                 capability = ir.capabilities[grant.capability_id]
                 binding = target.tools[capability.name]
@@ -664,9 +741,7 @@ class GoogleADKMaterializationProvider:
                         binding=binding,
                         input_type=input_type,
                         output_adapter=output_adapter,
-                        requires_approval=(
-                            grant.authorization == "approval_required"
-                        ),
+                        requires_approval=(grant.authorization == "approval_required"),
                     )
                 else:
                     implementation = implementations.get(capability.id)
@@ -676,9 +751,7 @@ class GoogleADKMaterializationProvider:
                         implementation=implementation,
                         input_type=input_type,
                         output_adapter=output_adapter,
-                        requires_approval=(
-                            grant.authorization == "approval_required"
-                        ),
+                        requires_approval=(grant.authorization == "approval_required"),
                     )
                 grants[grant_id] = native_tool
                 base_tools[agent_id].append(native_tool)
@@ -692,11 +765,7 @@ class GoogleADKMaterializationProvider:
                 instructions=artifacts.instructions[agent.name],
                 model=agent_plan.model,
                 model_options=agent_plan.model_options,
-                model_factory=(
-                    implementations.get(agent_id)
-                    if "model_factory" in agent_plan.model_options
-                    else None
-                ),
+                model_factory=(implementations.get(agent_id) if "model_factory" in agent_plan.model_options else None),
                 input_type=build_parameter_model(
                     f"{agent.name}Input",
                     agent.parameters,
@@ -708,9 +777,7 @@ class GoogleADKMaterializationProvider:
             )
 
         edge_objects: dict[SemanticId, object] = {}
-        edge_tools: dict[SemanticId, list[object]] = {
-            identifier: [] for identifier in ir.agents
-        }
+        edge_tools: dict[SemanticId, list[object]] = {identifier: [] for identifier in ir.agents}
         for edge_id, edge in ir.composition.items():
             if edge.mode != "delegate":
                 raise MaterializationError(
@@ -753,10 +820,7 @@ class GoogleADKMaterializationProvider:
                         )
                     )
                 isolation_plan = plan.isolation[edge.isolation_id]
-                dimensions = FrozenMap(
-                    (name, value.requested)
-                    for name, value in isolation_plan.dimensions.items()
-                )
+                dimensions = FrozenMap((name, value.requested) for name, value in isolation_plan.dimensions.items())
                 declared = tuple(
                     str(ir.grants[grant_id].capability_id)
                     for grant_id in child_ir.grant_ids
@@ -782,7 +846,7 @@ class GoogleADKMaterializationProvider:
                 tools=tuple(base_tools[agent_id] + edge_tools[agent_id]),
             )
 
-        schema_conformance = _validate_graph(
+        schema_conformance, configuration_conformance = _validate_graph(
             self.sdk,
             ir,
             artifacts,
@@ -795,27 +859,16 @@ class GoogleADKMaterializationProvider:
         )
         _emit_materialization_events(materialization_trace_sink, ir, plan)
         evidence = (
-            tuple(
-                environment.enforcement_evidence(item)
-                for item in plan.isolation.values()
-            )
+            tuple(environment.enforcement_evidence(item) for item in plan.isolation.values())
             if environment is not None
             else ()
         )
         return NativeAgentGraph(
-            agents=FrozenMap(
-                (identifier, agents[identifier]) for identifier in ir.agents
-            ),
+            agents=FrozenMap((identifier, agents[identifier]) for identifier in ir.agents),
             output_types=output_types,
             implementations=implementations,
-            grant_objects=FrozenMap(
-                (identifier, grants[identifier])
-                for identifier in sorted(grants, key=str)
-            ),
-            composition_objects=FrozenMap(
-                (identifier, edge_objects[identifier])
-                for identifier in ir.composition
-            ),
+            grant_objects=FrozenMap((identifier, grants[identifier]) for identifier in sorted(grants, key=str)),
+            composition_objects=FrozenMap((identifier, edge_objects[identifier]) for identifier in ir.composition),
             context=context_runtime,
             environment_evidence=evidence,
             validation=GraphValidationEvidence(
@@ -827,6 +880,7 @@ class GoogleADKMaterializationProvider:
                 grant_ids=tuple(plan.grants),
                 composition_ids=tuple(plan.composition),
                 schema_conformance=schema_conformance,
+                configuration_conformance=configuration_conformance,
             ),
         )
 
@@ -848,10 +902,7 @@ def _contract_tool(
             (
                 MaterializationIssue(
                     "MAT321",
-                    (
-                        "google-adk is not installed; install "
-                        "`contract4agents[google-adk]`"
-                    ),
+                    ("google-adk is not installed; install `contract4agents[google-adk]`"),
                 ),
             )
         ) from exc
@@ -861,6 +912,10 @@ def _contract_tool(
     class ContractTool(BaseTool):
         def __init__(self) -> None:
             super().__init__(name=name, description=description)
+            # Public adapter-owned metadata.  ADK has no public approval-policy
+            # accessor for a BaseTool, so conformance labels this as a wrapper
+            # observation rather than native enforcement.
+            self.requires_approval = requires_approval
 
         def _get_declaration(self) -> types.FunctionDeclaration:
             return types.FunctionDeclaration(
@@ -1004,12 +1059,7 @@ def _reset_output_validation_observer(
 
 
 def _load_prompt(name: str) -> str:
-    resource = (
-        files("contract4agents.adapters")
-        .joinpath("prompts")
-        .joinpath("google_adk")
-        .joinpath(name)
-    )
+    resource = files("contract4agents.adapters").joinpath("prompts").joinpath("google_adk").joinpath(name)
     return resource.read_text(encoding="utf-8")
 
 
@@ -1022,9 +1072,7 @@ def _output_mode(
         (
             control
             for control in ir.controls.values()
-            if control.agent_id == agent_id
-            and control.assessment == "adapter"
-            and control.derived_from == agent_id
+            if control.agent_id == agent_id and control.assessment == "adapter" and control.derived_from == agent_id
         ),
         None,
     )
@@ -1075,7 +1123,7 @@ def _validate_graph(
     edge_objects: Mapping[SemanticId, object],
     output_types: FrozenMap[str, type[object]],
     names: NativeNameRegistry,
-) -> tuple[SchemaConformanceEvidence, ...]:
+) -> tuple[tuple[SchemaConformanceEvidence, ...], tuple[ConfigurationConformanceEvidence, ...]]:
     issues: list[MaterializationIssue] = []
     schema_conformance: list[SchemaConformanceEvidence] = []
     for agent_id, agent_plan in plan.agents.items():
@@ -1089,7 +1137,15 @@ def _validate_graph(
                     agent_id,
                 )
             )
-        if native.instructions != artifacts.instructions[agent_plan.name]:
+        expected_instructions = {artifacts.instructions[agent_plan.name]}
+        if _output_mode(ir, plan, agent_id) == "emulated":
+            expected_instructions.add(
+                _with_structured_output_instruction(
+                    artifacts.instructions[agent_plan.name],
+                    output_type_for(agent_plan.output_type, output_types),
+                )
+            )
+        if native.instructions not in expected_instructions:
             issues.append(
                 MaterializationIssue(
                     "MAT422",
@@ -1140,17 +1196,14 @@ def _validate_graph(
                 )
             )
         expected_tools = [
-            grant_objects[grant_id]
-            for grant_id in ir.agents[agent_id].grant_ids
-            if grant_id in grant_objects
+            grant_objects[grant_id] for grant_id in ir.agents[agent_id].grant_ids if grant_id in grant_objects
         ] + [
             edge_objects[edge.id]
             for edge in ir.composition.values()
             if edge.source_agent_id == agent_id and edge.mode == "delegate"
         ]
         if len(native.tools) != len(expected_tools) or any(
-            all(item is not candidate for candidate in native.tools)
-            for item in expected_tools
+            all(item is not candidate for candidate in native.tools) for item in expected_tools
         ):
             issues.append(
                 MaterializationIssue(
@@ -1221,9 +1274,239 @@ def _validate_graph(
             issues.append(
                 MaterializationIssue("MAT429", "Native Google ADK delegate schema differs from contract", edge_id)
             )
+    configuration_conformance, configuration_issues = _validate_configuration(
+        ir,
+        plan,
+        agents,
+        grant_objects,
+        edge_objects,
+        output_types,
+        sdk,
+        names,
+    )
+    issues.extend(configuration_issues)
     if issues:
         raise MaterializationError(tuple(issues))
-    return tuple(schema_conformance)
+    return tuple(schema_conformance), configuration_conformance
+
+
+def _validate_configuration(
+    ir: CanonicalIR,
+    plan: MaterializationPlan,
+    agents: Mapping[SemanticId, object],
+    grant_objects: Mapping[SemanticId, object],
+    edge_objects: Mapping[SemanticId, object],
+    output_types: FrozenMap[str, type[object]],
+    sdk: GoogleADKSDK,
+    names: NativeNameRegistry,
+) -> tuple[tuple[ConfigurationConformanceEvidence, ...], list[MaterializationIssue]]:
+    """Read public ADK properties and mark factory/wrapper limits explicitly."""
+
+    records: list[ConfigurationConformanceEvidence] = []
+    issues: list[MaterializationIssue] = []
+
+    def add(record: ConfigurationConformanceEvidence, identifier: SemanticId) -> None:
+        records.append(record)
+        if record.required and record.status != "passed":
+            issues.append(
+                MaterializationIssue(
+                    "MAT430" if record.status == "violated" else "MAT431",
+                    (
+                        "Native Google ADK configuration differs from the materialization plan"
+                        if record.status == "violated"
+                        else "Required Google ADK configuration property cannot be read back"
+                    ),
+                    identifier,
+                )
+            )
+
+    for agent_id, agent_plan in plan.agents.items():
+        native = sdk.describe(agents[agent_id])
+        agent_ir = ir.agents[agent_id]
+        expected_output = output_type_for(agent_plan.output_type, output_types)
+        expected_tools = [
+            names.assign(
+                "tool",
+                ir.capabilities[ir.grants[grant_id].capability_id].id,
+                ir.capabilities[ir.grants[grant_id].capability_id].name,
+            )
+            for grant_id in agent_ir.grant_ids
+            if grant_id in grant_objects
+        ] + [
+            names.assign("delegate", edge.id, edge.name)
+            for edge in ir.composition.values()
+            if edge.source_agent_id == agent_id and edge.mode == "delegate"
+        ]
+        actual_tools = tuple(_native_name(item) for item in native.tools)
+        planned_options = thaw_mapping(agent_plan.model_options)
+        planned_options.pop("environment", None)
+        planned_options.pop("model_factory", None)
+        model_settings = getattr(agents[agent_id], "generate_content_config", MISSING)
+        factory = native.model_observation_source == "adapter_boundary"
+        observed_options: dict[str, object] = {}
+        for path, planned_value in flatten_mapping(planned_options):
+            # A factory call proves argument transfer at this adapter boundary,
+            # but it does not prove that ADK applied the option to the model.
+            observed = planned_value if factory else read_public_path(model_settings, path)
+            if observed is not MISSING:
+                _set_nested(observed_options, path, observed)
+            add(
+                configuration_evidence(
+                    agent_id,
+                    f"agent.model_options.{path}",
+                    planned_value,
+                    observed,
+                    source=(
+                        "adapter_boundary"
+                        if native.model_observation_source == "adapter_boundary"
+                        else "native_readback"
+                    ),
+                    safe=path in SAFE_OPTION_PATHS,
+                    required=not factory,
+                    reason=(
+                        "Custom model factory arguments were verified at the adapter boundary; "
+                        "ADK model properties are opaque."
+                        if native.model_observation_source == "adapter_boundary"
+                        else None
+                    ),
+                ),
+                agent_id,
+            )
+        expected_native_name = names.assign("agent", agent_id, agent_ir.name)
+        add(
+            configuration_evidence(agent_id, "agent.name", expected_native_name, native.native_name),
+            agent_id,
+        )
+        add(
+            configuration_evidence(
+                agent_id,
+                "agent.identity",
+                {"semantic_id": str(agent_id), "name": expected_native_name},
+                {"semantic_id": str(agent_id), "name": native.native_name},
+            ),
+            agent_id,
+        )
+        add(
+            configuration_evidence(
+                agent_id,
+                "agent.model",
+                agent_plan.model,
+                native.model if native.model_observed and not factory else MISSING,
+                source=cast(ConfigurationObservationSource, native.model_observation_source),
+                required=not factory,
+                reason=(
+                    "Custom model factory transfer and BaseLlm return type were verified at the adapter boundary; "
+                    "ADK model identity is not publicly observable."
+                    if factory or not native.model_observed
+                    else None
+                ),
+            ),
+            agent_id,
+        )
+        add(
+            configuration_evidence(
+                agent_id,
+                "agent.model_options",
+                planned_options,
+                planned_options if factory else observed_options,
+                safe=False,
+                source=cast(ConfigurationObservationSource, native.model_observation_source),
+                required=not factory,
+                reason=(
+                    "Custom model factory arguments were verified at the adapter boundary; "
+                    "ADK model properties are opaque."
+                    if factory
+                    else None
+                ),
+            ),
+            agent_id,
+        )
+        add(
+            configuration_evidence(
+                agent_id, "agent.output_type", expected_output.__qualname__, native.output_type.__qualname__
+            ),
+            agent_id,
+        )
+        add(
+            configuration_evidence(agent_id, "agent.output_mode", _output_mode(ir, plan, agent_id), native.output_mode),
+            agent_id,
+        )
+        add(configuration_evidence(agent_id, "agent.tools", sorted(expected_tools), sorted(actual_tools)), agent_id)
+        add(configuration_evidence(agent_id, "agent.handoffs", [], []), agent_id)
+
+    for grant_id, grant in plan.grants.items():
+        native_tool = grant_objects.get(grant_id)
+        capability = ir.capabilities[grant.capability_id]
+        expected_name = names.assign("tool", capability.id, capability.name)
+        actual_name = sdk.describe_tool(native_tool).native_name if native_tool is not None else MISSING
+        add(
+            configuration_evidence(
+                grant_id,
+                "grant.identity",
+                {"name": expected_name, "capability": str(grant.capability_id)},
+                {"name": actual_name, "capability": str(grant.capability_id)}
+                if actual_name is not MISSING
+                else MISSING,
+                required=grant.availability == "enabled" and capability.kind == "tool",
+            ),
+            grant_id,
+        )
+        actual_approval: object = MISSING
+        source: ConfigurationObservationSource = "generated_wrapper"
+        if native_tool is not None:
+            actual_approval = sdk.describe_tool(native_tool).requires_approval
+            if actual_approval is None:
+                actual_approval = getattr(native_tool, "requires_approval", MISSING)
+        add(
+            configuration_evidence(
+                grant_id,
+                "grant.approval",
+                grant.authorization == "approval_required",
+                actual_approval,
+                source=source,
+                required=grant.availability == "enabled"
+                and capability.kind == "tool"
+                and grant.authorization == "approval_required",
+            ),
+            grant_id,
+        )
+
+    for edge_id, edge in ir.composition.items():
+        native_edge = edge_objects.get(edge_id)
+        expected_name = names.assign("delegate", edge.id, edge.name)
+        actual_name = _native_name(native_edge) if native_edge is not None else MISSING
+        add(configuration_evidence(edge_id, "edge.identity", expected_name, actual_name), edge_id)
+        child = ir.agents[edge.target_agent_id]
+        expected_input = build_parameter_model(f"{child.name}Input", child.parameters, output_types)
+        expected_schema = _input_schema(expected_input)
+        actual_schema = sdk.describe_tool(native_edge).input_schema if native_edge is not None else MISSING
+        add(
+            configuration_evidence(
+                edge_id, "edge.schema", expected_schema, actual_schema, source="native_schema", safe=False
+            ),
+            edge_id,
+        )
+    return tuple(records), issues
+
+
+def _native_name(value: object) -> str:
+    for attr in ("name", "tool_name", "agent_name"):
+        candidate = getattr(value, attr, None)
+        if isinstance(candidate, str) and candidate:
+            return candidate
+    return type(value).__name__
+
+
+def _set_nested(target: dict[str, object], path: str, value: object) -> None:
+    parts = path.split(".")
+    current = target
+    for part in parts[:-1]:
+        child = current.get(part)
+        if not isinstance(child, dict):
+            child = {}
+            current[part] = child
+        current = child
+    current[parts[-1]] = value
 
 
 __all__ = [

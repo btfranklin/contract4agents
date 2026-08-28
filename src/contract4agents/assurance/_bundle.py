@@ -73,11 +73,15 @@ def assemble_assurance_bundle(
         diagnostics.append(
             BundleDiagnostic(
                 "BUNDLE016",
-                "Materialized-schema conformance evidence is missing.",
+                "Materialized configuration and schema conformance evidence is missing.",
                 "materialization-conformance.json",
             )
         )
-        materialization = {"schema_conformance": [], "status": "unverified"}
+        materialization = {
+            "schema_conformance": [],
+            "configuration_conformance": [],
+            "status": "unverified",
+        }
     else:
         if materialization_evidence.contract_digest != expected_digest:
             raise ValueError("Materialization evidence does not match the bundle contract")
@@ -89,9 +93,10 @@ def assemble_assurance_bundle(
             raise ValueError("Materialization evidence does not match the planned adapter version")
         missing_boundaries = _missing_schema_boundaries(contract, plan, materialization_evidence)
         inventory_mismatches = _materialization_inventory_mismatches(plan, materialization_evidence)
-        if not materialization_evidence.complete or missing_boundaries or inventory_mismatches:
-            details = ", ".join((*inventory_mismatches, *missing_boundaries))
-            message = "Materialized-schema conformance evidence is incomplete."
+        missing_configuration = _missing_configuration_properties(plan, materialization_evidence)
+        if not materialization_evidence.complete or missing_boundaries or inventory_mismatches or missing_configuration:
+            details = ", ".join((*inventory_mismatches, *missing_boundaries, *missing_configuration))
+            message = "Materialized configuration conformance evidence is incomplete."
             if details:
                 message += f" Missing: {details}."
             diagnostics.append(
@@ -289,6 +294,39 @@ def _materialization_inventory_mismatches(
     return tuple(mismatches)
 
 
+def _missing_configuration_properties(
+    plan: MaterializationPlan,
+    evidence: GraphValidationEvidence,
+) -> tuple[str, ...]:
+    """Return required configuration properties absent or unpassed in evidence."""
+
+    expected = {
+        *( (identifier, "agent.name") for identifier in plan.agents ),
+        *( (identifier, "agent.identity") for identifier in plan.agents ),
+        *( (identifier, "agent.model") for identifier in plan.agents ),
+        *( (identifier, "agent.model_options") for identifier in plan.agents ),
+        *( (identifier, "agent.output_type") for identifier in plan.agents ),
+        *( (identifier, "agent.output_mode") for identifier in plan.agents ),
+        *( (identifier, "agent.tools") for identifier in plan.agents ),
+        *( (identifier, "agent.handoffs") for identifier in plan.agents ),
+        *( (identifier, "grant.identity") for identifier in plan.grants ),
+        *( (identifier, "grant.approval") for identifier in plan.grants ),
+        *( (identifier, "edge.identity") for identifier in plan.composition ),
+        *( (identifier, "edge.schema") for identifier in plan.composition ),
+    }
+    observed = {
+        (item.semantic_id, item.property_path)
+        for item in evidence.configuration_conformance
+    }
+    missing = [f"{identifier}:{path}" for identifier, path in expected - observed]
+    missing.extend(
+        f"{item.semantic_id}:{item.property_path} ({item.status})"
+        for item in evidence.configuration_conformance
+        if item.required and item.status != "passed"
+    )
+    return tuple(sorted(missing))
+
+
 def verify_assurance_bundle(bundle: AssuranceBundle) -> tuple[BundleDiagnostic, ...]:
     """Verify every attested digest and internal contract/plan identity."""
 
@@ -376,6 +414,8 @@ def _summary_html(
         f"<p>Contract <code>{html.escape(contract_digest(contract))}</code></p>"
         f"<p>Plan <code>{html.escape(plan.plan_digest)}</code></p>"
         f"<p>{len(contract.agents)} agents; {len(contract.controls)} declared or derived controls.</p>"
+        f"<p>Configuration conformance records: {sum(1 for item in plan.agents)} agents, "
+        f"{len(plan.grants)} grants, {len(plan.composition)} composition edges.</p>"
         f"<p>Passed: {counts['passed']}; violated: {counts['violated']}; "
         f"unverified: {counts['unverified']}.</p>"
         f"<p>Run specs passed: {run_spec_counts['passed']}; violated: "

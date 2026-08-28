@@ -73,9 +73,12 @@ Provider-neutral planner tests should prove:
 
 Adapter tests that claim SDK compatibility must construct the installed SDK's
 real native objects. Materialization tests should validate the complete graph
-against the plan and include a negative case for every required guarantee that
-can be unsupported. Known incompatible combinations must fail during
-conformance or planning; late materializer checks remain defense in depth.
+configuration and schema evidence against the plan and include a negative case
+for every required guarantee that can be unsupported. Native readback must be
+kept separate from normalized runtime traces. Known incompatible combinations
+must fail during conformance or planning; late materializer checks remain
+defense in depth. Configuration evidence must not claim host deadline,
+cancellation, token-budget, persistence, retry, or fallback enforcement.
 
 ## Trace and Assurance Gates
 

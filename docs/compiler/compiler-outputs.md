@@ -86,7 +86,9 @@ the current working directory, and obvious source-owned directories.
 join target bindings to the canonical IR after compilation and report target
 support without changing portable semantics.
 
-Materialization also reads the final native tool and output schemas. It compares
-them with the schemas derived from the contract. A mismatch stops
-materialization. The returned `graph.validation` object contains deterministic
-schema conformance records for assurance review.
+Materialization reads the final native configuration and tool/output schemas. It
+compares them with the values derived from the contract and plan. A mismatch or
+missing required public property stops materialization. The returned
+`graph.validation` object contains deterministic configuration and schema
+conformance records for assurance review. Arbitrary provider option payloads
+are represented by digests so credentials do not enter evidence files.

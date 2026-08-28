@@ -16,7 +16,7 @@ closed, assesses declared controls, and assembles the review bundle.
 | Artifact | What it establishes |
 | --- | --- |
 | `NormalizedTrace` | What events were observed under one contract and plan |
-| `GraphValidationEvidence` | Which final native schemas matched the contract |
+| `GraphValidationEvidence` | Which final native configuration properties and schemas matched the plan |
 | `TraceClosureEvidence` | Which attempts and instrumentation channels were completely captured |
 | `TraceFrontier` | The exact ordered trace snapshot attested by the closure |
 | `TraceCaptureSnapshot` | One internally consistent trace-plus-closure pair |

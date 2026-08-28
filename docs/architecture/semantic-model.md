@@ -784,10 +784,12 @@ The materializer owns agent construction, generated output types, capability
 attachment, and composition wiring; the host supplies only declared bindings
 and application workflow.
 
-Validation includes the final native parameter and output schemas that the SDK
-exposes. Each check joins a semantic ID and schema boundary to the declared and
-materialized schemas. A mismatch blocks materialization. The resulting graph
-validation evidence is a required assurance input.
+Validation includes final native configuration properties and parameter/output
+schemas that the SDK exposes. Each configuration check joins a semantic ID and
+property path to planned and observed canonical values or digests. Each schema
+check joins a semantic ID and schema boundary to the declared and materialized
+schemas. A required mismatch or unverified observation blocks materialization.
+The resulting graph validation evidence is a required assurance input.
 
 Generated output types contain only portable contract structure. Application
 domain validators run after the SDK returns. Contract trace events identify
@@ -926,6 +928,15 @@ provenance.json
 timestamps remain explicit; bundle assembly itself does not add an unstable
 generation timestamp. Missing expected inputs produce diagnostics and
 `unverified` results rather than disappearing from the bundle.
+
+Materialization conformance contains both `SchemaConformanceEvidence` for full
+schema comparison and `ConfigurationConformanceEvidence` for plan-owned native
+properties. Required configuration records cover agent identity, selected
+model, explicit options, output enforcement, tool and delegate inventories,
+approval settings, and stable schemas. Provider payloads that are not on the
+safe scalar allowlist are digest-only. This evidence does not prove host
+deadlines, cancellation, token budgets, persistence, retry decisions, or
+fallback behavior.
 
 Semantic diff compares canonical IR and plans rather than raw source text. It
 classifies capability access, authorization, approvals, isolation, schema
