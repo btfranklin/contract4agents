@@ -96,6 +96,11 @@ delegate invocation starts from the child agent's construction baseline.
 Applications requiring independent concurrent state must materialize
 independent graphs or otherwise provide independent agent instances.
 
+Portable list bounds and string bounds are enforced by the generated Pydantic
+types and are included in the exact native schema evidence read during offline
+materialization. This proves Strands runtime validation and schema conformance;
+it does not claim that every Strands provider offers constrained decoding.
+
 ## Materialize and Run
 
 ```python

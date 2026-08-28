@@ -84,6 +84,13 @@ import application Pydantic models and do not run application validators inside
 a provider SDK output parser. The host runs business rules after the SDK returns
 the structural output.
 
+Portable string bounds count Unicode code points. List bounds such as
+`list[Source](min_items=1,max_items=20)` are enforced as list cardinality by
+JSON Schema, generated Pydantic, and generated Zod. Portable datetimes require
+the RFC 3339 `T` separator and a `Z` or numeric timezone offset; Python values
+remain aware `datetime` objects. Provider schema readback must retain these
+constraints before materialization can complete.
+
 Use `system.structural_output_types` when host code needs the generated types.
 Keep prose limits, graph completeness, database checks, and other application
 rules in a separate host validation step. This order keeps provider usage and

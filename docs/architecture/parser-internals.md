@@ -26,6 +26,11 @@ The transformer validates only what is necessary to construct a coherent AST.
 Name resolution, ownership rules, type compatibility, grant conflicts, edge
 mappings, and assurance semantics belong in semantic analysis.
 
+Type-reference parsing keeps list cardinality on `ListTypeRef` while preserving
+the existing scalar `ConstrainedTypeRef` path. A list constraint block accepts
+numeric `min_items` and `max_items` values, rejects duplicates and invalid
+bounds, and is formatted before a nullable suffix.
+
 ## Expression Modules
 
 Eval expectations, control expressions, operational-control expressions, and

@@ -68,6 +68,7 @@ class FakeStrandsAgent:
 class FakeStrandsSDK:
     version: str = "fake-strands-1"
     drop_attached_tools: bool = False
+    drop_list_bounds: bool = False
     model_factory_calls: list[
         tuple[str, Mapping[str, object], object | None]
     ] = field(default_factory=list)
@@ -117,11 +118,16 @@ class FakeStrandsSDK:
         input_type: type[object] | None,
         output_adapter: TypeAdapter[Any],
     ) -> object:
+        input_schema = _input_schema(input_type)
+        output_schema = output_adapter.json_schema()
+        if self.drop_list_bounds:
+            input_schema = _without_list_bounds(input_schema)
+            output_schema = _without_list_bounds(output_schema)
         return FakeStrandsTool(
             native_name,
             description,
-            _input_schema(input_type),
-            output_adapter.json_schema(),
+            input_schema,
+            output_schema,
             implementation=implementation,
         )
 
@@ -134,11 +140,16 @@ class FakeStrandsSDK:
         input_type: type[object] | None,
         output_adapter: TypeAdapter[Any],
     ) -> object:
+        input_schema = _input_schema(input_type)
+        output_schema = output_adapter.json_schema()
+        if self.drop_list_bounds:
+            input_schema = _without_list_bounds(input_schema)
+            output_schema = _without_list_bounds(output_schema)
         return FakeStrandsTool(
             native_name,
             description,
-            _input_schema(input_type),
-            output_adapter.json_schema(),
+            input_schema,
+            output_schema,
             child=child,
         )
 
@@ -156,11 +167,16 @@ class FakeStrandsSDK:
         environment: object,
     ) -> object:
         del isolation_id, requested_dimensions, declared_capabilities
+        input_schema = _input_schema(input_type)
+        output_schema = output_adapter.json_schema()
+        if self.drop_list_bounds:
+            input_schema = _without_list_bounds(input_schema)
+            output_schema = _without_list_bounds(output_schema)
         return FakeStrandsTool(
             native_name,
             description,
-            _input_schema(input_type),
-            output_adapter.json_schema(),
+            input_schema,
+            output_schema,
             child=child,
             environment=environment,
         )
@@ -736,6 +752,25 @@ def _input_schema(input_type: type[object] | None) -> Mapping[str, object]:
             "additionalProperties": False,
         }
     return cast(dict[str, object], cast(Any, input_type).model_json_schema())
+
+
+def _without_list_bounds(schema: Mapping[str, object]) -> dict[str, object]:
+    result = dict(schema)
+    properties = result.get("properties")
+    if isinstance(properties, Mapping):
+        result["properties"] = {
+            name: (
+                {
+                    key: value
+                    for key, value in property_schema.items()
+                    if key not in {"minItems", "maxItems"}
+                }
+                if isinstance(property_schema, Mapping) and property_schema.get("type") == "array"
+                else property_schema
+            )
+            for name, property_schema in properties.items()
+        }
+    return result
 
 
 def _tool_use_message(

@@ -186,7 +186,12 @@ def _schema_for_ref(type_ref: TypeRef, referenced: set[str]) -> dict[str, object
     if isinstance(type_ref, NullableTypeRef):
         return {"anyOf": [_schema_for_ref(type_ref.item, referenced), {"type": "null"}]}
     if isinstance(type_ref, ListTypeRef):
-        return {"type": "array", "items": _schema_for_ref(type_ref.item, referenced)}
+        list_schema: dict[str, object] = {"type": "array", "items": _schema_for_ref(type_ref.item, referenced)}
+        if type_ref.min_items is not None:
+            list_schema["minItems"] = type_ref.min_items
+        if type_ref.max_items is not None:
+            list_schema["maxItems"] = type_ref.max_items
+        return list_schema
     if isinstance(type_ref, MapTypeRef):
         return {"type": "object", "additionalProperties": _schema_for_ref(type_ref.value, referenced)}
     raise TypeError(f"Unsupported type reference {type(type_ref).__name__}")

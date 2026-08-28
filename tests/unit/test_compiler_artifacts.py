@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
@@ -130,7 +130,7 @@ def test_materialized_pydantic_types_cover_collections_defaults_and_parameters()
             output_types,
         ),
     )
-    parameters = parameter_type(result={"child": {"value": 1}}, at=datetime(2026, 1, 1))
+    parameters = parameter_type(result={"child": {"value": 1}}, at=datetime(2026, 1, 1, tzinfo=UTC))
     assert parameters.limit == 2
     assert parameters.flags == [True]
     assert build_parameter_model("Empty", (), output_types) is None

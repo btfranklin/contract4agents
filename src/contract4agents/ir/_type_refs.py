@@ -80,6 +80,17 @@ class NullableTypeRef:
 @dataclass(frozen=True)
 class ListTypeRef:
     item: TypeRef
+    min_items: int | None = None
+    max_items: int | None = None
+
+    def __post_init__(self) -> None:
+        if any(
+            value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 0)
+            for value in (self.min_items, self.max_items)
+        ):
+            raise ValueError("List item bounds must be non-negative integers")
+        if self.min_items is not None and self.max_items is not None and self.min_items > self.max_items:
+            raise ValueError("`min_items` cannot be greater than `max_items`")
 
 
 @dataclass(frozen=True)
@@ -124,7 +135,13 @@ def format_type_ref(type_ref: TypeRef) -> str:
     if isinstance(type_ref, NullableTypeRef):
         return f"{format_type_ref(type_ref.item)}?"
     if isinstance(type_ref, ListTypeRef):
-        return f"list[{format_type_ref(type_ref.item)}]"
+        constraints = ",".join(
+            f"{name}={_format_number(value)}"
+            for name, value in (("min_items", type_ref.min_items), ("max_items", type_ref.max_items))
+            if value is not None
+        )
+        suffix = f"({constraints})" if constraints else ""
+        return f"list[{format_type_ref(type_ref.item)}]{suffix}"
     return f"map[string,{format_type_ref(type_ref.value)}]"
 
 
@@ -167,6 +184,13 @@ class _TypeRefParser:
                 result = self._constraints(result)
         else:
             result = NamedTypeRef(semantic_id("type", token))
+        if self._peek("("):
+            if isinstance(result, ListTypeRef):
+                result = self._list_constraints(result)
+            elif isinstance(result, MapTypeRef):
+                raise ValueError("Map types do not support type constraints")
+            else:
+                raise ValueError("Named types do not support type constraints")
         self.skip_space()
         if self._peek("?"):
             self.position += 1
@@ -174,12 +198,35 @@ class _TypeRefParser:
         return result
 
     def _constraints(self, item: PrimitiveTypeRef) -> ConstrainedTypeRef:
+        values = self._constraint_values({"minimum", "maximum", "min_length", "max_length"})
+        return ConstrainedTypeRef(
+            item,
+            minimum=values.get("minimum"),
+            maximum=values.get("maximum"),
+            min_length=_integer_constraint(values, "min_length"),
+            max_length=_integer_constraint(values, "max_length"),
+        )
+
+    def _list_constraints(self, item: ListTypeRef) -> ListTypeRef:
+        self.skip_space()
+        if self.source.startswith("()", self.position):
+            self.position += 2
+            raise ValueError("A constrained list must declare at least one bound")
+        values = self._constraint_values({"min_items", "max_items"})
+        return ListTypeRef(
+            item=item.item,
+            min_items=_integer_constraint(values, "min_items"),
+            max_items=_integer_constraint(values, "max_items"),
+        )
+
+    def _constraint_values(self, allowed: set[str]) -> dict[str, int | float]:
         self._expect("(")
         values: dict[str, int | float] = {}
         while True:
             name = self._identifier()
-            if name not in {"minimum", "maximum", "min_length", "max_length"}:
-                raise ValueError(f"Unknown type constraint `{name}`")
+            if name not in allowed:
+                accepted = ", ".join(sorted(allowed))
+                raise ValueError(f"Unknown type constraint `{name}`; expected one of: {accepted}")
             if name in values:
                 raise ValueError(f"Duplicate type constraint `{name}`")
             self._expect("=")
@@ -189,17 +236,11 @@ class _TypeRefParser:
                 self.position += 1
                 break
             self._expect(",")
-        return ConstrainedTypeRef(
-            item,
-            minimum=values.get("minimum"),
-            maximum=values.get("maximum"),
-            min_length=_integer_constraint(values, "min_length"),
-            max_length=_integer_constraint(values, "max_length"),
-        )
+        return values
 
     def _number(self) -> int | float:
         self.skip_space()
-        match = re.match(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?", self.source[self.position :])
+        match = re.match(r"[+-]?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?", self.source[self.position :])
         if match is None:
             raise ValueError(f"Expected a numeric constraint at column {self.position + 1}: {self.source!r}")
         raw = match.group(0)

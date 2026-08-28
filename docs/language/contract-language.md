@@ -15,7 +15,7 @@ type ResearchQuestion:
 type Evidence:
     source_id: string(min_length=1,max_length=200)
     confidence: float(minimum=0,maximum=1)
-    tags: list[string]
+    tags: list[string](min_items=1,max_items=20)
     metadata: map[string,string]
     note: string(max_length=2000)?
 
@@ -36,14 +36,27 @@ The portable constrained subset is:
 
 - `string(min_length=N,max_length=N)`;
 - `integer(minimum=N,maximum=N)`;
-- `float(minimum=N,maximum=N)`.
+- `float(minimum=N,maximum=N)`;
+- `list[T](min_items=N,max_items=N)`.
 
 Each bound is optional, but a constrained type must declare at least one bound.
 String length bounds are non-negative integers. Integer bounds must be integers.
-The minimum cannot be greater than the maximum. Constraints can be used in type
-fields, tool and datasource parameters, context, lists, maps, and nullable
-types. For example, `integer(minimum=1,maximum=100)?` is a nullable bounded
-integer. Defaults must satisfy enum membership and declared constraints.
+List item bounds are non-negative integers. Each constrained type must declare
+at least one bound, and its minimum cannot be greater than its maximum. String
+length counts Unicode code points. Constraints can be used in type fields, tool
+and datasource parameters, context, lists, and nullable types. Lists keep their
+item type inside square brackets and put the constraint block before a nullable
+suffix, for example `list[Source](min_items=1,max_items=20)?`. Bounds are
+formatted in canonical `min_items` then `max_items` order. Map types do not
+support constraints. Defaults must satisfy enum membership and declared
+constraints.
+
+The portable `datetime` lexical profile is the RFC 3339 subset accepted by all
+selected runtimes: `YYYY-MM-DDTHH:MM:SS`, with optional fractional seconds and
+a required `Z` or numeric `+HH:MM`/`-HH:MM` offset. The separator is a literal
+`T`; a space separator, missing timezone, malformed offset, impossible date,
+and leap-second value are invalid. Python runtime values remain aware
+`datetime` objects.
 
 `str`, `int`, `bool`, `T[]`, and `type ... from python` are not aliases. Code is
 generated outward from native contract types.

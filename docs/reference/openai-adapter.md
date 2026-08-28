@@ -125,6 +125,13 @@ Construction uses two passes so source-file order does not constrain the graph:
 The adapter then validates models, tools, grants, approvals, outputs,
 composition, and hooks against the immutable plan.
 
+Portable string lengths count Unicode code points, and portable list bounds are
+read back as `minItems` and `maxItems` in every native parameter and output
+schema. Materialization fails when an OpenAI object drops either list bound or
+changes another portable constraint. This offline schema check does not claim
+that a model will always produce valid values; the SDK response still passes
+through the generated Pydantic validator.
+
 ## Tools and Approvals
 
 A contract tool is a shared portable interface. Its grant selects `host`,

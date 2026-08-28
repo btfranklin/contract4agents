@@ -108,11 +108,26 @@ The portable type subset includes:
 - Named closed string enums with quoted, nonempty, unique values.
 - Named contract types.
 - Nullable values using `?`.
-- Homogeneous `list[T]` and `map[string, T]` collections.
+- Homogeneous `list[T]` and `map[string, T]` collections. Lists may declare
+  non-negative `min_items` and `max_items` bounds.
 - Field defaults representable in canonical JSON.
 
 Arbitrary language-specific validators, methods, computed properties, and
 runtime callbacks are outside the portable type system.
+
+Portable constraints have one meaning in every compiler and runtime boundary.
+String length is the number of Unicode code points. List cardinality counts
+items. The portable datetime lexical profile is the RFC 3339 subset
+`YYYY-MM-DDTHH:MM:SS` with optional fractional seconds and a required `Z` or
+numeric `+HH:MM`/`-HH:MM` offset. A literal `T` is required; a space separator,
+missing timezone, malformed offset, impossible date, and leap-second value are
+rejected. Python runtime values remain timezone-aware `datetime` objects.
+
+The source spelling for a bounded list is
+`list[Source](min_items=1,max_items=20)`. Either bound may be omitted. The
+constraint block precedes a nullable `?` suffix, and canonical formatting puts
+`min_items` before `max_items`. Map types and primitive types other than the
+existing string and numeric constrained forms do not accept these list bounds.
 
 Portable types are declared structurally in contract source. Language-specific
 implementations are generated from the canonical type graph.

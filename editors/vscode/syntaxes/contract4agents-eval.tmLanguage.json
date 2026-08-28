@@ -111,6 +111,7 @@
     "types": {
       "patterns": [
         {"name": "storage.type.collection.contract4agents-eval", "match": "\\b(list|map)(?=\\s*\\[)"},
+        {"name": "keyword.operator.type-constraint.contract4agents-eval", "match": "\\b(min_length|max_length|minimum|maximum|min_items|max_items)(?=\\s*=)"},
         {"name": "support.type.primitive.contract4agents-eval", "match": "\\b(string|integer|float|boolean|datetime)\\b"},
         {"name": "entity.name.type.contract4agents-eval", "match": "\\b[A-Z][A-Za-z0-9_]*\\b"},
         {"name": "storage.modifier.nullable.contract4agents-eval", "match": "\\?"}

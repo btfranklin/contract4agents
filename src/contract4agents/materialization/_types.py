@@ -6,7 +6,9 @@ from datetime import datetime
 from typing import Annotated, Any, Literal, cast
 
 from pydantic import ConfigDict, Field, create_model
+from pydantic.functional_validators import BeforeValidator
 
+from contract4agents._portable_validation import parse_portable_datetime
 from contract4agents.ir import (
     CanonicalIR,
     ConstrainedTypeRef,
@@ -33,7 +35,13 @@ def build_pydantic_types(ir: CanonicalIR) -> FrozenMap[str, Any]:
         if isinstance(type_ref, NullableTypeRef):
             return annotation(type_ref.item) | None
         if isinstance(type_ref, ListTypeRef):
-            return list.__class_getitem__(annotation(type_ref.item))
+            source = list.__class_getitem__(annotation(type_ref.item))
+            if type_ref.min_items is None and type_ref.max_items is None:
+                return source
+            return Annotated[
+                source,
+                Field(min_length=type_ref.min_items, max_length=type_ref.max_items),
+            ]
         if isinstance(type_ref, MapTypeRef):
             return dict.__class_getitem__((str, annotation(type_ref.value)))
         return _annotation(type_ref, FrozenMap(built))
@@ -124,7 +132,7 @@ def _annotation(type_ref: TypeRef, output_types: FrozenMap[str, Any]) -> Any:
             "integer": int,
             "float": float,
             "boolean": bool,
-            "datetime": datetime,
+            "datetime": Annotated[datetime, BeforeValidator(parse_portable_datetime)],
         }[type_ref.name]
     if isinstance(type_ref, ConstrainedTypeRef):
         metadata = Field(
@@ -139,7 +147,11 @@ def _annotation(type_ref: TypeRef, output_types: FrozenMap[str, Any]) -> Any:
     if isinstance(type_ref, NullableTypeRef):
         return _annotation(type_ref.item, output_types) | None
     if isinstance(type_ref, ListTypeRef):
-        return list.__class_getitem__(_annotation(type_ref.item, output_types))
+        source = list.__class_getitem__(_annotation(type_ref.item, output_types))
+        metadata = Field(min_length=type_ref.min_items, max_length=type_ref.max_items)
+        if type_ref.min_items is None and type_ref.max_items is None:
+            return source
+        return Annotated[source, metadata]
     if isinstance(type_ref, MapTypeRef):
         return dict.__class_getitem__((str, _annotation(type_ref.value, output_types)))
     raise TypeError(f"Unsupported type reference {type(type_ref).__name__}")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from contract4agents._portable_validation import is_portable_datetime
 from contract4agents.ast import DatasourceDef, EnumDef, TypeDef
 from contract4agents.diagnostics import Diagnostic
 from contract4agents.ir._type_refs import (
@@ -141,6 +142,8 @@ def _check_enum_default(
 def _default_conforms(value: object, type_ref: TypeRef, index: ProjectIndex) -> bool:
     if isinstance(type_ref, NullableTypeRef):
         return value is None or _default_conforms(value, type_ref.item, index)
+    if isinstance(type_ref, PrimitiveTypeRef):
+        return type_ref.name != "datetime" or is_portable_datetime(value)
     if isinstance(type_ref, ConstrainedTypeRef):
         if type_ref.item.name == "string":
             if not isinstance(value, str):
@@ -158,10 +161,14 @@ def _default_conforms(value: object, type_ref: TypeRef, index: ProjectIndex) -> 
             and (type_ref.maximum is None or value <= type_ref.maximum)
         )
     if isinstance(type_ref, ListTypeRef):
-        return (
-            not _contains_validated_type(type_ref.item, index)
-            or isinstance(value, list)
-            and all(_default_conforms(item, type_ref.item, index) for item in value)
+        if not isinstance(value, list):
+            return False
+        if type_ref.min_items is not None and len(value) < type_ref.min_items:
+            return False
+        if type_ref.max_items is not None and len(value) > type_ref.max_items:
+            return False
+        return not _contains_validated_type(type_ref.item, index) or all(
+            _default_conforms(item, type_ref.item, index) for item in value
         )
     if isinstance(type_ref, MapTypeRef):
         return (
@@ -196,10 +203,18 @@ def _contains_validated_type(
 ) -> bool:
     if isinstance(type_ref, ConstrainedTypeRef):
         return True
-    if isinstance(type_ref, NullableTypeRef | ListTypeRef):
+    if isinstance(type_ref, NullableTypeRef):
         return _contains_validated_type(type_ref.item, index, seen)
+    if isinstance(type_ref, ListTypeRef):
+        return (
+            type_ref.min_items is not None
+            or type_ref.max_items is not None
+            or _contains_validated_type(type_ref.item, index, seen)
+        )
     if isinstance(type_ref, MapTypeRef):
         return _contains_validated_type(type_ref.value, index, seen)
+    if isinstance(type_ref, PrimitiveTypeRef):
+        return type_ref.name == "datetime"
     if isinstance(type_ref, NamedTypeRef):
         name = type_ref.type_id.parts[0]
         if name in seen:
