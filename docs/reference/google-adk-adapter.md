@@ -197,3 +197,21 @@ independent concurrent requests, resolve declared context through
 `system.context`, install the plugin in its ADK `App` or `Runner`, drive
 confirmation and resume, choose retry and terminal-attempt policy, and persist
 the resulting trace and assurance artifacts.
+
+## Provider evidence
+
+The trace plugin passes the public `LlmResponse` and callback exceptions to
+content-free normalizers. It inspects usage metadata, response identity,
+finish/interruption flags, refusal fields, and safe error codes. A terminal
+`provider.response.failed` callback reports a complete provider outcome with a
+failure category when structured facts support it; the response-normalization
+path can still be unverified because no response was returned. Missing hooks
+or missing terminal evidence remain unverified.
+
+Usage reports use the public usage metadata fields and bind one aggregation to
+one stable response or callback identity. A missing usage object is
+unavailable; a partial object is partial. Streaming and turn callbacks with
+the same identity are not counted twice. The plugin never stores callback
+exceptions, prompts, outputs, response bodies, grounding content, or search
+payloads. A host timeout or cancellation is not labelled as a provider
+timeout or cancellation unless ADK reports that structured fact.

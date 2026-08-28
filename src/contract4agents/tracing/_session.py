@@ -32,6 +32,10 @@ from contract4agents.tracing._models import (
     TraceRunContext,
     TraceSemanticRefs,
 )
+from contract4agents.tracing._provider_evidence import (
+    ProviderOutcomeEvidence,
+    ProviderUsageEvidence,
+)
 from contract4agents.tracing._sinks import NormalizedTraceSink
 
 
@@ -95,7 +99,10 @@ class NormalizedTraceSessionCore:
         self._channels: set[TraceInstrumentationChannel] = set(captured_channels)
         self._attested_channels: set[TraceInstrumentationChannel] = set()
         self._closure_evidence_refs: set[str] = set()
-        self._provider_event_counter = 0
+        self._last_provider_trace_id: str | None = None
+        self._provider_event_counter = sum(
+            1 for event in self._prior_events if event.event_id.startswith(f"{provider}:")
+        )
         self._lock = threading.Lock()
 
     def normalized_trace(self) -> NormalizedTrace:
@@ -360,6 +367,116 @@ class NormalizedTraceSessionCore:
             provenance_source="host-attempt-selection",
         )
 
+    def record_provider_outcome(
+        self,
+        evidence: ProviderOutcomeEvidence,
+        *,
+        attempt: TraceAttempt | None = None,
+        provider_identity: str | None = None,
+        evidence_refs: Iterable[str] = (),
+    ) -> TraceEvent:
+        """Report one validated terminal provider outcome without content."""
+
+        self._ensure_open()
+        selected = self._require_attempt(attempt)
+        agent_id = self._require_agent(evidence.agent_id)
+        if evidence.attempt_id != selected.attempt_id:
+            raise ValueError("Provider outcome evidence attempt_id does not match the bound attempt")
+        state = self._attempt_state(selected, agent_id)
+        self._channels.add("provider_outcome")
+        refs = tuple(evidence_refs) or tuple(
+            reference
+            for reference in (
+                f"provider:{self._provider}:request:{evidence.request_id}" if evidence.request_id else None,
+                f"provider:{self._provider}:response:{evidence.response_id}" if evidence.response_id else None,
+            )
+            if reference is not None
+        )
+        event = self._record_provider_event(
+            event_type="provider.outcome.reported",
+            semantic=TraceSemanticRefs(agent_id=agent_id),
+            data={"evidence": evidence.to_dict()},
+            attempt=selected,
+            trace_id=getattr(self, "_last_provider_trace_id", None),
+            request_id=evidence.request_id,
+            span_id=provider_identity,
+            evidence_refs=refs,
+            provenance_source="contract4agents-provider-outcome-normalizer",
+        )
+        state.outcome_status = "complete"
+        state.outcome_evidence_refs.update(event.evidence_refs)
+        return event
+
+    def report_provider_outcome(
+        self,
+        evidence: ProviderOutcomeEvidence,
+        *,
+        attempt: TraceAttempt | None = None,
+        provider_identity: str | None = None,
+        evidence_refs: Iterable[str] = (),
+    ) -> TraceEvent:
+        """Alias for :meth:`record_provider_outcome` used by host adapters."""
+
+        return self.record_provider_outcome(
+            evidence,
+            attempt=attempt,
+            provider_identity=provider_identity,
+            evidence_refs=evidence_refs,
+        )
+
+    def record_provider_usage(
+        self,
+        evidence: ProviderUsageEvidence,
+        *,
+        attempt: TraceAttempt | None = None,
+        provider_identity: str | None = None,
+        evidence_refs: Iterable[str] = (),
+    ) -> TraceEvent:
+        """Report one validated usage aggregate without prompts or responses."""
+
+        self._ensure_open()
+        selected = self._require_attempt(attempt)
+        state = self._attempts.get(selected.attempt_id)
+        if evidence.attempt_id is not None and evidence.attempt_id != selected.attempt_id:
+            raise ValueError("Provider usage evidence attempt_id does not match the bound attempt")
+        if state is None:
+            if evidence.agent_id is None:
+                raise ValueError("Provider usage evidence requires agent_id for an unbound attempt")
+            state = self._attempt_state(selected, self._require_agent(evidence.agent_id))
+        if evidence.agent_id is not None and self._require_agent(evidence.agent_id) != state.agent_id:
+            raise ValueError("Provider usage evidence agent_id does not match the bound attempt")
+        self._channels.add("provider_usage")
+        event = self._record_provider_event(
+            event_type="provider.usage.reported",
+            semantic=TraceSemanticRefs(agent_id=state.agent_id),
+            data={"evidence": evidence.to_dict()},
+            attempt=selected,
+            trace_id=getattr(self, "_last_provider_trace_id", None),
+            span_id=provider_identity,
+            evidence_refs=tuple(evidence_refs),
+            provenance_source="contract4agents-provider-usage-normalizer",
+        )
+        state.usage_status = "complete"
+        state.usage_evidence_refs.update(event.evidence_refs)
+        return event
+
+    def report_provider_usage(
+        self,
+        evidence: ProviderUsageEvidence,
+        *,
+        attempt: TraceAttempt | None = None,
+        provider_identity: str | None = None,
+        evidence_refs: Iterable[str] = (),
+    ) -> TraceEvent:
+        """Alias for :meth:`record_provider_usage` used by host adapters."""
+
+        return self.record_provider_usage(
+            evidence,
+            attempt=attempt,
+            provider_identity=provider_identity,
+            evidence_refs=evidence_refs,
+        )
+
     def _start_provider_trace(
         self,
         trace_id: str,
@@ -391,6 +508,7 @@ class NormalizedTraceSessionCore:
             state = self._attempts[attempt.attempt_id]
             state.provider_trace_ids.add(trace_id)
             self._active_provider_attempts[trace_id] = attempt
+            self._last_provider_trace_id = trace_id
             return True
 
     def _end_provider_trace(self, trace_id: str) -> None:
@@ -457,6 +575,7 @@ class NormalizedTraceSessionCore:
         span_id: str | None = None,
         request_id: str | None = None,
         parent_event_id: str | None = None,
+        attempt: TraceAttempt | None = None,
         evidence_refs: Iterable[str] = (),
         provenance_source: str,
         timestamp: float | None = None,
@@ -464,7 +583,7 @@ class NormalizedTraceSessionCore:
         """Record provider metadata without retaining provider prompts or results."""
 
         self._ensure_open()
-        selected = self._current_attempt()
+        selected = attempt or self._current_attempt()
         payload = dict(data or {})
         if selected is not None:
             payload["attempt"] = selected.to_dict()

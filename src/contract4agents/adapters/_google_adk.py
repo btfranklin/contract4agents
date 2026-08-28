@@ -70,7 +70,7 @@ class GoogleADKMappingResolver:
                     expected_event_types=(
                         "tool.started",
                         "tool.completed",
-                        "provider_response.completed",
+                        "provider.response.normalized",
                     ),
                     host_obligation=(
                         "Preserve and display Google Search suggestions, renderedContent, "

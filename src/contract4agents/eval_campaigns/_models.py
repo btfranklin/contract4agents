@@ -17,6 +17,7 @@ from contract4agents.assurance import (
 from contract4agents.ir import FrozenJsonValue, FrozenMap, freeze_json
 from contract4agents.tracing import (
     NormalizedTrace,
+    ProviderUsageEvidence,
     TraceClosureEvidence,
     TraceEvidenceAssessment,
     dumps_trace_jsonl,
@@ -169,6 +170,31 @@ class TrialMetrics:
         if self.input_tokens is None and self.output_tokens is None:
             return None
         return (self.input_tokens or 0) + (self.output_tokens or 0)
+
+    @classmethod
+    def from_provider_usage(
+        cls,
+        usage: ProviderUsageEvidence | tuple[ProviderUsageEvidence, ...],
+    ) -> TrialMetrics:
+        """Derive token metrics from complete usage evidence when available."""
+
+        values = (usage,) if isinstance(usage, ProviderUsageEvidence) else tuple(usage)
+        unique: dict[str, ProviderUsageEvidence] = {}
+        for item in values:
+            prior = unique.get(item.aggregation_identity)
+            if prior is not None and prior != item:
+                return cls()
+            unique[item.aggregation_identity] = item
+        values = tuple(unique.values())
+        if not values or any(item.coverage != "complete" for item in values):
+            return cls()
+        fields = ("input_tokens", "output_tokens", "total_tokens")
+        if any(getattr(item, field) is None for item in values for field in fields):
+            return cls()
+        return cls(
+            input_tokens=sum(item.input_tokens or 0 for item in values),
+            output_tokens=sum(item.output_tokens or 0 for item in values),
+        )
 
     def to_dict(self) -> dict[str, object]:
         return {

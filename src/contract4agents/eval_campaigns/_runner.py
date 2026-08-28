@@ -34,7 +34,7 @@ from contract4agents.eval_campaigns._provider import (
 )
 from contract4agents.ir import CanonicalIR, EvalIR, SemanticId, contract_digest
 from contract4agents.planning import MaterializationPlan
-from contract4agents.tracing import assess_trace_evidence, validate_trace_conformance
+from contract4agents.tracing import ProviderUsageEvidence, assess_trace_evidence, validate_trace_conformance
 
 
 async def run_campaign(
@@ -195,6 +195,7 @@ def assess_finalized_evidence(
     assert evidence.output is not None
     assert evidence.trace is not None
     assert evidence.closure is not None
+    metrics = _derive_usage_metrics(evidence)
     validate_trace_conformance(ir, plan, evidence.trace)
     trace_evidence = assess_trace_evidence(
         evidence.trace,
@@ -252,7 +253,7 @@ def assess_finalized_evidence(
         qualities=qualities,
         trace_evidence=trace_evidence,
         trace_closure=evidence.closure,
-        metrics=evidence.metrics,
+        metrics=metrics,
         diagnostic=evidence.diagnostic,
     )
 
@@ -423,6 +424,28 @@ def _comparison(name: str, actual: float | None, operator: str, target: float) -
         target,
         operator,
     )
+
+
+def _derive_usage_metrics(evidence: FinalizedTrialEvidence) -> TrialMetrics:
+    """Use complete provider usage only when the provider did not supply metrics."""
+
+    explicit = evidence.metrics
+    if explicit.input_tokens is not None or explicit.output_tokens is not None:
+        return explicit
+    if evidence.trace is None:
+        return explicit
+    values: list[ProviderUsageEvidence] = []
+    for event in evidence.trace.events:
+        if event.event_type != "provider.usage.reported":
+            continue
+        payload = event.data.get("evidence")
+        try:
+            usage = ProviderUsageEvidence.from_dict(payload)
+        except (TypeError, ValueError):
+            return explicit
+        values.append(usage)
+    derived = TrialMetrics.from_provider_usage(tuple(values))
+    return derived if derived.input_tokens is not None else explicit
 
 
 __all__ = ["assess_finalized_evidence", "run_campaign"]

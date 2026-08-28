@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from contract4agents.assurance._models import ControlResult
+from contract4agents.assurance._operational import OperationalControlResult
 from contract4agents.assurance._run_specs import RunSpecResult, RunSpecSelection
 from contract4agents.ir import CanonicalIR, FrozenMap, canonical_ir_data, contract_digest
 from contract4agents.materialization import GraphValidationEvidence
@@ -61,6 +62,7 @@ def assemble_assurance_bundle(
     trace_closures: tuple[TraceClosureEvidence, ...] | None = None,
     run_spec_results: tuple[RunSpecResult, ...] | None = None,
     run_spec_selections: tuple[RunSpecSelection, ...] | None = None,
+    operational_control_results: tuple[OperationalControlResult, ...] | None = None,
 ) -> AssuranceBundle:
     """Assemble all declared, planned, observed, and assessed evidence without timestamps."""
 
@@ -144,6 +146,37 @@ def assemble_assurance_bundle(
         controls = {"results": [], "status": "unverified"}
     else:
         controls = {"results": [item.to_dict() for item in control_results]}
+    operational: dict[str, object]
+    declared_operational_ids = {str(item.id) for item in contract.operational_controls.values()}
+    if operational_control_results is None:
+        # Keep the artifact explicit for callers that assemble a legacy bundle
+        # without running the operational assessor.  The workflow always
+        # supplies assessed results when a trace is available.  A missing
+        # result file is therefore represented as unverified data, while the
+        # strict identity checks below apply whenever results are supplied.
+        operational = {"results": []}
+        if declared_operational_ids:
+            operational["status"] = "unverified"
+    else:
+        result_ids = [item.operational_control_id for item in operational_control_results]
+        if len(result_ids) != len(set(result_ids)):
+            raise ValueError("Operational-control results must have unique IDs")
+        unknown = sorted(set(result_ids) - declared_operational_ids)
+        if unknown:
+            raise ValueError(
+                f"Operational-control results reference undeclared IDs: {', '.join(unknown)}"
+            )
+        missing = sorted(declared_operational_ids - set(result_ids))
+        operational = {"results": [item.to_dict() for item in operational_control_results]}
+        if missing:
+            diagnostics.append(
+                BundleDiagnostic(
+                    "BUNDLE019",
+                    "Operational-control assessment evidence is missing for one or more declared controls.",
+                    "operational-control-results.json",
+                )
+            )
+            operational["status"] = "unverified"
     declared_ids = {str(item.id) for item in contract.run_specs.values()}
     selections = tuple(run_spec_selections or ())
     results = tuple(run_spec_results or ())
@@ -224,6 +257,7 @@ def assemble_assurance_bundle(
             else {"closures": [], "version": TRACE_CLOSURE_MANIFEST_VERSION}
         ),
         "control-results.json": _pretty_json(controls),
+        "operational-control-results.json": _pretty_json(operational),
         "run-spec-results.json": _pretty_json(run_specs),
         "eval-results.json": _pretty_json(eval_results),
         "provenance.json": _pretty_json(provenance),
@@ -233,6 +267,7 @@ def assemble_assurance_bundle(
         plan,
         control_results or (),
         run_spec_results or (),
+        operational_control_results or (),
         diagnostics,
     )
     attestation = {
@@ -398,6 +433,7 @@ def _summary_html(
     plan: MaterializationPlan,
     results: tuple[ControlResult, ...],
     run_spec_results: tuple[RunSpecResult, ...],
+    operational_control_results: tuple[OperationalControlResult, ...],
     diagnostics: list[BundleDiagnostic],
 ) -> str:
     counts = {"passed": 0, "violated": 0, "unverified": 0}
@@ -406,6 +442,9 @@ def _summary_html(
     run_spec_counts = {"passed": 0, "violated": 0, "unverified": 0}
     for run_spec_result in run_spec_results:
         run_spec_counts[run_spec_result.status] += 1
+    operational_counts = {"passed": 0, "violated": 0, "unverified": 0}
+    for operational_result in operational_control_results:
+        operational_counts[operational_result.status] += 1
     missing = "".join(f"<li>{html.escape(item.message)}</li>" for item in diagnostics) or "<li>None</li>"
     return (
         '<!doctype html>\n<html lang="en"><meta charset="utf-8">'
@@ -420,6 +459,8 @@ def _summary_html(
         f"unverified: {counts['unverified']}.</p>"
         f"<p>Run specs passed: {run_spec_counts['passed']}; violated: "
         f"{run_spec_counts['violated']}; unverified: {run_spec_counts['unverified']}.</p>"
+        f"<p>Operational controls passed: {operational_counts['passed']}; violated: "
+        f"{operational_counts['violated']}; unverified: {operational_counts['unverified']}.</p>"
         f"<h2>Missing evidence</h2><ul>{missing}</ul>"
         "</main></body></html>\n"
     )

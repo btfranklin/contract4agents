@@ -154,6 +154,16 @@ derived values, and declared assertions. It does not execute stages or make
 retry and recovery decisions. A passing control result is not a passing
 run-spec result, and the two result types remain distinct.
 
+Operational controls use a separate `OperationalControlResult` and
+`assess_operational_controls(...)` assessor. The first supported surface is
+single-run evidence for duration, provider request count, input/output/total
+tokens, failed provider-call count, attempt count, and retry count. Complete
+normalized traces and closure can produce `passed` or `violated`; missing,
+partial, unavailable, contradictory, or open-channel evidence is
+`unverified`. An observed upper-bound breach can be `violated` before closure,
+but a pass or an absence/below-bound claim requires closure. Windowed controls
+remain unsupported without a bound telemetry provider.
+
 Trace closure is also distinct from host retry semantics. Closure establishes
 which instrumentation paths were captured at one exact trace frontier; an
 `attempt.selected` event establishes which attempt the host chose as terminal.
@@ -170,6 +180,8 @@ An assurance bundle is a deterministic evidence package containing:
 - normalized trace JSONL;
 - versioned, identity-bound trace-closure evidence;
 - control results whose reasons and evidence reflect trace evidence;
+- `operational-control-results.json` with single-run operational-control
+  results and strict identity diagnostics;
 - run-spec results for contracts whose selected workflow is declared by a run
   spec;
 - eval campaign summaries when available;
@@ -196,6 +208,12 @@ validation evidence objects, computes control and run-spec results, and
 delegates deterministic packaging to `assemble_assurance_bundle(...)`. Call the
 lower-level assembler only when the application already owns those assessed
 result objects.
+
+The plan records each operational-control mapping, support outcome, mechanism,
+and expected evidence. The workflow computes operational results from the same
+normalized trace and closure used by behavioral assessment. Assurance bundles
+always contain `operational-control-results.json`; provider-free replay can
+assess finalized provider usage and outcome events with the same result rules.
 
 Run-spec bundle input includes explicit `RunSpecSelection` evidence for every
 run. A selection may name one declared run spec or state that none applied.

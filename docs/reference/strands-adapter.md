@@ -182,3 +182,19 @@ incomplete or unverified and cannot support assurance claims.
 Contract4Agents does not install a runner, callback handler, session manager,
 retry loop, observability backend, or deployment controller. Those remain host
 or platform responsibilities.
+
+## Provider evidence
+
+The trace bridge reports successful `AgentResult` usage from the public
+`metrics.accumulated_usage` shape. It records input, cached input, output, and
+total tokens when available and binds the aggregate to the host attempt. A
+missing `AgentResult` usage object is unavailable. A provider model hook
+exception reports a terminal failed outcome with unavailable usage, while the
+response path remains unverified.
+
+`stop_reason` can report provider cancellation or refusal only when it contains
+the corresponding stable public value. `interrupt` and `checkpoint` are
+interruption evidence, not provider cancellation. Hook exceptions, prompts,
+tool arguments, results, and exception text are never copied into normalized
+events. The bridge does not retry, decide retryability, calculate cost, or
+choose a fallback model.
