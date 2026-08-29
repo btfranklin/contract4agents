@@ -90,9 +90,9 @@ def test_native_adapter_schema_readback_preserves_list_cardinality() -> None:
 
     from pydantic import Field, TypeAdapter, create_model
 
-    from tests.unit.test_google_adk_materialization import FakeGoogleADKSDK
-    from tests.unit.test_materialization import FakeOpenAISDK
-    from tests.unit.test_strands_materialization import FakeStrandsSDK
+    from tests.unit.support.google_adk import FakeGoogleADKSDK
+    from tests.unit.support.openai import FakeOpenAISDK
+    from tests.unit.support.strands import FakeStrandsSDK
 
     bounded = Annotated[list[str], Field(min_length=1, max_length=2)]
     input_type = create_model("BoundedInput", items=(bounded, ...))
@@ -181,7 +181,7 @@ def test_native_adapter_schema_readback_preserves_list_cardinality() -> None:
 def test_openai_materialization_rejects_native_tool_that_drops_list_bound(tmp_path: Path) -> None:
     from contract4agents import materialize
     from contract4agents.materialization import MaterializationError, OpenAIMaterializationProvider
-    from tests.unit.test_materialization import FakeOpenAISDK, _write_project
+    from tests.unit.support.openai import FakeOpenAISDK, _write_project
 
     _write_project(tmp_path)
     contract_path = tmp_path / "system.contract"
@@ -215,7 +215,7 @@ def test_google_adk_materialization_rejects_native_tool_that_drops_list_bound(tm
     from contract4agents.materialization._google_adk import (
         GoogleADKMaterializationProvider,
     )
-    from tests.unit.test_google_adk_materialization import (
+    from tests.unit.support.google_adk import (
         FakeGoogleADKSDK,
         _provider_ir,
         _target_and_plan,
@@ -254,9 +254,7 @@ def test_google_adk_materialization_rejects_native_tool_that_drops_list_bound(tm
     context = ContextRuntime(ir, plan, implementations, output_types)
 
     with pytest.raises(MaterializationError) as caught:
-        GoogleADKMaterializationProvider(
-            FakeGoogleADKSDK(drop_list_bounds=True)
-        ).build_graph(
+        GoogleADKMaterializationProvider(FakeGoogleADKSDK(drop_list_bounds=True)).build_graph(
             ir=ir,
             artifacts=build_artifacts(ir),
             target=target,
@@ -278,7 +276,7 @@ def test_strands_materialization_rejects_native_tool_that_drops_list_bound(tmp_p
     from contract4agents.materialization._strands import (
         StrandsMaterializationProvider,
     )
-    from tests.unit.test_strands_materialization import FakeStrandsSDK, _write_project
+    from tests.unit.support.strands import FakeStrandsSDK, _write_project
 
     _write_project(tmp_path)
     contract_path = tmp_path / "system.contract"
@@ -298,9 +296,7 @@ def test_strands_materialization_rejects_native_tool_that_drops_list_bound(tmp_p
             tmp_path,
             "strands",
             "test",
-            provider=StrandsMaterializationProvider(
-                FakeStrandsSDK(drop_list_bounds=True)
-            ),
+            provider=StrandsMaterializationProvider(FakeStrandsSDK(drop_list_bounds=True)),
         )
 
     assert "MAT457" in {issue.code for issue in caught.value.issues}
@@ -574,9 +570,7 @@ def test_parameter_models_and_primitive_adapters_reject_json_type_coercions() ->
             adapter.validate_python(invalid)
 
     datetime_adapter = type_adapter_for(parse_type_ref("datetime"), output_types)
-    assert datetime_adapter.validate_python("2026-01-01T00:00:00Z") == datetime(
-        2026, 1, 1, tzinfo=UTC
-    )
+    assert datetime_adapter.validate_python("2026-01-01T00:00:00Z") == datetime(2026, 1, 1, tzinfo=UTC)
 
 
 def test_generated_python_is_self_contained_when_contract4agents_import_is_blocked(
