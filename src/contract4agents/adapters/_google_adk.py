@@ -19,12 +19,12 @@ from contract4agents.ir import (
 )
 from contract4agents.planning import (
     AgentPlan,
-    BindingExecution,
     BindingKind,
     BindingPlan,
     BindingResolution,
     MappingSupport,
     PlannerCapabilities,
+    describe_locator,
     in_process_isolation_support,
 )
 from contract4agents.target_bindings import (
@@ -33,9 +33,6 @@ from contract4agents.target_bindings import (
     TargetBinding,
 )
 
-_HOST_LOCATORS = frozenset({"python", "typescript", "module"})
-_PROVIDER_LOCATORS = frozenset({"provider", "provider_tool", "tool"})
-_REMOTE_LOCATORS = frozenset({"endpoint", "url", "remote", "mcp"})
 _GOOGLE_SEARCH_KEYS = frozenset({"provider", "tool", "model"})
 
 
@@ -48,15 +45,8 @@ class GoogleADKMappingResolver:
         kind: BindingKind,
         locator: Mapping[str, object],
     ) -> BindingResolution:
-        keys = set(locator)
-        if "python" in keys and not (
-            keys
-            & (
-                (_HOST_LOCATORS - {"python"})
-                | _PROVIDER_LOCATORS
-                | _REMOTE_LOCATORS
-            )
-        ):
+        description = describe_locator(locator)
+        if description.is_python_binding:
             return BindingResolution(
                 "host",
                 MappingSupport("exact", "host.implementation_binding"),
@@ -78,14 +68,7 @@ class GoogleADKMappingResolver:
                     ),
                 ),
             )
-        execution: BindingExecution
-        if keys & _PROVIDER_LOCATORS:
-            execution = "provider_hosted"
-        elif keys & _REMOTE_LOCATORS:
-            execution = "remote"
-        else:
-            execution = "host"
-        return BindingResolution(execution, MappingSupport("unsupported", None))
+        return BindingResolution(description.execution, MappingSupport("unsupported", None))
 
     def binding_support(
         self,
@@ -195,18 +178,9 @@ def google_adk_target_binding_validator(
 ) -> tuple[Diagnostic, ...]:
     """Validate Google ADK locator shapes without importing the optional SDK."""
 
-    keys = set(entry.values)
-    families = {
-        family
-        for family, locators in (
-            ("host", _HOST_LOCATORS),
-            ("provider_hosted", _PROVIDER_LOCATORS),
-            ("remote", _REMOTE_LOCATORS),
-        )
-        if keys & locators
-    }
+    description = describe_locator(entry.values)
     label = f"targets.{target_name}.{section}.{name}"
-    if len(families) > 1:
+    if description.has_mixed_families:
         return (
             Diagnostic(
                 "TGT110",
@@ -214,14 +188,7 @@ def google_adk_target_binding_validator(
                 hint="Select exactly one implementation locator family.",
             ),
         )
-    python_binding = "python" in keys and not (
-        keys
-        & (
-            (_HOST_LOCATORS - {"python"})
-            | _PROVIDER_LOCATORS
-            | _REMOTE_LOCATORS
-        )
-    )
+    python_binding = description.is_python_binding
     search_binding = (
         section == "tools"
         and _is_google_search_locator("tool", entry.values)

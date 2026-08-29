@@ -14,10 +14,10 @@ from contract4agents.ir import (
     contract_digest,
 )
 from contract4agents.planning._errors import PlanningError, PlanningIssue
+from contract4agents.planning._locators import describe_locator
 from contract4agents.planning._models import (
     AdapterPlan,
     AgentPlan,
-    BindingExecution,
     BindingKind,
     BindingPlan,
     BindingResolution,
@@ -351,8 +351,8 @@ def _binding_plan(
     capabilities: PlannerCapabilities,
     issues: list[PlanningIssue],
 ) -> tuple[BindingPlan, MappingSupport] | None:
-    locator_families = _locator_families(entry.values)
-    if not locator_families:
+    locator_description = describe_locator(entry.values)
+    if not locator_description.families:
         issues.append(PlanningIssue("PLN007", f"Binding `{identifier}` has no implementation locator", identifier))
         return None
     if capabilities.mapping_resolver is None:
@@ -408,32 +408,13 @@ def _binding_plan(
 
 
 def _default_binding_resolution(locator: Mapping[str, object]) -> BindingResolution:
-    families = _locator_families(locator)
-    if families == {"host"} and "python" in locator and not ({"typescript", "module"} & set(locator)):
+    description = describe_locator(locator)
+    if description.is_python_binding:
         return BindingResolution(
             "host",
             MappingSupport("exact", "host.implementation_binding"),
         )
-    execution: BindingExecution
-    if "provider_hosted" in families:
-        execution = "provider_hosted"
-    elif "remote" in families:
-        execution = "remote"
-    else:
-        execution = "host"
-    return BindingResolution(execution, MappingSupport("unsupported", None))
-
-
-def _locator_families(locator: Mapping[str, object]) -> set[str]:
-    keys = set(locator)
-    families: set[str] = set()
-    if keys & {"python", "typescript", "module"}:
-        families.add("host")
-    if keys & {"provider", "provider_tool", "tool"}:
-        families.add("provider_hosted")
-    if keys & {"endpoint", "url", "remote", "mcp"}:
-        families.add("remote")
-    return families
+    return BindingResolution(description.execution, MappingSupport("unsupported", None))
 
 
 def _resolve_grants(

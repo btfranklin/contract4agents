@@ -1,6 +1,11 @@
 """Provider-neutral target planning for Contract4Agents."""
 
 from contract4agents.planning._errors import PlanningError, PlanningIssue
+from contract4agents.planning._locators import (
+    LocatorDescription,
+    LocatorFamily,
+    describe_locator,
+)
 from contract4agents.planning._models import (
     PLAN_VERSION,
     AdapterMappingResolver,
@@ -49,6 +54,8 @@ __all__ = [
     "IsolationDimension",
     "IsolationDimensionPlan",
     "IsolationMappingPlan",
+    "LocatorDescription",
+    "LocatorFamily",
     "MappingOutcome",
     "MappingSupport",
     "MaterializationPlan",
@@ -58,6 +65,7 @@ __all__ = [
     "PlanningIssue",
     "canonical_materialization_plan_json",
     "compute_plan_digest",
+    "describe_locator",
     "in_process_isolation_support",
     "materialization_plan_data",
     "plan_materialization",
