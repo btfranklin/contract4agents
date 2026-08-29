@@ -9,9 +9,9 @@ from collections.abc import Mapping, Sequence, Set
 from dataclasses import dataclass, field
 from typing import Literal, cast
 
-from jsonschema import Draft202012Validator, FormatChecker, ValidationError
+from jsonschema import ValidationError
 
-from contract4agents._portable_validation import is_portable_datetime
+from contract4agents._portable_validation import validate_portable_json_schema
 from contract4agents._strict_json import (
     json_array,
     json_object,
@@ -49,14 +49,6 @@ RunSpecEvidenceStatus = Literal["complete", "incomplete", "unverified"]
 _EVIDENCE_STATUSES = frozenset({"complete", "incomplete", "unverified"})
 _ASSESSOR = AssessorIdentity("contract4agents.run_specs", "1")
 _DIGEST_PATTERN = re.compile(r"sha256:[0-9a-f]{64}\Z")
-_FORMAT_CHECKER = FormatChecker()
-
-
-@_FORMAT_CHECKER.checks("date-time")
-def _is_rfc3339_datetime(value: object) -> bool:
-    return not isinstance(value, str) or is_portable_datetime(value)
-
-
 @dataclass(frozen=True)
 class RunSpecStageObservation:
     """One host-observed output for a declared run-spec stage."""
@@ -479,8 +471,9 @@ def _assess_stage(
         )
     for observation in observations:
         try:
-            Draft202012Validator(schema, format_checker=_FORMAT_CHECKER).validate(
-                _thaw(cast(FrozenJsonValue, observation.output))
+            validate_portable_json_schema(
+                _thaw(cast(FrozenJsonValue, observation.output)),
+                schema,
             )
         except ValidationError as exc:
             return _stage_result(

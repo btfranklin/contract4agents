@@ -32,6 +32,7 @@ from contract4agents.materialization._types import (
     build_pydantic_types,
     type_adapter_for,
 )
+from tests.unit._portable_datetime_cases import PORTABLE_DATETIME_CASES
 
 ROOT = Path(__file__).resolve().parents[2]
 ZOD_HARNESS = ROOT / "editors" / "vscode" / "test" / "execute-generated-zod.mjs"
@@ -428,20 +429,8 @@ type Container:
 
 
 def test_portable_datetime_profile_is_strict_and_preserves_aware_values() -> None:
-    accepted = (
-        "2026-01-01T00:00:00Z",
-        "2026-01-01T00:00:00+05:30",
-        "2026-01-01T00:00:00.123456Z",
-    )
-    rejected = (
-        "2026-01-01T00:00:00",
-        "2026-01-01 00:00:00Z",
-        "2026-02-30T00:00:00Z",
-        "2026-01-01T00:00:00+24:00",
-        "2026-01-01T00:00:00+01:60",
-    )
-    assert all(is_portable_datetime(value) for value in accepted)
-    assert not any(is_portable_datetime(value) for value in rejected)
+    for name, value, valid in PORTABLE_DATETIME_CASES:
+        assert is_portable_datetime(value) is valid, name
     assert not is_portable_datetime(datetime(2026, 1, 1))
     assert is_portable_datetime(datetime(2026, 1, 1, tzinfo=UTC))
 

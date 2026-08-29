@@ -46,6 +46,7 @@ from contract4agents.tracing import (
     dumps_trace_jsonl,
 )
 from contract4agents.visualization import build_visualization_graph
+from tests.unit._portable_datetime_cases import PORTABLE_DATETIME_CASES
 
 
 def test_run_spec_assessment_passes_complete_typed_stage_and_assertion_evidence() -> None:
@@ -208,7 +209,15 @@ def test_trace_backed_stage_observation_requires_linked_agent_identity() -> None
     assert all("no linked event with agent identity" in item.reason for item in result.stages)
 
 
-def test_run_spec_output_schema_enforces_datetime_format() -> None:
+@pytest.mark.parametrize(
+    ("name", "value", "valid"),
+    PORTABLE_DATETIME_CASES,
+)
+def test_run_spec_output_schema_uses_portable_datetime_profile(
+    name: str,
+    value: object,
+    valid: bool,
+) -> None:
     base = _ir()
     brief_id = semantic_id("type", "Brief")
     brief = base.types[brief_id]
@@ -230,16 +239,25 @@ def test_run_spec_output_schema_enforces_datetime_format() -> None:
     )
     plan = _plan(invalid_datetime_ir)
 
+    evidence = _evidence(invalid_datetime_ir)
+    synthesis = replace(
+        evidence.stage_observations[1],
+        output={"answer": value},
+    )
     result = assess_run_spec(
         invalid_datetime_ir,
         plan,
         _trace(invalid_datetime_ir, plan),
         "ResearchRun",
-        _evidence(invalid_datetime_ir),
+        replace(
+            evidence,
+            stage_observations=(evidence.stage_observations[0], synthesis),
+        ),
     )
 
-    assert result.status == "violated"
-    assert "not a 'date-time'" in result.stages[1].reason
+    assert result.status == ("passed" if valid else "violated"), name
+    if not valid:
+        assert "does not conform" in result.stages[1].reason
 
 
 def test_run_spec_stage_cardinality_supports_optional_absence_and_many_outputs() -> None:

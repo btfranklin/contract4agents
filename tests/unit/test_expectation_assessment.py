@@ -19,6 +19,7 @@ from contract4agents.tracing import (
     TraceRunContext,
     TraceSemanticRefs,
 )
+from tests.unit._portable_datetime_cases import PORTABLE_DATETIME_CASES
 from tests.unit.test_eval_campaigns import _ir
 
 _CONTRACT_DIGEST = f"sha256:{'a' * 64}"
@@ -162,6 +163,35 @@ def test_eval_schema_hidden_truth_and_invalid_expression_branches() -> None:
         hidden_truth={},
         **common,
     ).status == "unverified"
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "valid"),
+    PORTABLE_DATETIME_CASES,
+)
+def test_eval_output_schema_uses_portable_datetime_profile(
+    name: str,
+    value: object,
+    valid: bool,
+) -> None:
+    schema = {
+        "type": "object",
+        "properties": {"at": {"type": "string", "format": "date-time"}},
+        "required": ["at"],
+        "additionalProperties": False,
+    }
+
+    result = assess_expectation(
+        "output conforms Result",
+        output={"at": value},
+        trace=NormalizedTrace((_event("evt-1", "run.started"),)),
+        trace_evidence=_trace_evidence(True),
+        ir=_ir(),
+        schemas={"Result": schema},
+        hidden_truth={},
+    )
+
+    assert result.status == ("passed" if valid else "violated"), name
 
 
 @pytest.mark.parametrize(

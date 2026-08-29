@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from datetime import datetime
+
+from jsonschema import Draft202012Validator, FormatChecker
 
 _DATETIME_PATTERN = re.compile(
     r"\A(?P<year>[0-9]{4})-(?P<month>[0-9]{2})-(?P<day>[0-9]{2})"
@@ -11,6 +14,7 @@ _DATETIME_PATTERN = re.compile(
     r"(?:\.[0-9]+)?(?:Z|(?P<offset_sign>[+-])(?P<offset_hour>[0-9]{2}):(?P<offset_minute>[0-9]{2}))\Z"
 )
 _DATETIME_ERROR = "Expected RFC 3339 datetime with a required Z or ±HH:MM offset"
+_FORMAT_CHECKER = FormatChecker()
 
 
 def parse_portable_datetime(value: object) -> datetime:
@@ -65,4 +69,22 @@ def is_portable_datetime(value: object) -> bool:
     return True
 
 
-__all__ = ["is_portable_datetime", "parse_portable_datetime"]
+@_FORMAT_CHECKER.checks("date-time")
+def _is_portable_json_datetime(value: object) -> bool:
+    return not isinstance(value, str) or is_portable_datetime(value)
+
+
+def validate_portable_json_schema(
+    value: object,
+    schema: Mapping[str, object],
+) -> None:
+    """Validate one value with the portable JSON Schema format profile."""
+
+    Draft202012Validator(schema, format_checker=_FORMAT_CHECKER).validate(value)
+
+
+__all__ = [
+    "is_portable_datetime",
+    "parse_portable_datetime",
+    "validate_portable_json_schema",
+]

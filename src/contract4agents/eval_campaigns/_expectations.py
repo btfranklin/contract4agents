@@ -6,8 +6,7 @@ import operator
 import re
 from collections.abc import Mapping
 
-from jsonschema import validate
-
+from contract4agents._portable_validation import validate_portable_json_schema
 from contract4agents.eval_campaigns._models import ExpectationResult
 from contract4agents.expressions import (
     ExpressionError,
@@ -59,7 +58,7 @@ def _output_result(
         if schema is None:
             return ExpectationResult(parsed.expression, "unverified", f"Unknown output schema `{parsed.type_name}`")
         try:
-            validate(_thaw(output), schema)
+            validate_portable_json_schema(_thaw(output), schema)
         except Exception as exc:  # noqa: BLE001 - jsonschema exposes multiple validation error types.
             return ExpectationResult(
                 parsed.expression,
