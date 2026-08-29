@@ -263,6 +263,16 @@ def _assess_one(
             and event.semantic.agent_id == agent_id
         )
         actual = _failed_provider_calls(events, selected_attempts)
+        if actual is None:
+            return _result(
+                control_id,
+                "unverified",
+                "Provider outcome evidence is malformed, unavailable, inconclusive, or contradictory.",
+                events=events,
+                metric=parsed.metric,
+                target=parsed.target,
+                operator=parsed.operator,
+            )
         evidence_events = events
         required_channel = "provider_outcome"
     else:
@@ -354,27 +364,45 @@ def _usage(events: tuple[Any, ...], selected_attempts: tuple[TraceAttempt, ...])
     return values
 
 
-def _failed_provider_calls(events: tuple[Any, ...], selected_attempts: tuple[TraceAttempt, ...]) -> int:
+def _failed_provider_calls(
+    events: tuple[Any, ...], selected_attempts: tuple[TraceAttempt, ...]
+) -> int | None:
     selected_ids = {item.attempt_id for item in selected_attempts}
-    identities: set[tuple[str | None, str | None, str]] = set()
-    count = 0
+    outcomes: dict[tuple[str | None, str | None, str], ProviderOutcomeEvidence] = {}
     for event in events:
-        if selected_ids and not _event_attempt_matches(event, selected_ids):
+        try:
+            attempt = TraceAttempt.from_dict(event.data.get("attempt"))
+        except (TypeError, ValueError):
+            return None
+        if selected_ids and attempt.attempt_id not in selected_ids:
             continue
         payload = event.data.get("evidence")
         try:
             evidence = ProviderOutcomeEvidence.from_dict(payload)
         except (TypeError, ValueError):
-            continue
-        identity = (
-            evidence.request_id,
-            evidence.response_id,
-            evidence.attempt_id or event.event_id,
-        )
-        if evidence.outcome in {"failed", "refused"} and identity not in identities:
-            identities.add(identity)
-            count += 1
-    return count
+            return None
+        if (
+            evidence.agent_id != event.semantic.agent_id
+            or evidence.attempt_id != attempt.attempt_id
+            or (
+                evidence.invocation_id is not None
+                and evidence.invocation_id != attempt.invocation_id
+            )
+            or (
+                evidence.attempt_number is not None
+                and evidence.attempt_number != attempt.number
+            )
+            or not evidence.conclusive
+        ):
+            return None
+        existing = outcomes.get(evidence.outcome_identity)
+        if existing is not None and existing != evidence:
+            return None
+        outcomes[evidence.outcome_identity] = evidence
+    return sum(
+        evidence.outcome in {"failed", "refused"}
+        for evidence in outcomes.values()
+    )
 
 
 def _attempt_scope(

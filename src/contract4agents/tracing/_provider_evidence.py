@@ -131,6 +131,18 @@ class ProviderOutcomeEvidence:
     def claim_state(self) -> EvidenceState:
         return self.state
 
+    @property
+    def outcome_identity(self) -> tuple[str | None, str | None, str]:
+        """Return the stable identity used to deduplicate one outcome claim."""
+
+        return (self.request_id, self.response_id, self.attempt_id)
+
+    @property
+    def conclusive(self) -> bool:
+        """Whether the evidence establishes a terminal provider outcome."""
+
+        return self.state in {"observed", "inferred"} and self.outcome != "unknown"
+
     def to_dict(self) -> dict[str, object]:
         result: dict[str, object] = {
             "agent_id": str(self.agent_id),

@@ -35,6 +35,7 @@ from contract4agents.tracing import (
     ProviderUsageEvidence,
     TraceAttempt,
     TraceAttemptClosure,
+    TraceClosureError,
     TraceClosureEvidence,
     TraceClosureManifest,
     TraceEvent,
@@ -578,7 +579,177 @@ def test_operational_assessor_handles_unsupported_grammar_and_bad_evidence() -> 
     bad_outcome_trace = NormalizedTrace(
         tuple(bad_outcome if event.event_id == outcome_event.event_id else event for event in outcome_source.events)
     )
-    assert assess_operational_controls(outcome_ir, outcome_plan, bad_outcome_trace)[0].actual == 0
+    malformed_result = assess_operational_controls(outcome_ir, outcome_plan, bad_outcome_trace)[0]
+    assert malformed_result.status == "unverified"
+    assert malformed_result.actual is None
+
+
+def test_provider_outcome_metric_ignores_malformed_unselected_attempt_evidence() -> None:
+    ir, plan, trace, _ = _operational_fixture(
+        ("trace.failed_provider_call_count == 1",), include_usage=False
+    )
+    event = next(
+        item for item in trace.events if item.event_type == "provider.outcome.reported"
+    )
+    unselected_attempt = TraceAttempt("research:2", "research-attempt-2", 1)
+    malformed_unselected = replace(
+        event,
+        event_id="provider-outcome-unselected",
+        data={"attempt": unselected_attempt.to_dict(), "evidence": {}},
+    )
+
+    result = assess_operational_controls(
+        ir,
+        plan,
+        NormalizedTrace(trace.events + (malformed_unselected,)),
+    )[0]
+
+    assert result.actual == 1
+    assert result.status == "unverified"
+
+
+def test_provider_outcome_metric_deduplicates_identical_valid_evidence() -> None:
+    ir, plan, trace, closure = _operational_fixture(
+        ("trace.failed_provider_call_count == 1",), include_usage=False
+    )
+    assert closure is not None
+    event = next(
+        item for item in trace.events if item.event_type == "provider.outcome.reported"
+    )
+    duplicate = replace(event, event_id="provider-outcome-duplicate")
+    duplicated_trace = NormalizedTrace(trace.events + (duplicate,))
+    duplicated_closure = replace(
+        closure,
+        frontier=TraceFrontier.from_trace(duplicated_trace),
+    )
+
+    result = assess_operational_controls(
+        ir,
+        plan,
+        duplicated_trace,
+        closure=duplicated_closure,
+    )[0]
+
+    assert result.status == "passed"
+    assert result.actual == 1
+
+
+def test_complete_provider_outcome_closure_rejects_malformed_evidence() -> None:
+    ir, plan, trace, closure = _operational_fixture(
+        ("trace.failed_provider_call_count == 1",), include_usage=False
+    )
+    assert closure is not None
+    event = next(
+        item for item in trace.events if item.event_type == "provider.outcome.reported"
+    )
+    invalid = replace(
+        event,
+        data={"attempt": event.data["attempt"], "evidence": {}},
+    )
+    invalid_trace = NormalizedTrace(
+        tuple(invalid if item.event_id == event.event_id else item for item in trace.events)
+    )
+    invalid_closure = replace(
+        closure,
+        frontier=TraceFrontier.from_trace(invalid_trace),
+    )
+
+    with pytest.raises(TraceClosureError, match="malformed outcome evidence"):
+        assess_operational_controls(ir, plan, invalid_trace, closure=invalid_closure)
+
+
+def test_complete_provider_outcome_closure_keeps_inconclusive_metric_unverified() -> None:
+    ir, plan, trace, closure = _operational_fixture(
+        ("trace.failed_provider_call_count == 1",), include_usage=False
+    )
+    assert closure is not None
+    event = next(
+        item for item in trace.events if item.event_type == "provider.outcome.reported"
+    )
+    inconclusive_evidence = _outcome(
+        agent_id=semantic_id("agent", "Researcher"),
+        attempt_id="research-attempt-1",
+        invocation_id="research:1",
+        outcome="unknown",
+        category="unknown",
+        state="unverified",
+        request_id="request-1",
+    )
+    inconclusive = replace(
+        event,
+        data={
+            "attempt": event.data["attempt"],
+            "evidence": inconclusive_evidence.to_dict(),
+        },
+    )
+    inconclusive_trace = NormalizedTrace(
+        tuple(
+            inconclusive if item.event_id == event.event_id else item
+            for item in trace.events
+        )
+    )
+    inconclusive_closure = replace(
+        closure,
+        frontier=TraceFrontier.from_trace(inconclusive_trace),
+    )
+
+    result = assess_operational_controls(
+        ir,
+        plan,
+        inconclusive_trace,
+        closure=inconclusive_closure,
+    )[0]
+
+    assert result.status == "unverified"
+    assert result.actual is None
+
+
+def test_complete_provider_outcome_closure_rejects_missing_and_contradictory_evidence() -> None:
+    ir, plan, trace, closure = _operational_fixture(
+        ("trace.failed_provider_call_count == 1",), include_usage=False
+    )
+    assert closure is not None
+    event = next(
+        item for item in trace.events if item.event_type == "provider.outcome.reported"
+    )
+    without_outcome = NormalizedTrace(
+        tuple(item for item in trace.events if item.event_id != event.event_id)
+    )
+    missing_closure = replace(
+        closure,
+        frontier=TraceFrontier.from_trace(without_outcome),
+    )
+    with pytest.raises(TraceClosureError, match="has no outcome report"):
+        assess_operational_controls(ir, plan, without_outcome, closure=missing_closure)
+
+    evidence = ProviderOutcomeEvidence.from_dict(event.data["evidence"])
+    contradictory = replace(
+        event,
+        event_id="provider-outcome-contradictory",
+        data={
+            "attempt": event.data["attempt"],
+            "evidence": replace(
+                evidence,
+                outcome="succeeded",
+                category="transport",
+            ).to_dict(),
+        },
+    )
+    contradictory_trace = NormalizedTrace(trace.events + (contradictory,))
+    contradictory_closure = replace(
+        closure,
+        frontier=TraceFrontier.from_trace(contradictory_trace),
+    )
+    with pytest.raises(TraceClosureError, match="contradictory outcome evidence"):
+        assess_operational_controls(
+            ir,
+            plan,
+            contradictory_trace,
+            closure=contradictory_closure,
+        )
+    result = assess_operational_controls(ir, plan, contradictory_trace)[0]
+    assert result.status == "unverified"
+    assert result.actual is None
 
 
 def test_operational_assessor_rejects_ambiguous_multi_run_trace() -> None:

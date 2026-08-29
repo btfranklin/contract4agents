@@ -23,6 +23,7 @@ from contract4agents.tracing._models import (
     TraceEvent,
     TraceRunContext,
 )
+from contract4agents.tracing._provider_evidence import ProviderOutcomeEvidence
 
 TraceClosureStatus = Literal["complete", "incomplete", "unverified"]
 TraceInstrumentationChannel = Literal[
@@ -456,18 +457,56 @@ def validate_trace_closure(trace: NormalizedTrace, closure: TraceClosureEvidence
             raise TraceClosureError(
                 f"Attempt `{item.attempt.attempt_id}` response IDs do not match normalization receipts"
             )
-        if item.outcome_status == "complete" and not any(
-            event.event_type == "provider.outcome.reported" for event in attempt_events
-        ):
-            raise TraceClosureError(
-                f"Attempt `{item.attempt.attempt_id}` outcome closure has no outcome report"
-            )
+        if item.outcome_status == "complete":
+            _validate_provider_outcome_closure(item, attempt_events)
         if item.usage_status == "complete" and not any(
             event.event_type == "provider.usage.reported" for event in attempt_events
         ):
             raise TraceClosureError(
                 f"Attempt `{item.attempt.attempt_id}` usage closure has no usage report"
             )
+
+
+def _validate_provider_outcome_closure(
+    closure: TraceAttemptClosure,
+    attempt_events: tuple[TraceEvent, ...],
+) -> None:
+    events = tuple(
+        event for event in attempt_events if event.event_type == "provider.outcome.reported"
+    )
+    if not events:
+        raise TraceClosureError(
+            f"Attempt `{closure.attempt.attempt_id}` outcome closure has no outcome report"
+        )
+    outcomes: dict[tuple[str | None, str | None, str], ProviderOutcomeEvidence] = {}
+    for event in events:
+        try:
+            evidence = ProviderOutcomeEvidence.from_dict(event.data.get("evidence"))
+        except (TypeError, ValueError) as exc:
+            raise TraceClosureError(
+                f"Attempt `{closure.attempt.attempt_id}` outcome closure has malformed outcome evidence"
+            ) from exc
+        if (
+            evidence.agent_id != closure.agent_id
+            or evidence.attempt_id != closure.attempt.attempt_id
+            or (
+                evidence.invocation_id is not None
+                and evidence.invocation_id != closure.attempt.invocation_id
+            )
+            or (
+                evidence.attempt_number is not None
+                and evidence.attempt_number != closure.attempt.number
+            )
+        ):
+            raise TraceClosureError(
+                f"Attempt `{closure.attempt.attempt_id}` outcome evidence does not match its closure identity"
+            )
+        existing = outcomes.get(evidence.outcome_identity)
+        if existing is not None and existing != evidence:
+            raise TraceClosureError(
+                f"Attempt `{closure.attempt.attempt_id}` outcome closure has contradictory outcome evidence"
+            )
+        outcomes[evidence.outcome_identity] = evidence
 
 
 def _validate_retry_chains(attempts: tuple[TraceAttemptClosure, ...]) -> None:
