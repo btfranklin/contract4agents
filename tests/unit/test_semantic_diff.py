@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 
 import pytest
@@ -15,6 +16,7 @@ from contract4agents.ir import (
     CanonicalIR,
     ContextRequirementIR,
     ControlIR,
+    EnumIR,
     EvalIR,
     FrozenMap,
     IsolationProfileIR,
@@ -187,6 +189,64 @@ def test_contract_diff_reports_agent_input_signature_changes() -> None:
         and item.impact == "breaking"
         for item in changes
     )
+
+
+@pytest.mark.parametrize(
+    ("type_name", "before_default", "after_default"),
+    [
+        ("string", "old", "new"),
+        ("list[string]", ["old"], ["new"]),
+        ("map[string,string]", {"z": "old", "a": "first"}, {"y": "new"}),
+        (
+            "map[string,list[map[string,string]]]",
+            {"items": [{"z": "old", "a": "first"}]},
+            {"items": [{"y": "new"}]},
+        ),
+        ("string?", None, "present"),
+        ("Status", "draft", "final"),
+    ],
+)
+def test_semantic_diff_serializes_every_portable_default(
+    type_name: str,
+    before_default: object,
+    after_default: object,
+) -> None:
+    agent_id = semantic_id("agent", "Worker")
+    types = (EnumIR(semantic_id("type", "Status"), "Status", ("draft", "final")),)
+
+    def contract(default: object) -> CanonicalIR:
+        return CanonicalIR.create(
+            types=types,
+            agents=(
+                AgentIR(
+                    agent_id,
+                    "Worker",
+                    (
+                        ParameterIR(
+                            "value",
+                            parse_type_ref(type_name),
+                            required=False,
+                            has_default=True,
+                            default=default,
+                        ),
+                    ),
+                    parse_type_ref("Status"),
+                    "Report the value.",
+                ),
+            ),
+        )
+
+    result = semantic_diff(contract(before_default), contract(after_default))
+    first = result.to_json()
+    second = result.to_json()
+    payload = json.loads(first)
+    change = payload["contract_changes"][0]
+
+    assert change["before"] == before_default
+    assert change["after"] == after_default
+    assert first == second
+    if isinstance(before_default, dict):
+        assert first.index('"a"') < first.index('"z"')
 
 
 @pytest.mark.parametrize(

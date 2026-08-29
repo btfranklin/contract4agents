@@ -46,9 +46,9 @@ class SemanticDiffEntry:
 
     def to_dict(self) -> dict[str, object]:
         return {
-            "after": self.after,
+            "after": _plain_json(self.after),
             "area": self.area,
-            "before": self.before,
+            "before": _plain_json(self.before),
             "change": self.change,
             "impact": self.impact,
             "semantic_id": self.semantic_id,
@@ -581,6 +581,17 @@ def _entry(
 
 def _sorted(entries: list[SemanticDiffEntry]) -> tuple[SemanticDiffEntry, ...]:
     return tuple(sorted(entries, key=lambda item: (item.area, item.semantic_id, item.change, item.summary)))
+
+
+def _plain_json(value: object) -> object:
+    if isinstance(value, Mapping):
+        return {
+            str(key): _plain_json(child)
+            for key, child in sorted(value.items(), key=lambda item: str(item[0]))
+        }
+    if isinstance(value, list | tuple):
+        return [_plain_json(child) for child in value]
+    return value
 
 
 __all__ = [
