@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from contract4agents.ir import CanonicalIR, FrozenMap, SemanticId, semantic_id
@@ -58,6 +60,7 @@ class ContextRuntime:
         self.trace_sink = trace_sink or NoOpNormalizedTraceSink()
         self._run_cache: dict[tuple[str, str, str], ResolvedContextValue] = {}
         self._thread_cache: dict[tuple[str, str, str], ResolvedContextValue] = {}
+        self._in_flight: dict[tuple[str, str, str, str], asyncio.Task[ResolvedContextValue]] = {}
         self._event_counter = 0
 
     async def resolve_agent(
@@ -95,15 +98,15 @@ class ContextRuntime:
             resolved[value.context_id.parts[-1]] = value
         return FrozenMap(resolved)
 
-    def clear_run(self, run_id: str) -> None:
-        self._run_cache = {
-            key: value for key, value in self._run_cache.items() if key[0] != run_id
-        }
+    def complete_run(self, run_id: str) -> None:
+        """Release all runtime-owned state after one host run completes."""
 
-    def clear_thread(self, thread_id: str) -> None:
-        self._thread_cache = {
-            key: value for key, value in self._thread_cache.items() if key[0] != thread_id
-        }
+        self._complete_scope("run", run_id)
+
+    def complete_thread(self, thread_id: str) -> None:
+        """Release all runtime-owned state after one host thread completes."""
+
+        self._complete_scope("thread", thread_id)
 
     async def _resolve(
         self,
@@ -164,13 +167,69 @@ class ContextRuntime:
             self._emit(result, run_id, thread_id, cache_scope, render, sensitivity)
             return result
 
+        if cache is None:
+            result = await self._resolve_provider(
+                context_id,
+                arguments,
+                implementation,
+                run_id,
+                thread_id,
+                render,
+            )
+            self._emit(result, run_id, thread_id, cache_scope, render, sensitivity)
+            return result
+
+        in_flight_key = (cache_scope, *cache_key)
+        task = self._in_flight.get(in_flight_key)
+        reused = task is not None
+        if task is None:
+            task = asyncio.create_task(
+                self._resolve_provider(
+                    context_id,
+                    arguments,
+                    implementation,
+                    run_id,
+                    thread_id,
+                    render,
+                )
+            )
+            self._in_flight[in_flight_key] = task
+            task.add_done_callback(partial(self._finish_resolution, in_flight_key))
+        resolved = await asyncio.shield(task)
+        result = ResolvedContextValue(
+            resolved.context_id,
+            resolved.agent_id,
+            resolved.origin,
+            resolved.origin_id,
+            resolved.value,
+            resolved.rendered,
+            reused,
+        )
+        self._emit(result, run_id, thread_id, cache_scope, render, sensitivity)
+        return result
+
+    async def _resolve_provider(
+        self,
+        context_id: SemanticId,
+        arguments: Mapping[str, object],
+        implementation: object,
+        run_id: str,
+        thread_id: str,
+        render: str,
+    ) -> ResolvedContextValue:
+        context = self.ir.contexts[context_id]
+        if context.origin_id is None:
+            raise ContextResolutionError(context_id, "context origin is not resolved")
+        origin_id = context.origin_id
         try:
+            if not callable(implementation):
+                raise TypeError("the materialized provider is not callable")
             raw = implementation(**arguments)
             if inspect.isawaitable(raw):
                 raw = await raw
             value = type_adapter_for(context.type_ref, self.output_types).validate_python(raw)
         except Exception as exc:
-            self._emit_failure(context_id, context.agent_id, context.origin_id, run_id, thread_id, exc)
+            self._emit_failure(context_id, context.agent_id, origin_id, run_id, thread_id, exc)
             raise ContextResolutionError(
                 context_id,
                 f"provider resolution or output validation failed ({type(exc).__name__})",
@@ -179,15 +238,38 @@ class ContextRuntime:
             context_id,
             context.agent_id,
             context.origin,
-            context.origin_id,
+            origin_id,
             value,
             _render(value, render),
             False,
         )
-        if cache is not None:
-            cache[cache_key] = result
-        self._emit(result, run_id, thread_id, cache_scope, render, sensitivity)
         return result
+
+    def _finish_resolution(
+        self,
+        key: tuple[str, str, str, str],
+        task: asyncio.Task[ResolvedContextValue],
+    ) -> None:
+        if not task.cancelled() and task.exception() is None:
+            cache = self._cache(key[0])
+            if cache is not None:
+                cache[(key[1], key[2], key[3])] = task.result()
+        if self._in_flight.get(key) is task:
+            del self._in_flight[key]
+
+    def _complete_scope(self, scope: str, owner: str) -> None:
+        if not owner.strip():
+            raise ValueError(f"{scope}_id must be non-empty")
+        if any(key[0] == scope and key[1] == owner for key in self._in_flight):
+            raise RuntimeError(f"Cannot complete {scope} `{owner}` while context resolution is active")
+        if scope == "run":
+            self._run_cache = {
+                key: value for key, value in self._run_cache.items() if key[0] != owner
+            }
+        else:
+            self._thread_cache = {
+                key: value for key, value in self._thread_cache.items() if key[0] != owner
+            }
 
     def _cache(self, scope: str) -> dict[tuple[str, str, str], ResolvedContextValue] | None:
         if scope == "run":

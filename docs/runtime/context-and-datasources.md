@@ -135,6 +135,42 @@ Datasource cache modes are portable runtime expectations:
 The plan reports how the selected target implements the requested cache mode.
 A required unsupported semantic fails closed.
 
+`ContextRuntime` owns these caches in memory. The host owns their lifetime. It
+must call `system.context.complete_run(run_id)` after all context work for one
+run has stopped. It must call `system.context.complete_thread(thread_id)` after
+all runs in one thread have stopped. A thread-scoped datasource can reuse a
+value across runs only when each resolution receives the same explicit
+`thread_id`. If `thread_id` is absent, the runtime uses `run_id`, and the thread
+cache does not extend beyond that run identity.
+
+Completion is idempotent, but it fails while a matching context resolution is
+active. This prevents cleanup from racing with a provider result. A host can use
+this ownership pattern:
+
+```python
+try:
+    context = await system.context.resolve_agent(
+        "SupportAgent",
+        {"request": request},
+        run_id=run_id,
+        thread_id=thread_id,
+    )
+    # Run the agent with the resolved context.
+finally:
+    system.context.complete_run(run_id)
+
+# Call this only after all runs in the host thread have stopped.
+system.context.complete_thread(thread_id)
+```
+
+Equal concurrent misses in a `run` or `thread` cache use one provider
+resolution. Each caller receives the same validated value. The first caller has
+`from_cache = false`; callers that join the active resolution have
+`from_cache = true`. A provider failure or cancellation removes the active
+entry, so a later call can retry. Cancellation of one waiting caller does not
+cancel the shared provider work. The `none` mode does not combine concurrent
+calls.
+
 ## Materialization and Resolution
 
 During planning and materialization Contract4Agents:

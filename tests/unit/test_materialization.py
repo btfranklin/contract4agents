@@ -30,6 +30,7 @@ from contract4agents.ir import (
 from contract4agents.materialization import (
     AgentsSDK,
     ContextResolutionError,
+    ContextRuntime,
     GraphValidationEvidence,
     MaterializationError,
     NativeAgentDescription,
@@ -787,7 +788,7 @@ async def test_materialized_context_runtime_maps_validates_caches_renders_and_tr
     assert all("value" not in event.data for event in runtime_sink.events)
     NoOpNormalizedTraceSink().emit(runtime_sink.events[0])
 
-    result.context.clear_run("run-1")
+    result.context.complete_run("run-1")
     third = await result.context.resolve_agent(
         "Child",
         {"request": {"value": "needle"}},
@@ -835,7 +836,7 @@ async def test_context_runtime_enforces_thread_cache_and_records_provider_failur
     )
     assert first["current"].from_cache is False
     assert second["current"].from_cache is True
-    result.context.clear_thread("thread-1")
+    result.context.complete_thread("thread-1")
     third = await result.context.resolve_agent(
         "Child", {"request": {"value": "ok"}}, run_id="run-3", thread_id="thread-1"
     )
@@ -856,8 +857,134 @@ async def test_context_runtime_enforces_thread_cache_and_records_provider_failur
         await broken.context.resolve_agent(
             "Child", {"request": {"value": "bad"}}, run_id="run-broken"
         )
-    assert broken_sink.events[-1].event_type == "datasource.failed"
-    assert broken_sink.events[-1].data == {"error_type": "ValidationError"}
+    with pytest.raises(ContextResolutionError, match="output validation failed"):
+        await broken.context.resolve_agent(
+            "Child", {"request": {"value": "bad"}}, run_id="run-broken"
+        )
+    failures = [event for event in broken_sink.events if event.event_type == "datasource.failed"]
+    assert len(failures) == 2
+    assert all(event.data == {"error_type": "ValidationError"} for event in failures)
+
+
+@pytest.mark.asyncio
+async def test_context_runtime_uses_single_flight_and_requires_inactive_completion(
+    tmp_path: Path,
+) -> None:
+    _write_project(tmp_path)
+    result = materialize(
+        tmp_path,
+        "openai",
+        "test",
+        provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
+    )
+    started = asyncio.Event()
+    release = asyncio.Event()
+    calls = 0
+
+    async def current(query: str) -> dict[str, str]:
+        nonlocal calls
+        calls += 1
+        started.set()
+        await release.wait()
+        return {"value": query}
+
+    datasource_id = semantic_id("datasource", "records.current")
+    implementations = FrozenMap(
+        (
+            identifier,
+            current if identifier == datasource_id else implementation,
+        )
+        for identifier, implementation in result.context.implementations.items()
+    )
+    runtime = ContextRuntime(
+        result.context.ir,
+        result.context.plan,
+        implementations,
+        result.context.output_types,
+    )
+    first_task = asyncio.create_task(
+        runtime.resolve_agent(
+            "Child",
+            {"request": {"value": "same"}},
+            run_id="run-1",
+            thread_id="thread-1",
+        )
+    )
+    await started.wait()
+    second_task = asyncio.create_task(
+        runtime.resolve_agent(
+            "Child",
+            {"request": {"value": "same"}},
+            run_id="run-1",
+            thread_id="thread-1",
+        )
+    )
+    await asyncio.sleep(0)
+
+    assert calls == 1
+    with pytest.raises(RuntimeError, match="resolution is active"):
+        runtime.complete_run("run-1")
+
+    release.set()
+    first, second = await asyncio.gather(first_task, second_task)
+    assert first["current"].from_cache is False
+    assert second["current"].from_cache is True
+    assert calls == 1
+
+    runtime.complete_run("run-1")
+    third = await runtime.resolve_agent(
+        "Child",
+        {"request": {"value": "same"}},
+        run_id="run-1",
+        thread_id="thread-1",
+    )
+    assert third["current"].from_cache is False
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_context_runtime_retries_after_provider_cancellation(tmp_path: Path) -> None:
+    _write_project(tmp_path)
+    result = materialize(
+        tmp_path,
+        "openai",
+        "test",
+        provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
+    )
+    calls = 0
+
+    async def current(query: str) -> dict[str, str]:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise asyncio.CancelledError
+        return {"value": query}
+
+    datasource_id = semantic_id("datasource", "records.current")
+    implementations = FrozenMap(
+        (
+            identifier,
+            current if identifier == datasource_id else implementation,
+        )
+        for identifier, implementation in result.context.implementations.items()
+    )
+    runtime = ContextRuntime(
+        result.context.ir,
+        result.context.plan,
+        implementations,
+        result.context.output_types,
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        await runtime.resolve_agent(
+            "Child", {"request": {"value": "retry"}}, run_id="run-1"
+        )
+    resolved = await runtime.resolve_agent(
+        "Child", {"request": {"value": "retry"}}, run_id="run-1"
+    )
+
+    assert cast(Any, resolved["current"].value).value == "retry"
+    assert calls == 2
 
 
 def test_supported_in_process_isolation_is_configured_and_evidenced(tmp_path: Path) -> None:
