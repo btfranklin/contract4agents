@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol, cast, runtime_checkable
 
-from contract4agents.compiler import CompilerArtifacts
+from contract4agents.compiler import CompilerArtifacts, artifact_digests
 from contract4agents.ir import CanonicalIR, FrozenJsonValue, FrozenMap, SemanticId, freeze_json
 from contract4agents.materialization._context import ContextRuntime
 from contract4agents.materialization._tracing import MaterializationTraceSink
@@ -428,6 +428,21 @@ class NativeAgentGraph:
 class MaterializationResult:
     graph: NativeAgentGraph
     plan: MaterializationPlan
+    artifacts: CompilerArtifacts
+
+    def __post_init__(self) -> None:
+        """Keep the returned compilation, plan, and graph evidence joined."""
+
+        if self.graph.context.ir is not self.artifacts.ir:
+            raise ValueError("Materialization graph context must use the returned compiler IR")
+        if self.plan.contract_digest != self.artifacts.contract_digest:
+            raise ValueError("Materialization plan must use the returned compiler contract digest")
+        if self.plan.artifact_digests != artifact_digests(self.artifacts):
+            raise ValueError("Materialization plan must use the returned compiler artifact digests")
+        if self.graph.validation.contract_digest != self.artifacts.contract_digest:
+            raise ValueError("Graph validation must use the returned compiler contract digest")
+        if self.graph.validation.plan_digest != self.plan.plan_digest:
+            raise ValueError("Graph validation must use the returned materialization plan digest")
 
     @property
     def agents(self) -> FrozenMap[str, object]:

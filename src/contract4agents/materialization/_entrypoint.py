@@ -114,7 +114,7 @@ def materialize(
             materialization_trace_sink or NOOP_MATERIALIZATION_TRACE_SINK
         ),
     )
-    return MaterializationResult(graph=graph, plan=plan)
+    return MaterializationResult(graph=graph, plan=plan, artifacts=artifacts)
 
 
 def _load_bindings(

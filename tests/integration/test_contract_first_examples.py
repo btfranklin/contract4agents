@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from contract4agents import compile_project, materialize
+from contract4agents import materialize
 from contract4agents.eval_campaigns import CampaignConfig, FileEvalProvider, run_campaign
 from contract4agents.materialization import RecordingMaterializationTraceSink
 
@@ -17,7 +17,6 @@ EXAMPLES = ("incident-command", "multi-lens-research", "market-research-brief")
 @pytest.mark.parametrize("name", EXAMPLES)
 def test_public_example_declares_materializes_and_evaluates(name: str) -> None:
     project = ROOT / "examples" / name
-    artifacts = compile_project(project)
     trace_sink = RecordingMaterializationTraceSink()
 
     result = materialize(
@@ -26,6 +25,7 @@ def test_public_example_declares_materializes_and_evaluates(name: str) -> None:
         "test",
         materialization_trace_sink=trace_sink,
     )
+    artifacts = result.artifacts
     campaign = asyncio.run(
         run_campaign(
             artifacts.ir,

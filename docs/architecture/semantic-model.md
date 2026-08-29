@@ -780,6 +780,7 @@ result = materialize(
 )
 
 commander = result.agents["IncidentCommander"]
+artifacts = result.artifacts
 plan = result.plan
 ```
 
@@ -797,7 +798,9 @@ Materialization uses two passes:
 After construction, the adapter validates the native graph against the plan.
 The materializer owns agent construction, generated output types, capability
 attachment, and composition wiring; the host supplies only declared bindings
-and application workflow.
+and application workflow. The result also retains the exact `CompilerArtifacts`
+instance used for planning and construction, so host code can use its IR,
+contract digest, schemas, and instructions without compiling the project again.
 
 Validation includes final native configuration properties and parameter/output
 schemas that the SDK exposes. Each configuration check joins a semantic ID and

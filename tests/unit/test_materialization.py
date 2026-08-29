@@ -13,6 +13,7 @@ from pydantic import ValidationError, create_model
 
 from contract4agents import materialize
 from contract4agents.adapters._openai_names import openai_tool_name
+from contract4agents.compiler import CompilerArtifacts, artifact_digests
 from contract4agents.ir import (
     CanonicalIR,
     EnumIR,
@@ -277,6 +278,38 @@ def test_public_materialize_builds_and_validates_complete_native_graph(tmp_path:
     assert result_model(value="ok").value == "ok"
     with pytest.raises(ValidationError):
         result_model(value="ok", undeclared=True)
+
+
+def test_materialization_returns_the_compiler_artifacts_used_by_the_graph_and_plan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_project(tmp_path)
+    import contract4agents.materialization._entrypoint as entrypoint
+
+    original_compile = entrypoint.compile_project
+    compiled: list[CompilerArtifacts] = []
+
+    def compile_spy(root: Path | str) -> CompilerArtifacts:
+        artifacts = original_compile(root)
+        compiled.append(artifacts)
+        return artifacts
+
+    monkeypatch.setattr(entrypoint, "compile_project", compile_spy)
+    result = materialize(
+        tmp_path,
+        "openai",
+        "test",
+        provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
+    )
+
+    assert compiled == [result.artifacts]
+    assert result.artifacts is compiled[0]
+    assert result.graph.context.ir is result.artifacts.ir
+    assert result.plan.contract_digest == result.artifacts.contract_digest
+    assert result.plan.artifact_digests == artifact_digests(result.artifacts)
+    assert result.graph.validation.contract_digest == result.artifacts.contract_digest
+    assert result.graph.validation.plan_digest == result.plan.plan_digest
 
 
 def test_injected_provider_supports_an_unknown_matching_adapter(tmp_path: Path) -> None:

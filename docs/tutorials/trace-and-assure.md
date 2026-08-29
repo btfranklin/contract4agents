@@ -54,7 +54,7 @@ import asyncio
 from pathlib import Path
 
 from agents import Runner
-from contract4agents import compile_project, materialize
+from contract4agents import materialize
 from contract4agents.tracing import (
     TraceAttempt,
     TraceClosureManifest,
@@ -63,12 +63,12 @@ from contract4agents.tracing import (
 
 
 async def run_support_request() -> None:
-    artifacts = compile_project("agent_contracts")
     system = materialize(
         "agent_contracts",
         target="openai",
         profile="development",
     )
+    artifacts = system.artifacts
     responder = system.agents["SupportResponder"]
     attempt = TraceAttempt(
         invocation_id="support:request-123",

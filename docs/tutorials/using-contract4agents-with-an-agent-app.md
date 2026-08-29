@@ -56,6 +56,7 @@ system = materialize(
 )
 
 triage_agent = system.agents["TriageAgent"]
+artifacts = system.artifacts
 plan = system.plan
 structural_types = system.structural_output_types
 materialization_evidence = system.graph.validation.to_json()
@@ -72,7 +73,13 @@ The materializer:
 7. resolves tools, approvals, delegations, and handoffs across the graph;
 8. reads back native tool and output schemas and validates them against the
    contract;
-9. returns deterministic materialization evidence for assurance.
+9. returns the exact compiler artifacts and deterministic materialization
+   evidence for assurance.
+
+Use `system.artifacts` when a run, eval, trace, or assurance workflow needs the
+compiled IR or compiler artifact digests. This keeps those consumers joined to
+the exact compilation used to construct the native graph; do not compile the
+same project a second time at startup.
 
 Required unsupported or degraded mappings stop this process. There is no silent
 fallback to a weaker interpretation.
