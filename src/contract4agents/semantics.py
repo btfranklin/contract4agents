@@ -96,10 +96,17 @@ def analyze_project(project: ContractProject) -> SemanticResult:
     )
     diagnostics.extend(
         _duplicates(
+            [(f"{item.agent}:{item.name}", item.span) for module in project.modules for item in module.evals],
+            "eval",
+        )
+    )
+    diagnostics.extend(
+        _duplicates(
             [(item.name, item.span) for module in project.modules for item in module.run_specs],
             "run spec",
         )
     )
+    diagnostics.extend(_generated_control_identity_collisions(project))
     index = ProjectIndex.from_project(project)
     for type_def in index.type_defs.values():
         if isinstance(type_def, TypeDef):
@@ -147,6 +154,48 @@ def _duplicates(items: list[tuple[str, SourceSpan]], label: str) -> list[Diagnos
             )
         else:
             seen[name] = span
+    return diagnostics
+
+
+def _generated_control_identity_collisions(project: ContractProject) -> list[Diagnostic]:
+    generated: dict[tuple[str, ...], tuple[str, SourceSpan]] = {}
+    for module in project.modules:
+        for agent in module.agents:
+            output_identity = ("control", agent.name, "output_conformance")
+            generated.setdefault(
+                output_identity,
+                (f"the output-conformance control for agent `{agent.name}`", agent.span),
+            )
+            for grant in agent.grants:
+                if grant.authorization != "approval_required":
+                    continue
+                approval_identity = ("control", agent.name, "approval", grant.capability)
+                generated.setdefault(
+                    approval_identity,
+                    (
+                        f"the approval control for grant `{agent.name}:{grant.capability}`",
+                        grant.span or agent.span,
+                    ),
+                )
+
+    diagnostics: list[Diagnostic] = []
+    for module in project.modules:
+        for control in module.controls:
+            identity = ("control", control.agent, control.name)
+            owner = generated.get(identity)
+            if owner is None:
+                continue
+            owner_label, owner_span = owner
+            canonical_identity = ":".join(identity)
+            diagnostics.append(
+                Diagnostic(
+                    "SEM000",
+                    f"Control declaration `{control.agent}:{control.name}` conflicts with generated "
+                    f"canonical identity `{canonical_identity}`",
+                    span=control.span,
+                    hint=f"This identity is reserved for {owner_label} at {owner_span.display()}. Rename the control.",
+                )
+            )
     return diagnostics
 
 

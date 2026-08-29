@@ -192,6 +192,109 @@ def test_enum_values_must_use_quoted_block_strings(tmp_path: Path) -> None:
         parse_project(tmp_path)
 
 
+@pytest.mark.parametrize("across_files", [False, True])
+def test_duplicate_eval_identity_is_rejected_before_ir_construction(
+    tmp_path: Path,
+    across_files: bool,
+) -> None:
+    (tmp_path / "base.contract").write_text(
+        "type Result:\n"
+        "    ok: boolean\n\n"
+        "agent Worker() -> Result:\n"
+        '    goal = "Return a result."\n',
+        encoding="utf-8",
+    )
+    evaluation = "eval same for Worker:\n    expect output.ok == true\n"
+    if across_files:
+        (tmp_path / "a.contract").write_text(evaluation, encoding="utf-8")
+        (tmp_path / "b.contract").write_text(evaluation, encoding="utf-8")
+        expected_path = "b.contract"
+    else:
+        (tmp_path / "a.contract").write_text(f"{evaluation}\n{evaluation}", encoding="utf-8")
+        expected_path = "a.contract"
+
+    project = parse_project(tmp_path)
+    result = analyze_project(project)
+    duplicate = next(item for item in result.diagnostics if "Duplicate eval declaration" in item.message)
+
+    assert duplicate.code == "SEM000"
+    assert duplicate.span is not None
+    assert duplicate.span.path.name == expected_path
+    assert duplicate.hint is not None
+    assert "First declaration was at" in duplicate.hint
+    with pytest.raises(ContractError, match="Duplicate eval declaration"):
+        build_canonical_ir(project)
+
+
+def test_explicit_control_cannot_use_generated_output_control_identity(tmp_path: Path) -> None:
+    (tmp_path / "invalid.contract").write_text(
+        """\
+type Result:
+    ok: boolean
+
+agent Worker() -> Result:
+    goal = "Return a result."
+
+control output_conformance for Worker:
+    severity = high
+    required = true
+    audience = [adapter, host, evaluator, reviewer]
+    assessment = adapter
+    require = output.ok == true
+""",
+        encoding="utf-8",
+    )
+
+    project = parse_project(tmp_path)
+    result = analyze_project(project)
+    collision = next(item for item in result.diagnostics if "generated canonical identity" in item.message)
+
+    assert collision.code == "SEM000"
+    assert "control:Worker:output_conformance" in collision.message
+    assert collision.span is not None
+    assert collision.span.path.name == "invalid.contract"
+    assert collision.hint is not None
+    assert "output-conformance control" in collision.hint
+    with pytest.raises(ContractError, match="generated canonical identity"):
+        build_canonical_ir(project)
+
+
+def test_explicit_control_with_similar_approval_name_keeps_a_distinct_identity(tmp_path: Path) -> None:
+    (tmp_path / "valid.contract").write_text(
+        """\
+type Result:
+    ok: boolean
+
+tool status.publish() -> Result:
+    description = "Publish status."
+    side_effect = true
+
+agent Worker() -> Result:
+    use status.publish:
+        availability = enabled
+        authorization = approval_required
+        execution = host
+    goal = "Return a result."
+
+control approval_required_status_publish for Worker:
+    severity = high
+    required = true
+    audience = [host, evaluator, reviewer]
+    assessment = runtime
+    require = trace.tool_called(status.publish)
+""",
+        encoding="utf-8",
+    )
+
+    project = parse_project(tmp_path)
+    result = analyze_project(project)
+    ir = build_canonical_ir(project)
+
+    assert result.ok, [item.format() for item in result.diagnostics]
+    assert semantic_id("control", "Worker", "approval_required_status_publish") in ir.controls
+    assert semantic_id("control", "Worker", "approval", "status.publish") in ir.controls
+
+
 def test_enabled_grant_requires_explicit_authorization_and_execution(tmp_path: Path) -> None:
     (tmp_path / "invalid.contract").write_text(
         """\
