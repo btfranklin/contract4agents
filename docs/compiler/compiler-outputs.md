@@ -67,10 +67,11 @@ contract4agents generate agent_contracts \
   --target python --target typescript --out shared/generated
 ```
 
-The `python` target emits Pydantic models. The `typescript` target emits
-TypeScript interfaces and their Zod schemas. `generate --check` checks only the
-selected targets, so separate invocations may safely share an output root.
-Generated source includes the contract digest and should not be edited manually.
+The `python` target emits an importable package with Pydantic models and a
+package initializer. The `typescript` target emits TypeScript interfaces and
+their Zod schemas. `generate --check` checks only the selected targets, so
+separate invocations may safely share an output root. Generated source includes
+the contract digest and should not be edited manually.
 Generated Pydantic and Zod validators enforce the same portable bounds as the
 compiler JSON Schema. String lengths use Unicode code-point counts in all
 targets. Datetimes use the shared RFC 3339 subset with a literal `T` and a

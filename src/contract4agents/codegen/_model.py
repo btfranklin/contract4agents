@@ -12,6 +12,7 @@ GENERATOR_VERSION = "1"
 GenerationTarget = Literal["python", "typescript"]
 GENERATION_TARGETS: tuple[GenerationTarget, ...] = ("python", "typescript")
 PYDANTIC_MODELS_PATH = PurePosixPath("python/models.py")
+PYDANTIC_INIT_PATH = PurePosixPath("python/__init__.py")
 TYPESCRIPT_TYPES_PATH = PurePosixPath("typescript/types.ts")
 ZOD_SCHEMAS_PATH = PurePosixPath("typescript/schemas.ts")
 
@@ -58,6 +59,7 @@ __all__ = [
     "GENERATOR_VERSION",
     "GENERATION_TARGETS",
     "GenerationTarget",
+    "PYDANTIC_INIT_PATH",
     "PYDANTIC_MODELS_PATH",
     "TYPESCRIPT_TYPES_PATH",
     "ZOD_SCHEMAS_PATH",

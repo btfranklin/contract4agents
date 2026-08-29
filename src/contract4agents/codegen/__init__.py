@@ -9,6 +9,7 @@ from contract4agents.codegen._generate import (
 from contract4agents.codegen._model import (
     GENERATION_TARGETS,
     GENERATOR_VERSION,
+    PYDANTIC_INIT_PATH,
     PYDANTIC_MODELS_PATH,
     TYPESCRIPT_TYPES_PATH,
     ZOD_SCHEMAS_PATH,
@@ -22,6 +23,7 @@ from contract4agents.codegen._write import stale_generated_paths, write_generate
 __all__ = [
     "GENERATOR_VERSION",
     "GENERATION_TARGETS",
+    "PYDANTIC_INIT_PATH",
     "PYDANTIC_MODELS_PATH",
     "TYPESCRIPT_TYPES_PATH",
     "ZOD_SCHEMAS_PATH",

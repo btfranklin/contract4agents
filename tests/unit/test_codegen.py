@@ -7,6 +7,7 @@ import pytest
 
 from contract4agents.codegen import (
     GENERATOR_VERSION,
+    PYDANTIC_INIT_PATH,
     PYDANTIC_MODELS_PATH,
     TYPESCRIPT_TYPES_PATH,
     ZOD_SCHEMAS_PATH,
@@ -39,6 +40,7 @@ def test_generate_code_emits_stable_paths_headers_and_dependency_order() -> None
     assert generated.contract_digest == contract_digest(ir)
     assert tuple(generated.files) == (
         PYDANTIC_MODELS_PATH,
+        PYDANTIC_INIT_PATH,
         TYPESCRIPT_TYPES_PATH,
         ZOD_SCHEMAS_PATH,
     )
@@ -49,8 +51,11 @@ def test_generate_code_emits_stable_paths_headers_and_dependency_order() -> None
         assert source.endswith("\n")
 
     python_source = generated.files[PYDANTIC_MODELS_PATH]
+    python_init = generated.files[PYDANTIC_INIT_PATH]
     typescript_source = generated.files[TYPESCRIPT_TYPES_PATH]
     assert python_source.index("class Address") < python_source.index("class Incident")
+    assert "from .models import (\n    Address,\n    Incident,\n)" in python_init
+    assert '__all__ = [\n    "Address",\n    "Incident",\n]' in python_init
     assert typescript_source.index("interface Address") < typescript_source.index("interface Incident")
 
     same_semantics = _portable_ir(reverse=False)
@@ -64,10 +69,11 @@ def test_generate_code_emits_only_selected_targets() -> None:
     typescript = generate_code(ir, targets=("typescript",))
     combined = generate_code(ir, targets=("python", "typescript", "python"))
 
-    assert tuple(python.files) == (PYDANTIC_MODELS_PATH,)
+    assert tuple(python.files) == (PYDANTIC_MODELS_PATH, PYDANTIC_INIT_PATH)
     assert tuple(typescript.files) == (TYPESCRIPT_TYPES_PATH, ZOD_SCHEMAS_PATH)
     assert tuple(combined.files) == (
         PYDANTIC_MODELS_PATH,
+        PYDANTIC_INIT_PATH,
         TYPESCRIPT_TYPES_PATH,
         ZOD_SCHEMAS_PATH,
     )
@@ -219,7 +225,7 @@ def test_enum_generation_is_native_and_validates_in_pydantic() -> None:
 
     assert "from typing import Literal" in python
     assert "Status = Literal['accepted', 'follow_up', 'failed']" in python
-    assert "export type Status = \"accepted\" | \"follow_up\" | \"failed\";" in typescript
+    assert 'export type Status = "accepted" | "follow_up" | "failed";' in typescript
     assert 'StatusSchema: z.ZodType<Status> = z.enum(["accepted", "follow_up", "failed"]);' in zod
     assert namespace["Result"](status="accepted").status == "accepted"
     with pytest.raises(ValueError):
@@ -285,6 +291,7 @@ def test_separate_targets_can_share_one_generated_source_root(tmp_path: Any) -> 
     assert write_generated_code(python, output_dir, check=True) == ()
     assert write_generated_code(typescript, output_dir, check=True) == ()
     assert (output_dir / PYDANTIC_MODELS_PATH).is_file()
+    assert (output_dir / PYDANTIC_INIT_PATH).is_file()
     assert (output_dir / TYPESCRIPT_TYPES_PATH).is_file()
     assert (output_dir / ZOD_SCHEMAS_PATH).is_file()
 

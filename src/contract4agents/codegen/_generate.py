@@ -11,6 +11,7 @@ from pathlib import PurePosixPath
 from contract4agents.codegen._model import (
     GENERATION_TARGETS,
     GENERATOR_VERSION,
+    PYDANTIC_INIT_PATH,
     PYDANTIC_MODELS_PATH,
     TYPESCRIPT_TYPES_PATH,
     ZOD_SCHEMAS_PATH,
@@ -52,7 +53,12 @@ def generate_code(ir: CanonicalIR, *, targets: Iterable[str]) -> GeneratedCode:
     ordered_types = _ordered_types(ir)
     files: list[tuple[PurePosixPath, str]] = []
     if "python" in requested:
-        files.append((PYDANTIC_MODELS_PATH, generate_pydantic_models(ir, ordered_types=ordered_types)))
+        files.extend(
+            (
+                (PYDANTIC_MODELS_PATH, generate_pydantic_models(ir, ordered_types=ordered_types)),
+                (PYDANTIC_INIT_PATH, _generate_pydantic_init(ir, ordered_types=ordered_types)),
+            )
+        )
     if "typescript" in requested:
         files.extend(
             (
@@ -147,6 +153,31 @@ def generate_typescript_types(
     return "\n".join(lines).rstrip() + "\n"
 
 
+def _generate_pydantic_init(
+    ir: CanonicalIR,
+    *,
+    ordered_types: tuple[TypeDeclarationIR, ...] | None = None,
+) -> str:
+    """Generate the public initializer for the Pydantic model package."""
+
+    types = ordered_types if ordered_types is not None else _ordered_types(ir)
+    lines = [
+        *_header("#", contract_digest(ir)),
+        '"""Generated Pydantic contract models."""',
+        "",
+    ]
+    if not types:
+        lines.append("__all__: list[str] = []")
+        return "\n".join(lines) + "\n"
+
+    lines.append("from .models import (")
+    lines.extend(f"    {type_def.name}," for type_def in types)
+    lines.extend([")", "", "__all__ = ["])
+    lines.extend(f'    "{type_def.name}",' for type_def in types)
+    lines.append("]")
+    return "\n".join(lines) + "\n"
+
+
 def generate_zod_schemas(
     ir: CanonicalIR,
     *,
@@ -166,9 +197,7 @@ def generate_zod_schemas(
     for type_def in types:
         if isinstance(type_def, EnumIR):
             values = ", ".join(json.dumps(value, ensure_ascii=False) for value in type_def.values)
-            lines.extend(
-                [f"export const {type_def.name}Schema: z.ZodType<{type_def.name}> = z.enum([{values}]);", ""]
-            )
+            lines.extend([f"export const {type_def.name}Schema: z.ZodType<{type_def.name}> = z.enum([{values}]);", ""])
             continue
         lines.extend([f"export const {type_def.name}Schema: z.ZodType<{type_def.name}> = z.lazy(() =>"])
         lines.append("  z")
@@ -206,14 +235,14 @@ def _pydantic_datetime_helper() -> list[str]:
         "    if match is None:",
         "        raise ValueError(_PORTABLE_DATETIME_ERROR)",
         "    parts = match.groupdict()",
-        "    year = int(parts[\"year\"])",
-        "    month = int(parts[\"month\"])",
-        "    day = int(parts[\"day\"])",
-        "    hour = int(parts[\"hour\"])",
-        "    minute = int(parts[\"minute\"])",
-        "    second = int(parts[\"second\"])",
-        "    offset_hour = int(parts[\"offset_hour\"] or 0)",
-        "    offset_minute = int(parts[\"offset_minute\"] or 0)",
+        '    year = int(parts["year"])',
+        '    month = int(parts["month"])',
+        '    day = int(parts["day"])',
+        '    hour = int(parts["hour"])',
+        '    minute = int(parts["minute"])',
+        '    second = int(parts["second"])',
+        '    offset_hour = int(parts["offset_hour"] or 0)',
+        '    offset_minute = int(parts["offset_minute"] or 0)',
         "    if (",
         "        year == 0",
         "        or month < 1",
@@ -353,12 +382,12 @@ def _zod_type(type_ref: TypeRef) -> str:
         if type_ref.item.name == "string":
             if type_ref.min_length is not None:
                 source += (
-                    f'.refine((value) => Array.from(value).length >= {type_ref.min_length}, '
+                    f".refine((value) => Array.from(value).length >= {type_ref.min_length}, "
                     f'{{ message: "String must contain at least {type_ref.min_length} Unicode code points" }})'
                 )
             if type_ref.max_length is not None:
                 source += (
-                    f'.refine((value) => Array.from(value).length <= {type_ref.max_length}, '
+                    f".refine((value) => Array.from(value).length <= {type_ref.max_length}, "
                     f'{{ message: "String must contain at most {type_ref.max_length} Unicode code points" }})'
                 )
             return source
@@ -391,9 +420,7 @@ def _python_literal(value: FrozenJsonValue) -> str:
         return repr(value)
     if isinstance(value, tuple):
         return "[" + ", ".join(_python_literal(item) for item in value) + "]"
-    return "{" + ", ".join(
-        f"{key!r}: {_python_literal(item)}" for key, item in sorted(value.items())
-    ) + "}"
+    return "{" + ", ".join(f"{key!r}: {_python_literal(item)}" for key, item in sorted(value.items())) + "}"
 
 
 def _typescript_literal(value: FrozenJsonValue) -> str:
@@ -500,11 +527,7 @@ def _contains_constraints(type_ref: TypeRef) -> bool:
     if isinstance(type_ref, NullableTypeRef):
         return _contains_constraints(type_ref.item)
     if isinstance(type_ref, ListTypeRef):
-        return (
-            type_ref.min_items is not None
-            or type_ref.max_items is not None
-            or _contains_constraints(type_ref.item)
-        )
+        return type_ref.min_items is not None or type_ref.max_items is not None or _contains_constraints(type_ref.item)
     if isinstance(type_ref, MapTypeRef):
         return _contains_constraints(type_ref.value)
     return False
@@ -516,7 +539,7 @@ def _validate_identifier(name: str, label: str) -> None:
 
 
 def _python_docstring(value: str) -> str:
-    return value.replace('"""', r'\"\"\"').replace("\n", " ")
+    return value.replace('"""', r"\"\"\"").replace("\n", " ")
 
 
 __all__ = [

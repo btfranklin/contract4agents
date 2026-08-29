@@ -54,10 +54,11 @@ Options:
 - `--out PATH`: output root; default `.contract/generated`.
 - `--check`: fail when selected generated source is missing, modified, or stale.
 
-The `python` target emits Pydantic models. The `typescript` target emits
-TypeScript interfaces and their Zod schemas. Run `generate` only for targets
-the application consumes, commonly into a dedicated checked-in generated
-directory. Generated files remain machine-owned and must not be edited.
+The `python` target emits an importable package with Pydantic models and a
+package initializer. The `typescript` target emits TypeScript interfaces and
+their Zod schemas. Run `generate` only for targets the application consumes,
+commonly into a dedicated checked-in generated directory. Generated files
+remain machine-owned and must not be edited.
 
 ## `plan [ROOT]`
 
