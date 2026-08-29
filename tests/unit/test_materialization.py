@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+import traceback
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -378,6 +379,96 @@ def test_materialization_validates_and_serializes_root_agent_inputs(tmp_path: Pa
     with pytest.raises(MaterializationError) as caught:
         result.validate_agent_input("Missing", {})
     assert [issue.code for issue in caught.value.issues] == ["MAT205"]
+
+
+@pytest.mark.parametrize(
+    ("invalid_request", "expected_detail"),
+    (
+        (
+            {
+                "value": "valid",
+                "count": "scalar-secret",
+                "details": {"count": 1},
+                "items": [1],
+            },
+            "request.count: value does not satisfy the declared type (int_type)",
+        ),
+        (
+            {
+                "value": "valid",
+                "count": 1,
+                "details": {"count": "nested-secret"},
+                "items": [1],
+            },
+            "request.details.count: value does not satisfy the declared type (int_type)",
+        ),
+        (
+            {
+                "value": "valid",
+                "count": 1,
+                "details": {"count": 1},
+                "items": [1],
+                "extra": "extra-secret",
+            },
+            "request.extra: value does not satisfy the declared type (extra_forbidden)",
+        ),
+        (
+            {
+                "value": "valid",
+                "count": 1,
+                "details": {"count": 1},
+                "items": ["collection-secret"],
+            },
+            "request.items[0]: value does not satisfy the declared type (int_type)",
+        ),
+    ),
+)
+def test_materialization_does_not_expose_invalid_root_input_values(
+    tmp_path: Path,
+    invalid_request: dict[str, object],
+    expected_detail: str,
+) -> None:
+    _write_project(tmp_path)
+    contract_path = tmp_path / "system.contract"
+    contract_path.write_text(
+        contract_path.read_text(encoding="utf-8").replace(
+            "type Request:\n    value: string",
+            """\
+type Details:
+    count: integer
+
+type Request:
+    value: string
+    count: integer
+    details: Details
+    items: list[integer]""",
+        ),
+        encoding="utf-8",
+    )
+    result = materialize(
+        tmp_path,
+        "openai",
+        "test",
+        provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
+    )
+
+    with pytest.raises(MaterializationError) as caught:
+        result.validate_agent_input("Parent", {"request": invalid_request})
+
+    error = caught.value
+    issue = error.issues[0]
+    assert issue.code == "MAT206"
+    assert expected_detail in issue.message
+    rendered = (
+        issue.message,
+        str(error),
+        repr(error),
+        "".join(traceback.format_exception(error)),
+    )
+    for secret in ("scalar-secret", "nested-secret", "extra-secret", "collection-secret"):
+        assert all(secret not in text for text in rendered)
+    assert error.__cause__ is None
+    assert error.__context__ is None
 
 
 def test_materialization_rejects_input_for_parameter_free_agent(tmp_path: Path) -> None:

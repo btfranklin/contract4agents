@@ -508,14 +508,18 @@ class MaterializationResult:
         try:
             return cast(object, cast(Any, input_type).model_validate(value))
         except ValidationError as exc:
-            raise MaterializationError(
-                (
-                    MaterializationIssue(
-                        "MAT206",
-                        f"Input for agent `{agent_name}` does not satisfy its contract: {exc}",
+            validation_summary = _safe_validation_summary(exc)
+        raise MaterializationError(
+            (
+                MaterializationIssue(
+                    "MAT206",
+                    (
+                        f"Input for agent `{agent_name}` does not satisfy its contract: "
+                        f"{validation_summary}"
                     ),
-                )
-            ) from exc
+                ),
+            )
+        )
 
     def serialize_agent_input(
         self,
@@ -630,3 +634,27 @@ def _semantic_ids(value: dict[object, object], key: str) -> tuple[SemanticId, ..
     if any(not isinstance(item, str) for item in items):
         raise TypeError(f"{key} entries must be strings")
     return tuple(SemanticId.parse(cast(str, item)) for item in items)
+
+
+def _safe_validation_summary(error: ValidationError) -> str:
+    summaries: list[str] = []
+    for item in error.errors(include_input=False, include_url=False):
+        location = _validation_location(item.get("loc"))
+        error_type = item.get("type")
+        stable_type = error_type if isinstance(error_type, str) else "validation_error"
+        summaries.append(f"{location}: value does not satisfy the declared type ({stable_type})")
+    return "; ".join(summaries) or "input validation failed"
+
+
+def _validation_location(value: object) -> str:
+    if not isinstance(value, tuple) or not value:
+        return "<root>"
+    location = ""
+    for part in value:
+        if isinstance(part, int):
+            location = f"{location}[{part}]"
+        elif isinstance(part, str):
+            location = f"{location}.{part}" if location else part
+        else:
+            location = f"{location}.<field>" if location else "<field>"
+    return location
