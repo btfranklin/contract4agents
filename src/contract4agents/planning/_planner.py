@@ -188,17 +188,22 @@ def _resolve_operational_controls(
         outcome: MappingOutcome = "emulated"
         mechanism: str | None = "contract4agents.single_run_operational_assessor"
         evidence: tuple[str, ...]
+        unsupported_reason: str | None = None
         if control.window is not None:
             outcome = "unsupported"
             mechanism = None
             evidence = ()
+            unsupported_reason = (
+                f"window `{control.window}` requires a bound cross-run telemetry provider"
+            )
         else:
             try:
                 parsed = parse_operational_requirement(control.requirement)
-            except ExpressionError:
+            except ExpressionError as exc:
                 outcome = "unsupported"
                 mechanism = None
                 evidence = ()
+                unsupported_reason = str(exc)
             else:
                 if parsed.metric == "duration":
                     evidence = ("agent.started", "agent.completed", "agent.failed")
@@ -210,17 +215,23 @@ def _resolve_operational_controls(
                     evidence = ("attempt.selected",)
                 event_types.update(evidence)
         if outcome == "unsupported":
-            # The plan is fail-closed for declared operational requirements.
-            pass
-        else:
-            _add_obligation(
-                obligations,
-                HostObligationPlan(
-                    "host.provide_operational_evidence",
-                    f"Provide normalized trace and closure evidence for operational control `{control_id}`.",
+            assert unsupported_reason is not None
+            issues.append(
+                PlanningIssue(
+                    "PLN012",
+                    f"Operational control `{control_id}` is unsupported: {unsupported_reason}.",
                     control_id,
-                ),
+                )
             )
+            continue
+        _add_obligation(
+            obligations,
+            HostObligationPlan(
+                "host.provide_operational_evidence",
+                f"Provide normalized trace and closure evidence for operational control `{control_id}`.",
+                control_id,
+            ),
+        )
         result[control_id] = OperationalControlMappingPlan(
             id=control_id,
             agent_id=control.agent_id,

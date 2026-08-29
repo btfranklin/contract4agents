@@ -16,7 +16,9 @@ from contract4agents.ir import (
     FrozenMap,
     GrantIR,
     IsolationProfileIR,
+    OperationalControlIR,
     ParameterIR,
+    SemanticId,
     TypeFieldIR,
     TypeIR,
     parse_type_ref,
@@ -300,6 +302,68 @@ def test_missing_models_and_bindings_are_reported_together() -> None:
     codes = [issue.code for issue in caught.value.issues]
     assert codes.count("PLN005") == 2
     assert codes.count("PLN006") == 3
+
+
+def test_supported_single_run_operational_control_has_required_evidence() -> None:
+    ir, control_id = _with_operational_control(
+        _sample_ir(),
+        requirement="trace.duration < 10s",
+    )
+
+    plan = plan_materialization(
+        ir,
+        _bindings(),
+        target="openai",
+        profile="production",
+        capabilities=_capabilities(),
+    )
+
+    mapping = plan.operational_controls[control_id]
+    assert mapping.outcome == "emulated"
+    assert mapping.mechanism == "contract4agents.single_run_operational_assessor"
+    assert mapping.expected_evidence == (
+        "agent.started",
+        "agent.completed",
+        "agent.failed",
+    )
+    assert any(
+        item.code == "host.provide_operational_evidence"
+        and item.semantic_id == control_id
+        for item in plan.host_obligations
+    )
+
+
+@pytest.mark.parametrize(
+    ("requirement", "window", "reason"),
+    [
+        ("trace.duration < 10s", "15m", "cross-run telemetry provider"),
+        ("not an operational expression", None, "Unsupported operational expression"),
+        ("trace.unknown_metric < 1", None, "Unsupported operational metric"),
+    ],
+)
+def test_unsupported_operational_controls_block_planning(
+    requirement: str,
+    window: str | None,
+    reason: str,
+) -> None:
+    ir, control_id = _with_operational_control(
+        _sample_ir(),
+        requirement=requirement,
+        window=window,
+    )
+
+    with pytest.raises(PlanningError) as caught:
+        plan_materialization(
+            ir,
+            _bindings(),
+            target="openai",
+            profile="production",
+            capabilities=_capabilities(),
+        )
+
+    issue = next(item for item in caught.value.issues if item.code == "PLN012")
+    assert issue.semantic_id == control_id
+    assert reason in issue.message
 
 
 def test_approval_requirement_fails_closed_without_adapter_support() -> None:
@@ -754,6 +818,28 @@ def _bindings() -> TargetBindings:
         },
     )
     return TargetBindings(Path("/local/not/canonical/contract4agents.targets.toml"), {"openai": target})
+
+
+def _with_operational_control(
+    ir: CanonicalIR,
+    *,
+    requirement: str,
+    window: str | None = None,
+) -> tuple[CanonicalIR, SemanticId]:
+    agent_id = semantic_id("agent", "IncidentCommander")
+    control_id = semantic_id("operational", "IncidentCommander", "latency")
+    control = OperationalControlIR(
+        control_id,
+        "latency",
+        agent_id,
+        "medium",
+        requirement,
+        window,
+    )
+    return replace(
+        ir,
+        operational_controls=FrozenMap(((control_id, control),)),
+    ), control_id
 
 
 def _openai_hosted_bindings() -> TargetBindings:

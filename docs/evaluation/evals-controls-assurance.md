@@ -209,8 +209,9 @@ delegates deterministic packaging to `assemble_assurance_bundle(...)`. Call the
 lower-level assembler only when the application already owns those assessed
 result objects.
 
-The plan records each operational-control mapping, support outcome, mechanism,
-and expected evidence. The workflow computes operational results from the same
+The plan records each supported operational-control mapping, mechanism, and
+expected evidence. Planning fails when a declared operational control has no
+supported mapping. The workflow computes operational results from the same
 normalized trace and closure used by behavioral assessment. Assurance bundles
 always contain `operational-control-results.json`; provider-free replay can
 assess finalized provider usage and outcome events with the same result rules.

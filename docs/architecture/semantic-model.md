@@ -412,8 +412,9 @@ operational_control commander_latency for IncidentCommander:
 ```
 
 The initial implementation supports single-run budgets before cross-run window
-aggregation. A plan must report a windowed rule as unsupported until a bound
-telemetry provider supplies that capability.
+aggregation. Planning fails for a windowed rule until a bound telemetry
+provider supplies that capability. No runnable plan can omit a declared
+operational control.
 
 ## Complete proposed source
 

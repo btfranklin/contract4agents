@@ -851,6 +851,32 @@ def test_strong_isolation_dimension_fails_closed_before_graph_construction(tmp_p
     )
 
 
+def test_unsupported_operational_control_fails_before_graph_construction(
+    tmp_path: Path,
+) -> None:
+    _write_project(
+        tmp_path,
+        operational_source="""\
+operational_control latency for Parent:
+    severity = medium
+    window = 15m
+    require = trace.duration < 10s
+
+""",
+    )
+
+    with pytest.raises(PlanningError) as caught:
+        materialize(
+            tmp_path,
+            "openai",
+            "test",
+            provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
+        )
+
+    issue = next(item for item in caught.value.issues if item.code == "PLN012")
+    assert issue.semantic_id == semantic_id("operational", "Parent", "latency")
+
+
 def test_strong_environment_provider_can_satisfy_filesystem_and_network_dimensions(
     tmp_path: Path,
 ) -> None:
@@ -885,6 +911,7 @@ def _write_project(
     datasource_cache: str = "run",
     async_current: bool = False,
     invalid_current: bool = False,
+    operational_source: str = "",
 ) -> None:
     isolation_source = ""
     edge_isolation = ""
@@ -939,7 +966,7 @@ external_context request_context -> Request:
     sensitivity = internal
     render = markdown
 
-{isolation_source}agent Child(request: Request) -> Result:
+{isolation_source}{operational_source}agent Child(request: Request) -> Result:
     use records.lookup:
         availability = enabled
         authorization = approval_required
