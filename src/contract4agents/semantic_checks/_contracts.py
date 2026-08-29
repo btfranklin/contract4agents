@@ -120,10 +120,7 @@ def check_agent_contract(agent: AgentDef, index: ProjectIndex) -> list[Diagnosti
                     span=grant.span,
                 )
             )
-        if (
-            grant.execution is None
-            or _EXECUTION_BOUNDARY.fullmatch(grant.execution) is None
-        ):
+        if grant.execution is None or _EXECUTION_BOUNDARY.fullmatch(grant.execution) is None:
             diagnostics.append(
                 Diagnostic(
                     "SEM108",
@@ -398,10 +395,10 @@ def check_isolation(item: IsolationDef) -> list[Diagnostic]:
 def check_control(item: ControlDef, index: ProjectIndex) -> list[Diagnostic]:
     diagnostics = _check_owned_declaration(item.name, item.agent, item.span, "Control", index)
     attrs = item.attributes
-    assessment = _text(attrs.get("assessment"))
+    assessment = _text(attrs.assessment.value if attrs.assessment is not None else None)
     if assessment not in ASSESSMENTS:
         diagnostics.append(Diagnostic("SEM125", f"Control `{item.name}` requires a valid assessment", span=item.span))
-    if "require" not in attrs:
+    if attrs.requirement is None:
         diagnostics.append(
             Diagnostic("SEM126", f"Control `{item.name}` requires a `require` expression", span=item.span)
         )
@@ -410,10 +407,10 @@ def check_control(item: ControlDef, index: ProjectIndex) -> list[Diagnostic]:
         reachable_agents = index.reachable_agent_names(owner.name)
         reachable_tools = index.reachable_tools(owner.name)
         reachable_datasources = index.reachable_datasource_targets(owner.name)
-        for attribute in ("when", "require"):
-            if attribute not in attrs:
+        for attribute in (attrs.condition, attrs.requirement):
+            if attribute is None:
                 continue
-            value = _text(attrs.get(attribute))
+            value = _text(attribute.value)
             diagnostics.extend(
                 check_expression_refs(
                     value,
@@ -428,19 +425,20 @@ def check_control(item: ControlDef, index: ProjectIndex) -> list[Diagnostic]:
                     trace_conjunction=True,
                 )
             )
-    severity = _text(attrs.get("severity"))
+    severity = _text(attrs.severity.value if attrs.severity is not None else None)
     if severity not in SEVERITIES:
         diagnostics.append(Diagnostic("SEM136", f"Control `{item.name}` requires a valid severity", span=item.span))
-    if _text(attrs.get("required")) not in BOOLEAN_VALUES:
+    if _text(attrs.required.value if attrs.required is not None else None) not in BOOLEAN_VALUES:
         diagnostics.append(
             Diagnostic("SEM137", f"Control `{item.name}` requires boolean `required` metadata", span=item.span)
         )
-    expected_evidence = attrs.get("expected_evidence", [])
-    if expected_evidence and not isinstance(expected_evidence, list):
+    expected_evidence = attrs.expected_evidence.value if attrs.expected_evidence is not None else ()
+    if expected_evidence and not isinstance(expected_evidence, tuple):
         diagnostics.append(
             Diagnostic("SEM138", f"Control `{item.name}` expected_evidence must be a list", span=item.span)
         )
-    diagnostics.extend(_check_audiences(item.name, attrs.get("audience"), item.span, default=False))
+    audience = attrs.audience.value if attrs.audience is not None else None
+    diagnostics.extend(_check_audiences(item.name, audience, item.span, default=False))
     return diagnostics
 
 
@@ -454,17 +452,23 @@ def check_quality(item: QualityDef, index: ProjectIndex) -> list[Diagnostic]:
 
 def check_operational_control(item: OperationalControlDef, index: ProjectIndex) -> list[Diagnostic]:
     diagnostics = _check_owned_declaration(item.name, item.agent, item.span, "Operational control", index)
-    if "require" not in item.attributes:
+    attrs = item.attributes
+    if attrs.requirement is None:
         diagnostics.append(
             Diagnostic("SEM128", f"Operational control `{item.name}` requires a `require` expression", span=item.span)
         )
-    severity = _text(item.attributes.get("severity"))
+    severity = _text(attrs.severity.value if attrs.severity is not None else None)
     if severity not in SEVERITIES:
         diagnostics.append(
             Diagnostic("SEM139", f"Operational control `{item.name}` requires a valid severity", span=item.span)
         )
     diagnostics.extend(
-        _check_audiences(item.name, item.attributes.get("audience"), item.span, default=True)
+        _check_audiences(
+            item.name,
+            attrs.audience.value if attrs.audience is not None else None,
+            item.span,
+            default=True,
+        )
     )
     return diagnostics
 
@@ -491,9 +495,9 @@ def _check_owned_declaration(name: str, agent: str, span: Any, label: str, index
 
 
 def _check_audiences(name: str, value: Any, span: Any, *, default: bool) -> list[Diagnostic]:
-    if value in (None, []) and default:
+    if value in (None, [], ()) and default:
         return []
-    if not isinstance(value, list) or not value:
+    if not isinstance(value, list | tuple) or not value:
         return [Diagnostic("SEM131", f"Declaration `{name}` requires a non-empty audience list", span=span)]
     unknown = sorted(set(str(item) for item in value) - set(AUDIENCES))
     if not unknown:

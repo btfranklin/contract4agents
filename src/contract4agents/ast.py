@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 
 @dataclass(frozen=True)
@@ -15,6 +15,78 @@ class SourceSpan:
 
     def display(self) -> str:
         return f"{self.path}:{self.line}:{self.column}"
+
+
+SourceAttributeValue = str | tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class SourceAttribute:
+    """One parsed declaration attribute with its source location."""
+
+    name: str
+    value: SourceAttributeValue
+    span: SourceSpan
+
+
+@dataclass(frozen=True)
+class AgentAttributes:
+    goal: SourceAttribute | None = None
+    description: SourceAttribute | None = None
+    guidance: SourceAttribute | None = None
+    unknown: tuple[SourceAttribute, ...] = ()
+
+    def entries(self) -> tuple[SourceAttribute, ...]:
+        return tuple(item for item in (self.goal, self.description, self.guidance) if item is not None) + self.unknown
+
+
+@dataclass(frozen=True)
+class ControlAttributes:
+    assessment: SourceAttribute | None = None
+    requirement: SourceAttribute | None = None
+    severity: SourceAttribute | None = None
+    required: SourceAttribute | None = None
+    audience: SourceAttribute | None = None
+    condition: SourceAttribute | None = None
+    expected_evidence: SourceAttribute | None = None
+    unknown: tuple[SourceAttribute, ...] = ()
+
+    def entries(self) -> tuple[SourceAttribute, ...]:
+        known = (
+            self.assessment,
+            self.requirement,
+            self.severity,
+            self.required,
+            self.audience,
+            self.condition,
+            self.expected_evidence,
+        )
+        return tuple(item for item in known if item is not None) + self.unknown
+
+
+@dataclass(frozen=True)
+class OperationalControlAttributes:
+    requirement: SourceAttribute | None = None
+    severity: SourceAttribute | None = None
+    audience: SourceAttribute | None = None
+    window: SourceAttribute | None = None
+    unknown: tuple[SourceAttribute, ...] = ()
+
+    def entries(self) -> tuple[SourceAttribute, ...]:
+        known = (self.requirement, self.severity, self.audience, self.window)
+        return tuple(item for item in known if item is not None) + self.unknown
+
+
+@dataclass(frozen=True)
+class RunSpecAttributes:
+    stages: SourceAttribute | None = None
+    assertions: SourceAttribute | None = None
+    derived_values: SourceAttribute | None = None
+    unknown: tuple[SourceAttribute, ...] = ()
+
+    def entries(self) -> tuple[SourceAttribute, ...]:
+        known = (self.stages, self.assertions, self.derived_values)
+        return tuple(item for item in known if item is not None) + self.unknown
 
 
 @dataclass(frozen=True)
@@ -107,19 +179,10 @@ class AgentDef:
     name: str
     parameters: list[FieldDef]
     return_type: str
-    attributes: dict[str, Any]
+    attributes: AgentAttributes
     span: SourceSpan
-    attribute_spans: dict[str, SourceSpan] = field(default_factory=dict)
     grants: list[GrantDef] = field(default_factory=list)
     context: list[ContextRequirement] = field(default_factory=list)
-
-    def list_attr(self, key: str) -> list[str]:
-        value = self.attributes.get(key, [])
-        return value if isinstance(value, list) else []
-
-    def text_attr(self, key: str) -> str:
-        value = self.attributes.get(key, "")
-        return value if isinstance(value, str) else ""
 
 
 @dataclass(frozen=True)
@@ -156,7 +219,7 @@ class IsolationDef:
 class ControlDef:
     name: str
     agent: str
-    attributes: dict[str, Any]
+    attributes: ControlAttributes
     span: SourceSpan
 
 
@@ -173,18 +236,25 @@ class QualityDef:
 class OperationalControlDef:
     name: str
     agent: str
-    attributes: dict[str, Any]
+    attributes: OperationalControlAttributes
     span: SourceSpan
 
 
 @dataclass(frozen=True)
 class RunSpecDef:
     name: str
-    stages: list[str]
-    assertions: list[str]
-    attributes: dict[str, Any]
+    attributes: RunSpecAttributes
     span: SourceSpan
-    attribute_spans: dict[str, SourceSpan] = field(default_factory=dict)
+
+    @property
+    def stages(self) -> tuple[str, ...]:
+        value = self.attributes.stages.value if self.attributes.stages is not None else ()
+        return value if isinstance(value, tuple) else ()
+
+    @property
+    def assertions(self) -> tuple[str, ...]:
+        value = self.attributes.assertions.value if self.attributes.assertions is not None else ()
+        return value if isinstance(value, tuple) else ()
 
 
 @dataclass

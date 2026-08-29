@@ -30,8 +30,10 @@ def check_run_spec(run_spec: RunSpecDef, index: ProjectIndex) -> list[Diagnostic
 
 def _check_attributes(run_spec: RunSpecDef) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
-    for key, value in run_spec.attributes.items():
-        span = run_spec.attribute_spans.get(key, run_spec.span)
+    for attribute in run_spec.attributes.entries():
+        key = attribute.name
+        value = attribute.value
+        span = attribute.span
         if key not in RUN_SPEC_ATTRIBUTES:
             hint = "Run specs verify host-owned workflow behavior; executable workflow control belongs in Python."
             if key not in WORKFLOW_LIKE_ATTRIBUTES:
@@ -45,7 +47,7 @@ def _check_attributes(run_spec: RunSpecDef) -> list[Diagnostic]:
                 )
             )
             continue
-        if not isinstance(value, list):
+        if not isinstance(value, tuple):
             diagnostics.append(
                 Diagnostic(
                     "SEM081",
@@ -53,7 +55,7 @@ def _check_attributes(run_spec: RunSpecDef) -> list[Diagnostic]:
                     span=span,
                 )
             )
-    if "stages" not in run_spec.attributes:
+    if run_spec.attributes.stages is None:
         diagnostics.append(
             Diagnostic(
                 "SEM082",
@@ -67,7 +69,7 @@ def _check_attributes(run_spec: RunSpecDef) -> list[Diagnostic]:
 def _parse_stages(run_spec: RunSpecDef, diagnostics: list[Diagnostic]) -> list[RunSpecStageDeclaration]:
     stages: list[RunSpecStageDeclaration] = []
     seen: set[str] = set()
-    span = run_spec.attribute_spans.get("stages", run_spec.span)
+    span = run_spec.attributes.stages.span if run_spec.attributes.stages is not None else run_spec.span
     for raw_stage in run_spec.stages:
         stage = parse_run_spec_stage_declaration(raw_stage)
         if stage is None:
@@ -101,10 +103,11 @@ def _parse_derived_values(
 ) -> list[RunSpecDerivedValueDeclaration]:
     declarations: list[RunSpecDerivedValueDeclaration] = []
     seen: set[str] = set()
-    value = run_spec.attributes.get("derived_values", [])
-    if not isinstance(value, list):
+    attribute = run_spec.attributes.derived_values
+    value = attribute.value if attribute is not None else ()
+    if not isinstance(value, tuple):
         return declarations
-    span = run_spec.attribute_spans.get("derived_values", run_spec.span)
+    span = attribute.span if attribute is not None else run_spec.span
     for raw_value in value:
         raw_declaration = raw_value if isinstance(raw_value, str) else str(raw_value)
         declaration = parse_run_spec_derived_value_declaration(raw_declaration)
@@ -153,7 +156,7 @@ def _check_stage_refs(
     index: ProjectIndex,
 ) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
-    span = run_spec.attribute_spans.get("stages", run_spec.span)
+    span = run_spec.attributes.stages.span if run_spec.attributes.stages is not None else run_spec.span
     for stage in stages:
         if stage.agent not in index.agent_defs:
             diagnostics.append(
@@ -197,7 +200,7 @@ def _check_run_assertions(
     reachable_tools: set[str] = set()
     for agent in staged_agents:
         reachable_tools.update(index.reachable_tools(agent))
-    span = run_spec.attribute_spans.get("assertions", run_spec.span)
+    span = run_spec.attributes.assertions.span if run_spec.attributes.assertions is not None else run_spec.span
     declared_value_names = {value.name for value in derived_values}
     for expression in run_spec.assertions:
         try:
@@ -207,9 +210,7 @@ def _check_run_assertions(
             continue
         for parsed in _iter_run_spec_assertion_items(parsed_items):
             if parsed.kind == "data_relation":
-                diagnostics.extend(
-                    _check_data_relation_refs(run_spec, parsed, declared_value_names, span)
-                )
+                diagnostics.extend(_check_data_relation_refs(run_spec, parsed, declared_value_names, span))
                 continue
             if parsed.kind != "trace":
                 diagnostics.append(
@@ -248,9 +249,7 @@ def _check_data_relation_refs(
                     "SEM091",
                     f"Run spec `{run_spec.name}` assertion references undeclared derived value `value.{ref}`",
                     span=span,
-                    hint=(
-                        "Declare the value in the run spec's `derived_values` block."
-                    ),
+                    hint=("Declare the value in the run spec's `derived_values` block."),
                 )
             )
     return diagnostics

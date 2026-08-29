@@ -23,8 +23,10 @@ def check_agent(
 
 def _check_agent_attributes(agent: AgentDef) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
-    for key, value in agent.attributes.items():
-        span = agent.attribute_spans.get(key, agent.span)
+    for attribute in agent.attributes.entries():
+        key = attribute.name
+        value = attribute.value
+        span = attribute.span
         if key not in AGENT_ATTRIBUTES:
             diagnostics.append(
                 Diagnostic(
@@ -47,7 +49,7 @@ def _check_agent_attributes(agent: AgentDef) -> list[Diagnostic]:
                     span=span,
                 )
             )
-        elif key in AGENT_LIST_ATTRIBUTES and not isinstance(value, list):
+        elif key in AGENT_LIST_ATTRIBUTES and not isinstance(value, tuple):
             diagnostics.append(
                 Diagnostic(
                     "SEM071",
@@ -56,5 +58,6 @@ def _check_agent_attributes(agent: AgentDef) -> list[Diagnostic]:
                 )
             )
     return diagnostics
+
 
 __all__ = ["check_agent"]

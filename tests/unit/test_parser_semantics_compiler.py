@@ -152,7 +152,9 @@ run_spec Run:
         )
     ]
 
-    project.run_specs["Run"].stages[0] = "work: Worker -> Expected"
+    source_path = tmp_path / "run.contract"
+    source_path.write_text(source_path.read_text().replace("work: Worker -> Wrong", "work: Worker -> Expected"))
+    project = parse_project(tmp_path)
     ir = build_canonical_ir(project)
     run_spec = next(iter(ir.run_specs.values()))
 

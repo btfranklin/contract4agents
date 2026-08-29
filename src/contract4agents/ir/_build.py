@@ -6,7 +6,25 @@ import json
 import re
 from typing import Any, cast
 
-from contract4agents.ast import ContractProject, EnumDef, FieldDef
+from contract4agents.ast import (
+    AgentDef,
+    CompositionDef,
+    ContextRequirement,
+    ContractProject,
+    ControlDef,
+    DatasourceDef,
+    EnumDef,
+    EvalCase,
+    ExternalContextDef,
+    FieldDef,
+    GrantDef,
+    IsolationDef,
+    OperationalControlDef,
+    QualityDef,
+    RunSpecDef,
+    ToolDef,
+    TypeDef,
+)
 from contract4agents.ast import SourceSpan as AstSourceSpan
 from contract4agents.diagnostics import raise_if_errors
 from contract4agents.ir._collections import FrozenMap, freeze_json
@@ -26,12 +44,18 @@ from contract4agents.ir._model import (
     ControlIR,
     EnumIR,
     EvalIR,
-    ExecutionBoundary,
     ExternalContextIR,
     GrantIR,
     GuidanceIR,
     HistoryMode,
+    IsolationCapabilities,
+    IsolationContext,
+    IsolationFilesystem,
+    IsolationNetwork,
     IsolationProfileIR,
+    IsolationReturn,
+    IsolationSecrets,
+    IsolationState,
     OperationalControlIR,
     ParameterIR,
     QualityIR,
@@ -105,7 +129,7 @@ def build_canonical_ir(project: ContractProject) -> CanonicalIR:
     )
 
 
-def _type_ir(project: ContractProject, item: Any) -> TypeIR:
+def _type_ir(project: ContractProject, item: TypeDef) -> TypeIR:
     fields = tuple(
         TypeFieldIR(
             name=field.name,
@@ -133,7 +157,7 @@ def _enum_ir(project: ContractProject, item: EnumDef) -> EnumIR:
     )
 
 
-def _tool_ir(project: ContractProject, item: Any) -> CapabilityIR:
+def _tool_ir(project: ContractProject, item: ToolDef) -> CapabilityIR:
     return CapabilityIR(
         id=semantic_id("tool", item.name),
         name=item.name,
@@ -146,7 +170,7 @@ def _tool_ir(project: ContractProject, item: Any) -> CapabilityIR:
     )
 
 
-def _datasource_ir(project: ContractProject, item: Any) -> CapabilityIR:
+def _datasource_ir(project: ContractProject, item: DatasourceDef) -> CapabilityIR:
     return CapabilityIR(
         id=semantic_id("datasource", item.name),
         name=item.name,
@@ -160,7 +184,7 @@ def _datasource_ir(project: ContractProject, item: Any) -> CapabilityIR:
     )
 
 
-def _external_context_ir(project: ContractProject, item: Any) -> ExternalContextIR:
+def _external_context_ir(project: ContractProject, item: ExternalContextDef) -> ExternalContextIR:
     return ExternalContextIR(
         id=semantic_id("external", item.name),
         name=item.name,
@@ -172,7 +196,7 @@ def _external_context_ir(project: ContractProject, item: Any) -> ExternalContext
     )
 
 
-def _grant_ir(project: ContractProject, agent_name: str, item: Any) -> GrantIR:
+def _grant_ir(project: ContractProject, agent_name: str, item: GrantDef) -> GrantIR:
     isolation_id = semantic_id("isolation", item.isolation) if item.isolation is not None else None
     return GrantIR(
         id=semantic_id("grant", agent_name, item.capability),
@@ -180,13 +204,13 @@ def _grant_ir(project: ContractProject, agent_name: str, item: Any) -> GrantIR:
         capability_id=semantic_id("tool", item.capability),
         availability=cast(Availability, item.availability),
         authorization=cast(Authorization | None, item.authorization),
-        execution=cast(ExecutionBoundary | None, item.execution),
+        execution=item.execution,
         isolation_id=isolation_id,
         span=_span(project, item.span),
     )
 
 
-def _context_ir(project: ContractProject, agent_name: str, item: Any) -> ContextRequirementIR:
+def _context_ir(project: ContractProject, agent_name: str, item: ContextRequirement) -> ContextRequirementIR:
     return ContextRequirementIR(
         id=semantic_id("context", agent_name, item.name),
         agent_id=semantic_id("agent", agent_name),
@@ -199,22 +223,26 @@ def _context_ir(project: ContractProject, agent_name: str, item: Any) -> Context
     )
 
 
-def _agent_ir(project: ContractProject, item: Any) -> AgentIR:
+def _agent_ir(project: ContractProject, item: AgentDef) -> AgentIR:
+    attributes = item.attributes
+    goal = attributes.goal.value if attributes.goal is not None else ""
+    description = attributes.description.value if attributes.description is not None else ""
+    guidance = attributes.guidance.value if attributes.guidance is not None else ()
     return AgentIR(
         id=semantic_id("agent", item.name),
         name=item.name,
         parameters=tuple(_parameter_ir(project, field) for field in item.parameters),
         output_type=_type_ref(item.return_type),
-        goal=unquote(item.text_attr("goal")),
-        description=unquote(item.text_attr("description")),
-        guidance=tuple(GuidanceIR(text) for text in item.list_attr("guidance")),
+        goal=unquote(_text(goal)),
+        description=unquote(_text(description)),
+        guidance=tuple(GuidanceIR(text) for text in _list(guidance)),
         grant_ids=tuple(semantic_id("grant", item.name, grant.capability) for grant in item.grants),
         context_ids=tuple(semantic_id("context", item.name, requirement.name) for requirement in item.context),
         span=_span(project, item.span),
     )
 
 
-def _composition_ir(project: ContractProject, item: Any) -> CompositionEdgeIR:
+def _composition_ir(project: ContractProject, item: CompositionDef) -> CompositionEdgeIR:
     isolation_id = semantic_id("isolation", item.isolation) if item.isolation is not None else None
     return CompositionEdgeIR(
         id=semantic_id("edge", item.name),
@@ -230,35 +258,41 @@ def _composition_ir(project: ContractProject, item: Any) -> CompositionEdgeIR:
     )
 
 
-def _isolation_ir(project: ContractProject, item: Any) -> IsolationProfileIR:
+def _isolation_ir(project: ContractProject, item: IsolationDef) -> IsolationProfileIR:
     dimensions = item.dimensions
     return IsolationProfileIR(
         id=semantic_id("isolation", item.name),
         name=item.name,
-        context=dimensions.get("context"),
-        capabilities=dimensions.get("capabilities"),
-        state=dimensions.get("state"),
-        filesystem=dimensions.get("filesystem"),
-        network=dimensions.get("network"),
-        secrets=dimensions.get("secrets"),
-        return_channel=dimensions.get("return"),
+        context=cast(IsolationContext | None, dimensions.get("context")),
+        capabilities=cast(IsolationCapabilities | None, dimensions.get("capabilities")),
+        state=cast(IsolationState | None, dimensions.get("state")),
+        filesystem=cast(IsolationFilesystem | None, dimensions.get("filesystem")),
+        network=cast(IsolationNetwork | None, dimensions.get("network")),
+        secrets=cast(IsolationSecrets | None, dimensions.get("secrets")),
+        return_channel=cast(IsolationReturn | None, dimensions.get("return")),
         span=_span(project, item.span),
     )
 
 
-def _control_ir(project: ContractProject, item: Any) -> ControlIR:
+def _control_ir(project: ContractProject, item: ControlDef) -> ControlIR:
     attrs = item.attributes
     return ControlIR(
         id=semantic_id("control", item.agent, item.name),
         name=item.name,
         agent_id=semantic_id("agent", item.agent),
-        severity=cast(Severity, _text(attrs.get("severity"), "medium")),
-        required=_boolean(attrs.get("required"), default=True),
-        audience=_audiences(attrs.get("audience"), default=("adapter", "host", "evaluator", "reviewer")),
-        assessment=cast(AssessmentMode, _text(attrs.get("assessment"))),
-        condition=_optional_text(attrs.get("when")),
-        requirement=_optional_text(attrs.get("require")),
-        expected_evidence=tuple(_list(attrs.get("expected_evidence"))),
+        severity=cast(Severity, _text(attrs.severity.value if attrs.severity is not None else None, "medium")),
+        required=_boolean(attrs.required.value if attrs.required is not None else None, default=True),
+        audience=_audiences(
+            attrs.audience.value if attrs.audience is not None else None,
+            default=("adapter", "host", "evaluator", "reviewer"),
+        ),
+        assessment=cast(
+            AssessmentMode,
+            _text(attrs.assessment.value if attrs.assessment is not None else None),
+        ),
+        condition=_optional_text(attrs.condition.value if attrs.condition is not None else None),
+        requirement=_optional_text(attrs.requirement.value if attrs.requirement is not None else None),
+        expected_evidence=tuple(_list(attrs.expected_evidence.value if attrs.expected_evidence is not None else None)),
         span=_span(project, item.span),
     )
 
@@ -293,7 +327,7 @@ def _output_control(agent: AgentIR) -> ControlIR:
     )
 
 
-def _quality_ir(project: ContractProject, item: Any) -> QualityIR:
+def _quality_ir(project: ContractProject, item: QualityDef) -> QualityIR:
     return QualityIR(
         id=semantic_id("quality", item.agent, item.name),
         name=item.name,
@@ -304,21 +338,24 @@ def _quality_ir(project: ContractProject, item: Any) -> QualityIR:
     )
 
 
-def _operational_control_ir(project: ContractProject, item: Any) -> OperationalControlIR:
+def _operational_control_ir(project: ContractProject, item: OperationalControlDef) -> OperationalControlIR:
     attrs = item.attributes
     return OperationalControlIR(
         id=semantic_id("operational", item.agent, item.name),
         name=item.name,
         agent_id=semantic_id("agent", item.agent),
-        severity=cast(Severity, _text(attrs.get("severity"), "medium")),
-        requirement=_text(attrs.get("require")),
-        window=_optional_text(attrs.get("window")),
-        audience=_audiences(attrs.get("audience"), default=("evaluator", "reviewer")),
+        severity=cast(Severity, _text(attrs.severity.value if attrs.severity is not None else None, "medium")),
+        requirement=_text(attrs.requirement.value if attrs.requirement is not None else None),
+        window=_optional_text(attrs.window.value if attrs.window is not None else None),
+        audience=_audiences(
+            attrs.audience.value if attrs.audience is not None else None,
+            default=("evaluator", "reviewer"),
+        ),
         span=_span(project, item.span),
     )
 
 
-def _eval_ir(project: ContractProject, item: Any) -> EvalIR:
+def _eval_ir(project: ContractProject, item: EvalCase) -> EvalIR:
     all_expectations = tuple(item.expects) + tuple(item.semantic_expects)
     quality_names = tuple(
         match.group(1)
@@ -339,7 +376,7 @@ def _eval_ir(project: ContractProject, item: Any) -> EvalIR:
     )
 
 
-def _run_spec_ir(project: ContractProject, item: Any) -> RunSpecIR:
+def _run_spec_ir(project: ContractProject, item: RunSpecDef) -> RunSpecIR:
     stages: list[RunSpecStageIR] = []
     for raw in item.stages:
         stage = parse_run_spec_stage_declaration(raw)
@@ -354,7 +391,11 @@ def _run_spec_ir(project: ContractProject, item: Any) -> RunSpecIR:
             )
         )
     derived_values: list[RunSpecDerivedValueIR] = []
-    for raw in item.attributes.get("derived_values", []):
+    derived_attribute = item.attributes.derived_values
+    raw_derived_values = derived_attribute.value if derived_attribute is not None else ()
+    if not isinstance(raw_derived_values, tuple):
+        raise AssertionError("Invalid run spec derived values passed semantic validation")
+    for raw in raw_derived_values:
         declaration = parse_run_spec_derived_value_declaration(str(raw))
         if declaration is None:
             raise AssertionError("Invalid run spec derived value passed semantic validation")
@@ -442,7 +483,7 @@ def _boolean(value: Any, *, default: bool) -> bool:
 
 
 def _list(value: Any) -> list[str]:
-    return [str(item) for item in value] if isinstance(value, list) else []
+    return [str(item) for item in value] if isinstance(value, list | tuple) else []
 
 
 def _audiences(value: Any, *, default: tuple[Audience, ...]) -> tuple[Audience, ...]:

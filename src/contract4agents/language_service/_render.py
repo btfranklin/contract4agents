@@ -62,7 +62,7 @@ def callable_signature(item: ToolDef | DatasourceDef) -> str:
 
 def _render_type(declaration: TypeDef | EnumDef) -> str:
     if isinstance(declaration, EnumDef):
-        lines = [f'enum {declaration.name}:', *(f'    "{value}"' for value in declaration.values)]
+        lines = [f"enum {declaration.name}:", *(f'    "{value}"' for value in declaration.values)]
         rendered = "\n".join(lines)
         return f"```contract\n{rendered}\n```\n\nClosed string enum."
     lines = [f"type {declaration.name}:"]
@@ -79,7 +79,12 @@ def _render_agent(agent: AgentDef) -> str:
     params = ", ".join(_field_signature(item) for item in agent.parameters)
     lines = [f"agent {agent.name}({params}) -> {agent.return_type}:"]
     lines.extend(f"    use {grant.capability}" for grant in agent.grants)
-    description = agent.text_attr("description") or agent.text_attr("goal")
+    description_attribute = agent.attributes.description or agent.attributes.goal
+    description = (
+        description_attribute.value
+        if description_attribute is not None and isinstance(description_attribute.value, str)
+        else ""
+    )
     suffix = f"\n\n{description}" if description else ""
     rendered = "\n".join(lines)
     return f"```contract\n{rendered}\n```{suffix}"
@@ -165,9 +170,9 @@ def _render_field_detail(owner: str, field: FieldDef) -> str:
 
 
 def _render_control(item: ControlDef) -> str:
-    severity = item.attributes.get("severity", "unspecified")
-    assessment = item.attributes.get("assessment", "unspecified")
-    required = item.attributes.get("required", "unspecified")
+    severity = item.attributes.severity.value if item.attributes.severity is not None else "unspecified"
+    assessment = item.attributes.assessment.value if item.attributes.assessment is not None else "unspecified"
+    required = item.attributes.required.value if item.attributes.required is not None else "unspecified"
     return (
         f"```contract\ncontrol {item.name} for {item.agent}\n```\n\n"
         f"Severity: `{severity}` · Assessment: `{assessment}` · Required: `{required}`"
@@ -180,7 +185,7 @@ def _render_quality(item: QualityDef) -> str:
 
 
 def _render_operational_control(item: OperationalControlDef) -> str:
-    severity = item.attributes.get("severity", "unspecified")
+    severity = item.attributes.severity.value if item.attributes.severity is not None else "unspecified"
     return (
         f"```contract\noperational_control {item.name} for {item.agent}\n```\n\n"
         f"Severity: `{severity}` · Host-observed operational requirement."
@@ -196,8 +201,7 @@ def _render_eval(item: EvalCase) -> str:
 
 def _render_run_spec(item: RunSpecDef) -> str:
     return (
-        f"```contract\nrun_spec {item.name}\n```\n\n"
-        f"{len(item.stages)} stage(s) · {len(item.assertions)} assertion(s)"
+        f"```contract\nrun_spec {item.name}\n```\n\n{len(item.stages)} stage(s) · {len(item.assertions)} assertion(s)"
     )
 
 

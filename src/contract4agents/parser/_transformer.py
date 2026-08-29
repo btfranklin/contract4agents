@@ -10,10 +10,12 @@ from typing import Any, Literal, cast
 from lark import Token, Transformer
 
 from contract4agents.ast import (
+    AgentAttributes,
     AgentDef,
     CompositionDef,
     ContextRequirement,
     ContractModule,
+    ControlAttributes,
     ControlDef,
     DatasourceDef,
     EnumDef,
@@ -22,9 +24,13 @@ from contract4agents.ast import (
     FieldDef,
     GrantDef,
     IsolationDef,
+    OperationalControlAttributes,
     OperationalControlDef,
     QualityDef,
+    RunSpecAttributes,
     RunSpecDef,
+    SourceAttribute,
+    SourceAttributeValue,
     SourceSpan,
     ToolDef,
     TypeDef,
@@ -164,7 +170,22 @@ class _ModuleTransformer(Transformer[Any, Any]):
 
     def control_def(self, items: list[Any]) -> ControlDef:
         name = _token(items[0])
-        return ControlDef(str(name), str(items[1]), _assignment_attrs(items[2:]), _span(self.path, name))
+        attributes = _source_attributes(items[2:])
+        return ControlDef(
+            str(name),
+            str(items[1]),
+            ControlAttributes(
+                assessment=attributes.pop("assessment", None),
+                requirement=attributes.pop("require", None),
+                severity=attributes.pop("severity", None),
+                required=attributes.pop("required", None),
+                audience=attributes.pop("audience", None),
+                condition=attributes.pop("when", None),
+                expected_evidence=attributes.pop("expected_evidence", None),
+                unknown=tuple(attributes.values()),
+            ),
+            _span(self.path, name),
+        )
 
     def quality_def(self, items: list[Any]) -> QualityDef:
         name = _token(items[0])
@@ -179,29 +200,44 @@ class _ModuleTransformer(Transformer[Any, Any]):
 
     def operational_control_def(self, items: list[Any]) -> OperationalControlDef:
         name = _token(items[0])
-        return OperationalControlDef(str(name), str(items[1]), _assignment_attrs(items[2:]), _span(self.path, name))
+        attributes = _source_attributes(items[2:])
+        return OperationalControlDef(
+            str(name),
+            str(items[1]),
+            OperationalControlAttributes(
+                requirement=attributes.pop("require", None),
+                severity=attributes.pop("severity", None),
+                audience=attributes.pop("audience", None),
+                window=attributes.pop("window", None),
+                unknown=tuple(attributes.values()),
+            ),
+            _span(self.path, name),
+        )
 
     def agent_def(self, items: list[Any]) -> AgentDef:
         agent_parts = _agent_parts(items)
         grants: list[GrantDef] = []
         context: list[ContextRequirement] = []
-        attributes: dict[str, Any] = {}
-        attribute_spans: dict[str, SourceSpan] = {}
+        source_attributes: list[SourceAttribute] = []
         for item in agent_parts.body:
             if isinstance(item, GrantDef):
                 grants.append(item)
             elif isinstance(item, ContextRequirement):
                 context.append(item)
             elif isinstance(item, _Assignment):
-                attributes[item.key] = item.value
-                attribute_spans[item.key] = item.span
+                source_attributes.append(_source_attribute(item))
+        attributes = {item.name: item for item in source_attributes}
         return AgentDef(
             str(agent_parts.name),
             agent_parts.params,
             str(agent_parts.return_type),
-            attributes,
+            AgentAttributes(
+                goal=attributes.pop("goal", None),
+                description=attributes.pop("description", None),
+                guidance=attributes.pop("guidance", None),
+                unknown=tuple(attributes.values()),
+            ),
             _span(self.path, agent_parts.name),
-            attribute_spans,
             grants,
             context,
         )
@@ -327,15 +363,16 @@ class _ModuleTransformer(Transformer[Any, Any]):
 
     def run_spec_def(self, items: list[Any]) -> RunSpecDef:
         name = _token(items[0])
-        attributes = _assignment_attrs(items[1:])
-        attribute_spans = _assignment_spans(items[1:])
+        attributes = _source_attributes(items[1:])
         return RunSpecDef(
             str(name),
-            _list_attr(attributes, "stages"),
-            _list_attr(attributes, "assertions"),
-            attributes,
+            RunSpecAttributes(
+                stages=attributes.pop("stages", None),
+                assertions=attributes.pop("assertions", None),
+                derived_values=attributes.pop("derived_values", None),
+                unknown=tuple(attributes.values()),
+            ),
             _span(self.path, name),
-            attribute_spans,
         )
 
     def run_spec_block(self, items: list[Any]) -> list[Any]:
@@ -361,7 +398,7 @@ class _CallableParts:
 @dataclass(frozen=True)
 class _Assignment:
     key: str
-    value: Any
+    value: str | list[str]
     span: SourceSpan
 
 
@@ -422,14 +459,20 @@ def _assignment_attrs(items: list[Any]) -> dict[str, Any]:
     return attrs
 
 
-def _assignment_spans(items: list[Any]) -> dict[str, SourceSpan]:
-    spans: dict[str, SourceSpan] = {}
+def _source_attribute(assignment: _Assignment) -> SourceAttribute:
+    value: SourceAttributeValue = tuple(assignment.value) if isinstance(assignment.value, list) else assignment.value
+    return SourceAttribute(assignment.key, value, assignment.span)
+
+
+def _source_attributes(items: list[Any]) -> dict[str, SourceAttribute]:
+    attributes: dict[str, SourceAttribute] = {}
     for item in items:
         if isinstance(item, list):
-            spans.update(_assignment_spans(item))
+            attributes.update(_source_attributes(item))
         elif isinstance(item, _Assignment):
-            spans[item.key] = item.span
-    return spans
+            attribute = _source_attribute(item)
+            attributes[attribute.name] = attribute
+    return attributes
 
 
 def _mapping_attrs(items: list[Any]) -> dict[str, str]:
