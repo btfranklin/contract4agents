@@ -143,7 +143,15 @@ def _default_conforms(value: object, type_ref: TypeRef, index: ProjectIndex) -> 
     if isinstance(type_ref, NullableTypeRef):
         return value is None or _default_conforms(value, type_ref.item, index)
     if isinstance(type_ref, PrimitiveTypeRef):
-        return type_ref.name != "datetime" or is_portable_datetime(value)
+        if type_ref.name == "string":
+            return isinstance(value, str)
+        if type_ref.name == "integer":
+            return isinstance(value, int) and not isinstance(value, bool)
+        if type_ref.name == "float":
+            return isinstance(value, int | float) and not isinstance(value, bool)
+        if type_ref.name == "boolean":
+            return isinstance(value, bool)
+        return is_portable_datetime(value)
     if isinstance(type_ref, ConstrainedTypeRef):
         if type_ref.item.name == "string":
             if not isinstance(value, str):
@@ -167,68 +175,35 @@ def _default_conforms(value: object, type_ref: TypeRef, index: ProjectIndex) -> 
             return False
         if type_ref.max_items is not None and len(value) > type_ref.max_items:
             return False
-        return not _contains_validated_type(type_ref.item, index) or all(
-            _default_conforms(item, type_ref.item, index) for item in value
-        )
+        return all(_default_conforms(item, type_ref.item, index) for item in value)
     if isinstance(type_ref, MapTypeRef):
-        return (
-            not _contains_validated_type(type_ref.value, index)
-            or isinstance(value, dict)
-            and all(_default_conforms(item, type_ref.value, index) for item in value.values())
+        return isinstance(value, dict) and all(
+            isinstance(key, str) and _default_conforms(item, type_ref.value, index)
+            for key, item in value.items()
         )
     if isinstance(type_ref, NamedTypeRef):
         declaration = index.type_defs.get(type_ref.type_id.parts[0])
         if isinstance(declaration, EnumDef):
             return isinstance(value, str) and value in declaration.values
-        if isinstance(declaration, TypeDef) and _contains_validated_type(type_ref, index):
+        if isinstance(declaration, TypeDef):
             if not isinstance(value, dict):
                 return False
             fields = {field.name: field for field in declaration.fields}
-            return all(
-                name not in fields
-                or _default_conforms(
-                    child,
-                    parse_type_ref(fields[name].type_name + ("?" if fields[name].nullable else "")),
-                    index,
+            if any(name not in fields for name in value):
+                return False
+            for field in declaration.fields:
+                if field.name not in value:
+                    if not field.nullable and field.default is None:
+                        return False
+                    continue
+                field_type = parse_type_ref(
+                    field.type_name + ("?" if field.nullable else "")
                 )
-                for name, child in value.items()
-            )
-    return True
-
-
-def _contains_validated_type(
-    type_ref: TypeRef,
-    index: ProjectIndex,
-    seen: frozenset[str] = frozenset(),
-) -> bool:
-    if isinstance(type_ref, ConstrainedTypeRef):
-        return True
-    if isinstance(type_ref, NullableTypeRef):
-        return _contains_validated_type(type_ref.item, index, seen)
-    if isinstance(type_ref, ListTypeRef):
-        return (
-            type_ref.min_items is not None
-            or type_ref.max_items is not None
-            or _contains_validated_type(type_ref.item, index, seen)
-        )
-    if isinstance(type_ref, MapTypeRef):
-        return _contains_validated_type(type_ref.value, index, seen)
-    if isinstance(type_ref, PrimitiveTypeRef):
-        return type_ref.name == "datetime"
-    if isinstance(type_ref, NamedTypeRef):
-        name = type_ref.type_id.parts[0]
-        if name in seen:
-            return False
-        declaration = index.type_defs.get(name)
-        if isinstance(declaration, EnumDef):
+                if not _default_conforms(value[field.name], field_type, index):
+                    return False
             return True
-        if isinstance(declaration, TypeDef):
-            next_seen = seen | {name}
-            return any(
-                _contains_validated_type(parse_type_ref(field.type_name), index, next_seen)
-                for field in declaration.fields
-            )
-    return False
+        return True
+    raise TypeError(f"Unsupported type reference {type(type_ref).__name__}")
 
 
 __all__ = ["check_datasource", "check_enum", "check_type", "check_type_ref"]

@@ -349,6 +349,84 @@ def test_list_default_validation_checks_bounds_for_unconstrained_items(tmp_path:
         assert ([item.code for item in diagnostics] == []) is valid, default
 
 
+@pytest.mark.parametrize(
+    ("type_name", "default", "valid"),
+    [
+        ("string", '"value"', True),
+        ("string", "1", False),
+        ("integer", "1", True),
+        ("integer", "true", False),
+        ("integer", '"1"', False),
+        ("float", "1", True),
+        ("float", "1.5", True),
+        ("float", "false", False),
+        ("boolean", "true", True),
+        ("boolean", "0", False),
+        ("list[integer]", "[1,2]", True),
+        ("list[integer]", '[1,"2"]', False),
+        ("map[string,integer]", '{"one":1}', True),
+        ("map[string,integer]", '{"one":"1"}', False),
+        ("map[string,integer]", '"wrong"', False),
+        ("string?", "null", True),
+        ("string?", "false", False),
+    ],
+)
+def test_semantic_defaults_validate_complete_primitive_and_collection_types(
+    tmp_path: Path,
+    type_name: str,
+    default: str,
+    valid: bool,
+) -> None:
+    from contract4agents.parser import parse_project
+    from contract4agents.semantics import analyze_project
+
+    source = tmp_path / "types.contract"
+    source.write_text(f"type Container:\n    value: {type_name} = {default}\n")
+
+    diagnostics = analyze_project(parse_project(tmp_path)).diagnostics
+
+    assert ([item.code for item in diagnostics] == []) is valid
+
+
+@pytest.mark.parametrize(
+    ("default", "valid"),
+    [
+        ('{"required":"ok"}', True),
+        ('{"required":"ok","optional":null}', True),
+        ('{"required":"ok","fallback":2}', True),
+        ("{}", False),
+        ('{"required":1}', False),
+        ('{"required":"ok","fallback":"2"}', False),
+        ('{"required":"ok","extra":true}', False),
+        ('"wrong"', False),
+    ],
+)
+def test_semantic_defaults_validate_complete_named_object_shape(
+    tmp_path: Path,
+    default: str,
+    valid: bool,
+) -> None:
+    from contract4agents.parser import parse_project
+    from contract4agents.semantics import analyze_project
+
+    source = tmp_path / "types.contract"
+    source.write_text(
+        f"""\
+type Child:
+    required: string
+    optional: string?
+    fallback: integer = 1
+
+type Container:
+    child: Child = {default}
+"""
+    )
+
+    diagnostics = analyze_project(parse_project(tmp_path)).diagnostics
+
+    assert ([item.code for item in diagnostics] == []) is valid
+
+
 def test_portable_datetime_profile_is_strict_and_preserves_aware_values() -> None:
     accepted = (
         "2026-01-01T00:00:00Z",
