@@ -138,14 +138,35 @@ def assemble_assurance_bundle(
             validate_trace_closure(loaded_trace, closure)
             if closure.context.contract_digest != expected_digest or closure.context.plan_digest != plan.plan_digest:
                 raise ValueError("Trace closure does not match the bundle contract and plan")
-    controls: object
+    controls: dict[str, object]
+    declared_control_ids = {str(item.id) for item in contract.controls.values()}
     if control_results is None:
         diagnostics.append(
             BundleDiagnostic("BUNDLE002", "Control assessment evidence is missing.", "control-results.json")
         )
         controls = {"results": [], "status": "unverified"}
     else:
+        result_ids = [item.control_id for item in control_results]
+        if len(result_ids) != len(set(result_ids)):
+            raise ValueError("Control assessment results must have unique IDs")
+        unknown = sorted(set(result_ids) - declared_control_ids)
+        missing = sorted(declared_control_ids - set(result_ids))
+        if unknown:
+            details = f"Undeclared IDs: {', '.join(unknown)}."
+            if missing:
+                details += f" Missing IDs: {', '.join(missing)}."
+            raise ValueError(f"Control assessment results do not match the declared inventory. {details}")
         controls = {"results": [item.to_dict() for item in control_results]}
+        if missing:
+            diagnostics.append(
+                BundleDiagnostic(
+                    "BUNDLE018",
+                    "Control assessment evidence is missing for declared controls: "
+                    f"{', '.join(missing)}.",
+                    "control-results.json",
+                )
+            )
+            controls["status"] = "unverified"
     operational: dict[str, object]
     declared_operational_ids = {str(item.id) for item in contract.operational_controls.values()}
     if operational_control_results is None:

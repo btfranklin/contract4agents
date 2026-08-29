@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from pathlib import Path
 from typing import cast
@@ -101,14 +102,7 @@ def test_assurance_bundle_is_deterministic_verified_and_explicit_about_missing_e
         profile="test",
         capabilities=openai_planner_capabilities(),
     )
-    result = ControlResult(
-        control_id="control:IncidentCommander:output_conformance",
-        status="passed",
-        reason="Output matched the canonical schema.",
-        assessment="adapter",
-        assessor=AssessorIdentity("contract4agents", "1"),
-        evidence_event_ids=("evt-000001",),
-    )
+    results = _control_results(ir)
 
     attempt = TraceAttempt("commander:1", "commander-attempt-1", 1)
     context = TraceRunContext("run-1", "run-1", plan.contract_digest, plan.plan_digest)
@@ -149,7 +143,7 @@ def test_assurance_bundle_is_deterministic_verified_and_explicit_about_missing_e
         plan,
         normalized_trace_jsonl=dumps_trace_jsonl(trace),
         trace_closures=(closure,),
-        control_results=(result,),
+        control_results=results,
         eval_results={"campaigns": []},
         provenance={"sources": ["test"]},
         materialization_evidence=materialization_evidence,
@@ -159,7 +153,7 @@ def test_assurance_bundle_is_deterministic_verified_and_explicit_about_missing_e
         plan,
         normalized_trace_jsonl=dumps_trace_jsonl(trace),
         trace_closures=(closure,),
-        control_results=(result,),
+        control_results=results,
         eval_results={"campaigns": []},
         provenance={"sources": ["test"]},
         materialization_evidence=materialization_evidence,
@@ -188,6 +182,67 @@ def test_assurance_bundle_is_deterministic_verified_and_explicit_about_missing_e
         "BUNDLE016",
     }
     assert '"status": "unverified"' in incomplete.files["control-results.json"]
+
+    for supplied in ((), results[:1]):
+        incomplete_inventory = assemble_assurance_bundle(
+            ir,
+            plan,
+            normalized_trace_jsonl=dumps_trace_jsonl(trace),
+            trace_closures=(closure,),
+            control_results=supplied,
+            eval_results={"campaigns": []},
+            provenance={"sources": ["test"]},
+            materialization_evidence=materialization_evidence,
+        )
+        diagnostic = next(
+            item for item in incomplete_inventory.diagnostics if item.code == "BUNDLE018"
+        )
+        missing = sorted(
+            str(item.id) for item in ir.controls.values() if str(item.id) not in {
+                result.control_id for result in supplied
+            }
+        )
+        assert diagnostic.message.endswith(f"{', '.join(missing)}.")
+        assert not incomplete_inventory.complete
+        assert json.loads(incomplete_inventory.files["control-results.json"])["status"] == "unverified"
+        assert json.loads(incomplete_inventory.files["attestation.json"])["complete"] is False
+
+    with pytest.raises(ValueError, match="must have unique IDs"):
+        assemble_assurance_bundle(
+            ir,
+            plan,
+            normalized_trace_jsonl=dumps_trace_jsonl(trace),
+            trace_closures=(closure,),
+            control_results=(results[0], results[0]),
+            eval_results={"campaigns": []},
+            provenance={"sources": ["test"]},
+            materialization_evidence=materialization_evidence,
+        )
+
+    unknown = replace(results[0], control_id="control:Undeclared")
+    with pytest.raises(ValueError, match="Undeclared IDs: control:Undeclared"):
+        assemble_assurance_bundle(
+            ir,
+            plan,
+            normalized_trace_jsonl=dumps_trace_jsonl(trace),
+            trace_closures=(closure,),
+            control_results=(unknown, *results[1:]),
+            eval_results={"campaigns": []},
+            provenance={"sources": ["test"]},
+            materialization_evidence=materialization_evidence,
+        )
+
+    with pytest.raises(ValueError, match="Missing IDs:"):
+        assemble_assurance_bundle(
+            ir,
+            plan,
+            normalized_trace_jsonl=dumps_trace_jsonl(trace),
+            trace_closures=(closure,),
+            control_results=(unknown,),
+            eval_results={"campaigns": []},
+            provenance={"sources": ["test"]},
+            materialization_evidence=materialization_evidence,
+        )
 
 
 @pytest.mark.parametrize(
@@ -289,6 +344,20 @@ def _materialization_evidence(ir: CanonicalIR, plan: MaterializationPlan) -> Gra
         composition_ids=tuple(plan.composition),
         schema_conformance=tuple(checks),
         configuration_conformance=configuration,
+    )
+
+
+def _control_results(ir: CanonicalIR) -> tuple[ControlResult, ...]:
+    return tuple(
+        ControlResult(
+            control_id=str(control.id),
+            status="passed",
+            reason="The fixture supplies complete control evidence.",
+            assessment="adapter",
+            assessor=AssessorIdentity("contract4agents", "1"),
+            evidence_event_ids=("evt-000001",),
+        )
+        for control in ir.controls.values()
     )
 
 
