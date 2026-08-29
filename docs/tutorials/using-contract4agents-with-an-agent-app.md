@@ -40,6 +40,9 @@ contract4agents generate agent_contracts --target python --out src/generated
 contract4agents generate agent_contracts --target python --out src/generated --check
 ```
 
+The generated Python package exposes machine-readable ownership metadata. The
+generated TypeScript schema module provides equivalent runtime exports.
+
 Approve the contract digest and plan digest that correspond to the release.
 Model changes are target-profile changes; portable behavior changes are contract
 changes. Both are visible in semantic diffs.
@@ -62,6 +65,23 @@ input_types = system.agent_input_types
 structural_types = system.structural_output_types
 materialization_evidence = system.graph.validation.to_json()
 ```
+
+If the application imports generated Python models, compare their digest with
+the exact compiler artifacts returned above:
+
+```python
+import generated_contracts
+
+if (
+    generated_contracts.__contract4agents_contract_digest__
+    != system.artifacts.contract_digest
+):
+    raise RuntimeError("Generated contract models are stale")
+```
+
+Use the import name that the application assigns to its generated package. The
+generated TypeScript schema module provides the equivalent
+`contract4agentsContractDigest` and `contract4agentsCodegenVersion` exports.
 
 The materializer:
 

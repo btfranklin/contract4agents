@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from pathlib import PurePosixPath
+import importlib.util
+import json
+import subprocess
+import sys
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import pytest
@@ -30,6 +34,11 @@ from contract4agents.ir import (
     semantic_id,
 )
 
+ROOT = Path(__file__).resolve().parents[2]
+TYPESCRIPT_PROVENANCE_HARNESS = (
+    ROOT / "editors" / "vscode" / "test" / "read-generated-provenance.mjs"
+)
+
 
 def test_generate_code_emits_stable_paths_headers_and_dependency_order() -> None:
     ir = _portable_ir(reverse=True)
@@ -56,7 +65,14 @@ def test_generate_code_emits_stable_paths_headers_and_dependency_order() -> None
     assert python_source.index("class Address") < python_source.index("class Incident")
     assert "from .models import (\n    Address,\n    Incident,\n)" in python_init
     assert '__all__ = [\n    "Address",\n    "Incident",\n]' in python_init
+    assert f'__contract4agents_contract_digest__ = "{generated.contract_digest}"' in python_init
+    assert f'__contract4agents_codegen_version__ = "{GENERATOR_VERSION}"' in python_init
+    assert '"__contract4agents_contract_digest__"' not in python_init
+    assert '"__contract4agents_codegen_version__"' not in python_init
     assert typescript_source.index("interface Address") < typescript_source.index("interface Incident")
+    zod_source = generated.files[ZOD_SCHEMAS_PATH]
+    assert f'export const contract4agentsContractDigest = "{generated.contract_digest}" as const;' in zod_source
+    assert f'export const contract4agentsCodegenVersion = "{GENERATOR_VERSION}" as const;' in zod_source
 
     same_semantics = _portable_ir(reverse=False)
     assert generate_code(same_semantics, targets=("python", "typescript")).files == generated.files
@@ -250,6 +266,64 @@ def test_codegen_rejects_missing_named_types_and_nonportable_identifiers() -> No
         generate_code(CanonicalIR.create(types=(invalid_field,)), targets=("python",))
 
 
+@pytest.mark.parametrize(
+    "name",
+    [
+        "__contract4agents_contract_digest__",
+        "__contract4agents_codegen_version__",
+        "contract4agentsContractDigest",
+        "contract4agentsCodegenVersion",
+    ],
+)
+def test_codegen_rejects_type_names_reserved_for_provenance(name: str) -> None:
+    reserved = TypeIR(semantic_id("type", name), name, ())
+
+    with pytest.raises(CodeGenerationError, match="CGEN001.*provenance metadata"):
+        generate_code(CanonicalIR.create(types=(reserved,)), targets=("python", "typescript"))
+
+
+def test_generated_provenance_is_runtime_readable_in_python_and_typescript(tmp_path: Path) -> None:
+    generated = generate_code(_portable_ir(), targets=("python", "typescript"))
+    output_dir = tmp_path / "generated"
+    write_generated_code(generated, output_dir)
+
+    package_name = "generated_contract_models_for_provenance_test"
+    package_path = output_dir / PYDANTIC_INIT_PATH
+    spec = importlib.util.spec_from_file_location(
+        package_name,
+        package_path,
+        submodule_search_locations=[str(package_path.parent)],
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[package_name] = module
+    try:
+        spec.loader.exec_module(module)
+        assert module.__contract4agents_contract_digest__ == generated.contract_digest
+        assert module.__contract4agents_codegen_version__ == GENERATOR_VERSION
+        assert "__contract4agents_contract_digest__" not in module.__all__
+        assert "__contract4agents_codegen_version__" not in module.__all__
+    finally:
+        sys.modules.pop(package_name, None)
+        sys.modules.pop(f"{package_name}.models", None)
+
+    completed = subprocess.run(
+        [
+            "node",
+            str(TYPESCRIPT_PROVENANCE_HARNESS),
+            str(output_dir / ZOD_SCHEMAS_PATH),
+        ],
+        cwd=ROOT / "editors" / "vscode",
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert json.loads(completed.stdout) == {
+        "codegenVersion": GENERATOR_VERSION,
+        "contractDigest": generated.contract_digest,
+    }
+
+
 def test_write_and_check_freshness_only_touch_deterministic_generated_paths(tmp_path: Any) -> None:
     generated = generate_code(_portable_ir(), targets=("python", "typescript"))
     output_dir = tmp_path / "generated"
@@ -268,6 +342,26 @@ def test_write_and_check_freshness_only_touch_deterministic_generated_paths(tmp_
     assert stale_generated_paths(generated, output_dir) == ()
     assert write_generated_code(generated, output_dir, check=True) == ()
     assert write_generated_code(generated, output_dir) == ()
+
+    init_path = output_dir / PYDANTIC_INIT_PATH
+    init_path.write_text(
+        init_path.read_text().replace(
+            f'__contract4agents_contract_digest__ = "{generated.contract_digest}"',
+            '__contract4agents_contract_digest__ = "sha256:stale"',
+        )
+    )
+    assert stale_generated_paths(generated, output_dir) == (PYDANTIC_INIT_PATH,)
+    assert write_generated_code(generated, output_dir) == (init_path,)
+
+    schema_path = output_dir / ZOD_SCHEMAS_PATH
+    schema_path.write_text(
+        schema_path.read_text().replace(
+            f'contract4agentsContractDigest = "{generated.contract_digest}"',
+            'contract4agentsContractDigest = "sha256:stale"',
+        )
+    )
+    assert stale_generated_paths(generated, output_dir) == (ZOD_SCHEMAS_PATH,)
+    assert write_generated_code(generated, output_dir) == (schema_path,)
 
     stale_path = output_dir / PYDANTIC_MODELS_PATH
     stale_path.write_text("stale\n")

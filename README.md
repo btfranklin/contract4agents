@@ -135,6 +135,9 @@ audience-safe instructions, and reviewer documentation. `compile --check` makes
 stale review artifacts a CI failure. Run `generate` separately with an explicit
 `python` or `typescript` target only when application code imports generated
 source; use the same target selection with `generate --check`.
+Generated Python and TypeScript entry points also expose the contract digest
+and code-generator version as runtime metadata. Applications can compare that
+digest with `materialize(...).artifacts.contract_digest` at startup.
 
 The plan resolves models, bindings, grants, approvals, composition, controls,
 isolation mechanisms, host obligations, and expected event types. Each mapping

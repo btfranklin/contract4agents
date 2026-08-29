@@ -37,6 +37,14 @@ from contract4agents.ir import (
 )
 
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
+_RESERVED_PROVENANCE_NAMES = frozenset(
+    {
+        "__contract4agents_codegen_version__",
+        "__contract4agents_contract_digest__",
+        "contract4agentsCodegenVersion",
+        "contract4agentsContractDigest",
+    }
+)
 
 
 def generate_code(ir: CanonicalIR, *, targets: Iterable[str]) -> GeneratedCode:
@@ -161,9 +169,13 @@ def _generate_pydantic_init(
     """Generate the public initializer for the Pydantic model package."""
 
     types = ordered_types if ordered_types is not None else _ordered_types(ir)
+    digest = contract_digest(ir)
     lines = [
-        *_header("#", contract_digest(ir)),
+        *_header("#", digest),
         '"""Generated Pydantic contract models."""',
+        "",
+        f'__contract4agents_contract_digest__ = "{digest}"',
+        f'__contract4agents_codegen_version__ = "{GENERATOR_VERSION}"',
         "",
     ]
     if not types:
@@ -186,11 +198,19 @@ def generate_zod_schemas(
     """Generate forward-reference-safe Zod schemas for serialized contract values."""
 
     types = ordered_types if ordered_types is not None else _ordered_types(ir)
-    lines = [*_header("//", contract_digest(ir)), 'import { z } from "zod";']
+    digest = contract_digest(ir)
+    lines = [*_header("//", digest), 'import { z } from "zod";']
     if types:
         names = ", ".join(type_def.name for type_def in types)
         lines.append(f'import type {{ {names} }} from "./types";')
-    lines.append("")
+    lines.extend(
+        [
+            "",
+            f'export const contract4agentsContractDigest = "{digest}" as const;',
+            f'export const contract4agentsCodegenVersion = "{GENERATOR_VERSION}" as const;',
+            "",
+        ]
+    )
     if _uses_primitive(types, "datetime"):
         lines.extend(_zod_datetime_helper())
         lines.append("")
@@ -439,6 +459,11 @@ def _ordered_types(ir: CanonicalIR) -> tuple[TypeDeclarationIR, ...]:
     by_id = dict(ir.types.items())
     for type_def in by_id.values():
         _validate_identifier(type_def.name, f"type `{type_def.name}`")
+        if type_def.name in _RESERVED_PROVENANCE_NAMES:
+            raise CodeGenerationError(
+                "CGEN001",
+                f"Type `{type_def.name}` conflicts with generated provenance metadata",
+            )
         if isinstance(type_def, EnumIR):
             continue
         for type_field in type_def.fields:
