@@ -26,7 +26,7 @@ from contract4agents.ir import (
     parse_type_ref,
     semantic_id,
 )
-from contract4agents.materialization._types import build_pydantic_types
+from contract4agents.materialization._types import build_parameter_model, build_pydantic_types, type_adapter_for
 
 ROOT = Path(__file__).resolve().parents[2]
 ZOD_HARNESS = ROOT / "editors" / "vscode" / "test" / "execute-generated-zod.mjs"
@@ -403,6 +403,38 @@ def test_generated_and_materialized_python_types_enforce_portable_corpus() -> No
                     model(**value)
 
 
+def test_parameter_models_and_primitive_adapters_reject_json_type_coercions() -> None:
+    ir = _corpus_ir()
+    output_types = build_pydantic_types(ir)
+    parameter_type = build_parameter_model(
+        "PortableParameters",
+        (
+            ParameterIR("count", parse_type_ref("integer")),
+            ParameterIR("label", parse_type_ref("string")),
+            ParameterIR("active", parse_type_ref("boolean")),
+        ),
+        output_types,
+    )
+    assert parameter_type is not None
+    for payload in (
+        {"count": "1", "label": "ok", "active": True},
+        {"count": 1, "label": 1, "active": True},
+        {"count": 1, "label": "ok", "active": 1},
+    ):
+        with pytest.raises(ValidationError):
+            parameter_type(**payload)
+
+    for type_name, invalid in (("integer", "1"), ("string", 1), ("boolean", 1)):
+        adapter = type_adapter_for(parse_type_ref(type_name), output_types)
+        with pytest.raises(ValidationError):
+            adapter.validate_python(invalid)
+
+    datetime_adapter = type_adapter_for(parse_type_ref("datetime"), output_types)
+    assert datetime_adapter.validate_python("2026-01-01T00:00:00Z") == datetime(
+        2026, 1, 1, tzinfo=UTC
+    )
+
+
 def test_generated_python_is_self_contained_when_contract4agents_import_is_blocked(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -466,6 +498,10 @@ def _corpus_ir() -> CanonicalIR:
             TypeFieldIR("combining", parse_type_ref("string(min_length=2,max_length=2)")),
             TypeFieldIR("empty", parse_type_ref("string(max_length=0)")),
             TypeFieldIR("children", parse_type_ref("list[Child](min_items=1,max_items=2)")),
+            TypeFieldIR("count", parse_type_ref("integer")),
+            TypeFieldIR("ratio", parse_type_ref("float")),
+            TypeFieldIR("active", parse_type_ref("boolean")),
+            TypeFieldIR("metadata", parse_type_ref("map[string,integer]")),
             TypeFieldIR("when", parse_type_ref("datetime")),
         ),
     )
@@ -479,6 +515,10 @@ def _corpus() -> list[dict[str, object]]:
         "combining": "e\u0301",
         "empty": "",
         "children": [{"label": "one"}],
+        "count": 1,
+        "ratio": 1.5,
+        "active": True,
+        "metadata": {"attempts": 2},
         "when": "2026-01-01T00:00:00Z",
     }
     return [
@@ -492,6 +532,14 @@ def _corpus() -> list[dict[str, object]]:
         {"name": "too few items", "value": {**base, "children": []}, "valid": False},
         {"name": "too many items", "value": {**base, "children": [{"label": "one"}] * 3}, "valid": False},
         {"name": "invalid nested member", "value": {**base, "children": [{"label": "toolong"}]}, "valid": False},
+        {"name": "string to integer", "value": {**base, "count": "1"}, "valid": False},
+        {"name": "boolean to integer", "value": {**base, "count": True}, "valid": False},
+        {"name": "integer to string", "value": {**base, "ascii": 1}, "valid": False},
+        {"name": "string to float", "value": {**base, "ratio": "1.5"}, "valid": False},
+        {"name": "boolean to float", "value": {**base, "ratio": True}, "valid": False},
+        {"name": "integer to boolean", "value": {**base, "active": 1}, "valid": False},
+        {"name": "string to boolean", "value": {**base, "active": "true"}, "valid": False},
+        {"name": "string to nested integer", "value": {**base, "metadata": {"attempts": "2"}}, "valid": False},
         {"name": "naive datetime", "value": {**base, "when": "2026-01-01T00:00:00"}, "valid": False},
         {"name": "space datetime", "value": {**base, "when": "2026-01-01 00:00:00Z"}, "valid": False},
         {"name": "impossible date", "value": {**base, "when": "2026-02-30T00:00:00Z"}, "valid": False},

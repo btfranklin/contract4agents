@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Any, Literal, cast
 
-from pydantic import ConfigDict, Field, create_model
+from pydantic import ConfigDict, Field, StrictBool, StrictFloat, StrictInt, StrictStr, create_model
 from pydantic.functional_validators import BeforeValidator
 
 from contract4agents._portable_validation import parse_portable_datetime
@@ -43,7 +43,7 @@ def build_pydantic_types(ir: CanonicalIR) -> FrozenMap[str, Any]:
                 Field(min_length=type_ref.min_items, max_length=type_ref.max_items),
             ]
         if isinstance(type_ref, MapTypeRef):
-            return dict.__class_getitem__((str, annotation(type_ref.value)))
+            return dict.__class_getitem__((StrictStr, annotation(type_ref.value)))
         return _annotation(type_ref, FrozenMap(built))
 
     def build(name: str) -> Any:
@@ -72,7 +72,7 @@ def build_pydantic_types(ir: CanonicalIR) -> FrozenMap[str, Any]:
             type[object],
             create_model_any(
                 name,
-                __config__=ConfigDict(extra="forbid"),
+                __config__=ConfigDict(extra="forbid", strict=True),
                 __module__="contract4agents.generated",
                 **fields,
             ),
@@ -102,7 +102,7 @@ def build_parameter_model(
         type[object],
         create_model_any(
             name,
-            __config__=ConfigDict(extra="forbid"),
+            __config__=ConfigDict(extra="forbid", strict=True),
             __module__="contract4agents.generated",
             **fields,
         ),
@@ -128,10 +128,10 @@ def type_adapter_for(type_ref: TypeRef, output_types: FrozenMap[str, Any]) -> An
 def _annotation(type_ref: TypeRef, output_types: FrozenMap[str, Any]) -> Any:
     if isinstance(type_ref, PrimitiveTypeRef):
         return {
-            "string": str,
-            "integer": int,
-            "float": float,
-            "boolean": bool,
+            "string": StrictStr,
+            "integer": StrictInt,
+            "float": StrictFloat,
+            "boolean": StrictBool,
             "datetime": Annotated[datetime, BeforeValidator(parse_portable_datetime)],
         }[type_ref.name]
     if isinstance(type_ref, ConstrainedTypeRef):
@@ -153,7 +153,7 @@ def _annotation(type_ref: TypeRef, output_types: FrozenMap[str, Any]) -> Any:
             return source
         return Annotated[source, metadata]
     if isinstance(type_ref, MapTypeRef):
-        return dict.__class_getitem__((str, _annotation(type_ref.value, output_types)))
+        return dict.__class_getitem__((StrictStr, _annotation(type_ref.value, output_types)))
     raise TypeError(f"Unsupported type reference {type(type_ref).__name__}")
 
 
