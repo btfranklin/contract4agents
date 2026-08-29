@@ -129,6 +129,33 @@ def test_conformance_rejects_invalid_imports_and_noncallables(
         sys.modules.pop(MODULE_NAME, None)
 
 
+def test_conformance_rejects_a_loaded_host_module_without_replacing_it(tmp_path: Path) -> None:
+    host_calendar = importlib.import_module("calendar")
+    before = {
+        name: module
+        for name, module in sys.modules.items()
+        if name == "calendar" or name.startswith("calendar.")
+    }
+    (tmp_path / "calendar.py").write_text("def fetch_logs(query, limit=10):\n    return query\n", encoding="utf-8")
+    bindings = _bindings(
+        tmp_path,
+        tools={"incident.fetch_logs": "calendar:fetch_logs"},
+        datasources={"incident.timeline": None},
+        external_context={"incident_record": None},
+    )
+
+    result = validate_target_binding_conformance(_canonical_ir(), bindings, "openai")
+
+    assert [item.code for item in result.diagnostics] == ["TGT105"]
+    assert "unique, package-qualified application module name" in result.diagnostics[0].message
+    assert sys.modules["calendar"] is host_calendar
+    assert {
+        name: module
+        for name, module in sys.modules.items()
+        if name == "calendar" or name.startswith("calendar.")
+    } == before
+
+
 @pytest.mark.parametrize(
     ("attribute", "message"),
     [

@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
-import importlib
 import inspect
 import json
 import re
-import sys
-from collections.abc import Callable, Iterable, Iterator, Mapping
-from contextlib import contextmanager
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, cast
 
 from contract4agents.diagnostics import Diagnostic
 from contract4agents.ir import CanonicalIR, CapabilityIR, ParameterIR, SemanticId
+from contract4agents.runtime._project_imports import (
+    ProjectModuleCollisionError,
+    import_project_module,
+)
 from contract4agents.target_bindings._models import BindingEntry, TargetBinding, TargetBindings
 from contract4agents.target_bindings._sensitive import target_sensitive_option_paths
 
@@ -270,12 +271,12 @@ def _model_factory_entry_diagnostics(
     module_name = match.group("module")
     attribute = match.group("attribute")
     try:
-        _evict_module_outside_root(project_root, module_name)
-        with _project_import_path(project_root):
-            module = importlib.import_module(module_name)
+        module = import_project_module(project_root, module_name)
         if attribute not in vars(module):
             raise AttributeError(f"module `{module_name}` has no direct attribute `{attribute}`")
         factory = vars(module)[attribute]
+    except ProjectModuleCollisionError as exc:
+        return [Diagnostic("TGT113", str(exc))]
     except Exception as exc:  # noqa: BLE001 - imports are a diagnostic boundary.
         return [
             Diagnostic(
@@ -393,12 +394,12 @@ def _resolve_python_binding(
     module_name = match.group("module")
     attribute = match.group("attribute")
     try:
-        _evict_module_outside_root(project_root, module_name)
-        with _project_import_path(project_root):
-            module = importlib.import_module(module_name)
+        module = import_project_module(project_root, module_name)
         if attribute not in vars(module):
             raise AttributeError(f"module `{module_name}` has no direct attribute `{attribute}`")
         implementation = vars(module)[attribute]
+    except ProjectModuleCollisionError as exc:
+        return None, [Diagnostic("TGT105", str(exc))]
     except Exception as exc:  # noqa: BLE001 - imports are a diagnostic boundary.
         return None, [
             Diagnostic(
@@ -489,35 +490,6 @@ def _signature_diagnostics(
             )
         )
     return diagnostics
-
-
-@contextmanager
-def _project_import_path(project_root: Path) -> Iterator[None]:
-    path = str(project_root)
-    inserted = path not in sys.path
-    if inserted:
-        sys.path.insert(0, path)
-    importlib.invalidate_caches()
-    try:
-        yield
-    finally:
-        if inserted:
-            try:
-                sys.path.remove(path)
-            except ValueError:
-                pass
-
-
-def _evict_module_outside_root(project_root: Path, module_name: str) -> None:
-    loaded = sys.modules.get(module_name)
-    loaded_file = getattr(loaded, "__file__", None) if loaded is not None else None
-    if loaded is None:
-        return
-    if isinstance(loaded_file, str) and Path(loaded_file).resolve().is_relative_to(project_root):
-        return
-    for name in tuple(sys.modules):
-        if name == module_name or name.startswith(f"{module_name}."):
-            sys.modules.pop(name, None)
 
 
 def _diagnostic_dict(diagnostic: Diagnostic) -> dict[str, object]:

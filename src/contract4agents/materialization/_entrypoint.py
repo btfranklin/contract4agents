@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
-import sys
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 from typing import cast
 
@@ -21,7 +17,8 @@ from contract4agents.materialization._models import (
 from contract4agents.materialization._tracing import NOOP_MATERIALIZATION_TRACE_SINK, MaterializationTraceSink
 from contract4agents.materialization._types import build_agent_input_types, build_pydantic_types
 from contract4agents.planning import plan_materialization
-from contract4agents.runtime import EnvironmentProvider, InProcessEnvironment, load_python_ref
+from contract4agents.runtime import EnvironmentProvider, InProcessEnvironment
+from contract4agents.runtime._project_imports import load_project_python_ref as _load_project_python_ref
 from contract4agents.target_bindings import (
     TargetBinding,
     TargetBindings,
@@ -191,112 +188,77 @@ def _resolve_implementations(root: Path, plan: object) -> FrozenMap[SemanticId, 
     native_plan = cast(MaterializationPlan, plan)
     values: list[tuple[SemanticId, object]] = []
     issues: list[MaterializationIssue] = []
-    with _project_import_path(root):
-        for identifier, binding in native_plan.bindings.items():
-            locator = binding.locator.get("python")
-            if locator is None:
-                if binding.execution == "host":
-                    issues.append(
-                        MaterializationIssue(
-                            "MAT107",
-                            f"Host binding `{identifier}` has no Python locator for this materializer",
-                            identifier,
-                        )
-                    )
-                elif binding.execution == "remote":
-                    issues.append(
-                        MaterializationIssue(
-                            "MAT108",
-                            f"Adapter materialization does not implement remote binding `{identifier}`",
-                            identifier,
-                        )
-                    )
-                continue
-            if not isinstance(locator, str):
-                issues.append(MaterializationIssue("MAT109", "Python locator must be a string", identifier))
-                continue
-            try:
-                values.append((identifier, _load_project_python_ref(root, locator)))
-            except Exception as exc:  # noqa: BLE001 - implementation loading boundary.
+    for identifier, binding in native_plan.bindings.items():
+        locator = binding.locator.get("python")
+        if locator is None:
+            if binding.execution == "host":
                 issues.append(
                     MaterializationIssue(
-                        "MAT110",
-                        f"Could not import `{locator}`: {type(exc).__name__}: {exc}",
+                        "MAT107",
+                        f"Host binding `{identifier}` has no Python locator for this materializer",
                         identifier,
                     )
                 )
-        for agent_id, agent in native_plan.agents.items():
-            locator = agent.model_options.get("model_factory")
-            if locator is None:
-                continue
-            if not isinstance(locator, str):
+            elif binding.execution == "remote":
                 issues.append(
                     MaterializationIssue(
-                        "MAT111",
-                        "Model factory locator must be a string",
-                        agent_id,
+                        "MAT108",
+                        f"Adapter materialization does not implement remote binding `{identifier}`",
+                        identifier,
                     )
                 )
-                continue
-            try:
-                factory = _load_project_python_ref(root, locator)
-            except Exception as exc:  # noqa: BLE001 - implementation loading boundary.
-                issues.append(
-                    MaterializationIssue(
-                        "MAT112",
-                        (
-                            f"Could not import model factory `{locator}`: "
-                            f"{type(exc).__name__}: {exc}"
-                        ),
-                        agent_id,
-                    )
+            continue
+        if not isinstance(locator, str):
+            issues.append(MaterializationIssue("MAT109", "Python locator must be a string", identifier))
+            continue
+        try:
+            values.append((identifier, _load_project_python_ref(root, locator)))
+        except Exception as exc:  # noqa: BLE001 - implementation loading boundary.
+            issues.append(
+                MaterializationIssue(
+                    "MAT110",
+                    f"Could not import `{locator}`: {type(exc).__name__}: {exc}",
+                    identifier,
                 )
-                continue
-            if not callable(factory):
-                issues.append(
-                    MaterializationIssue(
-                        "MAT113",
-                        f"Model factory `{locator}` is not callable",
-                        agent_id,
-                    )
+            )
+    for agent_id, agent in native_plan.agents.items():
+        locator = agent.model_options.get("model_factory")
+        if locator is None:
+            continue
+        if not isinstance(locator, str):
+            issues.append(
+                MaterializationIssue(
+                    "MAT111",
+                    "Model factory locator must be a string",
+                    agent_id,
                 )
-                continue
-            values.append((agent_id, factory))
+            )
+            continue
+        try:
+            factory = _load_project_python_ref(root, locator)
+        except Exception as exc:  # noqa: BLE001 - implementation loading boundary.
+            issues.append(
+                MaterializationIssue(
+                    "MAT112",
+                    (
+                        f"Could not import model factory `{locator}`: "
+                        f"{type(exc).__name__}: {exc}"
+                    ),
+                    agent_id,
+                )
+            )
+            continue
+        if not callable(factory):
+            issues.append(
+                MaterializationIssue(
+                    "MAT113",
+                    f"Model factory `{locator}` is not callable",
+                    agent_id,
+                )
+            )
+            continue
+        values.append((agent_id, factory))
     if issues:
         raise MaterializationError(tuple(issues))
     return FrozenMap(values)
-
-
-def _load_project_python_ref(root: Path, locator: str) -> object:
-    module_name, _, _attribute = locator.partition(":")
-    loaded = sys.modules.get(module_name)
-    loaded_file = getattr(loaded, "__file__", None) if loaded is not None else None
-    if loaded is not None and (
-        not isinstance(loaded_file, str)
-        or not Path(loaded_file).resolve().is_relative_to(root)
-    ):
-        for name in tuple(sys.modules):
-            if name == module_name or name.startswith(f"{module_name}."):
-                sys.modules.pop(name, None)
-    with _project_import_path(root):
-        return load_python_ref(locator)
-
-
-@contextmanager
-def _project_import_path(project_root: Path) -> Iterator[None]:
-    path = str(project_root)
-    inserted = path not in sys.path
-    if inserted:
-        sys.path.insert(0, path)
-    importlib.invalidate_caches()
-    try:
-        yield
-    finally:
-        if inserted:
-            try:
-                sys.path.remove(path)
-            except ValueError:
-                pass
-
-
 __all__ = ["materialize"]

@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -287,6 +288,28 @@ def test_public_materialize_builds_and_validates_complete_native_graph(tmp_path:
     assert result_model(value="ok").value == "ok"
     with pytest.raises(ValidationError):
         result_model(value="ok", undeclared=True)
+
+
+def test_materialization_rejects_a_loaded_host_module_without_replacing_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_project(tmp_path)
+    host_module = ModuleType("app_impl")
+    host_module.__file__ = str(tmp_path.parent / "host" / "app_impl.py")
+    monkeypatch.setitem(sys.modules, "app_impl", host_module)
+
+    with pytest.raises(MaterializationError) as caught:
+        materialize(
+            tmp_path,
+            "openai",
+            "test",
+            provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
+        )
+
+    assert {issue.code for issue in caught.value.issues} == {"TGT105"}
+    assert all("unique, package-qualified application module name" in issue.message for issue in caught.value.issues)
+    assert sys.modules["app_impl"] is host_module
 
 
 def test_materialization_returns_the_compiler_artifacts_used_by_the_graph_and_plan(
@@ -913,6 +936,7 @@ def _write_project(
     invalid_current: bool = False,
     operational_source: str = "",
 ) -> None:
+    sys.modules.pop("app_impl", None)
     isolation_source = ""
     edge_isolation = ""
     environments = ""
