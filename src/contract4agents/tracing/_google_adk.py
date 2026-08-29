@@ -300,7 +300,7 @@ class GoogleADKNormalizedTraceSession(NativeHookTraceSession):
         approved: bool,
         provider_identity: str | None = None,
     ) -> TraceEvent:
-        """Record one ToolContext confirmation decision."""
+        """Record one decision using the matching native function-call identity."""
 
         _, semantic = self._native_tool_semantic(native_tool)
         return self._record_adjacent_native_event(
@@ -316,7 +316,7 @@ class GoogleADKNormalizedTraceSession(NativeHookTraceSession):
         native_tool: object,
         provider_identity: str | None = None,
     ) -> TraceEvent:
-        """Record the ToolContext confirmation pause surfaced to the host."""
+        """Record one pause using the matching native function-call identity."""
 
         _, semantic = self._native_tool_semantic(native_tool)
         return self._record_adjacent_native_event(

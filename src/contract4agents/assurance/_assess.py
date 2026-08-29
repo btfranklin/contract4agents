@@ -123,10 +123,60 @@ def _assess_approval(
     ]
     if starts and not approvals:
         return _result(control, "violated", "The capability started without recorded approval.", events)
-    if starts and min(event.timestamp for event in approvals) >= min(event.timestamp for event in starts):
-        return _result(control, "violated", "Approval was not recorded before the capability started.", events)
     if starts and approvals:
-        return _result(control, "passed", "Approval was granted before the capability started.", events)
+        start_keys = tuple(_approval_invocation_key(event) for event in starts)
+        if any(key is None for key in start_keys):
+            return _result(
+                control,
+                "unverified",
+                "A capability invocation lacks the identity needed to correlate its approval.",
+                events,
+            )
+        resolved_start_keys = tuple(key for key in start_keys if key is not None)
+        if len(set(resolved_start_keys)) != len(resolved_start_keys):
+            return _result(
+                control,
+                "unverified",
+                "Multiple capability starts use the same invocation identity.",
+                events,
+            )
+        approvals_by_key: dict[tuple[str, str, str], list[TraceEvent]] = {}
+        uncorrelated_approval = False
+        for approval in approvals:
+            key = _approval_invocation_key(approval)
+            if key is None:
+                uncorrelated_approval = True
+            else:
+                approvals_by_key.setdefault(key, []).append(approval)
+        for start, key in zip(starts, resolved_start_keys, strict=True):
+            matching = approvals_by_key.get(key, [])
+            if not matching:
+                if uncorrelated_approval:
+                    return _result(
+                        control,
+                        "unverified",
+                        "Recorded approval lacks the identity needed to match a capability invocation.",
+                        events,
+                    )
+                return _result(
+                    control,
+                    "violated",
+                    "A capability invocation started without its own recorded approval.",
+                    events,
+                )
+            if min(event.timestamp for event in matching) >= start.timestamp:
+                return _result(
+                    control,
+                    "violated",
+                    "Approval was not recorded before its capability invocation started.",
+                    events,
+                )
+        return _result(
+            control,
+            "passed",
+            "Every capability invocation has its own preceding approval.",
+            events,
+        )
     if trace_evidence.proves_channel_closed("tool"):
         return _result(control, "passed", "The approval-gated capability was not invoked.", events)
     return _result(
@@ -135,6 +185,15 @@ def _assess_approval(
         "No capability invocation was observed and trace evidence is insufficient for a negative claim.",
         events,
     )
+
+
+def _approval_invocation_key(event: TraceEvent) -> tuple[str, str, str] | None:
+    provider_identity = event.provider.span_id
+    attempt_payload = event.data.get("attempt")
+    if provider_identity is None or attempt_payload is None:
+        return None
+    attempt = TraceAttempt.from_dict(attempt_payload)
+    return (event.context.run_id, attempt.attempt_id, provider_identity)
 
 
 def _assess_output(

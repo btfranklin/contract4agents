@@ -237,11 +237,17 @@ def _event_data(*, complete: bool = True) -> list[dict[str, object]]:
         "grant_id": "grant:SupportAgent:status.publish",
         "control_ids": ["control:SupportAgent:approval:status.publish"],
     }
+    invocation = {"name": "file", "span_id": "status-publish-1"}
     events: list[dict[str, object]] = [
         {"event_type": "approval.requested", "semantic": semantic},
-        {"event_type": "approval.completed", "semantic": semantic, "data": {"approved": True}},
-        {"event_type": "tool.started", "semantic": semantic},
-        {"event_type": "tool.completed", "semantic": semantic},
+        {
+            "event_type": "approval.completed",
+            "semantic": semantic,
+            "data": {"approved": True},
+            "provider": invocation,
+        },
+        {"event_type": "tool.started", "semantic": semantic, "provider": invocation},
+        {"event_type": "tool.completed", "semantic": semantic, "provider": invocation},
     ]
     if complete:
         events.append(

@@ -99,7 +99,7 @@ def test_strands_hook_bridge_closes_attempt_and_correlates_tool(
             session.record_approval(
                 native_tool=tool,
                 approved=True,
-                provider_identity="approval-1",
+                provider_identity="tool-use-1",
             )
             tool_event = SimpleNamespace(
                 agent=agent,

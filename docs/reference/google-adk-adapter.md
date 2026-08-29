@@ -192,6 +192,11 @@ fail-closed when tracing is absent. Grounding metadata is recorded only as
 counts and presence flags; raw prompts, outputs, and search payloads are not
 copied into normalized trace data.
 
+When the host records an approval request or decision directly, pass the stable
+native function-call ID as `provider_identity`. It must match the ID on the tool
+callback event. Approval assurance remains unverified when this exact invocation
+identity is unavailable.
+
 The host must create a fresh or otherwise safely isolated graph/session for
 independent concurrent requests, resolve declared context through
 `system.context`, install the plugin in its ADK `App` or `Runner`, drive

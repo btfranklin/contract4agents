@@ -175,7 +175,11 @@ part of the bound host attempt. Raw prompts, tool arguments, and results are not
 copied into normalized trace payloads.
 
 For an approval pause, record the request and decision against the corresponding
-native grant object before resuming. Closing the session produces
+native grant object before resuming. Pass the stable native tool-use ID as
+`provider_identity` to both methods. It must match the ID on the later tool hook
+event so assurance can join that exact invocation to its approval. If the host
+cannot supply this identity, approval assurance remains unverified. Closing the
+session produces
 `TraceClosureEvidence`; missing, failed, or unbound instrumentation remains
 incomplete or unverified and cannot support assurance claims.
 

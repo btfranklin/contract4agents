@@ -46,7 +46,12 @@ def _event(
     grant: str | None = "SupportAgent:status.publish",
     controls: tuple[str, ...] = (),
     data: dict[str, object] | None = None,
+    provider_identity: str | None = None,
+    attempt: TraceAttempt | None = None,
 ) -> TraceEvent:
+    payload = dict(data or {})
+    if attempt is not None:
+        payload["attempt"] = attempt.to_dict()
     return TraceEvent(
         TraceRunContext("run-1", "thread-1", _CONTRACT_DIGEST, _PLAN_DIGEST),
         event_id,
@@ -59,8 +64,8 @@ def _event(
             semantic_id("grant", *grant.split(":")) if grant else None,
             tuple(semantic_id("control", *name.split(":")) for name in controls),
         ),
-        data or {},
-        ProviderCorrelation("test"),
+        payload,
+        ProviderCorrelation("test", span_id=provider_identity),
     )
 
 
@@ -86,10 +91,33 @@ def test_control_assessor_handles_approval_output_and_explicit_evidence() -> Non
     plan = _plan(ir)
     approval_control = "SupportAgent:approval:status.publish"
     output_control = "SupportAgent:output_conformance"
+    attempt = TraceAttempt("support:1", "support-attempt-1", 1)
     trace_events = (
-            _event("evt-1", "approval.completed", timestamp=1, controls=(approval_control,), data={"approved": True}),
-            _event("evt-2", "tool.started", timestamp=2, controls=(approval_control,)),
-            _event("evt-3", "tool.completed", timestamp=3, controls=(approval_control,)),
+            _event(
+                "evt-1",
+                "approval.completed",
+                timestamp=1,
+                controls=(approval_control,),
+                data={"approved": True},
+                provider_identity="tool-call-1",
+                attempt=attempt,
+            ),
+            _event(
+                "evt-2",
+                "tool.started",
+                timestamp=2,
+                controls=(approval_control,),
+                provider_identity="tool-call-1",
+                attempt=attempt,
+            ),
+            _event(
+                "evt-3",
+                "tool.completed",
+                timestamp=3,
+                controls=(approval_control,),
+                provider_identity="tool-call-1",
+                attempt=attempt,
+            ),
             _event(
                 "evt-4",
                 "output.accepted",
@@ -98,7 +126,14 @@ def test_control_assessor_handles_approval_output_and_explicit_evidence() -> Non
                 grant=None,
                 controls=(output_control,),
             ),
-            _event("evt-5", "approval.requested", timestamp=0, controls=(approval_control,)),
+            _event(
+                "evt-5",
+                "approval.requested",
+                timestamp=0,
+                controls=(approval_control,),
+                provider_identity="tool-call-1",
+                attempt=attempt,
+            ),
     )
     trace = _conforming_trace(ir, plan, trace_events)
 
@@ -122,6 +157,7 @@ def test_control_assessor_approval_failure_and_missing_evidence_branches(
 ) -> None:
     ir = _ir()
     plan = _plan(ir, expected_event_types=("event.never_emitted",))
+    attempt = TraceAttempt("support:1", "support-attempt-1", 1)
     trace_events = tuple(
         _event(
             f"evt-{index}",
@@ -129,6 +165,8 @@ def test_control_assessor_approval_failure_and_missing_evidence_branches(
             timestamp=float(index),
             controls=("SupportAgent:approval:status.publish",),
             data={"approved": True} if event_type == "approval.completed" else None,
+            provider_identity="tool-call-1",
+            attempt=attempt,
         )
         for index, event_type in enumerate(events, 1)
     ) or (_event("evt-0", "run.started", capability=None, grant=None),)
@@ -136,6 +174,185 @@ def test_control_assessor_approval_failure_and_missing_evidence_branches(
     result = assess_controls(ir, plan, _conforming_trace(ir, plan, trace_events))[0]
 
     assert result.status == expected_status
+
+
+def test_control_assessor_requires_one_correlated_approval_for_each_tool_start() -> None:
+    ir = _ir()
+    plan = _plan(ir)
+    control = "SupportAgent:approval:status.publish"
+    attempt = TraceAttempt("support:1", "support-attempt-1", 1)
+    events = (
+        _event(
+            "approval-1",
+            "approval.completed",
+            timestamp=1,
+            controls=(control,),
+            data={"approved": True},
+            provider_identity="tool-call-1",
+            attempt=attempt,
+        ),
+        _event(
+            "start-1",
+            "tool.started",
+            timestamp=2,
+            controls=(control,),
+            provider_identity="tool-call-1",
+            attempt=attempt,
+        ),
+        _event(
+            "start-2",
+            "tool.started",
+            timestamp=3,
+            controls=(control,),
+            provider_identity="tool-call-2",
+            attempt=attempt,
+        ),
+    )
+
+    result = assess_controls(ir, plan, _conforming_trace(ir, plan, events))[0]
+
+    assert result.status == "violated"
+    assert result.reason == "A capability invocation started without its own recorded approval."
+
+
+def test_control_assessor_marks_missing_approval_identity_unverified() -> None:
+    ir = _ir()
+    plan = _plan(ir)
+    control = "SupportAgent:approval:status.publish"
+    attempt = TraceAttempt("support:1", "support-attempt-1", 1)
+    events = (
+        _event(
+            "approval-1",
+            "approval.completed",
+            timestamp=1,
+            controls=(control,),
+            data={"approved": True},
+            attempt=attempt,
+        ),
+        _event(
+            "start-1",
+            "tool.started",
+            timestamp=2,
+            controls=(control,),
+            provider_identity="tool-call-1",
+            attempt=attempt,
+        ),
+    )
+
+    result = assess_controls(ir, plan, _conforming_trace(ir, plan, events))[0]
+
+    assert result.status == "unverified"
+    assert "lacks the identity" in result.reason
+
+
+def test_control_assessor_passes_two_separately_approved_tool_invocations() -> None:
+    ir = _ir()
+    plan = _plan(ir)
+    control = "SupportAgent:approval:status.publish"
+    attempt = TraceAttempt("support:1", "support-attempt-1", 1)
+    events: list[TraceEvent] = []
+    for number in (1, 2):
+        identity = f"tool-call-{number}"
+        events.extend(
+            (
+                _event(
+                    f"approval-{number}",
+                    "approval.completed",
+                    timestamp=float(number * 2 - 1),
+                    controls=(control,),
+                    data={"approved": True},
+                    provider_identity=identity,
+                    attempt=attempt,
+                ),
+                _event(
+                    f"start-{number}",
+                    "tool.started",
+                    timestamp=float(number * 2),
+                    controls=(control,),
+                    provider_identity=identity,
+                    attempt=attempt,
+                ),
+            )
+        )
+
+    result = assess_controls(
+        ir,
+        plan,
+        _conforming_trace(ir, plan, tuple(events)),
+    )[0]
+
+    assert result.status == "passed"
+    assert result.reason == "Every capability invocation has its own preceding approval."
+
+
+def test_control_assessor_rejects_approval_from_another_attempt() -> None:
+    ir = _ir()
+    plan = _plan(ir)
+    control = "SupportAgent:approval:status.publish"
+    approval_attempt = TraceAttempt("support:1", "support-attempt-1", 1)
+    start_attempt = TraceAttempt("support:1", "support-attempt-2", 2, retry_of="support-attempt-1")
+    events = (
+        _event(
+            "approval-1",
+            "approval.completed",
+            timestamp=1,
+            controls=(control,),
+            data={"approved": True},
+            provider_identity="tool-call-1",
+            attempt=approval_attempt,
+        ),
+        _event(
+            "start-1",
+            "tool.started",
+            timestamp=2,
+            controls=(control,),
+            provider_identity="tool-call-1",
+            attempt=start_attempt,
+        ),
+    )
+
+    result = assess_controls(ir, plan, _conforming_trace(ir, plan, events))[0]
+
+    assert result.status == "violated"
+
+
+def test_control_assessor_marks_duplicate_tool_start_identity_unverified() -> None:
+    ir = _ir()
+    plan = _plan(ir)
+    control = "SupportAgent:approval:status.publish"
+    attempt = TraceAttempt("support:1", "support-attempt-1", 1)
+    events = (
+        _event(
+            "approval-1",
+            "approval.completed",
+            timestamp=1,
+            controls=(control,),
+            data={"approved": True},
+            provider_identity="tool-call-1",
+            attempt=attempt,
+        ),
+        _event(
+            "start-1",
+            "tool.started",
+            timestamp=2,
+            controls=(control,),
+            provider_identity="tool-call-1",
+            attempt=attempt,
+        ),
+        _event(
+            "start-duplicate",
+            "tool.started",
+            timestamp=3,
+            controls=(control,),
+            provider_identity="tool-call-1",
+            attempt=attempt,
+        ),
+    )
+
+    result = assess_controls(ir, plan, _conforming_trace(ir, plan, events))[0]
+
+    assert result.status == "unverified"
+    assert result.reason == "Multiple capability starts use the same invocation identity."
 
 
 @pytest.mark.parametrize(

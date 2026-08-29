@@ -134,7 +134,7 @@ class StrandsNormalizedTraceSession(NativeHookTraceSession):
         approved: bool,
         provider_identity: str | None = None,
     ) -> TraceEvent:
-        """Record the result of a host-owned HITL decision."""
+        """Record one host decision using the matching native tool-use identity."""
 
         _, semantic = self._native_tool_semantic(native_tool)
         return self._record_adjacent_native_event(
@@ -150,7 +150,7 @@ class StrandsNormalizedTraceSession(NativeHookTraceSession):
         native_tool: object,
         provider_identity: str | None = None,
     ) -> TraceEvent:
-        """Record the approval pause surfaced to the host."""
+        """Record one approval pause using the matching native tool-use identity."""
 
         _, semantic = self._native_tool_semantic(native_tool)
         return self._record_adjacent_native_event(
