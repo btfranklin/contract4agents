@@ -21,7 +21,9 @@ jobs:
               with:
                   node-version: "22"
                   cache: npm
-                  cache-dependency-path: editors/vscode/package-lock.json
+                  cache-dependency-path: |
+                      editors/vscode/package-lock.json
+                      tests/typescript/package-lock.json
             - name: Set up Python
               uses: actions/setup-python@v6
               with:
@@ -35,6 +37,7 @@ jobs:
               run: |
                   pdm install --group dev --group openai --group strands --group google-adk
                   npm ci --prefix editors/vscode
+                  npm ci --prefix tests/typescript
             - name: Test language server boundary
               run: |
                   pdm run pytest tests/unit/test_language_server.py

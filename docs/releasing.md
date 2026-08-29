@@ -9,11 +9,12 @@ the GitHub Release notes before the release is published.
 Run the canonical local validation and build before tagging:
 
 ```bash
+npm --prefix tests/typescript ci
+npm --prefix editors/vscode ci
 pdm run validate
 pdm run smoke:cli
 pdm build
 pdm run package-check
-npm --prefix editors/vscode ci
 npm --prefix editors/vscode test
 npm --prefix editors/vscode run package
 pdm run pytest tests/unit/test_language_server.py

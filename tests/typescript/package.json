@@ -1,0 +1,12 @@
+{
+  "name": "contract4agents-generated-typescript-tests",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "esbuild": ">=0.28.2",
+    "zod": ">=4.5.4"
+  }
+}

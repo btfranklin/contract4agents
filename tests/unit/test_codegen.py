@@ -36,7 +36,7 @@ from contract4agents.ir import (
 
 ROOT = Path(__file__).resolve().parents[2]
 TYPESCRIPT_PROVENANCE_HARNESS = (
-    ROOT / "editors" / "vscode" / "test" / "read-generated-provenance.mjs"
+    ROOT / "tests" / "typescript" / "read-generated-provenance.mjs"
 )
 
 
@@ -313,7 +313,7 @@ def test_generated_provenance_is_runtime_readable_in_python_and_typescript(tmp_p
             str(TYPESCRIPT_PROVENANCE_HARNESS),
             str(output_dir / ZOD_SCHEMAS_PATH),
         ],
-        cwd=ROOT / "editors" / "vscode",
+        cwd=ROOT / "tests" / "typescript",
         check=True,
         capture_output=True,
         text=True,

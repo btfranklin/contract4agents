@@ -21,7 +21,7 @@ const compiled = (
     target: "es2022",
   })
 ).code;
-const compiledPath = path.join(outputDirectory, "schemas.js");
+const compiledPath = path.join(outputDirectory, "schemas.cjs");
 await fs.writeFile(compiledPath, compiled);
 
 try {

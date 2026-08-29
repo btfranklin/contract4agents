@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tomllib
 from pathlib import Path
 
@@ -48,6 +49,27 @@ def test_release_workflows_gate_the_exact_tag_before_draft_and_publication() -> 
     assert _positions(publish_workflow, publish_gate) == sorted(
         _positions(publish_workflow, publish_gate)
     )
+
+
+def test_generated_typescript_runtime_is_root_owned() -> None:
+    runtime_root = ROOT / "tests/typescript"
+    runtime_package = json.loads((runtime_root / "package.json").read_text())
+    editor_package = json.loads((ROOT / "editors/vscode/package.json").read_text())
+
+    assert runtime_package["private"] is True
+    assert set(runtime_package["devDependencies"]) == {"esbuild", "zod"}
+    assert "zod" not in editor_package["devDependencies"]
+    for harness in ("execute-generated-zod.mjs", "read-generated-provenance.mjs"):
+        assert (runtime_root / harness).is_file()
+        assert not (ROOT / "editors/vscode/test" / harness).exists()
+    for test_file in ("test_codegen.py", "test_portable_constraints.py"):
+        source = (ROOT / "tests/unit" / test_file).read_text()
+        assert '"tests" / "typescript"' in source
+        assert '"editors" / "vscode"' not in source
+    for workflow in ("python-package.yml", "python-publish.yml"):
+        source = (ROOT / ".github/workflows" / workflow).read_text()
+        assert "npm ci --prefix tests/typescript" in source
+        assert "npm ci --prefix editors/vscode" not in source
 
 
 def test_docs_check_reports_missing_doc(tmp_path: Path) -> None:

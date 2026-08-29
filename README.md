@@ -272,6 +272,8 @@ architecture specification. Coding agents should begin with [AGENTS.md](AGENTS.m
 
 ```bash
 pdm install
+npm --prefix tests/typescript ci
+npm --prefix editors/vscode ci
 pdm run docs-check
 pdm run validate
 pdm build

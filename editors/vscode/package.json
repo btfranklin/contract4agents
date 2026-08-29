@@ -125,8 +125,7 @@
     "esbuild": ">=0.28.2",
     "typescript": ">=7.0.2",
     "vscode-oniguruma": ">=2.0.1",
-    "vscode-textmate": ">=9.3.2",
-    "zod": ">=4.5.1"
+    "vscode-textmate": ">=9.3.2"
   },
   "dependencies": {
     "vscode-languageclient": ">=10.1.0"

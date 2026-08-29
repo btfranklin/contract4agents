@@ -30,7 +30,7 @@ jobs:
               with:
                   node-version: "22"
                   cache: npm
-                  cache-dependency-path: editors/vscode/package-lock.json
+                  cache-dependency-path: tests/typescript/package-lock.json
             - name: Install PDM
               uses: pdm-project/setup-pdm@v4
               with:
@@ -39,7 +39,7 @@ jobs:
             - name: Install dependencies
               run: |
                   pdm install --group dev --group openai --group strands --group google-adk
-                  npm ci --prefix editors/vscode
+                  npm ci --prefix tests/typescript
             - name: Validate package
               run: |
                   pdm run validate:python

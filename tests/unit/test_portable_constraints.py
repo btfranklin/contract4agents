@@ -35,7 +35,7 @@ from contract4agents.materialization._types import (
 from tests.unit._portable_datetime_cases import PORTABLE_DATETIME_CASES
 
 ROOT = Path(__file__).resolve().parents[2]
-ZOD_HARNESS = ROOT / "editors" / "vscode" / "test" / "execute-generated-zod.mjs"
+ZOD_HARNESS = ROOT / "tests" / "typescript" / "execute-generated-zod.mjs"
 
 
 def test_list_type_ref_round_trips_bounds_and_rejects_invalid_bounds() -> None:
@@ -539,7 +539,7 @@ def test_recursive_types_have_matching_portable_runtime_behavior(tmp_path: Path)
     corpus_path.write_text(json.dumps(corpus), encoding="utf-8")
     result = subprocess.run(
         ["node", str(ZOD_HARNESS), str(schema_path), "Node", str(corpus_path)],
-        cwd=ROOT / "editors" / "vscode",
+        cwd=ROOT / "tests" / "typescript",
         capture_output=True,
         text=True,
         check=False,
@@ -619,7 +619,7 @@ def test_generated_zod_executes_the_same_portable_corpus(tmp_path: Path) -> None
     corpus_path.write_text(json.dumps(_corpus(), ensure_ascii=False))
     result = subprocess.run(
         ["node", str(ZOD_HARNESS), str(schema_path), "Record", str(corpus_path)],
-        cwd=ROOT / "editors" / "vscode",
+        cwd=ROOT / "tests" / "typescript",
         capture_output=True,
         text=True,
         check=False,
