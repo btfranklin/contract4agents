@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, ForwardRef, Literal, cast
 
-from pydantic import ConfigDict, Field, StrictBool, StrictFloat, StrictInt, StrictStr, create_model
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, StrictInt, StrictStr, create_model
 from pydantic.functional_validators import BeforeValidator
 
 from contract4agents._portable_validation import parse_portable_datetime
@@ -28,11 +28,16 @@ from contract4agents.materialization._errors import MaterializationError, Materi
 
 def build_pydantic_types(ir: CanonicalIR) -> FrozenMap[str, Any]:
     built: dict[str, Any] = {}
-    resolving: set[str] = set()
+    type_names = frozenset(item.name for item in ir.types.values())
 
     def annotation(type_ref: TypeRef) -> Any:
         if isinstance(type_ref, NamedTypeRef):
-            return build(type_ref.type_id.parts[0])
+            name = type_ref.type_id.parts[0]
+            if name not in type_names:
+                raise MaterializationError(
+                    (MaterializationIssue("MAT203", f"Unknown canonical type `{name}`"),)
+                )
+            return built.get(name, ForwardRef(name))
         if isinstance(type_ref, NullableTypeRef):
             return annotation(type_ref.item) | None
         if isinstance(type_ref, ListTypeRef):
@@ -47,43 +52,34 @@ def build_pydantic_types(ir: CanonicalIR) -> FrozenMap[str, Any]:
             return dict.__class_getitem__((StrictStr, annotation(type_ref.value)))
         return _annotation(type_ref, FrozenMap(built))
 
-    def build(name: str) -> Any:
-        if name in built:
-            return built[name]
-        if name in resolving:
-            raise MaterializationError(
-                (MaterializationIssue("MAT202", f"Recursive type `{name}` cannot be materialized"),)
-            )
-        type_def = next((item for item in ir.types.values() if item.name == name), None)
-        if type_def is None:
-            raise MaterializationError(
-                (MaterializationIssue("MAT203", f"Unknown canonical type `{name}`"),)
-            )
+    for type_def in ir.types.values():
         if isinstance(type_def, EnumIR):
             enum_type = Literal.__getitem__(type_def.values)
-            built[name] = enum_type
-            return enum_type
-        resolving.add(name)
+            built[type_def.name] = enum_type
+
+    models: list[type[BaseModel]] = []
+    for type_def in ir.types.values():
+        if isinstance(type_def, EnumIR):
+            continue
         fields: dict[str, tuple[Any, Any]] = {}
         for item in type_def.fields:
             default = _thaw(item.default) if item.has_default else (... if _required(item.type_ref) else None)
             fields[item.name] = (annotation(item.type_ref), Field(default))
         create_model_any = cast(Any, create_model)
         model = cast(
-            type[object],
+            type[BaseModel],
             create_model_any(
-                name,
+                type_def.name,
                 __config__=ConfigDict(extra="forbid", strict=True),
                 __module__="contract4agents.generated",
                 **fields,
             ),
         )
-        resolving.remove(name)
-        built[name] = model
-        return model
+        built[type_def.name] = model
+        models.append(model)
 
-    for type_def in ir.types.values():
-        build(type_def.name)
+    for model in models:
+        model.model_rebuild(_types_namespace=built)
     return FrozenMap((name, built[name]) for name in sorted(built))
 
 

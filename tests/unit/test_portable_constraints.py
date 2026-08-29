@@ -476,6 +476,77 @@ def test_generated_and_materialized_python_types_enforce_portable_corpus() -> No
                     model(**value)
 
 
+def test_recursive_types_have_matching_portable_runtime_behavior(tmp_path: Path) -> None:
+    node = TypeIR(
+        semantic_id("type", "Node"),
+        "Node",
+        (
+            TypeFieldIR("name", parse_type_ref("string")),
+            TypeFieldIR("next", parse_type_ref("Node?")),
+            TypeFieldIR("children", parse_type_ref("list[Node]"), has_default=True, default=[]),
+            TypeFieldIR("peer", parse_type_ref("Peer?")),
+        ),
+    )
+    peer = TypeIR(
+        semantic_id("type", "Peer"),
+        "Peer",
+        (
+            TypeFieldIR("label", parse_type_ref("string")),
+            TypeFieldIR("node", parse_type_ref("Node?")),
+        ),
+    )
+    ir = CanonicalIR.create(types=(node, peer))
+    corpus = [
+        {
+            "name": "self, list, nullable, and mutual recursion",
+            "value": {
+                "name": "root",
+                "next": {"name": "next"},
+                "children": [{"name": "child"}],
+                "peer": {"label": "peer", "node": {"name": "mutual"}},
+            },
+            "valid": True,
+        },
+        {
+            "name": "invalid nested recursive value",
+            "value": {"name": "root", "children": [{"name": 1}]},
+            "valid": False,
+        },
+    ]
+    artifacts = build_artifacts(ir)
+    generated_namespace: dict[str, Any] = {"__name__": "generated_recursive_models"}
+    exec(compile(generate_pydantic_models(ir), "<generated-recursive>", "exec"), generated_namespace)
+    generated_type = generated_namespace["Node"]
+    materialized_type = build_pydantic_types(ir)["Node"]
+    validator = Draft202012Validator(artifacts.schemas["Node"])
+
+    for entry in corpus:
+        value = entry["value"]
+        expected = entry["valid"]
+        assert _schema_valid(validator, value) is expected, entry["name"]
+        for model in (generated_type, materialized_type):
+            if expected:
+                result = model(**value)
+                assert result.children[0].name == "child"
+                assert result.peer.node.name == "mutual"
+            else:
+                with pytest.raises(ValidationError):
+                    model(**value)
+
+    schema_path = tmp_path / "recursive-schemas.ts"
+    corpus_path = tmp_path / "recursive-corpus.json"
+    schema_path.write_text(generate_zod_schemas(ir), encoding="utf-8")
+    corpus_path.write_text(json.dumps(corpus), encoding="utf-8")
+    result = subprocess.run(
+        ["node", str(ZOD_HARNESS), str(schema_path), "Node", str(corpus_path)],
+        cwd=ROOT / "editors" / "vscode",
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_parameter_models_and_primitive_adapters_reject_json_type_coercions() -> None:
     ir = _corpus_ir()
     output_types = build_pydantic_types(ir)
