@@ -48,6 +48,9 @@ and assurance bundles are derived from those two authorities.
 
 - [System Design](architecture/system-design.md): lifecycle components and
   ownership boundaries.
+- [Provider Contributor Map](architecture/provider-contributor-map.md): change
+  route for planning, native construction, validation, tracing, tests, and
+  provider documentation.
 - [OpenAI Target](reference/openai-adapter.md): planning and native OpenAI
   Agents SDK materialization.
 - [Strands Target](reference/strands-adapter.md): native Strands agents,
