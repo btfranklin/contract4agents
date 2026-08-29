@@ -255,6 +255,7 @@ def _resolve_agents(
             model=model,
             model_options=frozen_options,
             output_type=agent.output_type,
+            parameters=agent.parameters,
         )
     return result
 

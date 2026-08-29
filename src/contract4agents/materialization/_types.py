@@ -20,6 +20,7 @@ from contract4agents.ir import (
     NullableTypeRef,
     ParameterIR,
     PrimitiveTypeRef,
+    SemanticId,
     TypeRef,
 )
 from contract4agents.materialization._errors import MaterializationError, MaterializationIssue
@@ -109,6 +110,25 @@ def build_parameter_model(
     )
 
 
+def build_agent_input_types(
+    ir: CanonicalIR,
+    output_types: FrozenMap[str, Any],
+) -> FrozenMap[SemanticId, type[object] | None]:
+    """Build one strict invocation-input type for each contract agent."""
+
+    return FrozenMap(
+        (
+            agent_id,
+            build_parameter_model(
+                f"{agent.name}Input",
+                agent.parameters,
+                output_types,
+            ),
+        )
+        for agent_id, agent in ir.agents.items()
+    )
+
+
 def output_type_for(type_ref: TypeRef, output_types: FrozenMap[str, Any]) -> Any:
     if isinstance(type_ref, NamedTypeRef):
         return output_types[type_ref.type_id.parts[0]]
@@ -169,4 +189,10 @@ def _thaw(value: object) -> object:
     return value
 
 
-__all__ = ["build_parameter_model", "build_pydantic_types", "output_type_for", "type_adapter_for"]
+__all__ = [
+    "build_agent_input_types",
+    "build_parameter_model",
+    "build_pydantic_types",
+    "output_type_for",
+    "type_adapter_for",
+]

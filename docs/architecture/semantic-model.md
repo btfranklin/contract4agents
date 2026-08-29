@@ -782,6 +782,10 @@ result = materialize(
 commander = result.agents["IncidentCommander"]
 artifacts = result.artifacts
 plan = result.plan
+run_input = result.serialize_agent_input(
+    "IncidentCommander",
+    {"request": request_data},
+)
 ```
 
 Bindings are discovered from `contract4agents.targets.toml` by default and may
@@ -801,6 +805,8 @@ attachment, and composition wiring; the host supplies only declared bindings
 and application workflow. The result also retains the exact `CompilerArtifacts`
 instance used for planning and construction, so host code can use its IR,
 contract digest, schemas, and instructions without compiling the project again.
+The plan includes each agent signature. The result exposes the exact strict
+input types used for entry validation and typed delegate boundaries.
 
 Validation includes final native configuration properties and parameter/output
 schemas that the SDK exposes. Each configuration check joins a semantic ID and

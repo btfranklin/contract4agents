@@ -85,6 +85,7 @@ def diff_contracts(before: CanonicalIR, after: CanonicalIR) -> tuple[SemanticDif
 
     entries: list[SemanticDiffEntry] = []
     entries.extend(_diff_grants(before, after))
+    entries.extend(_diff_agents(before, after))
     entries.extend(_diff_types(before, after))
     entries.extend(_diff_contexts(before, after))
     entries.extend(_diff_isolation(before, after))
@@ -169,6 +170,107 @@ def _diff_plan_outcomes(
                 new_outcome,
             )
         )
+    return entries
+
+
+def _diff_agents(before: CanonicalIR, after: CanonicalIR) -> list[SemanticDiffEntry]:
+    entries: list[SemanticDiffEntry] = []
+    for identifier in sorted(set(before.agents) | set(after.agents), key=str):
+        old = before.agents.get(identifier)
+        new = after.agents.get(identifier)
+        if old is None and new is not None:
+            entries.append(_entry("schema", "added", "informational", identifier, "Agent signature added."))
+            continue
+        if old is not None and new is None:
+            entries.append(_entry("schema", "removed", "breaking", identifier, "Agent signature removed."))
+            continue
+        assert old is not None and new is not None
+        old_output = format_type_ref(old.output_type)
+        new_output = format_type_ref(new.output_type)
+        if old_output != new_output:
+            entries.append(
+                _entry(
+                    "schema",
+                    "changed",
+                    "breaking",
+                    f"{identifier}:output",
+                    f"Agent output type changed from `{old_output}` to `{new_output}`.",
+                    old_output,
+                    new_output,
+                )
+            )
+        old_parameters = {item.name: item for item in old.parameters}
+        new_parameters = {item.name: item for item in new.parameters}
+        for name in sorted(set(old_parameters) | set(new_parameters)):
+            old_parameter = old_parameters.get(name)
+            new_parameter = new_parameters.get(name)
+            parameter_id = f"{identifier}:input:{name}"
+            if old_parameter is None and new_parameter is not None:
+                breaking = new_parameter.required and not new_parameter.has_default
+                entries.append(
+                    _entry(
+                        "schema",
+                        "added",
+                        "breaking" if breaking else "review",
+                        parameter_id,
+                        "Required agent input added." if breaking else "Optional/defaulted agent input added.",
+                    )
+                )
+                continue
+            if old_parameter is not None and new_parameter is None:
+                entries.append(
+                    _entry("schema", "removed", "breaking", parameter_id, "Agent input removed.")
+                )
+                continue
+            assert old_parameter is not None and new_parameter is not None
+            old_type = format_type_ref(old_parameter.type_ref)
+            new_type = format_type_ref(new_parameter.type_ref)
+            if old_type != new_type:
+                entries.append(
+                    _entry(
+                        "schema",
+                        "changed",
+                        "breaking",
+                        parameter_id,
+                        f"Agent input type changed from `{old_type}` to `{new_type}`.",
+                        old_type,
+                        new_type,
+                    )
+                )
+            if (old_parameter.required, old_parameter.has_default) != (
+                new_parameter.required,
+                new_parameter.has_default,
+            ):
+                made_required = new_parameter.required and not old_parameter.required
+                entries.append(
+                    _entry(
+                        "schema",
+                        "changed",
+                        "breaking" if made_required else "review",
+                        parameter_id,
+                        "Agent input requirement changed.",
+                        {
+                            "has_default": old_parameter.has_default,
+                            "required": old_parameter.required,
+                        },
+                        {
+                            "has_default": new_parameter.has_default,
+                            "required": new_parameter.required,
+                        },
+                    )
+                )
+            elif old_parameter.has_default and old_parameter.default != new_parameter.default:
+                entries.append(
+                    _entry(
+                        "schema",
+                        "changed",
+                        "review",
+                        parameter_id,
+                        "Agent input default changed.",
+                        old_parameter.default,
+                        new_parameter.default,
+                    )
+                )
     return entries
 
 

@@ -11,12 +11,14 @@ from contract4agents.assurance import (
     semantic_diff,
 )
 from contract4agents.ir import (
+    AgentIR,
     CanonicalIR,
     ContextRequirementIR,
     ControlIR,
     EvalIR,
     FrozenMap,
     IsolationProfileIR,
+    ParameterIR,
     QualityIR,
     TypeFieldIR,
     TypeIR,
@@ -111,7 +113,7 @@ def test_diff_objects_and_plan_outcomes_report_worsening_and_improvement() -> No
         before,
         agents=FrozenMap(
             {
-                agent_id: AgentPlan(agent_id, "SupportAgent", "old", FrozenMap(), parse_type_ref("Result"))
+                agent_id: AgentPlan(agent_id, "SupportAgent", "old", FrozenMap(), parse_type_ref("Result"), ())
             }
         ),
         isolation=FrozenMap(
@@ -130,7 +132,7 @@ def test_diff_objects_and_plan_outcomes_report_worsening_and_improvement() -> No
         before,
         agents=FrozenMap(
             {
-                agent_id: AgentPlan(agent_id, "SupportAgent", "new", FrozenMap(), parse_type_ref("Result"))
+                agent_id: AgentPlan(agent_id, "SupportAgent", "new", FrozenMap(), parse_type_ref("Result"), ())
             }
         ),
         grants=FrozenMap({grant_id: replace(before.grants[grant_id], outcome="degraded")}),
@@ -155,6 +157,36 @@ def test_diff_objects_and_plan_outcomes_report_worsening_and_improvement() -> No
     assert combined.has_breaking_changes
     assert combined.to_dict()["has_breaking_changes"] is True
     assert '"security_critical"' in combined.to_json()
+
+
+def test_contract_diff_reports_agent_input_signature_changes() -> None:
+    before = _small_ir(authorization="approval_required", extra_field=False, include_grant=True)
+    agent_id = semantic_id("agent", "Worker")
+    old_agent = before.agents[agent_id]
+    assert isinstance(old_agent, AgentIR)
+    new_agent = replace(
+        old_agent,
+        parameters=(
+            *old_agent.parameters,
+            ParameterIR("locale", parse_type_ref("string")),
+        ),
+    )
+    after = replace(
+        before,
+        agents=FrozenMap(
+            (identifier, new_agent if identifier == agent_id else agent)
+            for identifier, agent in before.agents.items()
+        ),
+    )
+
+    changes = diff_contracts(before, after)
+
+    assert any(
+        item.semantic_id == "agent:Worker:input:locale"
+        and item.summary == "Required agent input added."
+        and item.impact == "breaking"
+        for item in changes
+    )
 
 
 @pytest.mark.parametrize(

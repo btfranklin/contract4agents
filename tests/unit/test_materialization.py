@@ -53,6 +53,7 @@ class FakeTool:
     isolation_id: SemanticId | None = None
     dimensions: FrozenMap[str, str] = field(default_factory=FrozenMap)
     declared_capabilities: tuple[str, ...] = ()
+    input_type: type[object] | None = None
 
 
 @dataclass
@@ -128,7 +129,11 @@ class FakeOpenAISDK:
         input_type: type[object] | None,
     ) -> object:
         del description, child
-        return FakeTool(openai_tool_name(name), self.input_schema(input_type))
+        return FakeTool(
+            openai_tool_name(name),
+            self.input_schema(input_type),
+            input_type=input_type,
+        )
 
     def create_isolated_delegate_tool(
         self,
@@ -150,6 +155,7 @@ class FakeOpenAISDK:
             isolation_id=isolation_id,
             dimensions=requested_dimensions,
             declared_capabilities=declared_capabilities,
+            input_type=input_type,
         )
 
     def create_handoff(
@@ -263,6 +269,9 @@ def test_public_materialize_builds_and_validates_complete_native_graph(tmp_path:
     assert [item.name for item in parent.tools if isinstance(item, FakeTool)] == [
         openai_tool_name("ask_child"),
     ]
+    assert cast(FakeTool, parent.tools[0]).input_type is result.graph.input_types[
+        semantic_id("agent", "Child")
+    ]
     assert [item.name for item in parent.handoffs if isinstance(item, FakeHandoff)] == ["send_review"]
     assert cast(FakeHandoff, parent.handoffs[0]).child is reviewer
 
@@ -310,6 +319,59 @@ def test_materialization_returns_the_compiler_artifacts_used_by_the_graph_and_pl
     assert result.plan.artifact_digests == artifact_digests(result.artifacts)
     assert result.graph.validation.contract_digest == result.artifacts.contract_digest
     assert result.graph.validation.plan_digest == result.plan.plan_digest
+
+
+def test_materialization_validates_and_serializes_root_agent_inputs(tmp_path: Path) -> None:
+    _write_project(tmp_path)
+    result = materialize(
+        tmp_path,
+        "openai",
+        "test",
+        provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
+    )
+
+    parent_id = semantic_id("agent", "Parent")
+    assert result.plan.agents[parent_id].parameters == result.artifacts.ir.agents[parent_id].parameters
+    assert result.agent_input_types["Parent"] is result.graph.input_types[parent_id]
+
+    validated = cast(Any, result.validate_agent_input("Parent", {"request": {"value": "hello"}}))
+    assert validated.request.value == "hello"
+    assert result.serialize_agent_input("Parent", {"request": {"value": "hello"}}) == (
+        '{"request":{"value":"hello"}}'
+    )
+
+    invalid_inputs: tuple[object, ...] = (
+        {},
+        {"request": {"value": 1}},
+        {"request": {"value": "hello", "extra": True}},
+        {"request": {"value": "hello"}, "extra": True},
+        "raw input",
+    )
+    for invalid in invalid_inputs:
+        with pytest.raises(MaterializationError) as caught:
+            result.validate_agent_input("Parent", cast(Any, invalid))
+        assert [issue.code for issue in caught.value.issues] == ["MAT206"]
+
+    with pytest.raises(MaterializationError) as caught:
+        result.validate_agent_input("Missing", {})
+    assert [issue.code for issue in caught.value.issues] == ["MAT205"]
+
+
+def test_materialization_rejects_input_for_parameter_free_agent(tmp_path: Path) -> None:
+    _write_parameter_free_project(tmp_path)
+    result = materialize(
+        tmp_path,
+        "openai",
+        "test",
+        provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
+    )
+
+    assert result.agent_input_types["Worker"] is None
+    assert result.validate_agent_input("Worker", {}) is None
+    assert result.serialize_agent_input("Worker", {}) == "{}"
+    with pytest.raises(MaterializationError) as caught:
+        result.serialize_agent_input("Worker", {"unexpected": True})
+    assert [issue.code for issue in caught.value.issues] == ["MAT206"]
 
 
 def test_injected_provider_supports_an_unknown_matching_adapter(tmp_path: Path) -> None:
@@ -979,4 +1041,27 @@ python = "app_impl:context"
 default_model = "test-model"
 
 {profile_options}"""
+    )
+
+
+def _write_parameter_free_project(tmp_path: Path) -> None:
+    (tmp_path / "system.contract").write_text(
+        """\
+type Result:
+    value: string
+
+agent Worker() -> Result:
+    goal = "Return one result."
+"""
+    )
+    (tmp_path / "contract4agents.targets.toml").write_text(
+        """\
+schema_version = "1"
+
+[targets.openai]
+adapter = "openai"
+
+[targets.openai.profiles.test]
+default_model = "test-model"
+"""
     )

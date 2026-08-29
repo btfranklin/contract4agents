@@ -50,6 +50,7 @@ class FakeStrandsTool:
     implementation: object | None = None
     child: object | None = None
     environment: object | None = None
+    input_type: type[object] | None = None
 
 
 @dataclass
@@ -151,6 +152,7 @@ class FakeStrandsSDK:
             input_schema,
             output_schema,
             child=child,
+            input_type=input_type,
         )
 
     def create_isolated_delegate_tool(
@@ -179,6 +181,7 @@ class FakeStrandsSDK:
             output_schema,
             child=child,
             environment=environment,
+            input_type=input_type,
         )
 
     def attach(self, agent: object, *, tools: tuple[object, ...]) -> None:
@@ -260,6 +263,9 @@ def test_strands_provider_builds_validated_graph_with_exact_controls(
     assert child.approval_allowed_tools == ("Result",)
     assert [tool.native_name for tool in cast(list[FakeStrandsTool], parent.tools)] == [
         native_name("delegate", edge_id, "ask_child")
+    ]
+    assert cast(FakeStrandsTool, parent.tools[0]).input_type is result.graph.input_types[
+        semantic_id("agent", "Child")
     ]
     child_tools = cast(list[FakeStrandsTool], child.tools)
     assert [tool.native_name for tool in child_tools] == [

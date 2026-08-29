@@ -13,6 +13,7 @@ from contract4agents.ir import (
     CompositionEdgeIR,
     ControlIR,
     ExternalContextIR,
+    FrozenMap,
     GrantIR,
     IsolationProfileIR,
     ParameterIR,
@@ -56,6 +57,9 @@ def test_plans_complete_provider_neutral_target_with_deterministic_digest() -> N
     assert first.adapter.name == "openai"
     assert first.adapter.version == "test-adapter-1"
     assert first.agents[semantic_id("agent", "IncidentCommander")].model == "gpt-main"
+    assert first.agents[semantic_id("agent", "IncidentCommander")].parameters == (
+        ParameterIR("request", parse_type_ref("IncidentRequest")),
+    )
     assert first.agents[semantic_id("agent", "LogInvestigator")].model == "gpt-small"
     assert first.bindings[semantic_id("tool", "status.publish")].execution == "host"
     assert first.bindings[semantic_id("datasource", "incident.timeline")].mechanism == "host.implementation_binding"
@@ -88,7 +92,29 @@ def test_plans_complete_provider_neutral_target_with_deterministic_digest() -> N
     assert str(bindings.path) not in encoded
     assert "0x" not in encoded
     assert '"plan_digest":"sha256:' in encoded
+    assert (
+        '"parameters":[{"default":null,"has_default":false,"name":"request",'
+        '"required":true,"type_ref":"type:IncidentRequest"}]' in encoded
+    )
     assert canonical_materialization_plan_json(first) == canonical_materialization_plan_json(second)
+
+    changed_agent_id = semantic_id("agent", "IncidentCommander")
+    changed_agents = FrozenMap(
+        (
+            identifier,
+            replace(
+                agent,
+                parameters=(
+                    *agent.parameters,
+                    ParameterIR("locale", parse_type_ref("string"), required=False),
+                ),
+            )
+            if identifier == changed_agent_id
+            else agent,
+        )
+        for identifier, agent in first.agents.items()
+    )
+    assert replace(first, agents=changed_agents).plan_digest != first.plan_digest
 
 
 @pytest.mark.parametrize(

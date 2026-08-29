@@ -405,6 +405,7 @@ def _plan(ir: CanonicalIR) -> MaterializationPlan:
                 model="gpt-test",
                 model_options=FrozenMap({"temperature": 0}),
                 output_type=agent.output_type,
+                parameters=agent.parameters,
             ),
         )
         for agent in ir.agents.values()

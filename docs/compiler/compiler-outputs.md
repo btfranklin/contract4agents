@@ -87,6 +87,11 @@ the current working directory, and obvious source-owned directories.
 join target bindings to the canonical IR after compilation and report target
 support without changing portable semantics.
 
+Each planned agent includes its typed invocation parameters. Parameter changes
+therefore change the plan digest. Materialization builds one strict input type
+per agent and exposes provider-neutral validation and serialization before the
+host starts an SDK runner.
+
 Materialization reads the final native configuration and tool/output schemas. It
 compares them with the values derived from the contract and plan. A mismatch or
 missing required public property stops materialization. The returned

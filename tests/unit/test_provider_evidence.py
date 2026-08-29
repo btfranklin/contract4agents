@@ -325,7 +325,7 @@ def _operational_fixture(
         "test",
         "test",
         AdapterPlan("test", "1"),
-        FrozenMap({agent_id: AgentPlan(agent_id, "Researcher", "test", FrozenMap(), parse_type_ref("Result"))}),
+        FrozenMap({agent_id: AgentPlan(agent_id, "Researcher", "test", FrozenMap(), parse_type_ref("Result"), ())}),
         FrozenMap(),
         FrozenMap(),
         FrozenMap(),

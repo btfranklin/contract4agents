@@ -14,6 +14,7 @@ from contract4agents.ir import (
     FrozenJsonValue,
     FrozenMap,
     GrantIR,
+    ParameterIR,
     SemanticId,
     TypeRef,
     freeze_json,
@@ -173,6 +174,7 @@ class AgentPlan:
     model: str
     model_options: FrozenMap[str, FrozenJsonValue]
     output_type: TypeRef
+    parameters: tuple[ParameterIR, ...]
 
 
 @dataclass(frozen=True)

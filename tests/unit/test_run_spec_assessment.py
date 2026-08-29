@@ -500,7 +500,7 @@ def _plan(ir: CanonicalIR) -> MaterializationPlan:
         FrozenMap(
             (
                 agent.id,
-                AgentPlan(agent.id, agent.name, "test-model", FrozenMap(), agent.output_type),
+                AgentPlan(agent.id, agent.name, "test-model", FrozenMap(), agent.output_type, agent.parameters),
             )
             for agent in ir.agents.values()
         ),

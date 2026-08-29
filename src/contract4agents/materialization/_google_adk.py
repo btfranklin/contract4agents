@@ -691,6 +691,7 @@ class GoogleADKMaterializationProvider:
         target: TargetBinding,
         plan: MaterializationPlan,
         implementations: FrozenMap[SemanticId, object],
+        input_types: FrozenMap[SemanticId, type[object] | None],
         output_types: FrozenMap[str, type[object]],
         context_runtime: ContextRuntime,
         environment: EnvironmentProvider | None,
@@ -766,11 +767,7 @@ class GoogleADKMaterializationProvider:
                 model=agent_plan.model,
                 model_options=agent_plan.model_options,
                 model_factory=(implementations.get(agent_id) if "model_factory" in agent_plan.model_options else None),
-                input_type=build_parameter_model(
-                    f"{agent.name}Input",
-                    agent.parameters,
-                    output_types,
-                ),
+                input_type=input_types[agent_id],
                 output_type=output_type_for(agent.output_type, output_types),
                 output_mode=output_mode,
                 tools=tuple(base_tools[agent_id]),
@@ -790,11 +787,7 @@ class GoogleADKMaterializationProvider:
                     )
                 )
             child_ir = ir.agents[edge.target_agent_id]
-            input_type = build_parameter_model(
-                f"{child_ir.name}Input",
-                child_ir.parameters,
-                output_types,
-            )
+            input_type = input_types[edge.target_agent_id]
             output_adapter = type_adapter_for(
                 child_ir.output_type,
                 output_types,
@@ -854,6 +847,7 @@ class GoogleADKMaterializationProvider:
             agents,
             grants,
             edge_objects,
+            input_types,
             output_types,
             names,
         )
@@ -865,6 +859,7 @@ class GoogleADKMaterializationProvider:
         )
         return NativeAgentGraph(
             agents=FrozenMap((identifier, agents[identifier]) for identifier in ir.agents),
+            input_types=input_types,
             output_types=output_types,
             implementations=implementations,
             grant_objects=FrozenMap((identifier, grants[identifier]) for identifier in sorted(grants, key=str)),
@@ -1121,6 +1116,7 @@ def _validate_graph(
     agents: Mapping[SemanticId, object],
     grant_objects: Mapping[SemanticId, object],
     edge_objects: Mapping[SemanticId, object],
+    input_types: FrozenMap[SemanticId, type[object] | None],
     output_types: FrozenMap[str, type[object]],
     names: NativeNameRegistry,
 ) -> tuple[tuple[SchemaConformanceEvidence, ...], tuple[ConfigurationConformanceEvidence, ...]]:
@@ -1158,6 +1154,22 @@ def _validate_graph(
                 MaterializationIssue(
                     "MAT423",
                     "Native Google ADK model differs from plan",
+                    agent_id,
+                )
+            )
+        expected_input = input_types[agent_id]
+        input_evidence = SchemaConformanceEvidence(
+            semantic_id=agent_id,
+            boundary="agent_input",
+            declared_schema=dict(_input_schema(expected_input)),
+            materialized_schema=dict(_input_schema(native.input_type)),
+        )
+        schema_conformance.append(input_evidence)
+        if not input_evidence.matches:
+            issues.append(
+                MaterializationIssue(
+                    "MAT432",
+                    "Native Google ADK input schema differs from contract",
                     agent_id,
                 )
             )
@@ -1250,7 +1262,7 @@ def _validate_graph(
     for edge_id, native_tool in edge_objects.items():
         edge = ir.composition[edge_id]
         child = ir.agents[edge.target_agent_id]
-        expected_input = build_parameter_model(f"{child.name}Input", child.parameters, output_types)
+        expected_input = input_types[edge.target_agent_id]
         expected_output = type_adapter_for(child.output_type, output_types)
         native_tool_description = sdk.describe_tool(native_tool)
         input_evidence = SchemaConformanceEvidence(
@@ -1280,6 +1292,7 @@ def _validate_graph(
         agents,
         grant_objects,
         edge_objects,
+        input_types,
         output_types,
         sdk,
         names,
@@ -1296,6 +1309,7 @@ def _validate_configuration(
     agents: Mapping[SemanticId, object],
     grant_objects: Mapping[SemanticId, object],
     edge_objects: Mapping[SemanticId, object],
+    input_types: FrozenMap[SemanticId, type[object] | None],
     output_types: FrozenMap[str, type[object]],
     sdk: GoogleADKSDK,
     names: NativeNameRegistry,
@@ -1476,8 +1490,7 @@ def _validate_configuration(
         expected_name = names.assign("delegate", edge.id, edge.name)
         actual_name = _native_name(native_edge) if native_edge is not None else MISSING
         add(configuration_evidence(edge_id, "edge.identity", expected_name, actual_name), edge_id)
-        child = ir.agents[edge.target_agent_id]
-        expected_input = build_parameter_model(f"{child.name}Input", child.parameters, output_types)
+        expected_input = input_types[edge.target_agent_id]
         expected_schema = _input_schema(expected_input)
         actual_schema = sdk.describe_tool(native_edge).input_schema if native_edge is not None else MISSING
         add(

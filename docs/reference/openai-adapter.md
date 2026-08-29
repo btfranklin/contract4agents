@@ -204,7 +204,11 @@ Run the returned object with the normal SDK API:
 ```python
 from agents import Runner
 
-result = await Runner.run(system.agents["ResearchLead"], input=user_request)
+run_input = system.serialize_agent_input(
+    "ResearchLead",
+    {"request": user_request},
+)
+result = await Runner.run(system.agents["ResearchLead"], input=run_input)
 ```
 
 If the entry agent declares datasource or external context, resolve it through
@@ -213,7 +217,8 @@ through the application's normal SDK context or input strategy. Resolution
 validates contract types, enforces declared cache scopes, and emits normalized
 provenance events. Contract4Agents deliberately does not hide the remaining
 provider-specific injection step: the OpenAI SDK has no framework-native typed
-entry-input channel.
+entry-input channel. Contract4Agents validates and serializes the declared
+entry input before the host passes that value to `Runner.run(...)`.
 
 Contract4Agents does not replace the SDK runner, provider trace backend, session
 store, or deployment environment. It constructs and validates the graph those

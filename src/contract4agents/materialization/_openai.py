@@ -474,6 +474,7 @@ class OpenAIMaterializationProvider:
         target: TargetBinding,
         plan: MaterializationPlan,
         implementations: FrozenMap[SemanticId, object],
+        input_types: FrozenMap[SemanticId, type[object] | None],
         output_types: FrozenMap[str, type[object]],
         context_runtime: ContextRuntime,
         environment: EnvironmentProvider | None,
@@ -572,11 +573,7 @@ class OpenAIMaterializationProvider:
         for edge_id, edge in ir.composition.items():
             child_ir = ir.agents[edge.target_agent_id]
             child = agents[edge.target_agent_id]
-            input_type = build_parameter_model(
-                f"{child_ir.name}Input",
-                child_ir.parameters,
-                output_types,
-            )
+            input_type = input_types[edge.target_agent_id]
             if edge.mode == "delegate":
                 if edge.isolation_id is None:
                     native_edge = self.sdk.create_delegate_tool(
@@ -633,6 +630,7 @@ class OpenAIMaterializationProvider:
             agents,
             grants,
             edge_objects,
+            input_types,
             output_types,
         )
         _emit_materialization_events(materialization_trace_sink, ir, plan)
@@ -643,6 +641,7 @@ class OpenAIMaterializationProvider:
         )
         return NativeAgentGraph(
             agents=FrozenMap((identifier, agents[identifier]) for identifier in ir.agents),
+            input_types=input_types,
             output_types=output_types,
             implementations=implementations,
             grant_objects=FrozenMap((identifier, grants[identifier]) for identifier in sorted(grants, key=str)),
@@ -671,6 +670,7 @@ def _validate_graph(
     agents: Mapping[SemanticId, object],
     grant_objects: Mapping[SemanticId, object],
     edge_objects: Mapping[SemanticId, object],
+    input_types: FrozenMap[SemanticId, type[object] | None],
     output_types: FrozenMap[str, type[object]],
 ) -> tuple[tuple[SchemaConformanceEvidence, ...], tuple[ConfigurationConformanceEvidence, ...]]:
     issues: list[MaterializationIssue] = []
@@ -742,8 +742,7 @@ def _validate_graph(
         edge = ir.composition[edge_id]
         if edge.mode != "delegate":
             continue
-        child = ir.agents[edge.target_agent_id]
-        input_type = build_parameter_model(f"{child.name}Input", child.parameters, output_types)
+        input_type = input_types[edge.target_agent_id]
         if input_type is None:
             continue
         native_tool_description = sdk.describe_tool(native_tool)
@@ -762,6 +761,7 @@ def _validate_graph(
         agents,
         grant_objects,
         edge_objects,
+        input_types,
         output_types,
         sdk,
     )
@@ -777,6 +777,7 @@ def _validate_configuration(
     agents: Mapping[SemanticId, object],
     grant_objects: Mapping[SemanticId, object],
     edge_objects: Mapping[SemanticId, object],
+    input_types: FrozenMap[SemanticId, type[object] | None],
     output_types: FrozenMap[str, type[object]],
     sdk: OpenAISDK,
 ) -> tuple[tuple[ConfigurationConformanceEvidence, ...], list[MaterializationIssue]]:
@@ -959,8 +960,7 @@ def _validate_configuration(
             configuration_evidence(edge_id, "edge.identity", expected_name, actual_name),
             edge_id,
         )
-        expected_child = ir.agents[edge.target_agent_id]
-        expected_input = build_parameter_model(f"{expected_child.name}Input", expected_child.parameters, output_types)
+        expected_input = input_types[edge.target_agent_id]
         expected_schema = (
             sdk.input_schema(expected_input)
             if edge.mode == "delegate"

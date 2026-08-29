@@ -157,11 +157,22 @@ result = materialize(
 
 support_agent = result.agents["SupportResponder"]
 reviewed_plan = result.plan
-run_result = await Runner.run(support_agent, input="Where is my order?")
+run_input = result.serialize_agent_input(
+    "SupportResponder",
+    {
+        "request": {
+            "ticket_id": "T-123",
+            "question": "Where is my order?",
+        }
+    },
+)
+run_result = await Runner.run(support_agent, input=run_input)
 ```
 
-`result.agents` contains ordinary native SDK agent objects. Generated output
-types, host tools, approval hooks, and supported composition are wired from the
+`result.agents` contains ordinary native SDK agent objects.
+`result.serialize_agent_input(...)` rejects missing, extra, or invalid entry
+inputs before the provider runner starts. Generated input and output types,
+host tools, approval hooks, and supported composition are wired from the
 contract graph and target bindings; host code does not maintain a parallel
 agent registry.
 

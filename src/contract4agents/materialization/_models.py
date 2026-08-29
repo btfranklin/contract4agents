@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Protocol, cast, runtime_checkable
+from typing import Any, Literal, Protocol, cast, runtime_checkable
+
+from pydantic import ValidationError
 
 from contract4agents.compiler import CompilerArtifacts, artifact_digests
 from contract4agents.ir import CanonicalIR, FrozenJsonValue, FrozenMap, SemanticId, freeze_json
 from contract4agents.materialization._context import ContextRuntime
+from contract4agents.materialization._errors import MaterializationError, MaterializationIssue
 from contract4agents.materialization._tracing import MaterializationTraceSink
 from contract4agents.planning import MaterializationPlan, PlannerCapabilities
 from contract4agents.runtime import EnvironmentEnforcementEvidence, EnvironmentProvider
@@ -409,6 +413,7 @@ class NativeAgentGraph:
     """A framework-native graph and the resolved host implementations it uses."""
 
     agents: FrozenMap[SemanticId, object]
+    input_types: FrozenMap[SemanticId, type[object] | None]
     output_types: FrozenMap[str, type[object]]
     implementations: FrozenMap[SemanticId, object]
     grant_objects: FrozenMap[SemanticId, object]
@@ -435,6 +440,13 @@ class MaterializationResult:
 
         if self.graph.context.ir is not self.artifacts.ir:
             raise ValueError("Materialization graph context must use the returned compiler IR")
+        if set(self.graph.input_types) != set(self.plan.agents):
+            raise ValueError("Materialization graph input types must cover the planned agents")
+        if any(
+            self.plan.agents[identifier].parameters != self.artifacts.ir.agents[identifier].parameters
+            for identifier in self.plan.agents
+        ):
+            raise ValueError("Materialization plan inputs must use the returned compiler IR")
         if self.plan.contract_digest != self.artifacts.contract_digest:
             raise ValueError("Materialization plan must use the returned compiler contract digest")
         if self.plan.artifact_digests != artifact_digests(self.artifacts):
@@ -457,10 +469,79 @@ class MaterializationResult:
         return self.graph.context
 
     @property
+    def agent_input_types(self) -> FrozenMap[str, type[object] | None]:
+        """Return strict invocation-input types by contract agent name."""
+
+        return FrozenMap(
+            (identifier.parts[0], input_type)
+            for identifier, input_type in self.graph.input_types.items()
+        )
+
+    def validate_agent_input(
+        self,
+        agent_name: str,
+        value: Mapping[str, object],
+    ) -> object | None:
+        """Validate one root-agent invocation against its contract signature."""
+
+        input_type = self._agent_input_type(agent_name)
+        if not isinstance(value, Mapping):
+            raise MaterializationError(
+                (
+                    MaterializationIssue(
+                        "MAT206",
+                        f"Input for agent `{agent_name}` must be an object",
+                    ),
+                )
+            )
+        if input_type is None:
+            if value:
+                raise MaterializationError(
+                    (
+                        MaterializationIssue(
+                            "MAT206",
+                            f"Agent `{agent_name}` does not declare invocation inputs",
+                        ),
+                    )
+                )
+            return None
+        try:
+            return cast(object, cast(Any, input_type).model_validate(value))
+        except ValidationError as exc:
+            raise MaterializationError(
+                (
+                    MaterializationIssue(
+                        "MAT206",
+                        f"Input for agent `{agent_name}` does not satisfy its contract: {exc}",
+                    ),
+                )
+            ) from exc
+
+    def serialize_agent_input(
+        self,
+        agent_name: str,
+        value: Mapping[str, object],
+    ) -> str:
+        """Validate and serialize one root-agent invocation for an SDK runner."""
+
+        validated = self.validate_agent_input(agent_name, value)
+        if validated is None:
+            return "{}"
+        return cast(str, cast(Any, validated).model_dump_json())
+
+    @property
     def structural_output_types(self) -> FrozenMap[str, type[object]]:
         """Return generated contract types that exclude application domain validators."""
 
         return self.graph.output_types
+
+    def _agent_input_type(self, agent_name: str) -> type[object] | None:
+        for identifier, input_type in self.graph.input_types.items():
+            if identifier.parts[0] == agent_name:
+                return input_type
+        raise MaterializationError(
+            (MaterializationIssue("MAT205", f"Unknown materialized agent `{agent_name}`"),)
+        )
 
 
 @runtime_checkable
@@ -483,6 +564,7 @@ class MaterializationProvider(Protocol):
         target: TargetBinding,
         plan: MaterializationPlan,
         implementations: FrozenMap[SemanticId, object],
+        input_types: FrozenMap[SemanticId, type[object] | None],
         output_types: FrozenMap[str, type[object]],
         context_runtime: ContextRuntime,
         environment: EnvironmentProvider | None,

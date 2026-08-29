@@ -673,6 +673,7 @@ class StrandsMaterializationProvider:
         target: TargetBinding,
         plan: MaterializationPlan,
         implementations: FrozenMap[SemanticId, object],
+        input_types: FrozenMap[SemanticId, type[object] | None],
         output_types: FrozenMap[str, type[object]],
         context_runtime: ContextRuntime,
         environment: EnvironmentProvider | None,
@@ -788,11 +789,7 @@ class StrandsMaterializationProvider:
         for edge_id, edge in ir.composition.items():
             child_ir = ir.agents[edge.target_agent_id]
             child = agents[edge.target_agent_id]
-            input_type = build_parameter_model(
-                f"{child_ir.name}Input",
-                child_ir.parameters,
-                output_types,
-            )
+            input_type = input_types[edge.target_agent_id]
             output_adapter = type_adapter_for(
                 child_ir.output_type,
                 output_types,
@@ -851,6 +848,7 @@ class StrandsMaterializationProvider:
             agents,
             grants,
             edges,
+            input_types,
             output_types,
             agent_names,
             capability_names,
@@ -864,6 +862,7 @@ class StrandsMaterializationProvider:
         )
         return NativeAgentGraph(
             agents=FrozenMap((identifier, agents[identifier]) for identifier in ir.agents),
+            input_types=input_types,
             output_types=output_types,
             implementations=implementations,
             grant_objects=FrozenMap((identifier, grants[identifier]) for identifier in sorted(grants, key=str)),
@@ -892,6 +891,7 @@ def _validate_graph(
     agents: Mapping[SemanticId, object],
     grant_objects: Mapping[SemanticId, object],
     edge_objects: Mapping[SemanticId, object],
+    input_types: FrozenMap[SemanticId, type[object] | None],
     output_types: FrozenMap[str, type[object]],
     agent_names: Mapping[SemanticId, str],
     capability_names: Mapping[SemanticId, str],
@@ -1042,11 +1042,7 @@ def _validate_graph(
         edge = ir.composition[edge_id]
         child = ir.agents[edge.target_agent_id]
         native_tool_description = sdk.describe_tool(native_tool)
-        expected_input = build_parameter_model(
-            f"{child.name}Input",
-            child.parameters,
-            output_types,
-        )
+        expected_input = input_types[edge.target_agent_id]
         expected_output = type_adapter_for(child.output_type, output_types)
         input_evidence = SchemaConformanceEvidence(
             semantic_id=edge_id,
@@ -1079,6 +1075,7 @@ def _validate_graph(
         agents,
         grant_objects,
         edge_objects,
+        input_types,
         output_types,
         sdk,
         agent_names,
@@ -1097,6 +1094,7 @@ def _validate_configuration(
     agents: Mapping[SemanticId, object],
     grant_objects: Mapping[SemanticId, object],
     edge_objects: Mapping[SemanticId, object],
+    input_types: FrozenMap[SemanticId, type[object] | None],
     output_types: FrozenMap[str, type[object]],
     sdk: StrandsSDK,
     agent_names: Mapping[SemanticId, str],
@@ -1310,8 +1308,7 @@ def _validate_configuration(
         expected_name = edge_names[edge.id]
         actual_name = sdk.describe_tool(native_edge).native_name if native_edge is not None else MISSING
         add(configuration_evidence(edge_id, "edge.identity", expected_name, actual_name), edge_id)
-        child = ir.agents[edge.target_agent_id]
-        expected_input = build_parameter_model(f"{child.name}Input", child.parameters, output_types)
+        expected_input = input_types[edge.target_agent_id]
         expected_schema = _stable_schema(_input_schema(expected_input))
         actual_schema = sdk.describe_tool(native_edge).input_schema if native_edge is not None else MISSING
         add(

@@ -39,7 +39,7 @@ from contract4agents.materialization._google_adk import (
     GoogleADKNativeToolDescription,
     OutputMode,
 )
-from contract4agents.materialization._types import build_pydantic_types
+from contract4agents.materialization._types import build_agent_input_types, build_pydantic_types
 from contract4agents.planning import MaterializationPlan, plan_materialization
 from contract4agents.target_bindings import (
     BindingEntry,
@@ -57,6 +57,7 @@ class FakeTool:
     implementation: object | None = None
     requires_approval: bool = False
     child: object | None = None
+    input_type: type[object] | None = None
 
 
 @dataclass
@@ -170,6 +171,7 @@ class FakeGoogleADKSDK:
             input_schema,
             output_schema,
             child=child,
+            input_type=input_type,
         )
 
     def create_isolated_delegate_tool(
@@ -202,6 +204,7 @@ class FakeGoogleADKSDK:
             input_schema,
             output_schema,
             child=child,
+            input_type=input_type,
         )
 
     def attach(self, agent: object, *, tools: tuple[object, ...]) -> None:
@@ -277,6 +280,7 @@ def test_google_adk_provider_builds_and_validates_typed_graph(
         target=target,
         plan=plan,
         implementations=implementations,
+        input_types=build_agent_input_types(ir, output_types),
         output_types=output_types,
         context_runtime=context,
         environment=None,
@@ -289,6 +293,8 @@ def test_google_adk_provider_builds_and_validates_typed_graph(
     child = graph.agents[child_id]
     assert isinstance(parent, FakeAgent)
     assert isinstance(child, FakeAgent)
+    assert parent.input_type is graph.input_types[parent_id]
+    assert child.input_type is graph.input_types[child_id]
     assert parent.native_name == native_name("agent", parent_id, "Parent")
     assert parent.output_mode == "emulated"
     assert child.output_mode == "native"
@@ -297,6 +303,7 @@ def test_google_adk_provider_builds_and_validates_typed_graph(
     assert parent.tools[0].requires_approval
     assert isinstance(parent.tools[1], FakeTool)
     assert parent.tools[1].child is child
+    assert parent.tools[1].input_type is graph.input_types[child_id]
     assert graph.validation.plan_digest == plan.plan_digest
     assert "materialization.agent.configured" in {
         event.event_type for event in trace.events
@@ -319,6 +326,7 @@ def test_google_adk_provider_detects_dropped_native_tools(tmp_path: Path) -> Non
             target=target,
             plan=plan,
             implementations=implementations,
+            input_types=build_agent_input_types(ir, output_types),
             output_types=output_types,
             context_runtime=ContextRuntime(
                 ir,

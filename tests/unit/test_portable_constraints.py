@@ -26,7 +26,12 @@ from contract4agents.ir import (
     parse_type_ref,
     semantic_id,
 )
-from contract4agents.materialization._types import build_parameter_model, build_pydantic_types, type_adapter_for
+from contract4agents.materialization._types import (
+    build_agent_input_types,
+    build_parameter_model,
+    build_pydantic_types,
+    type_adapter_for,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 ZOD_HARNESS = ROOT / "editors" / "vscode" / "test" / "execute-generated-zod.mjs"
@@ -256,6 +261,7 @@ def test_google_adk_materialization_rejects_native_tool_that_drops_list_bound(tm
             target=target,
             plan=plan,
             implementations=implementations,
+            input_types=build_agent_input_types(ir, output_types),
             output_types=output_types,
             context_runtime=context,
             environment=None,

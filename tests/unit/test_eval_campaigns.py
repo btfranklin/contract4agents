@@ -172,7 +172,14 @@ def _plan(ir: CanonicalIR, *, expected_event_types: tuple[str, ...] | None = Non
         adapter=AdapterPlan("file", "1"),
         agents=FrozenMap(
             {
-                agent_id: AgentPlan(agent_id, "SupportAgent", "deterministic", FrozenMap(), parse_type_ref("Result"))
+                agent_id: AgentPlan(
+                    agent_id,
+                    "SupportAgent",
+                    "deterministic",
+                    FrozenMap(),
+                    parse_type_ref("Result"),
+                    (),
+                )
             }
         ),
         bindings=FrozenMap(

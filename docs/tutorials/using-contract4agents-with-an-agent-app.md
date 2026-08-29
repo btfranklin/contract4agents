@@ -58,6 +58,7 @@ system = materialize(
 triage_agent = system.agents["TriageAgent"]
 artifacts = system.artifacts
 plan = system.plan
+input_types = system.agent_input_types
 structural_types = system.structural_output_types
 materialization_evidence = system.graph.validation.to_json()
 ```
@@ -68,7 +69,7 @@ The materializer:
 2. loads the selected target bindings;
 3. validates binding coverage and inspectable callable shapes;
 4. produces an immutable provider-neutral plan;
-5. generates native structured-output types;
+5. generates strict invocation-input and structured-output types;
 6. builds all agent shells;
 7. resolves tools, approvals, delegations, and handoffs across the graph;
 8. reads back native tool and output schemas and validates them against the
@@ -83,6 +84,24 @@ same project a second time at startup.
 
 Required unsupported or degraded mappings stop this process. There is no silent
 fallback to a weaker interpretation.
+
+## Root-Agent Inputs
+
+An agent signature is the runtime input contract for that agent. Validate and
+serialize the input before the host calls its SDK runner:
+
+```python
+run_input = system.serialize_agent_input(
+    "TriageAgent",
+    {"request": request_data},
+)
+```
+
+`system.validate_agent_input(...)` returns the validated Pydantic value when
+the host needs it before serialization. `system.agent_input_types` exposes the
+same strict types by contract agent name. Invalid scalar coercions, missing
+fields, extra fields, and input for an agent with no parameters fail before a
+provider request starts.
 
 ## Structural Output and Domain Validation
 

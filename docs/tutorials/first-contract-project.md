@@ -152,7 +152,11 @@ async def main() -> None:
         profile="development",
     )
     agent = system.agents["SupportResponder"]
-    result = await Runner.run(agent, input="When will my order ship?")
+    run_input = system.serialize_agent_input(
+        "SupportResponder",
+        {"question": "When will my order ship?"},
+    )
+    result = await Runner.run(agent, input=run_input)
     print(result.final_output)
 
 

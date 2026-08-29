@@ -19,7 +19,7 @@ from contract4agents.materialization._models import (
     MaterializationResult,
 )
 from contract4agents.materialization._tracing import NOOP_MATERIALIZATION_TRACE_SINK, MaterializationTraceSink
-from contract4agents.materialization._types import build_pydantic_types
+from contract4agents.materialization._types import build_agent_input_types, build_pydantic_types
 from contract4agents.planning import plan_materialization
 from contract4agents.runtime import EnvironmentProvider, InProcessEnvironment, load_python_ref
 from contract4agents.target_bindings import (
@@ -94,6 +94,7 @@ def materialize(
     )
     implementations = _resolve_implementations(project_root, plan)
     output_types = build_pydantic_types(artifacts.ir)
+    input_types = build_agent_input_types(artifacts.ir, output_types)
     context_runtime = ContextRuntime(
         artifacts.ir,
         plan,
@@ -107,6 +108,7 @@ def materialize(
         target=target_binding,
         plan=plan,
         implementations=implementations,
+        input_types=input_types,
         output_types=output_types,
         context_runtime=context_runtime,
         environment=environment,
