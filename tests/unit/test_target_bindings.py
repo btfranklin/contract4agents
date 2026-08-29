@@ -72,6 +72,68 @@ def test_loads_default_target_bindings_into_immutable_models(tmp_path: Path) -> 
         target.profiles["test"].options["temperature"] = 1.0  # type: ignore[index]
 
 
+@pytest.mark.parametrize(
+    ("adapter", "options_source", "path_fragment"),
+    [
+        ("openai", '"OpenAI-API-Key" = "secret-value"', "OpenAI-API-Key"),
+        ("google_adk", 'google_api_key = "secret-value"', "google_api_key"),
+        ("strands", 'AWS_SECRET_ACCESS_KEY = "secret-value"', "AWS_SECRET_ACCESS_KEY"),
+        (
+            "openai",
+            'nested = { clientSecret = "secret-value" }',
+            "nested.clientSecret",
+        ),
+        (
+            "openai",
+            'connections = [{ "Access-Token" = "secret-value" }]',
+            "connections[0].Access-Token",
+        ),
+    ],
+)
+def test_rejects_recursive_credential_options_for_builtin_adapters(
+    tmp_path: Path,
+    adapter: str,
+    options_source: str,
+    path_fragment: str,
+) -> None:
+    source = (
+        'schema_version = "1"\n\n'
+        f"[targets.{adapter}]\n"
+        f'adapter = "{adapter}"\n\n'
+        f"[targets.{adapter}.profiles.test]\n"
+        'default_model = "test-model"\n\n'
+        f"[targets.{adapter}.profiles.test.options]\n"
+        f"{options_source}\n"
+    )
+    (tmp_path / DEFAULT_TARGET_BINDINGS_FILENAME).write_text(source)
+
+    result = load_target_bindings(tmp_path, required=True)
+
+    diagnostic = next(item for item in result.diagnostics if item.code == "TGT115")
+    assert path_fragment in diagnostic.message
+    assert diagnostic.hint == "Use the host environment or a credential provider."
+    assert "secret-value" not in diagnostic.message
+    assert result.bindings is None
+
+
+def test_rejects_agent_level_credential_options(tmp_path: Path) -> None:
+    source = (
+        'schema_version = "1"\n\n'
+        "[targets.openai]\n"
+        'adapter = "openai"\n\n'
+        "[targets.openai.profiles.test]\n"
+        'default_model = "test-model"\n\n'
+        "[targets.openai.profiles.test.agents.Worker.options]\n"
+        '"Client-Secret" = "secret-value"\n'
+    )
+    (tmp_path / DEFAULT_TARGET_BINDINGS_FILENAME).write_text(source)
+
+    result = load_target_bindings(tmp_path, required=True)
+
+    assert [item.code for item in result.diagnostics] == ["TGT115"]
+    assert "agents.Worker.options.Client-Secret" in result.diagnostics[0].message
+
+
 def test_optional_missing_bindings_are_empty_but_explicit_or_required_paths_report_diagnostic(tmp_path: Path) -> None:
     optional = load_target_bindings(tmp_path)
     required = load_target_bindings(tmp_path, required=True)

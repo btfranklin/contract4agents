@@ -8,6 +8,7 @@ from typing import Any
 
 from contract4agents.diagnostics import Diagnostic
 from contract4agents.target_bindings._models import TARGET_BINDINGS_SCHEMA_VERSION
+from contract4agents.target_bindings._sensitive import is_sensitive_option_name
 
 _TOP_LEVEL_KEYS = frozenset({"schema_version", "targets"})
 _TARGET_KEYS = frozenset(
@@ -159,6 +160,7 @@ def _validate_values(value: object, path: str) -> list[Diagnostic]:
     if not isinstance(value, dict):
         return [_invalid(f"`{path}` must be a table")]
     diagnostics = _forbidden_keys(value, path)
+    diagnostics.extend(_sensitive_keys(value, path))
     for key in sorted(value):
         child = value[key]
         child_path = f"{path}.{key}"
@@ -200,6 +202,18 @@ def _forbidden_keys(value: Mapping[str, object], path: str) -> list[Diagnostic]:
         )
         for key in sorted(value)
         if key in _CONTRACT_OWNED_KEYS
+    ]
+
+
+def _sensitive_keys(value: Mapping[str, object], path: str) -> list[Diagnostic]:
+    return [
+        Diagnostic(
+            "TGT115",
+            f"Target binding `{path}.{key}` cannot contain credential material",
+            hint="Use the host environment or a credential provider.",
+        )
+        for key in sorted(value)
+        if key not in _CONTRACT_OWNED_KEYS and is_sensitive_option_name(key)
     ]
 
 

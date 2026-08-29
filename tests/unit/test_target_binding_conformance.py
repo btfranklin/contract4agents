@@ -451,6 +451,28 @@ def test_openai_conformance_accepts_canonical_web_search_binding(tmp_path: Path)
     assert result.diagnostics == ()
 
 
+def test_programmatic_binding_conformance_rejects_nested_credentials(tmp_path: Path) -> None:
+    bindings = _bindings(
+        tmp_path,
+        profiles={
+            "test": TargetProfile(
+                default_model="test-model",
+                options={"transport": {"client_secret": "secret-value"}},
+            )
+        },
+    )
+
+    result = validate_target_binding_conformance(
+        _canonical_ir(),
+        bindings,
+        "openai",
+    )
+
+    diagnostic = next(item for item in result.diagnostics if item.code == "TGT115")
+    assert "profiles.test.options.transport.client_secret" in diagnostic.message
+    assert "secret-value" not in diagnostic.message
+
+
 def test_openai_conformance_rejects_model_factory(tmp_path: Path) -> None:
     _write_application_module(tmp_path)
     bindings = _bindings(

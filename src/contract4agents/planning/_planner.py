@@ -35,6 +35,7 @@ from contract4agents.planning._models import (
     frozen_json_mapping,
 )
 from contract4agents.target_bindings import BindingEntry, TargetBinding, TargetBindings, TargetProfile
+from contract4agents.target_bindings._sensitive import target_sensitive_option_paths
 
 _OUTCOME_RANK: dict[MappingOutcome, int] = {
     "exact": 0,
@@ -71,6 +72,19 @@ def plan_materialization(
                     f"Planner capabilities for `{capabilities.adapter}` do not match "
                     f"adapter `{target_binding.adapter}`",
                 ),
+            )
+        )
+
+    sensitive_paths = target_sensitive_option_paths(target, target_binding)
+    if sensitive_paths:
+        raise PlanningError(
+            tuple(
+                PlanningIssue(
+                    "PLN011",
+                    f"Target option `{path}` cannot contain credential material. "
+                    "Use the host environment or a credential provider.",
+                )
+                for path in sensitive_paths
             )
         )
 

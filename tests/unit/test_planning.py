@@ -131,6 +131,63 @@ def test_unknown_target_and_profile_are_structured_errors(target: str, profile: 
     assert [issue.code for issue in caught.value.issues] == [code]
 
 
+def test_programmatic_credential_options_fail_before_planning() -> None:
+    bindings = _bindings()
+    target = bindings.targets["openai"]
+    production = target.profiles["production"]
+    unsafe = TargetBinding(
+        adapter=target.adapter,
+        tools=target.tools,
+        datasources=target.datasources,
+        external_context=target.external_context,
+        environments=target.environments,
+        profiles={
+            **target.profiles,
+            "production": replace(
+                production,
+                options={**production.options, "auth": {"api_key": "secret-value"}},
+            ),
+        },
+    )
+
+    with pytest.raises(PlanningError) as caught:
+        plan_materialization(
+            _sample_ir(),
+            TargetBindings(Path("bindings.toml"), {"openai": unsafe}),
+            target="openai",
+            profile="production",
+            capabilities=_capabilities(),
+        )
+
+    assert [issue.code for issue in caught.value.issues] == ["PLN011"]
+    assert "secret-value" not in str(caught.value)
+
+
+def test_plan_serialization_defensively_rejects_credential_keys() -> None:
+    plan = plan_materialization(
+        _sample_ir(),
+        _bindings(),
+        target="openai",
+        profile="production",
+        capabilities=_capabilities(),
+    )
+    agent_id = next(iter(plan.agents))
+    unsafe_agent = replace(
+        plan.agents[agent_id],
+        model_options=FrozenMap((("Access-Token", "secret-value"),)),
+    )
+    unsafe_plan = replace(
+        plan,
+        agents=FrozenMap(
+            (identifier, unsafe_agent if identifier == agent_id else agent)
+            for identifier, agent in plan.agents.items()
+        ),
+    )
+
+    with pytest.raises(ValueError, match="credential-bearing key `Access-Token`"):
+        materialization_plan_data(unsafe_plan)
+
+
 def test_named_profiles_produce_distinct_plan_identity() -> None:
     ir = _sample_ir()
     bindings = _bindings()

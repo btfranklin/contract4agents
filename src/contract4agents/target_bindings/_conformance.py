@@ -16,6 +16,7 @@ from typing import Literal, cast
 from contract4agents.diagnostics import Diagnostic
 from contract4agents.ir import CanonicalIR, CapabilityIR, ParameterIR, SemanticId
 from contract4agents.target_bindings._models import BindingEntry, TargetBinding, TargetBindings
+from contract4agents.target_bindings._sensitive import target_sensitive_option_paths
 
 BindingSection = Literal["tools", "datasources", "external_context"]
 ParameterKind = Literal["positional_only", "positional_or_keyword", "keyword_only"]
@@ -132,6 +133,7 @@ def validate_target_binding_conformance(
     expected = _expected_bindings(ir)
     diagnostics: list[Diagnostic] = []
     implementations: list[ResolvedImplementationIdentity] = []
+    diagnostics.extend(_credential_diagnostics(target_name, target))
     root = (project_root or bindings.path.parent).resolve()
     for section, expected_entries in expected.items():
         configured = _binding_section(target, section)
@@ -157,6 +159,20 @@ def validate_target_binding_conformance(
     if profile_validator is not None:
         diagnostics.extend(profile_validator(ir, target_name, target, root))
     return TargetBindingConformanceResult(target_name, tuple(diagnostics), tuple(implementations))
+
+
+def _credential_diagnostics(
+    target_name: str,
+    target: TargetBinding,
+) -> list[Diagnostic]:
+    return [
+        Diagnostic(
+            "TGT115",
+            f"Target binding `{path}` cannot contain credential material",
+            hint="Use the host environment or a credential provider.",
+        )
+        for path in target_sensitive_option_paths(target_name, target)
+    ]
 
 
 def _profile_diagnostics(

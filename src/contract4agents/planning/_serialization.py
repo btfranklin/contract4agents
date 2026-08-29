@@ -19,6 +19,7 @@ from contract4agents.ir import (
     format_type_ref,
 )
 from contract4agents.planning._models import MaterializationPlan
+from contract4agents.target_bindings._sensitive import is_sensitive_option_name
 
 PlanJsonScalar: TypeAlias = None | bool | int | float | str
 PlanJsonValue: TypeAlias = PlanJsonScalar | list["PlanJsonValue"] | dict[str, "PlanJsonValue"]
@@ -70,6 +71,10 @@ def _plan_value(value: object) -> PlanJsonValue:
                 key = str(raw_key)
             else:
                 raise TypeError(f"Materialization-plan key has unsupported type {type(raw_key).__name__}")
+            if isinstance(raw_key, str) and is_sensitive_option_name(raw_key):
+                raise ValueError(
+                    f"Materialization plans cannot contain credential-bearing key `{raw_key}`"
+                )
             result[key] = _plan_value(child)
         return result
     if isinstance(value, tuple | list):
