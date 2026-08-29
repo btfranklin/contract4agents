@@ -79,6 +79,7 @@ test = "pytest"
 "test:google-adk-live" = "pytest -m live tests/integration/test_google_adk_live.py"
 "test:editor" = "npm --prefix editors/vscode test"
 docs-check = "python scripts/docs_check.py"
+package-check = "python scripts/check_package_artifacts.py"
 lint = "ruff check src tests examples scripts"
 typecheck = "mypy"
 "validate:python" = {composite = ["lint", "typecheck", "docs-check", "test:unit", "test:integration"]}

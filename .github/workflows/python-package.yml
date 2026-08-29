@@ -46,3 +46,6 @@ jobs:
             - name: Build package
               run: |
                   pdm build
+            - name: Verify package contents
+              run: |
+                  pdm run package-check

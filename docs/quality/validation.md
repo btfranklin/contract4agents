@@ -111,7 +111,11 @@ configuration, or public package files:
 
 ```bash
 pdm build
+pdm run package-check
 ```
+
+`pdm run package-check` verifies that the built wheel and source distribution
+both contain the `contract4agents/py.typed` marker.
 
 Versioning comes from semantic Git tags through the PDM backend. Do not edit a
 static package version. The source distribution must exclude repository-local

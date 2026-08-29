@@ -28,5 +28,7 @@ jobs:
             - uses: pdm-project/setup-pdm@v4
             - name: Build package
               run: pdm build
+            - name: Verify package contents
+              run: pdm run package-check
             - name: Publish package with Trusted Publishing
               uses: pypa/gh-action-pypi-publish@release/v1
