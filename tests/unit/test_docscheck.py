@@ -19,11 +19,48 @@ def test_pdm_docs_check_is_part_of_validate() -> None:
     assert "docs-check" in scripts["validate:python"]["composite"]
 
 
+def test_release_workflows_gate_the_exact_tag_before_draft_and_publication() -> None:
+    draft_workflow = (ROOT / ".github/workflows/create-draft-release.yml").read_text()
+    publish_workflow = (ROOT / ".github/workflows/python-publish.yml").read_text()
+
+    draft_gate = (
+        "ref: ${{ github.ref }}",
+        "pdm install --group dev --group openai --group strands --group google-adk",
+        "pdm run validate:python",
+        "pdm run smoke:cli",
+        "pdm build",
+        "pdm run package-check",
+        "npm test",
+        "npm run package",
+        "uses: btfranklin/release-notes-scribe@v0",
+    )
+    publish_gate = (
+        "ref: ${{ github.event.release.tag_name }}",
+        "pdm install --group dev --group openai --group strands --group google-adk",
+        "pdm run validate:python",
+        "pdm run smoke:cli",
+        "pdm build",
+        "pdm run package-check",
+        "uses: pypa/gh-action-pypi-publish@release/v1",
+    )
+
+    assert _positions(draft_workflow, draft_gate) == sorted(_positions(draft_workflow, draft_gate))
+    assert _positions(publish_workflow, publish_gate) == sorted(
+        _positions(publish_workflow, publish_gate)
+    )
+
+
 def test_docs_check_reports_missing_doc(tmp_path: Path) -> None:
     diagnostics = check_docs(tmp_path)
 
     assert diagnostics
     assert diagnostics[0].code == "DOC001"
+
+
+def _positions(source: str, required: tuple[str, ...]) -> list[int]:
+    positions = [source.find(item) for item in required]
+    assert all(position >= 0 for position in positions)
+    return positions
 
 
 def test_docs_check_validates_docs_index_backtick_paths(tmp_path: Path) -> None:
