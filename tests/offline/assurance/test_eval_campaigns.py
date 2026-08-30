@@ -1,0 +1,413 @@
+from __future__ import annotations
+
+import json
+from dataclasses import FrozenInstanceError
+from pathlib import Path
+
+import pytest
+
+from contract4agents.eval_campaigns import (
+    ApprovalRequest,
+    BaselineSnapshot,
+    BaselineTolerance,
+    CampaignConfig,
+    CampaignThresholds,
+    EvalExecutionRequest,
+    EvalProviderError,
+    EvaluatorTruth,
+    FileEvalProvider,
+    HostFixtureContext,
+    InvocationInputs,
+    JudgeRequest,
+    RedactedTrialView,
+    ResolvedTrialData,
+    run_campaign,
+)
+from contract4agents.ir import (
+    semantic_id,
+)
+from contract4agents.tracing import TraceConformanceError
+from tests.support.assurance import campaign_ir, campaign_plan
+
+
+def _event_data(*, complete: bool = True) -> list[dict[str, object]]:
+    semantic = {
+        "agent_id": "agent:SupportAgent",
+        "capability_id": "tool:status.publish",
+        "grant_id": "grant:SupportAgent:status.publish",
+        "control_ids": ["control:SupportAgent:approval:status.publish"],
+    }
+    invocation = {"name": "file", "span_id": "status-publish-1"}
+    events: list[dict[str, object]] = [
+        {"event_type": "approval.requested", "semantic": semantic},
+        {
+            "event_type": "approval.completed",
+            "semantic": semantic,
+            "data": {"approved": True},
+            "provider": invocation,
+        },
+        {"event_type": "tool.started", "semantic": semantic, "provider": invocation},
+        {"event_type": "tool.completed", "semantic": semantic, "provider": invocation},
+    ]
+    if complete:
+        events.append(
+            {
+                "event_type": "output.accepted",
+                "semantic": {
+                    "agent_id": "agent:SupportAgent",
+                    "control_ids": ["control:SupportAgent:output_conformance"],
+                },
+            }
+        )
+    return events
+
+
+def _write_eval_data(
+    path: Path,
+    *,
+    trials: list[dict[str, object]],
+) -> FileEvalProvider:
+    closed_trials = [
+        {
+            **trial,
+            "closure": trial.get(
+                "closure",
+                {
+                    "status": "complete",
+                    "reason": "The deterministic fixture enumerates every execution path.",
+                    "channels": [
+                        "agent",
+                        "approval",
+                        "composition",
+                        "datasource",
+                        "guardrail",
+                        "handoff",
+                        "output",
+                        "provider_response",
+                        "tool",
+                    ],
+                    "evidence_refs": ["fixture:eval:closure"],
+                },
+            ),
+        }
+        for trial in trials
+    ]
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": "1",
+                "cases": {
+                    "eval:SupportAgent:publishes_status": {
+                        "invocation": {"tenant": "acme"},
+                        "host_context": {"region": "us-west"},
+                        "report": {"fixture": "support-status"},
+                        "trials": closed_trials,
+                    }
+                },
+            }
+        )
+    )
+    return FileEvalProvider.load(path)
+
+
+@pytest.mark.asyncio
+async def test_campaign_runs_repeated_trials_and_reports_deterministic_statistics(tmp_path: Path) -> None:
+    ir = campaign_ir()
+    plan = campaign_plan(ir)
+    trials = [
+        {
+            "output": {"status": "ok", "message": "Published"},
+            "events": _event_data(),
+            "approvals": {"tool:status.publish": True},
+            "judges": {
+                "quality:SupportAgent:useful": {
+                    "status": "passed",
+                    "reason": "Useful and direct.",
+                    "score": 0.9,
+                    "provider": "fixture-judge",
+                    "version": "1",
+                }
+            },
+            "metrics": {"latency_ms": 100, "cost_usd": 0.01, "input_tokens": 10, "output_tokens": 20},
+        },
+        {
+            "output": {"status": "bad", "message": "Published"},
+            "events": _event_data(),
+            "judges": {
+                "quality:SupportAgent:useful": {
+                    "status": "violated",
+                    "reason": "Not sufficiently useful.",
+                    "score": 0.2,
+                }
+            },
+            "metrics": {"latency_ms": 300, "cost_usd": 0.03, "input_tokens": 30, "output_tokens": 40},
+        },
+    ]
+    provider = _write_eval_data(tmp_path / "eval-data.json", trials=trials)
+    config = CampaignConfig(
+        "nightly",
+        trial_count=2,
+        thresholds=CampaignThresholds(min_pass_rate=0.75, max_violation_rate=0.5, max_mean_latency_ms=250),
+        baseline=BaselineSnapshot("sha256:baseline", 0.8, 0.2, 150, 0.015),
+        baseline_tolerance=BaselineTolerance(
+            max_pass_rate_drop=0.1,
+            max_violation_rate_increase=0.3,
+            max_latency_increase_ratio=0.5,
+            max_cost_increase_ratio=0.5,
+        ),
+    )
+
+    result = await run_campaign(ir, plan, provider, config)
+    repeated = await run_campaign(ir, plan, provider, config)
+
+    assert [trial.status for trial in result.cases[0].trials] == ["passed", "violated"]
+    assert result.summary.rates.pass_rate == 0.5
+    assert result.summary.rates.violation_rate == 0.5
+    assert 0 < result.summary.rates.pass_interval.lower < 0.5
+    assert result.summary.rates.pass_interval.upper > 0.5
+    assert result.summary.metrics.latency_ms.mean == 200
+    assert result.summary.metrics.cost_usd.mean == 0.02
+    assert result.summary.metrics.total_tokens.mean == 50
+    assert result.inventory.agent_ids == ("agent:SupportAgent",)
+    assert result.inventory.capability_ids == ("tool:status.publish",)
+    assert result.inventory.control_ids == (
+        "control:SupportAgent:approval:status.publish",
+        "control:SupportAgent:output_conformance",
+    )
+    assert [item.status for item in result.threshold_results] == ["violated", "passed", "passed"]
+    assert result.baseline_digest == "sha256:baseline"
+    assert [item.status for item in result.regression_results] == [
+        "violated",
+        "passed",
+        "passed",
+        "passed",
+    ]
+    assert result.cases[0].trials[0].controls[0].assessor.name == "contract4agents"
+    assert result.to_json() == repeated.to_json()
+    assert result.campaign_digest == repeated.campaign_digest
+    assert json.loads(result.to_json()) == result.to_dict()
+    with pytest.raises(FrozenInstanceError):
+        result.campaign_id = "changed"  # type: ignore[misc]
+
+
+@pytest.mark.asyncio
+async def test_trial_data_audiences_are_structurally_separate_and_reports_are_redacted(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "eval-data.json"
+    _write_eval_data(
+        path,
+        trials=[
+            {
+                "output": {"status": "ok", "message": "Published"},
+                "events": _event_data(),
+                "judges": {
+                    "quality:SupportAgent:useful": {
+                        "status": "passed",
+                        "reason": "Useful and direct.",
+                    }
+                },
+            }
+        ],
+    )
+    payload = json.loads(path.read_text())
+    case_data = payload["cases"]["eval:SupportAgent:publishes_status"]
+    case_data["invocation"] = {"tenant": "case-invocation-secret"}
+    case_data["host_context"] = {"region": "case-host-secret"}
+    case_data["evaluator_truth"] = {
+        "expected_message": {"contains_all": ["Published"]},
+        "private_note": "evaluator-secret",
+    }
+    case_data["report"] = {"fixture": "safe-support-fixture"}
+    case_data["trials"][0]["invocation"] = {"tenant": "trial-invocation-secret"}
+    case_data["trials"][0]["host_context"] = {"region": "trial-host-secret"}
+    path.write_text(json.dumps(payload))
+    delegate = FileEvalProvider.load(path)
+    ir = campaign_ir(hidden_truth_expectation=True)
+    plan = campaign_plan(ir)
+    resolved = await delegate.resolve_trial_data(
+        next(iter(ir.evals.values())),
+        trial_index=0,
+    )
+
+    assert isinstance(resolved, ResolvedTrialData)
+    assert isinstance(resolved.invocation, InvocationInputs)
+    assert isinstance(resolved.host_context, HostFixtureContext)
+    assert isinstance(resolved.evaluator_truth, EvaluatorTruth)
+    assert isinstance(resolved.report_view, RedactedTrialView)
+    assert resolved.invocation.values["tenant"] == "trial-invocation-secret"
+    assert resolved.host_context.values["region"] == "trial-host-secret"
+    assert resolved.evaluator_truth.values["private_note"] == "evaluator-secret"
+
+    class RecordingProvider:
+        def __init__(self) -> None:
+            self.execution_request: EvalExecutionRequest | None = None
+            self.judge_request: JudgeRequest | None = None
+
+        async def resolve_trial_data(self, case, *, trial_index):  # type: ignore[no-untyped-def]
+            return await delegate.resolve_trial_data(case, trial_index=trial_index)
+
+        async def execute(self, request: EvalExecutionRequest):  # type: ignore[no-untyped-def]
+            self.execution_request = request
+            return await delegate.execute(request)
+
+        async def judge(self, request: JudgeRequest):  # type: ignore[no-untyped-def]
+            self.judge_request = request
+            return await delegate.judge(request)
+
+    provider = RecordingProvider()
+    result = await run_campaign(ir, plan, provider, CampaignConfig("audience-separation"))
+    request = provider.execution_request
+    judge_request = provider.judge_request
+
+    assert request is not None
+    assert request.invocation.values["tenant"] == "trial-invocation-secret"
+    assert request.host_context.values["region"] == "trial-host-secret"
+    assert not hasattr(request, "inputs")
+    assert not hasattr(request, "evaluator_truth")
+    assert not hasattr(request, "report_view")
+    assert judge_request is not None
+    assert not hasattr(judge_request, "evaluator_truth")
+
+    trial = result.cases[0].trials[0]
+    serialized = trial.to_dict()
+    rendered = json.dumps(serialized)
+    assert trial.status == "passed"
+    assert serialized["invocation_digest"] == resolved.invocation.digest
+    assert serialized["report"] == {"fixture": "safe-support-fixture"}
+    assert "inputs" not in serialized
+    assert "trial-invocation-secret" not in rendered
+    assert "trial-host-secret" not in rendered
+    assert "evaluator-secret" not in rendered
+
+
+@pytest.mark.asyncio
+async def test_missing_event_types_and_judge_results_are_unverified(tmp_path: Path) -> None:
+    quality_ir = campaign_ir()
+    quality_plan = campaign_plan(quality_ir)
+    provider = _write_eval_data(
+        tmp_path / "eval-data.json",
+        trials=[
+            {
+                "output": {"status": "ok", "message": "Published"},
+                "events": _event_data(),
+                "judges": {},
+            }
+        ],
+    )
+    quality_result = await run_campaign(quality_ir, quality_plan, provider, CampaignConfig("missing-judge"))
+
+    assert quality_result.cases[0].trials[0].status == "unverified"
+    assert quality_result.cases[0].trials[0].qualities[0].status == "unverified"
+
+    negative_ir = campaign_ir(missing_judge=True, negative_expectation=True)
+    negative_plan = campaign_plan(negative_ir, expected_event_types=("approval.requested", "output.accepted"))
+    negative_result = await run_campaign(
+        negative_ir,
+        negative_plan,
+        provider,
+        CampaignConfig("incomplete-negative"),
+    )
+    negative_trial = negative_result.cases[0].trials[0]
+    assert negative_trial.trace_evidence is not None
+    assert negative_trial.trace_evidence.status == "complete"
+    assert negative_trial.expectations[1].status == "unverified"
+
+    incomplete_plan = campaign_plan(negative_ir, expected_event_types=("approval.requested", "event.never_emitted"))
+    incomplete = await run_campaign(
+        negative_ir,
+        incomplete_plan,
+        provider,
+        CampaignConfig("incomplete-negative"),
+    )
+    assert incomplete.cases[0].trials[0].expectations[1].status == "unverified"
+
+
+@pytest.mark.asyncio
+async def test_campaign_rejects_nonconforming_trace_before_scoring(tmp_path: Path) -> None:
+    ir = campaign_ir(missing_judge=True)
+    plan = campaign_plan(ir)
+    provider = _write_eval_data(
+        tmp_path / "undeclared.json",
+        trials=[
+            {
+                "output": {"status": "ok", "message": "Published"},
+                "events": [
+                    {
+                        "event_type": "capability.undeclared",
+                        "data": {"provider_tool": "openai.web_search"},
+                    }
+                ],
+            }
+        ],
+    )
+
+    with pytest.raises(TraceConformanceError, match="TRC004"):
+        await run_campaign(ir, plan, provider, CampaignConfig("nonconforming"))
+
+
+@pytest.mark.asyncio
+async def test_file_provider_supplies_approval_service_and_provider_failures_are_unverified(tmp_path: Path) -> None:
+    ir = campaign_ir(missing_judge=True)
+    plan = campaign_plan(ir)
+    provider = _write_eval_data(
+        tmp_path / "eval-data.json",
+        trials=[
+            {
+                "output": {"status": "ok", "message": "Published"},
+                "events": _event_data(),
+                "approvals": {
+                    "tool:status.publish": {
+                        "approved": True,
+                        "reason": "Test operator approved.",
+                        "evidence_refs": ["fixture:approval:1"],
+                    }
+                },
+            }
+        ],
+    )
+    decision = await provider.approve(
+        ApprovalRequest(
+            semantic_id("eval", "SupportAgent", "publishes_status"),
+            "trial:eval:SupportAgent:publishes_status:0001",
+            semantic_id("tool", "status.publish"),
+        )
+    )
+    assert decision is not None and decision.approved
+    assert decision.evidence_refs == ("fixture:approval:1",)
+
+    missing_trace_provider = _write_eval_data(
+        tmp_path / "missing-trace.json",
+        trials=[{"output": {"status": "ok", "message": "Published"}, "events": []}],
+    )
+    result = await run_campaign(ir, plan, missing_trace_provider, CampaignConfig("provider-failure"))
+    assert result.cases[0].trials[0].status == "unverified"
+    assert "does not contain normalized trace events" in (result.cases[0].trials[0].diagnostic or "")
+
+
+def test_file_provider_rejects_unknown_eval_data_version(tmp_path: Path) -> None:
+    path = tmp_path / "eval-data.json"
+    path.write_text(json.dumps({"schema_version": "99", "cases": {}}))
+
+    with pytest.raises(EvalProviderError, match="Unsupported eval-data schema_version"):
+        FileEvalProvider.load(path)
+
+
+def test_file_provider_rejects_removed_generic_inputs_field(tmp_path: Path) -> None:
+    path = tmp_path / "eval-data.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": "1",
+                "cases": {
+                    "eval:SupportAgent:publishes_status": {
+                        "inputs": {"hidden_truth": {"secret": "must not leak"}},
+                        "trials": [],
+                    }
+                },
+            }
+        )
+    )
+
+    with pytest.raises(EvalProviderError, match="unsupported fields: `inputs`"):
+        FileEvalProvider.load(path)

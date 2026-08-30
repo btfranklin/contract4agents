@@ -17,7 +17,7 @@ pdm build
 pdm run package-check
 npm --prefix editors/vscode test
 npm --prefix editors/vscode run package
-pdm run pytest tests/unit/test_language_server.py
+pdm run pytest tests/offline/tooling/test_language_server.py
 ```
 
 `pdm run validate` runs Ruff, strict mypy, docs-check, and the offline test

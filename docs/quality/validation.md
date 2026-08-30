@@ -16,9 +16,31 @@ The composite runs:
 - `pdm run lint`: Ruff over source, tests, and examples.
 - `pdm run typecheck`: strict mypy over `src`.
 - `pdm run docs-check`: repository documentation and link consistency.
-- offline unit and integration tests.
+- `pdm run test:offline`: deterministic tests grouped by behavior family.
 
 Run this before handing off implementation changes.
+
+## Test Suite Structure
+
+The offline suite is organized by the behavior that it proves:
+
+- `tests/offline/contracts` covers the language, parser, semantic checks, IR,
+  and portable constraints.
+- `tests/offline/compiler` covers generated artifacts and compiler ownership.
+- `tests/offline/planning` covers target bindings, adapter support, and plans.
+- `tests/offline/materialization` covers native SDK construction and bound host
+  tools.
+- `tests/offline/runtime` covers context, isolation, caching, and project
+  imports.
+- `tests/offline/tracing` covers normalized traces and provider evidence.
+- `tests/offline/assurance` covers evals, controls, bundles, and semantic diffs.
+- `tests/offline/cli`, `tooling`, `visualization`, and `examples` cover their
+  named public surfaces.
+
+Shared deterministic SDK fakes and data builders live in `tests/support`.
+Provider API tests live in `tests/live` and are not part of normal validation.
+Do not classify a test only by its implementation technique. Put it with the
+behavior family whose contract would fail if the test failed.
 
 ## Product Vertical Slice
 
@@ -152,7 +174,7 @@ When changing `editors/vscode` or its release workflow:
 npm --prefix editors/vscode ci
 npm --prefix editors/vscode test
 npm --prefix editors/vscode run package
-pdm run pytest tests/unit/test_language_server.py
+pdm run pytest tests/offline/tooling/test_language_server.py
 ```
 
 The Node suite verifies the grammar, client compilation, interpreter discovery,

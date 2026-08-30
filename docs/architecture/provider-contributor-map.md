@@ -16,8 +16,8 @@ have similar code.
 | Native validation | `materialization/_<provider>_validation.py` | Read back native configuration and compare it with the immutable plan. |
 | Runtime evidence | `tracing/_<provider>.py` and related provider modules | Normalize provider events without changing their meaning. |
 | Public behavior | `docs/reference/<provider>-adapter.md` | Describe supported mappings, limits, and host duties. |
-| Provider tests | `tests/unit/test_<provider>_materialization.py` | Test provider-specific graph construction and SDK behavior. |
-| Reusable test support | `tests/unit/support/<provider>.py` | Hold fake SDK boundaries and provider project builders. |
+| Provider tests | `tests/offline/materialization/test_<provider>_materialization.py` | Test provider-specific graph construction and SDK behavior. |
+| Reusable test support | `tests/support/<provider>.py` | Hold fake SDK boundaries and provider project builders. |
 
 `<provider>` is `openai`, `strands`, or `google_adk` for the built-in targets.
 
@@ -42,7 +42,7 @@ have similar code.
 - Schema and configuration readback stay in the provider validation module.
 - Provider-neutral evidence models stay in shared materialization and tracing
   modules.
-- Provider test modules must import reusable fakes from `tests/unit/support/`.
+- Provider test modules must import reusable fakes from `tests/support/`.
 - A provider implementation must not redefine portable contract semantics.
 - The host continues to own credentials, approval decisions, persistence,
   deterministic workflow, deployment, and external services.

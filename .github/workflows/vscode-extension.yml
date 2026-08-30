@@ -34,7 +34,7 @@ jobs:
                   pdm install --group dev
                   npm ci --prefix editors/vscode
             - name: Test language server boundary
-              run: pdm run pytest tests/unit/test_language_server.py
+              run: pdm run pytest tests/offline/tooling/test_language_server.py
             - name: Test extension
               run: npm test --prefix editors/vscode
             - name: Package VSIX

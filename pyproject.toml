@@ -72,24 +72,23 @@ excludes = ["editors/**", "examples/**", "tests/**"]
 
 [tool.pdm.scripts]
 test = "pytest"
-"test:unit" = "pytest tests/unit --cov=contract4agents --cov-report=term-missing --cov-fail-under=90"
-"test:integration" = "pytest tests/integration"
-"test:openai-live" = "pytest -m live tests/integration/test_openai_live.py"
-"test:strands-live" = "pytest -m live tests/integration/test_strands_live.py"
-"test:google-adk-live" = "pytest -m live tests/integration/test_google_adk_live.py"
+"test:offline" = "pytest tests/offline --cov=contract4agents --cov-report=term-missing --cov-fail-under=90"
+"test:openai-live" = "pytest -m live tests/live/test_openai_live.py"
+"test:strands-live" = "pytest -m live tests/live/test_strands_live.py"
+"test:google-adk-live" = "pytest -m live tests/live/test_google_adk_live.py"
 "test:editor" = "npm --prefix editors/vscode test"
 docs-check = "python scripts/docs_check.py"
 package-check = "python scripts/check_package_artifacts.py"
 lint = "ruff check src tests examples scripts"
 typecheck = "mypy"
-"validate:python" = {composite = ["lint", "typecheck", "docs-check", "test:unit", "test:integration"]}
+"validate:python" = {composite = ["lint", "typecheck", "docs-check", "test:offline"]}
 validate = {composite = ["validate:python", "test:editor"]}
 "smoke:cli" = "python scripts/smoke_cli.py"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-    "integration: tests that may require optional services or credentials",
+    "integration: deterministic tests that cross component boundaries",
     "live: opt-in tests that call provider APIs",
 ]
 
