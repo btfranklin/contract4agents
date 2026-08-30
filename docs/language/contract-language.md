@@ -30,7 +30,8 @@ type Verification:
 
 The scalar types are `string`, `integer`, `float`, `boolean`, and `datetime`.
 Collections use `list[T]` and `map[string,T]`. Add `?` for nullability. Defaults
-follow the field type after `=`.
+follow the field type after `=`. A `float` must be finite. `NaN` and positive or
+negative infinity are not portable JSON values and fail validation.
 
 The portable constrained subset is:
 

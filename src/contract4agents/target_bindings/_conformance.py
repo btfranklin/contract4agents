@@ -480,6 +480,20 @@ def _signature_diagnostics(
             )
         )
         return diagnostics
+    positional_only = sorted(
+        parameter.name
+        for parameter in actual_parameters
+        if parameter.kind == "positional_only"
+    )
+    if positional_only:
+        diagnostics.append(
+            Diagnostic(
+                "TGT107",
+                f"Callable for `{entry_name}` has parameters that cannot receive keyword arguments",
+                hint="Positional-only parameters: " + ", ".join(positional_only) + ".",
+            )
+        )
+        return diagnostics
     mismatches = [name for name in sorted(expected) if expected[name] != actual[name]]
     if mismatches:
         diagnostics.append(

@@ -228,7 +228,10 @@ class ContextRuntime:
         try:
             if not callable(implementation):
                 raise TypeError("the materialized provider is not callable")
-            raw = implementation(**arguments)
+            if inspect.iscoroutinefunction(implementation):
+                raw = implementation(**arguments)
+            else:
+                raw = await asyncio.to_thread(implementation, **arguments)
             if inspect.isawaitable(raw):
                 raw = await raw
             value = type_adapter_for(context.type_ref, self.output_types).validate_python(

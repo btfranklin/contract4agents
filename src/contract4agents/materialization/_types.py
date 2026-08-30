@@ -71,7 +71,7 @@ def build_pydantic_types(ir: CanonicalIR) -> FrozenMap[str, Any]:
             type[BaseModel],
             create_model_any(
                 type_def.name,
-                __config__=ConfigDict(extra="forbid", strict=True),
+                __config__=ConfigDict(extra="forbid", strict=True, allow_inf_nan=False),
                 __module__="contract4agents.generated",
                 **fields,
             ),
@@ -100,7 +100,7 @@ def build_parameter_model(
         type[object],
         create_model_any(
             name,
-            __config__=ConfigDict(extra="forbid", strict=True),
+            __config__=ConfigDict(extra="forbid", strict=True, allow_inf_nan=False),
             __module__="contract4agents.generated",
             **fields,
         ),
@@ -159,7 +159,7 @@ def _annotation(type_ref: TypeRef, output_types: FrozenMap[str, Any]) -> Any:
         return {
             "string": StrictStr,
             "integer": StrictInt,
-            "float": StrictFloat,
+            "float": Annotated[StrictFloat, Field(allow_inf_nan=False)],
             "boolean": StrictBool,
             "datetime": Annotated[datetime, BeforeValidator(parse_portable_datetime)],
         }[type_ref.name]

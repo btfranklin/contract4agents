@@ -325,7 +325,10 @@ def _header(comment: str, digest: str) -> list[str]:
 
 
 def _pydantic_model(type_def: TypeIR) -> list[str]:
-    lines = [f"class {type_def.name}(BaseModel):", '    model_config = ConfigDict(extra="forbid", strict=True)']
+    lines = [
+        f"class {type_def.name}(BaseModel):",
+        '    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)',
+    ]
     if type_def.description:
         lines.insert(1, f'    """{_python_docstring(type_def.description)}"""')
     for type_field in type_def.fields:

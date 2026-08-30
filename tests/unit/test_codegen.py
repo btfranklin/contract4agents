@@ -108,7 +108,7 @@ def test_pydantic_generation_covers_portable_types_defaults_and_forward_refs() -
     assert "from datetime import datetime" in source
     assert "from contract4agents" not in source
     assert "def parse_portable_datetime(value: object) -> datetime:" in source
-    assert 'model_config = ConfigDict(extra="forbid", strict=True)' in source
+    assert 'model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)' in source
     assert "address: Address" in source
     assert "aliases: list[str] = []" in source
     assert "labels: dict[str, str]" in source

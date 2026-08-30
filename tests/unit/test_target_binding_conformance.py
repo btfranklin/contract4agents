@@ -186,6 +186,44 @@ def test_conformance_compares_callable_parameter_names_and_requiredness(
         sys.modules.pop(MODULE_NAME, None)
 
 
+@pytest.mark.parametrize(
+    ("section", "attribute"),
+    (
+        ("tools", "positional_fetch_logs"),
+        ("tools", "POSITIONAL_FETCH_LOGS"),
+        ("datasources", "positional_timeline"),
+        ("datasources", "POSITIONAL_TIMELINE"),
+    ),
+    ids=("tool-function", "tool-callable", "datasource-function", "datasource-callable"),
+)
+def test_conformance_rejects_host_parameters_that_cannot_receive_keywords(
+    tmp_path: Path,
+    section: str,
+    attribute: str,
+) -> None:
+    _write_application_module(tmp_path)
+    tools = {"incident.fetch_logs": f"{MODULE_NAME}:fetch_logs"}
+    datasources = {"incident.timeline": f"{MODULE_NAME}:timeline"}
+    if section == "tools":
+        tools["incident.fetch_logs"] = f"{MODULE_NAME}:{attribute}"
+    else:
+        datasources["incident.timeline"] = f"{MODULE_NAME}:{attribute}"
+    bindings = _bindings(
+        tmp_path,
+        tools=tools,
+        datasources=datasources,
+        external_context={"incident_record": f"{MODULE_NAME}:current_incident"},
+    )
+
+    try:
+        result = validate_target_binding_conformance(_canonical_ir(), bindings, "openai")
+    finally:
+        sys.modules.pop(MODULE_NAME, None)
+
+    assert [item.code for item in result.diagnostics] == ["TGT107"]
+    assert "keyword" in result.diagnostics[0].message
+
+
 def test_conformance_requires_only_enabled_tools_and_referenced_external_context(tmp_path: Path) -> None:
     bindings = _bindings(
         tmp_path,
@@ -671,6 +709,23 @@ def wrong_names(text, limit=10):
 
 def wrong_requiredness(query, limit):
     return _called()
+
+def positional_fetch_logs(query, /, limit=10):
+    return _called()
+
+def positional_timeline(incident_id, /):
+    return _called()
+
+class PositionalFetchLogs:
+    def __call__(self, query, /, limit=10):
+        return _called()
+
+class PositionalTimeline:
+    def __call__(self, incident_id, /):
+        return _called()
+
+POSITIONAL_FETCH_LOGS = PositionalFetchLogs()
+POSITIONAL_TIMELINE = PositionalTimeline()
 
 def model_factory(*, model, options):
     return _called()

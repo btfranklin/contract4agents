@@ -56,10 +56,10 @@ Portable constraint tests run a shared corpus through JSON Schema with format
 checking, materialized and generated Pydantic models, and an executed generated
 Zod module. The corpus covers Unicode code-point lengths, nested list bounds,
 aware RFC 3339 datetimes, naive and space-separated datetimes, impossible dates,
-malformed offsets, and strict scalar types. The generated TypeScript and Zod
-execution harnesses and their Node dependencies live in the root-owned
-`tests/typescript` package. They do not depend on the VS Code extension
-workspace.
+malformed offsets, strict scalar types, and non-finite Python float rejection.
+The generated TypeScript and Zod execution harnesses and their Node dependencies
+live in the root-owned `tests/typescript` package. They do not depend on the VS
+Code extension workspace.
 
 ## Planner and Materializer Gates
 

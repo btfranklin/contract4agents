@@ -80,7 +80,9 @@ python = "incident_app.context:resolve_timeline"
 
 The contract can change targets without changing the datasource interface.
 Planning validates binding coverage and records the selected implementation
-identity without executing it.
+identity without executing it. The callable must accept each declared argument
+by keyword. A positional-only parameter fails conformance before
+materialization.
 
 ## External Context
 
@@ -192,7 +194,9 @@ modules or invents an undeclared provider.
 A datasource or external-context provider can return ordinary structural data
 or an application Pydantic model. The runtime converts nested Pydantic models
 to ordinary Python data before the generated strict adapter validates the
-declared context type. Provider return annotations are not authoritative.
+declared context type. Provider return annotations are not authoritative. The
+runtime runs a synchronous provider on a worker thread so that it does not
+block the event-loop thread. It awaits an asynchronous provider directly.
 
 The materialized graph exposes this runtime directly:
 

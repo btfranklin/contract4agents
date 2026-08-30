@@ -621,6 +621,33 @@ def test_generated_zod_executes_the_same_portable_corpus(tmp_path: Path) -> None
     assert result.returncode == 0, result.stderr
 
 
+@pytest.mark.parametrize(
+    "value",
+    (float("nan"), float("inf"), float("-inf")),
+    ids=("nan", "positive-infinity", "negative-infinity"),
+)
+@pytest.mark.parametrize("model_source", ("materialized", "generated"))
+def test_python_contract_models_reject_non_finite_float_values(
+    value: float,
+    model_source: str,
+) -> None:
+    record = TypeIR(
+        semantic_id("type", "Measurement"),
+        "Measurement",
+        (TypeFieldIR("reading", parse_type_ref("float")),),
+    )
+    ir = CanonicalIR.create(types=(record,))
+    if model_source == "materialized":
+        model = build_pydantic_types(ir)["Measurement"]
+    else:
+        namespace: dict[str, Any] = {}
+        exec(generate_pydantic_models(ir), namespace)
+        model = namespace["Measurement"]
+
+    with pytest.raises(ValidationError, match="finite"):
+        model(reading=value)
+
+
 def _corpus_ir() -> CanonicalIR:
     child = TypeIR(
         semantic_id("type", "Child"),

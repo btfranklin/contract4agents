@@ -151,7 +151,10 @@ lists, to ordinary Python data before the generated strict output adapter
 validates it. Missing fields, extra fields, and incorrect scalar types still
 fail. Contract4Agents does not adapt arbitrary dataclass instances or use the
 callable's return annotation as a second output contract. Such implementations
-must return a mapping, list, portable scalar, or Pydantic model.
+must return a mapping, list, portable scalar, or Pydantic model. For declared
+object outputs, the native tool carries its output JSON Schema. The OpenAI
+Agents SDK therefore sends the validated result to the next model turn as JSON
+instead of a Python object representation.
 
 Missing implementations, signature mismatches, unverified required approval
 enforcement, and unsupported remote bindings fail closed.

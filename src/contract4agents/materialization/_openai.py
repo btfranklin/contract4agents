@@ -192,6 +192,7 @@ class AgentsSDK:
                 (MaterializationIssue("MAT303", f"Implementation for `{name}` is not callable"),)
             )
         input_adapter = TypeAdapter(input_type) if input_type is not None else None
+        output_schema = dict(output_adapter.json_schema())
 
         async def invoke_tool(_context: object, input_json: str) -> object:
             payload = json.loads(input_json)
@@ -221,6 +222,9 @@ class AgentsSDK:
             on_invoke_tool=invoke_tool,
             strict_json_schema=True,
             needs_approval=requires_approval,
+            output_json_schema=(
+                output_schema if output_schema.get("type") == "object" else None
+            ),
         )
 
     def create_hosted_tool(self, *, name: str, binding: BindingEntry) -> object:
