@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import copy
 import importlib.metadata
 import inspect
@@ -25,6 +24,7 @@ from contract4agents.materialization._errors import (
     MaterializationError,
     MaterializationIssue,
 )
+from contract4agents.materialization._host_callables import HostCallableBoundary
 from contract4agents.materialization._models import (
     GraphValidationEvidence,
     NativeAgentGraph,
@@ -291,22 +291,20 @@ class StrandsAgentsSDK:
             )
         input_schema = _input_schema(input_type)
         output_schema = _output_schema(output_adapter)
-        input_adapter = TypeAdapter(input_type) if input_type is not None else None
+        boundary = HostCallableBoundary.create(
+            native_name,
+            cast(Any, implementation),
+            input_type,
+            output_adapter,
+        )
 
         async def invoke(tool_use: Mapping[str, object], **_state: object) -> object:
             raw_input = tool_use.get("input", {})
-            values = _validated_input(input_adapter, raw_input)
-            if inspect.iscoroutinefunction(implementation):
-                result = await cast(Any, implementation)(**values)
-            else:
-                result = await asyncio.to_thread(
-                    cast(Any, implementation),
-                    **values,
-                )
-                if inspect.isawaitable(result):
-                    result = await result
-            output = _validated_output(output_adapter, result)
-            return _tool_result(str(tool_use.get("toolUseId", "unknown")), output)
+            result = await boundary.invoke(raw_input)
+            return _tool_result(
+                str(tool_use.get("toolUseId", "unknown")),
+                result.json_value,
+            )
 
         tool_spec = {
             "name": native_name,

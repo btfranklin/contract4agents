@@ -816,6 +816,31 @@ check joins a semantic ID and schema boundary to the declared and materialized
 schemas. A required mismatch or unverified observation blocks materialization.
 The resulting graph validation evidence is a required assurance input.
 
+### Bound Python host-callable boundary
+
+Python host tools, datasources, and external-context providers use one private
+runtime boundary. The boundary applies this sequence:
+
+1. Require an object for raw arguments.
+2. Validate the object with the generated strict input type and apply declared
+   defaults.
+3. Dump the validated arguments in Python mode.
+4. Run asynchronous callables on the event-loop thread and synchronous
+   callables on a worker thread.
+5. Await one awaitable returned by a synchronous wrapper.
+6. Convert application Pydantic models, including models in mappings and lists,
+   to ordinary Python data.
+7. Validate the result with the generated strict output adapter.
+8. Keep the validated Python value and produce a JSON-mode value for provider
+   transport.
+
+The boundary does not parse a returned Python string as JSON. It does not adapt
+dataclasses, tuples, arbitrary objects, or callable return annotations. It does
+not own retries, timeouts, approvals, isolation, tracing, or callable lifecycle.
+Application exceptions and cancellation keep their original runtime meaning.
+Context resolution wraps provider failures in `ContextResolutionError` at its
+existing public boundary.
+
 Generated output types contain only portable contract structure. Application
 domain validators run after the SDK returns. Contract trace events identify
 `contract_structure` and `host_domain` as separate validation phases. The host

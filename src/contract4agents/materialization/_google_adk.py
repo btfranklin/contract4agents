@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
 import importlib.metadata
-import inspect
 from collections.abc import Awaitable, Callable, Mapping
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
@@ -32,6 +30,7 @@ from contract4agents.materialization._google_adk_validation import (
     _with_structured_output_instruction,
     validate_google_adk_graph,
 )
+from contract4agents.materialization._host_callables import HostCallableBoundary
 from contract4agents.materialization._models import (
     GraphValidationEvidence,
     NativeAgentGraph,
@@ -331,18 +330,17 @@ class ADKSDK:
                     ),
                 )
             )
-        input_adapter = TypeAdapter(input_type) if input_type is not None else None
+        boundary = HostCallableBoundary.create(
+            native_name,
+            cast(Any, implementation),
+            input_type,
+            output_adapter,
+        )
 
         async def invoke(args: dict[str, object], tool_context: object) -> object:
             del tool_context
-            arguments = _validated_arguments(args, input_adapter)
-            if inspect.iscoroutinefunction(implementation):
-                result = implementation(**arguments)
-            else:
-                result = await asyncio.to_thread(implementation, **arguments)
-            if inspect.isawaitable(result):
-                result = await result
-            return _validated_python_output(result, output_adapter)
+            result = await boundary.invoke(args)
+            return result.json_value
 
         return _contract_tool(
             name=native_name,
@@ -979,11 +977,6 @@ def _validated_output(value: object, adapter: TypeAdapter[Any]) -> object:
         validated = adapter.validate_json(value)
     else:
         validated = adapter.validate_python(normalize_structural_value(value))
-    return adapter.dump_python(validated, mode="json")
-
-
-def _validated_python_output(value: object, adapter: TypeAdapter[Any]) -> object:
-    validated = adapter.validate_python(normalize_structural_value(value))
     return adapter.dump_python(validated, mode="json")
 
 

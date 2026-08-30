@@ -3,19 +3,18 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 import json
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from contract4agents.ir import CanonicalIR, FrozenMap, SemanticId, semantic_id
+from contract4agents.materialization._host_callables import HostCallableBoundary
 from contract4agents.materialization._types import (
     build_parameter_model,
-    normalize_structural_value,
     type_adapter_for,
 )
 from contract4agents.planning import MaterializationPlan
@@ -62,10 +61,44 @@ class ContextRuntime:
         self.implementations = implementations
         self.output_types = output_types
         self.trace_sink = trace_sink or NoOpNormalizedTraceSink()
+        self._host_boundaries = self._build_host_boundaries()
         self._run_cache: dict[tuple[str, str, str], ResolvedContextValue] = {}
         self._thread_cache: dict[tuple[str, str, str], ResolvedContextValue] = {}
         self._in_flight: dict[tuple[str, str, str, str], asyncio.Task[ResolvedContextValue]] = {}
         self._event_counter = 0
+
+    def _build_host_boundaries(self) -> dict[SemanticId, HostCallableBoundary]:
+        boundaries: dict[SemanticId, HostCallableBoundary] = {}
+        for context in self.ir.contexts.values():
+            origin_id = context.origin_id
+            if origin_id is None or origin_id in boundaries:
+                continue
+            implementation = self.implementations.get(origin_id)
+            if not callable(implementation):
+                continue
+            if context.origin == "datasource":
+                capability = self.ir.capabilities[origin_id]
+                input_type = build_parameter_model(
+                    f"{capability.name.replace('.', '_')}Input",
+                    capability.parameters,
+                    self.output_types,
+                )
+                output_type = capability.output_type
+                display_name = capability.name
+            elif context.origin == "external":
+                external = self.ir.external_contexts[origin_id]
+                input_type = None
+                output_type = external.output_type
+                display_name = external.name
+            else:
+                continue
+            boundaries[origin_id] = HostCallableBoundary.create(
+                display_name,
+                cast(Callable[..., object], implementation),
+                input_type,
+                type_adapter_for(output_type, self.output_types),
+            )
+        return boundaries
 
     async def resolve_agent(
         self,
@@ -127,8 +160,8 @@ class ContextRuntime:
                 context_id,
                 "agent-local context must use a declared datasource or external origin",
             )
-        implementation = self.implementations.get(context.origin_id)
-        if implementation is None or not callable(implementation):
+        boundary = self._host_boundaries.get(context.origin_id)
+        if boundary is None:
             raise ContextResolutionError(context_id, "the materialized provider is not callable")
 
         if context.origin == "datasource":
@@ -137,18 +170,18 @@ class ContextRuntime:
                 name: _resolve_mapping(expression, inputs, resolved_context)
                 for name, expression in context.input_mappings.items()
             }
-            arguments = _validate_parameters(
-                f"{capability.name.replace('.', '_')}Input",
-                capability.parameters,
-                raw_arguments,
-                self.output_types,
-                context_id,
-            )
+            try:
+                arguments = boundary.validate_arguments(raw_arguments)
+            except Exception as exc:
+                raise ContextResolutionError(
+                    context_id,
+                    f"input validation failed ({type(exc).__name__})",
+                ) from exc
             cache_scope = capability.cache or "none"
             render = capability.render or "json"
             sensitivity = "internal"
         else:
-            arguments = {}
+            arguments = boundary.validate_arguments({})
             cache_scope = "run"
             render = self.ir.external_contexts[context.origin_id].render
             sensitivity = self.ir.external_contexts[context.origin_id].sensitivity
@@ -175,7 +208,7 @@ class ContextRuntime:
             result = await self._resolve_provider(
                 context_id,
                 arguments,
-                implementation,
+                boundary,
                 run_id,
                 thread_id,
                 render,
@@ -191,7 +224,7 @@ class ContextRuntime:
                 self._resolve_provider(
                     context_id,
                     arguments,
-                    implementation,
+                    boundary,
                     run_id,
                     thread_id,
                     render,
@@ -216,7 +249,7 @@ class ContextRuntime:
         self,
         context_id: SemanticId,
         arguments: Mapping[str, object],
-        implementation: object,
+        boundary: HostCallableBoundary,
         run_id: str,
         thread_id: str,
         render: str,
@@ -226,17 +259,7 @@ class ContextRuntime:
             raise ContextResolutionError(context_id, "context origin is not resolved")
         origin_id = context.origin_id
         try:
-            if not callable(implementation):
-                raise TypeError("the materialized provider is not callable")
-            if inspect.iscoroutinefunction(implementation):
-                raw = implementation(**arguments)
-            else:
-                raw = await asyncio.to_thread(implementation, **arguments)
-            if inspect.isawaitable(raw):
-                raw = await raw
-            value = type_adapter_for(context.type_ref, self.output_types).validate_python(
-                normalize_structural_value(raw)
-            )
+            value = (await boundary.invoke_validated(arguments)).validated_value
         except Exception as exc:
             self._emit_failure(context_id, context.agent_id, origin_id, run_id, thread_id, exc)
             raise ContextResolutionError(

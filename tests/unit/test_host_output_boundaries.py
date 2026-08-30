@@ -6,12 +6,13 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Literal, cast
+from typing import Annotated, Any, Literal, cast
 
 import pytest
-from pydantic import BaseModel, ConfigDict, RootModel, StrictStr, TypeAdapter, create_model
+from pydantic import BaseModel, BeforeValidator, ConfigDict, RootModel, StrictStr, TypeAdapter, create_model
 
 from contract4agents import materialize
+from contract4agents._portable_validation import parse_portable_datetime
 from contract4agents.materialization import AgentsSDK, OpenAIMaterializationProvider
 from contract4agents.materialization._google_adk import ADKSDK
 from contract4agents.materialization._strands import StrandsAgentsSDK
@@ -66,6 +67,11 @@ INPUT_TYPE = create_model(
     "HostOutputInput",
     __config__=ConfigDict(extra="forbid", strict=True),
     query=(StrictStr, ...),
+)
+DATETIME_INPUT_TYPE = create_model(
+    "HostDatetimeInput",
+    __config__=ConfigDict(extra="forbid", strict=True),
+    when=(Annotated[datetime, BeforeValidator(parse_portable_datetime)], ...),
 )
 EXPECTED_ITEMS = {"items": [{"label": "needle"}]}
 
@@ -177,6 +183,68 @@ async def test_strands_function_tool_accepts_structural_application_models(
         "status": "success",
         "content": [{"json": expected}],
     }
+
+
+@pytest.mark.parametrize("provider", ("openai", "google_adk", "strands"))
+@pytest.mark.asyncio
+async def test_function_tool_passes_portable_datetime_to_python_host(
+    provider: str,
+) -> None:
+    received: list[object] = []
+
+    def implementation(when: datetime) -> str:
+        received.append(when)
+        return "ok"
+
+    output_adapter = TypeAdapter(StrictStr)
+    raw_when = "2026-01-01T00:00:00Z"
+    if provider == "openai":
+        tool = AgentsSDK().create_function_tool(
+            name="records.at_time",
+            description="Read records at one time.",
+            implementation=implementation,
+            input_type=DATETIME_INPUT_TYPE,
+            output_adapter=output_adapter,
+            requires_approval=False,
+        )
+        await cast(Any, tool).on_invoke_tool(
+            SimpleNamespace(),
+            json.dumps({"when": raw_when}),
+        )
+    elif provider == "google_adk":
+        tool = ADKSDK().create_function_tool(
+            native_name="c4a_tool_records_at_time_deadbeef",
+            description="Read records at one time.",
+            implementation=implementation,
+            input_type=DATETIME_INPUT_TYPE,
+            output_adapter=output_adapter,
+            requires_approval=False,
+        )
+        await cast(Any, tool).run_async(
+            args={"when": raw_when},
+            tool_context=SimpleNamespace(),
+        )
+    else:
+        tool = StrandsAgentsSDK().create_function_tool(
+            native_name="c4a_tool_records_at_time_deadbeef",
+            description="Read records at one time.",
+            implementation=implementation,
+            input_type=DATETIME_INPUT_TYPE,
+            output_adapter=output_adapter,
+        )
+        _ = [
+            event
+            async for event in cast(Any, tool).stream(
+                {
+                    "name": "c4a_tool_records_at_time_deadbeef",
+                    "toolUseId": "tool-use-1",
+                    "input": {"when": raw_when},
+                },
+                {},
+            )
+        ]
+
+    assert received == [datetime(2026, 1, 1, tzinfo=UTC)]
 
 
 @pytest.mark.parametrize("asynchronous", (False, True), ids=("sync", "async"))

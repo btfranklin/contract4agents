@@ -156,6 +156,12 @@ object outputs, the native tool carries its output JSON Schema. The OpenAI
 Agents SDK therefore sends the validated result to the next model turn as JSON
 instead of a Python object representation.
 
+The OpenAI wrapper uses the shared Python host-callable boundary. It gives
+Python-mode arguments and the validated Python result to application and SDK
+code. The native object output schema controls JSON transport to the next model
+turn. Synchronous host code runs on a worker thread. Asynchronous host code runs
+on the event-loop thread.
+
 Missing implementations, signature mismatches, unverified required approval
 enforcement, and unsupported remote bindings fail closed.
 

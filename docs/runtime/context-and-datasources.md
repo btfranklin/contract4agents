@@ -194,9 +194,20 @@ modules or invents an undeclared provider.
 A datasource or external-context provider can return ordinary structural data
 or an application Pydantic model. The runtime converts nested Pydantic models
 to ordinary Python data before the generated strict adapter validates the
-declared context type. Provider return annotations are not authoritative. The
-runtime runs a synchronous provider on a worker thread so that it does not
-block the event-loop thread. It awaits an asynchronous provider directly.
+declared context type. Provider return annotations are not authoritative.
+Datasources and external-context providers use the same host-callable boundary
+as Python tools. The boundary validates arguments once in Python mode. Thus an
+aware contract `datetime` reaches application code as an aware Python
+`datetime`, including when the provider SDK supplied an RFC 3339 string. The
+validated Python arguments also form datasource cache keys. The runtime runs a
+synchronous provider on a worker thread so that it does not block the event-loop
+thread. It awaits an asynchronous provider directly.
+
+The host remains responsible for business rules, cross-field rules, domain
+model construction, retries, deadlines, and provider lifecycle. Normal
+checking, planning, and materialization inspect callable shape but do not call
+the provider. The first real result is validated only when the application
+resolves context at runtime.
 
 The materialized graph exposes this runtime directly:
 

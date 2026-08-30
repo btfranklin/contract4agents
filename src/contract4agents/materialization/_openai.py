@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import dataclasses
 import importlib.metadata
-import inspect
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol, cast
 
-from pydantic import BaseModel, TypeAdapter
+from pydantic import TypeAdapter
 
 from contract4agents.adapters._openai import openai_planner_capabilities
 from contract4agents.adapters._openai_names import openai_tool_name
@@ -18,6 +17,7 @@ from contract4agents.compiler import CompilerArtifacts
 from contract4agents.ir import CanonicalIR, FrozenMap, SemanticId
 from contract4agents.materialization._context import ContextRuntime
 from contract4agents.materialization._errors import MaterializationError, MaterializationIssue
+from contract4agents.materialization._host_callables import HostCallableBoundary
 from contract4agents.materialization._models import (
     GraphValidationEvidence,
     NativeAgentGraph,
@@ -30,7 +30,6 @@ from contract4agents.materialization._tracing import (
 )
 from contract4agents.materialization._types import (
     build_parameter_model,
-    normalize_structural_value,
     output_type_for,
     type_adapter_for,
 )
@@ -191,29 +190,18 @@ class AgentsSDK:
             raise MaterializationError(
                 (MaterializationIssue("MAT303", f"Implementation for `{name}` is not callable"),)
             )
-        input_adapter = TypeAdapter(input_type) if input_type is not None else None
+        boundary = HostCallableBoundary.create(
+            name,
+            cast(Any, implementation),
+            input_type,
+            output_adapter,
+        )
         output_schema = dict(output_adapter.json_schema())
 
         async def invoke_tool(_context: object, input_json: str) -> object:
             payload = json.loads(input_json)
-            if input_adapter is None:
-                if payload != {}:
-                    raise ValueError(f"Tool `{name}` does not accept parameters")
-                arguments: dict[str, object] = {}
-            else:
-                parsed = input_adapter.validate_python(payload)
-                if not isinstance(parsed, BaseModel):
-                    raise TypeError(f"Tool `{name}` input did not produce a Pydantic model")
-                arguments = parsed.model_dump()
-            if inspect.iscoroutinefunction(implementation):
-                result = await cast(Any, implementation)(**arguments)
-            else:
-                import asyncio
-
-                result = await asyncio.to_thread(cast(Any, implementation), **arguments)
-            if inspect.isawaitable(result):
-                result = await result
-            return output_adapter.validate_python(normalize_structural_value(result))
+            result = await boundary.invoke(payload)
+            return result.validated_value
 
         return FunctionTool(
             name=openai_tool_name(name),

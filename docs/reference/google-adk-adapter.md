@@ -98,6 +98,11 @@ literal Python string remains a string value; JSON text parsing is reserved for
 ADK child-agent and hosted-tool results. Approval-required tools do not call
 application code until ADK supplies an affirmative `ToolConfirmation`.
 
+Python tools use the shared host-callable boundary. Application code receives
+Python-mode arguments. ADK receives the strict validated result in JSON mode.
+Datasources and external-context providers use the same boundary through the
+provider-neutral context runtime.
+
 The adapter reads back native ADK parameter and output schemas during offline
 materialization. Portable list cardinality must remain visible as `minItems`
 and `maxItems`; a missing or changed bound fails conformance. This proves the

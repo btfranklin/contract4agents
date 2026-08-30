@@ -135,6 +135,9 @@ A bound Python tool can return ordinary structural data or application
 Pydantic models, including models nested in mappings and lists. The adapter
 converts those models to ordinary Python data and then applies the generated
 strict output adapter. Missing, extra, or incorrectly typed values still fail.
+The shared host-callable boundary gives Python-mode arguments to the callable
+and gives the validated JSON-mode result to Strands. Portable values such as an
+aware `datetime` therefore remain Python objects inside application code.
 
 An approval-required tool returns a normal Strands interrupt before the host
 callable executes. The host presents the decision, records approval evidence,

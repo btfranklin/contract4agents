@@ -93,6 +93,16 @@ that invokes its final native tool wrapper with deterministic host code and
 passes the result through the provider SDK's tool-result path. Consumer tests
 remain responsible for representative application data and business rules.
 
+The shared offline host-callable suite covers functions and callable objects,
+synchronous and asynchronous execution, worker-thread ownership, awaitable
+wrappers, strict arguments, defaults, Python-mode portable values, Pydantic
+normalization, strict output rejection, exceptions, and cancellation. Concrete
+adapter tests then use the real installed SDK interface: OpenAI
+`FunctionTool.on_invoke_tool` and a deterministic two-turn `Runner`, Google ADK
+native `run_async`, and Strands native tool streaming through its final
+`tool_result`. The versions in `pdm.lock` define this compatibility evidence.
+Normal validation does not select or install newer SDK versions dynamically.
+
 ## Trace and Assurance Gates
 
 Tests should cover:
