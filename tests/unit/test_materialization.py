@@ -526,6 +526,159 @@ def test_openai_tool_uses_contract_schema_instead_of_callable_annotations(tmp_pa
         asyncio.run(tool.on_invoke_tool(SimpleNamespace(), '{"query":""}'))
 
 
+@pytest.mark.parametrize("implementation_kind", ("sync", "async"))
+@pytest.mark.asyncio
+async def test_openai_materialized_tool_accepts_application_pydantic_output_and_continues_run(
+    tmp_path: Path,
+    implementation_kind: str,
+) -> None:
+    from collections.abc import AsyncIterator
+
+    from agents import FunctionTool, ModelResponse, RunConfig, Runner, Usage
+    from agents.models.interface import Model
+    from openai.types.responses import ResponseFunctionToolCall, ResponseOutputMessage, ResponseOutputText
+
+    _write_project(tmp_path)
+    contract_path = tmp_path / "system.contract"
+    contract_path.write_text(
+        contract_path.read_text().replace("authorization = approval_required", "authorization = preapproved")
+    )
+    async_prefix = "async " if implementation_kind == "async" else ""
+    (tmp_path / "app_impl.py").write_text(
+        f"""\
+from pydantic import BaseModel, ConfigDict
+
+class SourceReadResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    value: str
+
+{async_prefix}def lookup(query: str) -> SourceReadResult:
+    return SourceReadResult(value=query)
+
+def current(query: str):
+    return {{"value": query}}
+
+def context():
+    return {{"value": "context"}}
+"""
+    )
+
+    system = materialize(tmp_path, "openai", "test")
+    child = cast(Any, system.agents["Child"])
+    tool = cast(FunctionTool, child.tools[0])
+
+    class ToolThenFinalModel(Model):
+        def __init__(self) -> None:
+            self.inputs: list[object] = []
+
+        async def get_response(self, *args: Any, **kwargs: Any) -> ModelResponse:
+            model_input = kwargs.get("input", args[1] if len(args) > 1 else None)
+            self.inputs.append(model_input)
+            if len(self.inputs) == 1:
+                return ModelResponse(
+                    output=[
+                        ResponseFunctionToolCall(
+                            arguments='{"query":"record-1"}',
+                            call_id="call-1",
+                            name=tool.name,
+                            type="function_call",
+                        )
+                    ],
+                    usage=Usage(),
+                    response_id=None,
+                )
+            return ModelResponse(
+                output=[
+                    ResponseOutputMessage(
+                        id="message-1",
+                        content=[
+                            ResponseOutputText(
+                                annotations=[],
+                                text='{"value":"complete"}',
+                                type="output_text",
+                            )
+                        ],
+                        role="assistant",
+                        status="completed",
+                        type="message",
+                    )
+                ],
+                usage=Usage(),
+                response_id=None,
+            )
+
+        async def stream_response(self, *_args: Any, **_kwargs: Any) -> AsyncIterator[Any]:
+            if False:
+                yield None
+
+    scripted_model = ToolThenFinalModel()
+    child.model = scripted_model
+    run = await Runner.run(
+        child,
+        input="Read one source.",
+        max_turns=3,
+        run_config=RunConfig(tracing_disabled=True),
+    )
+
+    assert type(run.final_output) is system.structural_output_types["Result"]
+    assert run.final_output.value == "complete"
+    assert len(scripted_model.inputs) == 2
+    second_turn = cast(list[dict[str, object]], scripted_model.inputs[1])
+    tool_output = next(item for item in second_turn if item.get("type") == "function_call_output")
+    assert tool_output["call_id"] == "call-1"
+    assert "record-1" in cast(str, tool_output["output"])
+
+
+@pytest.mark.parametrize(
+    ("model_body", "constructor", "error_type"),
+    (
+        ("    pass", "SourceReadResult()", "missing"),
+        (
+            "    value: str\n    unexpected: str",
+            'SourceReadResult(value=query, unexpected="extra")',
+            "extra_forbidden",
+        ),
+        ("    value: int", "SourceReadResult(value=1)", "string_type"),
+    ),
+)
+@pytest.mark.asyncio
+async def test_openai_materialized_tool_keeps_strict_validation_after_pydantic_normalization(
+    tmp_path: Path,
+    model_body: str,
+    constructor: str,
+    error_type: str,
+) -> None:
+    from agents import FunctionTool
+
+    _write_project(tmp_path)
+    (tmp_path / "app_impl.py").write_text(
+        f"""\
+from pydantic import BaseModel, ConfigDict
+
+class SourceReadResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+{model_body}
+
+def lookup(query: str) -> SourceReadResult:
+    return {constructor}
+
+def current(query: str):
+    return {{"value": query}}
+
+def context():
+    return {{"value": "context"}}
+"""
+    )
+
+    system = materialize(tmp_path, "openai", "test")
+    tool = cast(FunctionTool, cast(Any, system.agents["Child"]).tools[0])
+
+    with pytest.raises(ValidationError) as caught:
+        await tool.on_invoke_tool(SimpleNamespace(), '{"query":"record-1"}')
+
+    assert error_type in {cast(str, item["type"]) for item in caught.value.errors()}
+
+
 def test_openai_hosted_tool_option_errors_are_structured() -> None:
     with pytest.raises(MaterializationError) as caught:
         AgentsSDK().create_hosted_tool(

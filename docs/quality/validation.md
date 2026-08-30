@@ -86,6 +86,13 @@ must fail during conformance or planning; late materializer checks remain
 defense in depth. Configuration evidence must not claim host deadline,
 cancellation, token-budget, persistence, retry, or fallback enforcement.
 
+Normal materialization must not call a bound host tool to probe its result.
+Static graph and schema conformance cannot prove that application code returns
+a valid value. Each concrete adapter must therefore have an offline regression
+that invokes its final native tool wrapper with deterministic host code and
+passes the result through the provider SDK's tool-result path. Consumer tests
+remain responsible for representative application data and business rules.
+
 ## Trace and Assurance Gates
 
 Tests should cover:

@@ -209,6 +209,8 @@ class AgentsSDK:
                 import asyncio
 
                 result = await asyncio.to_thread(cast(Any, implementation), **arguments)
+            if isinstance(result, BaseModel):
+                result = result.model_dump(mode="python")
             return output_adapter.validate_python(result)
 
         return FunctionTool(
