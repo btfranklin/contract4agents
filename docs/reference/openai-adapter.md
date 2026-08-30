@@ -146,11 +146,12 @@ telemetry. The application remains responsible for approval decisions and UI.
 
 A bound host tool can return an ordinary mapping or an application-owned
 Pydantic `BaseModel` whose data matches the declared output type. The wrapper
-converts an application Pydantic result to ordinary Python data before the
-generated strict output adapter validates it. Missing fields, extra fields, and
-incorrect scalar types still fail. Contract4Agents does not adapt arbitrary
-dataclass instances or use the callable's return annotation as a second output
-contract. Such implementations must return a mapping or a Pydantic model.
+converts application Pydantic models, including models nested in mappings and
+lists, to ordinary Python data before the generated strict output adapter
+validates it. Missing fields, extra fields, and incorrect scalar types still
+fail. Contract4Agents does not adapt arbitrary dataclass instances or use the
+callable's return annotation as a second output contract. Such implementations
+must return a mapping, list, portable scalar, or Pydantic model.
 
 Missing implementations, signature mismatches, unverified required approval
 enforcement, and unsupported remote bindings fail closed.

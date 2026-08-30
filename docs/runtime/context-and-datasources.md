@@ -189,6 +189,11 @@ result shape, applies rendering and redaction, records cache behavior, and emits
 normalized context/datasource events. Resolution never scans arbitrary installed
 modules or invents an undeclared provider.
 
+A datasource or external-context provider can return ordinary structural data
+or an application Pydantic model. The runtime converts nested Pydantic models
+to ordinary Python data before the generated strict adapter validates the
+declared context type. Provider return annotations are not authoritative.
+
 The materialized graph exposes this runtime directly:
 
 ```python

@@ -13,7 +13,11 @@ from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from contract4agents.ir import CanonicalIR, FrozenMap, SemanticId, semantic_id
-from contract4agents.materialization._types import build_parameter_model, type_adapter_for
+from contract4agents.materialization._types import (
+    build_parameter_model,
+    normalize_structural_value,
+    type_adapter_for,
+)
 from contract4agents.planning import MaterializationPlan
 
 if TYPE_CHECKING:
@@ -227,7 +231,9 @@ class ContextRuntime:
             raw = implementation(**arguments)
             if inspect.isawaitable(raw):
                 raw = await raw
-            value = type_adapter_for(context.type_ref, self.output_types).validate_python(raw)
+            value = type_adapter_for(context.type_ref, self.output_types).validate_python(
+                normalize_structural_value(raw)
+            )
         except Exception as exc:
             self._emit_failure(context_id, context.agent_id, origin_id, run_id, thread_id, exc)
             raise ContextResolutionError(

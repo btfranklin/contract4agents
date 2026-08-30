@@ -41,6 +41,7 @@ from contract4agents.materialization._tracing import (
 )
 from contract4agents.materialization._types import (
     build_parameter_model,
+    normalize_structural_value,
     output_type_for,
     type_adapter_for,
 )
@@ -994,7 +995,7 @@ def _validated_input(
 
 
 def _validated_output(adapter: TypeAdapter[Any], value: object) -> object:
-    parsed = adapter.validate_python(value)
+    parsed = adapter.validate_python(normalize_structural_value(value))
     return adapter.dump_python(parsed, mode="json")
 
 

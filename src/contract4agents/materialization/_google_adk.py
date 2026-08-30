@@ -43,6 +43,7 @@ from contract4agents.materialization._tracing import (
 )
 from contract4agents.materialization._types import (
     build_parameter_model,
+    normalize_structural_value,
     output_type_for,
     type_adapter_for,
 )
@@ -341,7 +342,7 @@ class ADKSDK:
                 result = await asyncio.to_thread(implementation, **arguments)
             if inspect.isawaitable(result):
                 result = await result
-            return _validated_output(result, output_adapter)
+            return _validated_python_output(result, output_adapter)
 
         return _contract_tool(
             name=native_name,
@@ -977,7 +978,12 @@ def _validated_output(value: object, adapter: TypeAdapter[Any]) -> object:
     if isinstance(value, str):
         validated = adapter.validate_json(value)
     else:
-        validated = adapter.validate_python(value)
+        validated = adapter.validate_python(normalize_structural_value(value))
+    return adapter.dump_python(validated, mode="json")
+
+
+def _validated_python_output(value: object, adapter: TypeAdapter[Any]) -> object:
+    validated = adapter.validate_python(normalize_structural_value(value))
     return adapter.dump_python(validated, mode="json")
 
 

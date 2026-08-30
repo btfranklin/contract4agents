@@ -30,6 +30,7 @@ from contract4agents.materialization._tracing import (
 )
 from contract4agents.materialization._types import (
     build_parameter_model,
+    normalize_structural_value,
     output_type_for,
     type_adapter_for,
 )
@@ -209,9 +210,9 @@ class AgentsSDK:
                 import asyncio
 
                 result = await asyncio.to_thread(cast(Any, implementation), **arguments)
-            if isinstance(result, BaseModel):
-                result = result.model_dump(mode="python")
-            return output_adapter.validate_python(result)
+            if inspect.isawaitable(result):
+                result = await result
+            return output_adapter.validate_python(normalize_structural_value(result))
 
         return FunctionTool(
             name=openai_tool_name(name),

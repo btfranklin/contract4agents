@@ -92,7 +92,10 @@ or host-owned deterministic workflow.
 
 Generated contract tools validate model arguments before calling application
 code, run synchronous callables off the event-loop thread, await asynchronous
-callables, and validate the returned value. Approval-required tools do not call
+callables, and validate the returned value. A host tool can return ordinary
+structural data or application Pydantic models, including nested models. A
+literal Python string remains a string value; JSON text parsing is reserved for
+ADK child-agent and hosted-tool results. Approval-required tools do not call
 application code until ADK supplies an affirmative `ToolConfirmation`.
 
 The adapter reads back native ADK parameter and output schemas during offline

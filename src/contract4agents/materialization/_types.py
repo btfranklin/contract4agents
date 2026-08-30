@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
 from typing import Annotated, Any, ForwardRef, Literal, cast
 
@@ -141,6 +142,18 @@ def type_adapter_for(type_ref: TypeRef, output_types: FrozenMap[str, Any]) -> An
     return TypeAdapter(_annotation(type_ref, output_types))
 
 
+def normalize_structural_value(value: object) -> object:
+    """Convert application Pydantic models to ordinary structural data."""
+
+    if isinstance(value, BaseModel):
+        return normalize_structural_value(value.model_dump(mode="python"))
+    if isinstance(value, Mapping):
+        return {key: normalize_structural_value(child) for key, child in value.items()}
+    if isinstance(value, list):
+        return [normalize_structural_value(child) for child in value]
+    return value
+
+
 def _annotation(type_ref: TypeRef, output_types: FrozenMap[str, Any]) -> Any:
     if isinstance(type_ref, PrimitiveTypeRef):
         return {
@@ -189,6 +202,7 @@ __all__ = [
     "build_agent_input_types",
     "build_parameter_model",
     "build_pydantic_types",
+    "normalize_structural_value",
     "output_type_for",
     "type_adapter_for",
 ]

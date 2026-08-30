@@ -131,6 +131,11 @@ native grant and composition objects, context runtime, environment evidence,
 and graph-validation evidence. `validate_result` fails closed if the returned
 `AgentResult` lacks valid contract structured output.
 
+A bound Python tool can return ordinary structural data or application
+Pydantic models, including models nested in mappings and lists. The adapter
+converts those models to ordinary Python data and then applies the generated
+strict output adapter. Missing, extra, or incorrectly typed values still fail.
+
 An approval-required tool returns a normal Strands interrupt before the host
 callable executes. The host presents the decision, records approval evidence,
 and resumes the native agent with Strands `interruptResponse` content. The
