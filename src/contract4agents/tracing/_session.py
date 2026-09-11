@@ -404,23 +404,6 @@ class NormalizedTraceSessionCore:
         state.outcome_evidence_refs.update(event.evidence_refs)
         return event
 
-    def report_provider_outcome(
-        self,
-        evidence: ProviderOutcomeEvidence,
-        *,
-        attempt: TraceAttempt | None = None,
-        provider_identity: str | None = None,
-        evidence_refs: Iterable[str] = (),
-    ) -> TraceEvent:
-        """Alias for :meth:`record_provider_outcome` used by host adapters."""
-
-        return self.record_provider_outcome(
-            evidence,
-            attempt=attempt,
-            provider_identity=provider_identity,
-            evidence_refs=evidence_refs,
-        )
-
     def record_provider_usage(
         self,
         evidence: ProviderUsageEvidence,
@@ -456,23 +439,6 @@ class NormalizedTraceSessionCore:
         state.usage_status = "complete"
         state.usage_evidence_refs.update(event.evidence_refs)
         return event
-
-    def report_provider_usage(
-        self,
-        evidence: ProviderUsageEvidence,
-        *,
-        attempt: TraceAttempt | None = None,
-        provider_identity: str | None = None,
-        evidence_refs: Iterable[str] = (),
-    ) -> TraceEvent:
-        """Alias for :meth:`record_provider_usage` used by host adapters."""
-
-        return self.record_provider_usage(
-            evidence,
-            attempt=attempt,
-            provider_identity=provider_identity,
-            evidence_refs=evidence_refs,
-        )
 
     def _start_provider_trace(
         self,

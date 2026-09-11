@@ -59,9 +59,9 @@ def test_session_provider_reports_bind_attempt_identity_and_close_channels() -> 
     with session:
         with session.bind_attempt(attempt, agent=system.agents["IncidentCommander"]):
             session.record_provider_outcome(outcome, provider_identity="response-1")
-            session.report_provider_outcome(outcome, provider_identity="response-1")
+            session.record_provider_outcome(outcome, provider_identity="response-1")
             session.record_provider_usage(usage, provider_identity="response-1")
-            session.report_provider_usage(usage, provider_identity="response-1")
+            session.record_provider_usage(usage, provider_identity="response-1")
             with pytest.raises(ValueError, match="attempt_id"):
                 session.record_provider_outcome(
                     replace(outcome, attempt_id="other-attempt"), provider_identity="response-1"
