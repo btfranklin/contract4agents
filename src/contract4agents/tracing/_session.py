@@ -38,7 +38,7 @@ from contract4agents.tracing._provider_evidence import (
 from contract4agents.tracing._sinks import NormalizedTraceSink
 
 if TYPE_CHECKING:
-    from contract4agents.materialization import MaterializationResult
+    from contract4agents.materialization import MaterializedSystem
 
 
 class NormalizedTraceSessionCore:
@@ -46,7 +46,7 @@ class NormalizedTraceSessionCore:
 
     def __init__(
         self,
-        system: MaterializationResult,
+        system: MaterializedSystem,
         *,
         provider: str,
         session_name: str,

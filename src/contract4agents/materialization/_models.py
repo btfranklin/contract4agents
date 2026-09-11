@@ -430,7 +430,7 @@ class NativeAgentGraph:
 
 
 @dataclass(frozen=True)
-class MaterializationResult:
+class MaterializedSystem:
     graph: NativeAgentGraph
     plan: MaterializationPlan
     artifacts: CompilerArtifacts
@@ -615,7 +615,7 @@ __all__ = [
     "ConfigurationStatus",
     "GraphValidationEvidence",
     "MaterializationProvider",
-    "MaterializationResult",
+    "MaterializedSystem",
     "NativeAgentGraph",
     "SchemaConformanceEvidence",
 ]

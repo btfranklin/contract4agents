@@ -20,7 +20,7 @@ from contract4agents.materialization._models import (
     ConfigurationStatus,
     GraphValidationEvidence,
     MaterializationProvider,
-    MaterializationResult,
+    MaterializedSystem,
     NativeAgentGraph,
     SchemaConformanceEvidence,
 )
@@ -61,7 +61,7 @@ __all__ = [
     "MaterializationError",
     "MaterializationIssue",
     "MaterializationProvider",
-    "MaterializationResult",
+    "MaterializedSystem",
     "MaterializationTraceEvent",
     "MaterializationTraceSink",
     "NativeAgentDescription",

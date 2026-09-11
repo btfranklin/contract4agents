@@ -27,7 +27,7 @@ from contract4agents.tracing._provider_evidence import (
 from contract4agents.tracing._sinks import NormalizedTraceSink
 
 if TYPE_CHECKING:
-    from contract4agents.materialization import MaterializationResult
+    from contract4agents.materialization import MaterializedSystem
 
 _STRANDS_CAPTURED_CHANNELS: frozenset[TraceInstrumentationChannel] = frozenset(
     {
@@ -50,7 +50,7 @@ class StrandsNormalizedTraceRouter(NativeHookTraceRouterCore):
 
     def open_session(
         self,
-        system: MaterializationResult,
+        system: MaterializedSystem,
         *,
         run_id: str,
         thread_id: str | None = None,
@@ -100,7 +100,7 @@ class StrandsNormalizedTraceSession(NativeHookTraceSession):
     def __init__(
         self,
         router: StrandsNormalizedTraceRouter,
-        system: MaterializationResult,
+        system: MaterializedSystem,
         *,
         run_id: str,
         thread_id: str | None = None,

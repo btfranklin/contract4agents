@@ -12,7 +12,7 @@ from contract4agents.materialization._context import ContextRuntime
 from contract4agents.materialization._errors import MaterializationError, MaterializationIssue
 from contract4agents.materialization._models import (
     MaterializationProvider,
-    MaterializationResult,
+    MaterializedSystem,
 )
 from contract4agents.materialization._tracing import NOOP_MATERIALIZATION_TRACE_SINK, MaterializationTraceSink
 from contract4agents.materialization._types import build_agent_input_types, build_pydantic_types
@@ -37,7 +37,7 @@ def materialize(
     provider: MaterializationProvider | None = None,
     materialization_trace_sink: MaterializationTraceSink | None = None,
     normalized_trace_sink: NormalizedTraceSink | None = None,
-) -> MaterializationResult:
+) -> MaterializedSystem:
     """Compile, plan, construct, and validate one framework-native agent graph."""
 
     project_root = Path(root).resolve()
@@ -113,7 +113,7 @@ def materialize(
             materialization_trace_sink or NOOP_MATERIALIZATION_TRACE_SINK
         ),
     )
-    return MaterializationResult(graph=graph, plan=plan, artifacts=artifacts)
+    return MaterializedSystem(graph=graph, plan=plan, artifacts=artifacts)
 
 
 def _load_bindings(
