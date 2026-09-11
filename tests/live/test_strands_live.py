@@ -59,8 +59,9 @@ async def test_contract_first_incident_graph_runs_through_strands_bedrock(
             "end": "2026-05-01T11:00:00Z",
         },
     }
-    context = await system.context.resolve_agent(
-        "IncidentCommander",
+    commander = system.agents["IncidentCommander"]
+    context = await system.resolve_context_for_agent(
+        commander,
         invocation,
         run_id=run_id,
     )
@@ -69,14 +70,9 @@ async def test_contract_first_incident_graph_runs_through_strands_bedrock(
         "{{CONTEXT}}",
         rendered_context,
     )
-    commander = system.graph.agent("IncidentCommander")
     router = StrandsNormalizedTraceRouter()
     router.attach(system.graph)
-    session = router.open_session(
-        system.context.ir,
-        system.plan,
-        run_id=run_id,
-    )
+    session = router.open_session(system, run_id=run_id)
     attempt = TraceAttempt(
         "incident-command:1",
         "incident-command-attempt-1",
@@ -90,7 +86,7 @@ async def test_contract_first_incident_graph_runs_through_strands_bedrock(
     }
 
     with session:
-        with session.bind_attempt(attempt, agent="IncidentCommander"):
+        with session.bind_attempt(attempt, agent=commander):
             result = await cast(Any, commander).invoke_async(
                 prompt,
                 limits={"turns": 12},

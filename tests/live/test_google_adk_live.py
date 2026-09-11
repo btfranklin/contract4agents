@@ -57,11 +57,7 @@ async def test_google_adk_search_preserves_grounding_display_metadata(
         ),
         session_service=session_service,
     )
-    trace_session = router.open_session(
-        system.context.ir,
-        system.plan,
-        run_id=session_id,
-    )
+    trace_session = router.open_session(system, run_id=session_id)
     attempt = TraceAttempt(
         f"{session_id}:1",
         f"{session_id}:attempt:1",
@@ -72,7 +68,7 @@ async def test_google_adk_search_preserves_grounding_display_metadata(
         with trace_session:
             with trace_session.bind_attempt(
                 attempt,
-                agent="CurrentTruthScout",
+                agent=system.agents["CurrentTruthScout"],
             ):
                 async for event in runner.run_async(
                     user_id=user_id,

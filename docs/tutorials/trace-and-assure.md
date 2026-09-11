@@ -64,13 +64,12 @@ async def run_support_request() -> None:
         number=1,
     )
     session = trace_router.open_session(
-        artifacts.ir,
-        system.plan,
+        system,
         run_id="support-run-123",
     )
 
     with session:
-        with session.bind_attempt(attempt, agent="SupportResponder"):
+        with session.bind_attempt(attempt, agent=responder):
             result = await Runner.run(
                 responder,
                 input=system.serialize_input_for_agent(
@@ -78,13 +77,8 @@ async def run_support_request() -> None:
                     {"question": "When will my order ship?"},
                 ),
             )
-            session.record_result(
-                result,
-                agent="SupportResponder",
-                attempt=attempt,
-            )
+            session.record_result(result)
         session.record_terminal_attempt(
-            agent="SupportResponder",
             attempt=attempt,
             outcome="succeeded",
         )

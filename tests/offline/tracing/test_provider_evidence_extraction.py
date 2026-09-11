@@ -27,10 +27,10 @@ ROOT = Path(__file__).resolve().parents[3]
 
 def test_session_provider_reports_bind_attempt_identity_and_close_channels() -> None:
     project = ROOT / "examples" / "incident-command"
-    artifacts = compile_project(project)
+    compile_project(project)
     system = materialize(project, "openai", "test")
     router = OpenAINormalizedTraceRouter()
-    session = router.open_session(artifacts.ir, system.plan, run_id="provider-evidence")
+    session = router.open_session(system, run_id="provider-evidence")
     attempt = TraceAttempt("commander:1", "commander-attempt-1", 1)
     agent_id = semantic_id("agent", "IncidentCommander")
     outcome = ProviderOutcomeEvidence(
@@ -57,7 +57,7 @@ def test_session_provider_reports_bind_attempt_identity_and_close_channels() -> 
         attempt_id=attempt.attempt_id,
     )
     with session:
-        with session.bind_attempt(attempt, agent="IncidentCommander"):
+        with session.bind_attempt(attempt, agent=system.agents["IncidentCommander"]):
             session.record_provider_outcome(outcome, provider_identity="response-1")
             session.report_provider_outcome(outcome, provider_identity="response-1")
             session.record_provider_usage(usage, provider_identity="response-1")
@@ -84,15 +84,13 @@ def test_session_provider_reports_bind_attempt_identity_and_close_channels() -> 
         "provider.outcome.reported",
         "provider.usage.reported",
     }
-    exception_session = router.open_session(artifacts.ir, system.plan, run_id="provider-exception")
+    exception_session = router.open_session(system, run_id="provider-exception")
     exception_attempt = TraceAttempt("commander:exception", "commander-exception-1", 1)
     with exception_session:
-        with exception_session.bind_attempt(exception_attempt, agent="IncidentCommander"):
+        with exception_session.bind_attempt(exception_attempt, agent=system.agents["IncidentCommander"]):
             assert (
                 exception_session.normalize_exception_responses(
                     RuntimeError("secret exception text"),
-                    agent="IncidentCommander",
-                    attempt=exception_attempt,
                 )
                 == ()
             )

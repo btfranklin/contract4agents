@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from copy import copy
 from pathlib import Path
 from typing import Any, cast
 
@@ -14,10 +15,11 @@ from contract4agents.ir import (
 from contract4agents.materialization import (
     ContextResolutionError,
     ContextRuntime,
+    MaterializationError,
     OpenAIMaterializationProvider,
 )
 from contract4agents.tracing import NoOpNormalizedTraceSink, RecordingNormalizedTraceSink
-from tests.support.openai import FakeOpenAISDK, write_project
+from tests.support.openai import FakeAgent, FakeOpenAISDK, write_project
 
 
 @pytest.mark.asyncio
@@ -32,14 +34,15 @@ async def test_materialized_context_runtime_maps_validates_caches_renders_and_tr
         normalized_trace_sink=runtime_sink,
     )
 
-    first = await result.context.resolve_agent(
-        "Child",
+    child = result.agents["Child"]
+    first = await result.resolve_context_for_agent(
+        child,
         {"request": {"value": "needle"}},
         run_id="run-1",
         thread_id="thread-1",
     )
-    second = await result.context.resolve_agent(
-        "Child",
+    second = await result.resolve_context_for_agent(
+        child,
         {"request": {"value": "needle"}},
         run_id="run-1",
         thread_id="thread-1",
@@ -64,9 +67,16 @@ async def test_materialized_context_runtime_maps_validates_caches_renders_and_tr
     assert all("value" not in event.data for event in runtime_sink.events)
     NoOpNormalizedTraceSink().emit(runtime_sink.events[0])
 
+    parent_context = await result.resolve_context_for_agent(
+        result.agents["Parent"],
+        {"request": {"value": "needle"}},
+        run_id="run-parent",
+    )
+    assert parent_context == FrozenMap()
+
     result.context.complete_run("run-1")
-    third = await result.context.resolve_agent(
-        "Child",
+    third = await result.resolve_context_for_agent(
+        child,
         {"request": {"value": "needle"}},
         run_id="run-1",
     )
@@ -83,13 +93,28 @@ async def test_materialized_context_runtime_rejects_invalid_invocation_shape(tmp
         provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
     )
 
+    child = result.agents["Child"]
     with pytest.raises(ContextResolutionError, match="input validation failed"):
-        await result.context.resolve_agent("Child", {"request": {}}, run_id="run-1")
+        await result.resolve_context_for_agent(child, {"request": {}}, run_id="run-1")
 
-    with pytest.raises(KeyError):
-        await result.context.resolve_agent("Missing", {}, run_id="run-1")
+    copied_child = copy(child)
+    assert copied_child == child
+    second_result = materialize(
+        tmp_path,
+        "openai",
+        "test",
+        provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
+    )
+    for unknown_agent in (object(), copied_child, second_result.agents["Child"]):
+        with pytest.raises(MaterializationError, match="Agent must belong") as caught:
+            await result.resolve_context_for_agent(unknown_agent, {}, run_id="run-1")
+        assert [issue.code for issue in caught.value.issues] == ["MAT205"]
+
+    cast(FakeAgent, child).name = "Mutable SDK name"
+    with pytest.raises(ContextResolutionError, match="agent:Child: input validation failed"):
+        await result.resolve_context_for_agent(child, {"request": {}}, run_id="run-1")
     with pytest.raises(ValueError, match="run_id"):
-        await result.context.resolve_agent("Child", {"request": {"value": "ok"}}, run_id="")
+        await result.resolve_context_for_agent(child, {"request": {"value": "ok"}}, run_id="")
 
 
 @pytest.mark.asyncio
@@ -104,17 +129,18 @@ async def test_context_runtime_enforces_thread_cache_and_records_provider_failur
         normalized_trace_sink=sink,
     )
 
-    first = await result.context.resolve_agent(
-        "Child", {"request": {"value": "ok"}}, run_id="run-1", thread_id="thread-1"
+    child = result.agents["Child"]
+    first = await result.resolve_context_for_agent(
+        child, {"request": {"value": "ok"}}, run_id="run-1", thread_id="thread-1"
     )
-    second = await result.context.resolve_agent(
-        "Child", {"request": {"value": "ok"}}, run_id="run-2", thread_id="thread-1"
+    second = await result.resolve_context_for_agent(
+        child, {"request": {"value": "ok"}}, run_id="run-2", thread_id="thread-1"
     )
     assert first["current"].from_cache is False
     assert second["current"].from_cache is True
     result.context.complete_thread("thread-1")
-    third = await result.context.resolve_agent(
-        "Child", {"request": {"value": "ok"}}, run_id="run-3", thread_id="thread-1"
+    third = await result.resolve_context_for_agent(
+        child, {"request": {"value": "ok"}}, run_id="run-3", thread_id="thread-1"
     )
     assert third["current"].from_cache is False
 
@@ -130,9 +156,13 @@ async def test_context_runtime_enforces_thread_cache_and_records_provider_failur
         normalized_trace_sink=broken_sink,
     )
     with pytest.raises(ContextResolutionError, match="output validation failed"):
-        await broken.context.resolve_agent("Child", {"request": {"value": "bad"}}, run_id="run-broken")
+        await broken.resolve_context_for_agent(
+            broken.agents["Child"], {"request": {"value": "bad"}}, run_id="run-broken"
+        )
     with pytest.raises(ContextResolutionError, match="output validation failed"):
-        await broken.context.resolve_agent("Child", {"request": {"value": "bad"}}, run_id="run-broken")
+        await broken.resolve_context_for_agent(
+            broken.agents["Child"], {"request": {"value": "bad"}}, run_id="run-broken"
+        )
     failures = [event for event in broken_sink.events if event.event_type == "datasource.failed"]
     assert len(failures) == 2
     assert all(event.data == {"error_type": "ValidationError"} for event in failures)
@@ -175,8 +205,8 @@ async def test_context_runtime_uses_single_flight_and_requires_inactive_completi
         result.context.output_types,
     )
     first_task = asyncio.create_task(
-        runtime.resolve_agent(
-            "Child",
+        runtime._resolve_agent(
+            semantic_id("agent", "Child"),
             {"request": {"value": "same"}},
             run_id="run-1",
             thread_id="thread-1",
@@ -184,8 +214,8 @@ async def test_context_runtime_uses_single_flight_and_requires_inactive_completi
     )
     await started.wait()
     second_task = asyncio.create_task(
-        runtime.resolve_agent(
-            "Child",
+        runtime._resolve_agent(
+            semantic_id("agent", "Child"),
             {"request": {"value": "same"}},
             run_id="run-1",
             thread_id="thread-1",
@@ -204,8 +234,8 @@ async def test_context_runtime_uses_single_flight_and_requires_inactive_completi
     assert calls == 1
 
     runtime.complete_run("run-1")
-    third = await runtime.resolve_agent(
-        "Child",
+    third = await runtime._resolve_agent(
+        semantic_id("agent", "Child"),
         {"request": {"value": "same"}},
         run_id="run-1",
         thread_id="thread-1",
@@ -251,16 +281,16 @@ async def test_context_runtime_waiter_cancellation_does_not_cancel_shared_resolu
         result.context.output_types,
     )
     first = asyncio.create_task(
-        runtime.resolve_agent(
-            "Child",
+        runtime._resolve_agent(
+            semantic_id("agent", "Child"),
             {"request": {"value": "shared"}},
             run_id="run-1",
         )
     )
     await started.wait()
     waiter = asyncio.create_task(
-        runtime.resolve_agent(
-            "Child",
+        runtime._resolve_agent(
+            semantic_id("agent", "Child"),
             {"request": {"value": "shared"}},
             run_id="run-1",
         )
@@ -274,8 +304,8 @@ async def test_context_runtime_waiter_cancellation_does_not_cancel_shared_resolu
 
     release.set()
     resolved = await first
-    cached = await runtime.resolve_agent(
-        "Child",
+    cached = await runtime._resolve_agent(
+        semantic_id("agent", "Child"),
         {"request": {"value": "shared"}},
         run_id="run-1",
     )
@@ -319,8 +349,10 @@ async def test_context_runtime_retries_after_provider_cancellation(tmp_path: Pat
     )
 
     with pytest.raises(asyncio.CancelledError):
-        await runtime.resolve_agent("Child", {"request": {"value": "retry"}}, run_id="run-1")
-    resolved = await runtime.resolve_agent("Child", {"request": {"value": "retry"}}, run_id="run-1")
+        await runtime._resolve_agent(semantic_id("agent", "Child"), {"request": {"value": "retry"}}, run_id="run-1")
+    resolved = await runtime._resolve_agent(
+        semantic_id("agent", "Child"), {"request": {"value": "retry"}}, run_id="run-1"
+    )
 
     assert cast(Any, resolved["current"].value).value == "retry"
     assert calls == 2

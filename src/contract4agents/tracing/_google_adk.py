@@ -6,10 +6,8 @@ from collections.abc import Mapping, Sequence
 from contextvars import Token
 from importlib import import_module
 from types import TracebackType
-from typing import Any, Self
+from typing import TYPE_CHECKING, Any, Self
 
-from contract4agents.ir import CanonicalIR
-from contract4agents.planning import MaterializationPlan
 from contract4agents.tracing._closure import (
     TraceClosureEvidence,
     TraceInstrumentationChannel,
@@ -24,6 +22,9 @@ from contract4agents.tracing._provider_evidence import (
     ProviderUsageEvidence,
 )
 from contract4agents.tracing._sinks import NormalizedTraceSink
+
+if TYPE_CHECKING:
+    from contract4agents.materialization import MaterializationResult
 
 _GOOGLE_ADK_CAPTURED_CHANNELS: frozenset[TraceInstrumentationChannel] = frozenset(
     {
@@ -45,8 +46,7 @@ class GoogleADKNormalizedTraceRouter(NativeHookTraceRouterCore):
 
     def open_session(
         self,
-        ir: CanonicalIR,
-        plan: MaterializationPlan,
+        system: MaterializationResult,
         *,
         run_id: str,
         thread_id: str | None = None,
@@ -57,8 +57,7 @@ class GoogleADKNormalizedTraceRouter(NativeHookTraceRouterCore):
         self.ensure_open()
         return GoogleADKNormalizedTraceSession(
             self,
-            ir,
-            plan,
+            system,
             run_id=run_id,
             thread_id=thread_id,
             sink=sink,
@@ -237,8 +236,7 @@ class GoogleADKNormalizedTraceSession(NativeHookTraceSession):
     def __init__(
         self,
         router: GoogleADKNormalizedTraceRouter,
-        ir: CanonicalIR,
-        plan: MaterializationPlan,
+        system: MaterializationResult,
         *,
         run_id: str,
         thread_id: str | None = None,
@@ -248,8 +246,7 @@ class GoogleADKNormalizedTraceSession(NativeHookTraceSession):
     ) -> None:
         super().__init__(
             router,
-            ir,
-            plan,
+            system,
             provider="google_adk",
             session_name="Google ADK trace",
             provenance_source="google-adk-plugin",
@@ -340,12 +337,10 @@ class GoogleADKNormalizedTraceSession(NativeHookTraceSession):
         evidence_refs = ("google-adk:terminal-schema-validation",)
         if accepted:
             self.record_output_accepted(
-                agent=semantic_name,
                 evidence_refs=evidence_refs,
             )
         else:
             self.record_output_schema_failure(
-                agent=semantic_name,
                 evidence_refs=evidence_refs,
             )
             self._mark_response_incomplete(

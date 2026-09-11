@@ -58,22 +58,19 @@ async def test_contract_first_incident_graph_runs_through_openai(
         "service": {"id": "checkout-api", "name": "Checkout API", "owner": "payments"},
         "window": {"start": "2026-05-01T10:00:00Z", "end": "2026-05-01T11:00:00Z"},
     }
-    context = await system.context.resolve_agent("IncidentCommander", invocation, run_id=run_id)
+    commander = system.agents["IncidentCommander"]
+    context = await system.resolve_context_for_agent(commander, invocation, run_id=run_id)
     rendered_context = "\n\n".join(f"### {name}\n\n{value.rendered}" for name, value in context.items())
 
     router = OpenAINormalizedTraceRouter()
-    session = router.open_session(
-        system.context.ir,
-        system.plan,
-        run_id=run_id,
-    )
+    session = router.open_session(system, run_id=run_id)
     set_trace_processors([router])
     prompt = PROMPT.read_text(encoding="utf-8").replace("{{CONTEXT}}", rendered_context)
     attempt = TraceAttempt("incident-command:1", "incident-command-attempt-1", 1)
     with session:
-        with session.bind_attempt(attempt, agent="IncidentCommander"):
+        with session.bind_attempt(attempt, agent=commander):
             result = await Runner.run(
-                system.agents["IncidentCommander"],
+                commander,
                 prompt,
                 max_turns=12,
                 run_config=RunConfig(
@@ -81,7 +78,7 @@ async def test_contract_first_incident_graph_runs_through_openai(
                     trace_include_sensitive_data=False,
                 ),
             )
-            session.record_result(result, agent="IncidentCommander", attempt=attempt)
+            session.record_result(result, attempt=attempt)
 
     assert result.final_output is not None
     assert result.final_output.summary
@@ -121,18 +118,14 @@ async def test_openai_hosted_web_search_normalizes_to_exact_grant() -> None:
     system = materialize(WEB_SEARCH_PROJECT, target="openai", profile="production")
     run_id = "openai-live-web-search"
     router = OpenAINormalizedTraceRouter()
-    session = router.open_session(
-        system.context.ir,
-        system.plan,
-        run_id=run_id,
-    )
+    session = router.open_session(system, run_id=run_id)
     set_trace_processors([router])
     # The SDK only attaches the provider response (including its model field)
     # when data capture is enabled. Our sole session deliberately retains
     # correlation and model metadata while excluding response input/output.
     attempt = TraceAttempt("web-search:1", "web-search-attempt-1", 1)
     with session:
-        with session.bind_attempt(attempt, agent="CurrentTruthScout"):
+        with session.bind_attempt(attempt, agent=system.agents["CurrentTruthScout"]):
             result = await Runner.run(
                 system.agents["CurrentTruthScout"],
                 WEB_SEARCH_PROMPT.read_text(encoding="utf-8"),
@@ -142,7 +135,7 @@ async def test_openai_hosted_web_search_normalizes_to_exact_grant() -> None:
                     trace_include_sensitive_data=True,
                 ),
             )
-            session.record_result(result, agent="CurrentTruthScout", attempt=attempt)
+            session.record_result(result, attempt=attempt)
     trace = session.closed_snapshot.trace
     hosted_events = [
         event

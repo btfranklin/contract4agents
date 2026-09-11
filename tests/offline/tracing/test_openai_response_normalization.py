@@ -296,28 +296,28 @@ def test_openai_response_normalization_ignores_non_hosted_response_items() -> No
 
 def test_openai_processor_can_merge_hosted_response_events_into_its_sink() -> None:
     project = ROOT / "examples" / "market-research-brief"
-    artifacts = compile_project(project)
+    compile_project(project)
     system = materialize(project, "openai", "test")
     durable = RecordingNormalizedTraceSink()
     router = OpenAINormalizedTraceRouter()
     session = router.open_session(
-        artifacts.ir,
-        system.plan,
+        system,
         run_id="run-responses",
         sink=durable,
     )
 
     attempt = TraceAttempt("scout:1", "scout-attempt-1", 1)
-    events = session.normalize_response_events(
-        [
-            SimpleNamespace(
-                response_id="resp_processor",
-                output=[{"id": "ws_processor", "type": "web_search_call"}],
+    with session:
+        with session.bind_attempt(attempt, agent=system.agents["CurrentTruthScout"]):
+            events = session.normalize_response_events(
+                [
+                    SimpleNamespace(
+                        response_id="resp_processor",
+                        output=[{"id": "ws_processor", "type": "web_search_call"}],
+                    )
+                ],
+                attempt=attempt,
             )
-        ],
-        agent="CurrentTruthScout",
-        attempt=attempt,
-    )
 
     assert session.normalized_trace() == NormalizedTrace(events)
     assert durable.events == list(events)

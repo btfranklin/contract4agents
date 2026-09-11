@@ -177,21 +177,18 @@ system = materialize(
 )
 
 router = GoogleADKNormalizedTraceRouter().attach(system.graph)
+agent = system.agents["ResearchLead"]
 app = App(
     name="contract_app",
-    root_agent=system.agents["ResearchLead"],
+    root_agent=agent,
     plugins=[router.plugin()],
 )
 runner = Runner(app=app, session_service=host_session_service)
 
 attempt = TraceAttempt("research:1", "research:attempt:1", 1)
-session = router.open_session(
-    system.context.ir,
-    system.plan,
-    run_id="research:1",
-)
+session = router.open_session(system, run_id="research:1")
 with session:
-    with session.bind_attempt(attempt, agent="ResearchLead"):
+    with session.bind_attempt(attempt, agent=agent):
         async for event in runner.run_async(...):
             ...
 ```

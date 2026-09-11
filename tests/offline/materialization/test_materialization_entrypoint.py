@@ -198,6 +198,8 @@ agent CountWorker(count: integer) -> Result:
     assert result.agent_input_types["Parent"] is result.graph.input_types[parent_id]
     parent = result.agents["Parent"]
     count_worker = result.agents["CountWorker"]
+    assert result.input_type_for_agent(parent) is result.agent_input_types["Parent"]
+    assert result.input_type_for_agent(count_worker) is result.agent_input_types["CountWorker"]
 
     validated = cast(Any, result.validate_input_for_agent(parent, {"request": {"value": "hello"}}))
     assert validated.request.value == "hello"
@@ -230,9 +232,14 @@ agent CountWorker(count: integer) -> Result:
     foreign_parent = second_result.agents["Parent"]
     for unknown_agent in (object(), copied_parent, foreign_parent):
         with pytest.raises(MaterializationError) as caught:
+            result.input_type_for_agent(unknown_agent)
+        assert [issue.code for issue in caught.value.issues] == ["MAT205"]
+        assert caught.value.issues[0].message == "Agent must belong to this materialized system"
+
+        with pytest.raises(MaterializationError) as caught:
             result.validate_input_for_agent(unknown_agent, {})
         assert [issue.code for issue in caught.value.issues] == ["MAT205"]
-        assert caught.value.issues[0].message == "Input agent must belong to this materialized system"
+        assert caught.value.issues[0].message == "Agent must belong to this materialized system"
 
     cast(FakeAgent, parent).name = "Mutable SDK name"
     with pytest.raises(MaterializationError) as caught:
@@ -342,11 +349,27 @@ def test_materialization_rejects_input_for_parameter_free_agent(tmp_path: Path) 
 
     assert result.agent_input_types["Worker"] is None
     worker = result.agents["Worker"]
+    assert result.input_type_for_agent(worker) is None
     assert result.validate_input_for_agent(worker, {}) is None
     assert result.serialize_input_for_agent(worker, {}) == "{}"
     with pytest.raises(MaterializationError) as caught:
         result.serialize_input_for_agent(worker, {"unexpected": True})
     assert [issue.code for issue in caught.value.issues] == ["MAT206"]
+
+
+@pytest.mark.asyncio
+async def test_parameter_free_agent_supports_context_and_input_type_lookup(tmp_path: Path) -> None:
+    _write_parameter_free_project(tmp_path)
+    result = materialize(
+        tmp_path,
+        "openai",
+        "test",
+        provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
+    )
+    worker = result.agents["Worker"]
+
+    assert result.input_type_for_agent(worker) is None
+    assert not await result.resolve_context_for_agent(worker, {}, run_id="worker-run")
 
 
 def test_injected_provider_supports_an_unknown_matching_adapter(tmp_path: Path) -> None:

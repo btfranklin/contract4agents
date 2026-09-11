@@ -8,10 +8,9 @@ import threading
 from collections.abc import Iterable, Mapping
 from contextvars import ContextVar, Token
 from types import TracebackType
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
-from contract4agents.ir import CanonicalIR, SemanticId
-from contract4agents.planning import MaterializationPlan
+from contract4agents.ir import SemanticId
 from contract4agents.tracing._closure import (
     TraceClosureEvidence,
     TraceInstrumentationChannel,
@@ -48,6 +47,9 @@ from contract4agents.tracing._provider_evidence import (
 from contract4agents.tracing._session import NormalizedTraceSessionCore
 from contract4agents.tracing._sinks import NormalizedTraceSink
 
+if TYPE_CHECKING:
+    from contract4agents.materialization import MaterializationResult
+
 _OPENAI_CAPTURED_CHANNELS: frozenset[TraceInstrumentationChannel] = frozenset(
     {
         "agent",
@@ -75,8 +77,7 @@ class OpenAINormalizedTraceRouter:
 
     def open_session(
         self,
-        ir: CanonicalIR,
-        plan: MaterializationPlan,
+        system: MaterializationResult,
         *,
         run_id: str,
         thread_id: str | None = None,
@@ -91,8 +92,7 @@ class OpenAINormalizedTraceRouter:
                 raise RuntimeError("The OpenAI trace router is shut down")
         return OpenAINormalizedTraceSession(
             self,
-            ir,
-            plan,
+            system,
             run_id=run_id,
             thread_id=thread_id,
             sink=sink,
@@ -184,8 +184,7 @@ class OpenAINormalizedTraceSession(NormalizedTraceSessionCore):
     def __init__(
         self,
         router: OpenAINormalizedTraceRouter,
-        ir: CanonicalIR,
-        plan: MaterializationPlan,
+        system: MaterializationResult,
         *,
         run_id: str,
         thread_id: str | None = None,
@@ -195,8 +194,7 @@ class OpenAINormalizedTraceSession(NormalizedTraceSessionCore):
     ) -> None:
         self.router = router
         super().__init__(
-            ir,
-            plan,
+            system,
             provider="openai",
             session_name="OpenAI trace",
             provenance_source="contract4agents-openai-capture",
@@ -207,7 +205,7 @@ class OpenAINormalizedTraceSession(NormalizedTraceSessionCore):
             prior_trace=prior_trace,
             prior_closure=prior_closure,
         )
-        self._span_mapper = OpenAISpanMapper(ir)
+        self._span_mapper = OpenAISpanMapper(system.context.ir)
         self._span_attempt: dict[str, TraceAttempt | None] = {}
         self._activation_token: Token[OpenAINormalizedTraceSession | None] | None = None
 
@@ -322,14 +320,12 @@ class OpenAINormalizedTraceSession(NormalizedTraceSessionCore):
         self,
         responses: Iterable[object],
         *,
-        agent: str | SemanticId,
         attempt: TraceAttempt | None = None,
     ) -> tuple[TraceEvent, ...]:
         """Normalize and close one successful attempt's provider-response path."""
 
         self._ensure_open()
-        selected = self._require_attempt(attempt)
-        agent_id = self._require_agent(agent)
+        selected, agent_id = self._require_attempt_identity(attempt)
         state = self._attempt_state(selected, agent_id)
         events = normalize_openai_response_events(
             self.plan,
@@ -347,7 +343,6 @@ class OpenAINormalizedTraceSession(NormalizedTraceSessionCore):
         self,
         result: object,
         *,
-        agent: str | SemanticId,
         attempt: TraceAttempt | None = None,
     ) -> tuple[TraceEvent, ...]:
         """Normalize every raw response retained on a successful SDK result."""
@@ -357,9 +352,8 @@ class OpenAINormalizedTraceSession(NormalizedTraceSessionCore):
             raise TypeError("Agents SDK result must expose raw_responses")
         if not isinstance(raw_responses, Iterable) or isinstance(raw_responses, str | bytes | Mapping):
             raise TypeError("Agents SDK result raw_responses must be an iterable of responses")
-        events = self.normalize_response_events(raw_responses, agent=agent, attempt=attempt)
-        selected = self._require_attempt(attempt)
-        agent_id = self._require_agent(agent)
+        events = self.normalize_response_events(raw_responses, attempt=attempt)
+        selected, agent_id = self._require_attempt_identity(attempt)
         response_ids = tuple(
             str(event.data["response_identity"])
             for event in events
@@ -393,14 +387,12 @@ class OpenAINormalizedTraceSession(NormalizedTraceSessionCore):
         self,
         exception: BaseException,
         *,
-        agent: str | SemanticId,
         attempt: TraceAttempt | None = None,
     ) -> tuple[TraceEvent, ...]:
         """Normalize and close an exceptional attempt's provider-response path."""
 
         self._ensure_open()
-        selected = self._require_attempt(attempt)
-        agent_id = self._require_agent(agent)
+        selected, agent_id = self._require_attempt_identity(attempt)
         state = self._attempt_state(selected, agent_id)
         events = normalize_openai_exception_responses(
             self.plan,

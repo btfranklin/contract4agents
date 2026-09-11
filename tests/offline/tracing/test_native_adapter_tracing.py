@@ -34,7 +34,7 @@ class _NativeTool:
         self.name = name
 
 
-def _fixture(target: str) -> tuple[object, object, object, _NativeAgent, _NativeTool]:
+def _fixture(target: str) -> tuple[object, object, object, object, _NativeAgent, _NativeTool]:
     project = ROOT / "examples" / "incident-command"
     artifacts = compile_project(project)
     loaded = load_target_bindings(project, required=True)
@@ -61,8 +61,10 @@ def _fixture(target: str) -> tuple[object, object, object, _NativeAgent, _Native
         agents={grant.agent_id: agent},
         grant_objects={grant.id: tool},
         composition_objects={},
+        context=SimpleNamespace(ir=artifacts.ir),
     )
-    return artifacts.ir, plan, graph, agent, tool
+    system = SimpleNamespace(graph=graph, context=graph.context, plan=plan)
+    return system, artifacts.ir, plan, graph, agent, tool
 
 
 def _install_fake_strands_hooks(
@@ -88,15 +90,15 @@ def _install_fake_strands_hooks(
 def test_strands_hook_bridge_closes_attempt_and_correlates_tool(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ir, plan, graph, agent, tool = _fixture("strands")
+    system, ir, plan, graph, agent, tool = _fixture("strands")
     event_types = _install_fake_strands_hooks(monkeypatch)
     router = StrandsNormalizedTraceRouter()
     bridge = router.attach(graph)
-    session = router.open_session(ir, plan, run_id="run-strands")
+    session = router.open_session(system, run_id="run-strands")
     attempt = TraceAttempt("invoke:1", "attempt-strands-1", 1)
 
     with session:
-        with session.bind_attempt(attempt, agent=next(iter(graph.agents))):
+        with session.bind_attempt(attempt, agent=agent):
             agent.hooks[event_types["BeforeInvocationEvent"]](
                 SimpleNamespace(
                     agent=agent,
@@ -158,7 +160,7 @@ class _BasePlugin:
 async def test_google_adk_plugin_is_lazy_and_preserves_grounding_flags(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ir, plan, graph, agent, tool = _fixture("google_adk")
+    system, ir, plan, graph, agent, tool = _fixture("google_adk")
     module = ModuleType("google.adk.plugins.base_plugin")
     module.BasePlugin = _BasePlugin  # type: ignore[attr-defined]
     monkeypatch.setattr(
@@ -167,14 +169,14 @@ async def test_google_adk_plugin_is_lazy_and_preserves_grounding_flags(
     )
     router = GoogleADKNormalizedTraceRouter().attach(graph)
     plugin = router.plugin()
-    session = router.open_session(ir, plan, run_id="run-adk")
+    session = router.open_session(system, run_id="run-adk")
     attempt = TraceAttempt("invoke:1", "attempt-adk-1", 1)
     invocation_context = SimpleNamespace(invocation_id="adk-invocation-1")
     callback_context = SimpleNamespace(agent_name=agent.name)
     tool_context = SimpleNamespace(function_call_id="adk-tool-1")
 
     with session:
-        with session.bind_attempt(attempt, agent=next(iter(graph.agents))):
+        with session.bind_attempt(attempt, agent=agent):
             await plugin.before_run_callback(invocation_context=invocation_context)
             await plugin.before_agent_callback(
                 agent=agent,
@@ -248,7 +250,7 @@ async def test_google_adk_plugin_is_lazy_and_preserves_grounding_flags(
 async def test_google_adk_materializer_validation_failure_seals_closure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ir, plan, graph, agent, tool = _fixture("google_adk")
+    system, ir, plan, graph, agent, tool = _fixture("google_adk")
     del tool
     module = ModuleType("google.adk.plugins.base_plugin")
     module.BasePlugin = _BasePlugin  # type: ignore[attr-defined]
@@ -258,13 +260,13 @@ async def test_google_adk_materializer_validation_failure_seals_closure(
     )
     router = GoogleADKNormalizedTraceRouter().attach(graph)
     plugin = router.plugin()
-    session = router.open_session(ir, plan, run_id="run-adk-invalid")
+    session = router.open_session(system, run_id="run-adk-invalid")
     attempt = TraceAttempt("invoke:1", "attempt-adk-invalid-1", 1)
     invocation_context = SimpleNamespace(invocation_id="adk-invalid-1")
     callback_context = SimpleNamespace(agent_name=agent.name)
 
     with session:
-        with session.bind_attempt(attempt, agent=next(iter(graph.agents))):
+        with session.bind_attempt(attempt, agent=agent):
             await plugin.before_run_callback(invocation_context=invocation_context)
             await plugin.before_agent_callback(
                 agent=agent,
@@ -302,8 +304,8 @@ async def test_google_adk_materializer_validation_failure_seals_closure(
 
 
 def test_native_router_rejects_one_name_for_multiple_semantic_ids() -> None:
-    ir, plan, graph, agent, tool = _fixture("strands")
-    del ir, plan, tool
+    system, ir, plan, graph, agent, tool = _fixture("strands")
+    del system, ir, plan, tool
     other_id = SemanticId.parse("agent:OtherAgent")
     conflicting = SimpleNamespace(
         agents={**graph.agents, other_id: _NativeAgent(agent.name)},
@@ -318,12 +320,12 @@ def test_native_router_rejects_one_name_for_multiple_semantic_ids() -> None:
 def test_strands_hook_without_host_attempt_fails_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ir, plan, graph, agent, tool = _fixture("strands")
+    system, ir, plan, graph, agent, tool = _fixture("strands")
     del tool
     event_types = _install_fake_strands_hooks(monkeypatch)
     router = StrandsNormalizedTraceRouter()
     router.attach(graph)
-    session = router.open_session(ir, plan, run_id="run-unbound")
+    session = router.open_session(system, run_id="run-unbound")
 
     with session:
         agent.hooks[event_types["BeforeInvocationEvent"]](SimpleNamespace(agent=agent, invocation_state={}))
@@ -336,16 +338,16 @@ def test_strands_hook_without_host_attempt_fails_closed(
 def test_strands_missing_structured_output_records_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ir, plan, graph, agent, tool = _fixture("strands")
+    system, ir, plan, graph, agent, tool = _fixture("strands")
     del tool
     event_types = _install_fake_strands_hooks(monkeypatch)
     router = StrandsNormalizedTraceRouter()
     router.attach(graph)
-    session = router.open_session(ir, plan, run_id="run-invalid-output")
+    session = router.open_session(system, run_id="run-invalid-output")
     attempt = TraceAttempt("invoke:1", "attempt-invalid-output-1", 1)
 
     with session:
-        with session.bind_attempt(attempt, agent=next(iter(graph.agents))):
+        with session.bind_attempt(attempt, agent=agent):
             agent.hooks[event_types["BeforeInvocationEvent"]](
                 SimpleNamespace(
                     agent=agent,
@@ -393,16 +395,18 @@ def test_strands_nested_delegate_invocations_share_one_host_attempt(
         },
         grant_objects={},
         composition_objects={edge.id: delegate},
+        context=SimpleNamespace(ir=ir),
     )
+    system = SimpleNamespace(graph=graph, context=graph.context, plan=plan)
     event_types = _install_fake_strands_hooks(monkeypatch)
     router = StrandsNormalizedTraceRouter()
     router.attach(graph)
-    session = router.open_session(ir, plan, run_id="run-nested")
+    session = router.open_session(system, run_id="run-nested")
     attempt = TraceAttempt("invoke:1", "attempt-nested-1", 1)
     shared_state = {"trace_id": "strands-shared-trace"}
 
     with session:
-        with session.bind_attempt(attempt, agent=edge.source_agent_id):
+        with session.bind_attempt(attempt, agent=parent):
             parent.hooks[event_types["BeforeInvocationEvent"]](
                 SimpleNamespace(agent=parent, invocation_state=shared_state)
             )
@@ -473,15 +477,15 @@ def test_strands_nested_delegate_invocations_share_one_host_attempt(
 def test_strands_interrupt_then_resume_is_not_an_output_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ir, plan, graph, agent, tool = _fixture("strands")
+    system, ir, plan, graph, agent, tool = _fixture("strands")
     event_types = _install_fake_strands_hooks(monkeypatch)
     router = StrandsNormalizedTraceRouter()
     router.attach(graph)
-    session = router.open_session(ir, plan, run_id="run-resume")
+    session = router.open_session(system, run_id="run-resume")
     attempt = TraceAttempt("invoke:1", "attempt-resume-1", 1)
 
     with session:
-        with session.bind_attempt(attempt, agent=next(iter(graph.agents))):
+        with session.bind_attempt(attempt, agent=agent):
             for position, result in enumerate(
                 (
                     SimpleNamespace(
@@ -530,8 +534,8 @@ def test_google_adk_plugin_missing_extra_is_actionable(
 
 def test_strands_attach_uses_installed_public_hook_types() -> None:
     hooks = pytest.importorskip("strands.hooks")
-    ir, plan, graph, agent, tool = _fixture("strands")
-    del ir, plan, tool
+    system, ir, plan, graph, agent, tool = _fixture("strands")
+    del system, ir, plan, tool
 
     StrandsNormalizedTraceRouter().attach(graph)
 

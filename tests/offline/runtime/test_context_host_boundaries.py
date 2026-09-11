@@ -49,8 +49,8 @@ def lookup(query: str):
         provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
     )
 
-    resolved = await system.context.resolve_agent(
-        "Child",
+    resolved = await system.resolve_context_for_agent(
+        system.agents["Child"],
         {"request": {"value": "needle"}},
         run_id="run-1",
     )
@@ -103,8 +103,8 @@ class SelectedProvider:
         provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
     )
 
-    resolved = await system.context.resolve_agent(
-        "Child",
+    resolved = await system.resolve_context_for_agent(
+        system.agents["Child"],
         {"request": {"value": "needle"}},
         run_id="run-1",
     )

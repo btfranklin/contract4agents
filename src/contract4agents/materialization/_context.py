@@ -11,7 +11,7 @@ from datetime import datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
-from contract4agents.ir import CanonicalIR, FrozenMap, SemanticId, semantic_id
+from contract4agents.ir import CanonicalIR, FrozenMap, SemanticId
 from contract4agents.materialization._host_callables import HostCallableBoundary
 from contract4agents.materialization._types import (
     build_parameter_model,
@@ -100,9 +100,9 @@ class ContextRuntime:
             )
         return boundaries
 
-    async def resolve_agent(
+    async def _resolve_agent(
         self,
-        agent: str,
+        agent_id: SemanticId,
         inputs: Mapping[str, object],
         *,
         run_id: str,
@@ -110,10 +110,11 @@ class ContextRuntime:
     ) -> FrozenMap[str, ResolvedContextValue]:
         """Resolve every local context slot for one typed agent invocation."""
 
-        agent_id = semantic_id("agent", agent)
+        agent_id.require_kind("agent")
         agent_ir = self.ir.agents.get(agent_id)
         if agent_ir is None:
-            raise KeyError(agent)
+            raise KeyError(agent_id)
+        agent = agent_id.parts[0]
         if not run_id.strip():
             raise ValueError("run_id must be non-empty")
         resolved_inputs = _validate_parameters(

@@ -138,32 +138,13 @@ def test_output_assurance_uses_explicit_terminal_attempt_without_erasing_failure
         2,
         retry_of=first.attempt_id,
     )
-    session = OpenAINormalizedTraceRouter().open_session(
-        artifacts.ir,
-        system.plan,
-        run_id="run-attempts",
-    )
-    failed = session.record_output_schema_failure(
-        agent="IncidentCommander",
-        attempt=first,
-    )
-    accepted = TraceEvent(
-        context=session.context,
-        event_id="host:commander-attempt-2:output-accepted",
-        parent_event_id=None,
-        event_type="output.accepted",
-        timestamp=failed.timestamp + 1,
-        semantic=TraceSemanticRefs(agent_id=semantic_id("agent", "IncidentCommander")),
-        data={"attempt": second.to_dict()},
-        provider=ProviderCorrelation("host"),
-        provenance={"source": "host-output-schema-validation"},
-    )
-    session.emit(accepted)
-    session.record_terminal_attempt(
-        agent="IncidentCommander",
-        attempt=second,
-        outcome="succeeded",
-    )
+    session = OpenAINormalizedTraceRouter().open_session(system, run_id="run-attempts")
+    with session:
+        with session.bind_attempt(first, agent=system.agents["IncidentCommander"]):
+            failed = session.record_output_schema_failure(attempt=first)
+        with session.bind_attempt(second, agent=system.agents["IncidentCommander"]):
+            session.record_output_accepted(attempt=second)
+        session.record_terminal_attempt(attempt=second, outcome="succeeded")
 
     trace = session.normalized_trace()
     results = assess_controls(artifacts.ir, system.plan, trace)
@@ -181,29 +162,23 @@ def test_failed_selected_terminal_attempt_leaves_output_assurance_unverified() -
     artifacts = compile_project(project)
     system = materialize(project, "openai", "test")
     attempt = TraceAttempt("commander:1", "commander-attempt-1", 1)
-    session = OpenAINormalizedTraceRouter().open_session(
-        artifacts.ir,
-        system.plan,
-        run_id="run-terminal-failure",
-    )
-    session.emit(
-        TraceEvent(
-            context=session.context,
-            event_id="host:commander-attempt-1:failed",
-            parent_event_id=None,
-            event_type="agent.failed",
-            timestamp=1784098974.25,
-            semantic=TraceSemanticRefs(agent_id=semantic_id("agent", "IncidentCommander")),
-            data={"attempt": attempt.to_dict()},
-            provider=ProviderCorrelation("host"),
-            provenance={"source": "host-runner"},
-        )
-    )
-    session.record_terminal_attempt(
-        agent="IncidentCommander",
-        attempt=attempt,
-        outcome="failed",
-    )
+    session = OpenAINormalizedTraceRouter().open_session(system, run_id="run-terminal-failure")
+    with session:
+        with session.bind_attempt(attempt, agent=system.agents["IncidentCommander"]):
+            session.emit(
+                TraceEvent(
+                    context=session.context,
+                    event_id="host:commander-attempt-1:failed",
+                    parent_event_id=None,
+                    event_type="agent.failed",
+                    timestamp=1784098974.25,
+                    semantic=TraceSemanticRefs(agent_id=semantic_id("agent", "IncidentCommander")),
+                    data={"attempt": attempt.to_dict()},
+                    provider=ProviderCorrelation("host"),
+                    provenance={"source": "host-runner"},
+                )
+            )
+        session.record_terminal_attempt(attempt=attempt, outcome="failed")
 
     results = assess_controls(artifacts.ir, system.plan, session.normalized_trace())
     output_result = next(
@@ -219,20 +194,11 @@ def test_selected_schema_failed_attempt_violates_output_assurance() -> None:
     artifacts = compile_project(project)
     system = materialize(project, "openai", "test")
     attempt = TraceAttempt("commander:1", "commander-attempt-1", 1)
-    session = OpenAINormalizedTraceRouter().open_session(
-        artifacts.ir,
-        system.plan,
-        run_id="run-selected-schema-failure",
-    )
-    session.record_output_schema_failure(
-        agent="IncidentCommander",
-        attempt=attempt,
-    )
-    session.record_terminal_attempt(
-        agent="IncidentCommander",
-        attempt=attempt,
-        outcome="failed",
-    )
+    session = OpenAINormalizedTraceRouter().open_session(system, run_id="run-selected-schema-failure")
+    with session:
+        with session.bind_attempt(attempt, agent=system.agents["IncidentCommander"]):
+            session.record_output_schema_failure(attempt=attempt)
+        session.record_terminal_attempt(attempt=attempt, outcome="failed")
 
     results = assess_controls(artifacts.ir, system.plan, session.normalized_trace())
     output_result = next(
@@ -248,15 +214,10 @@ def test_attempt_scoped_output_without_terminal_selection_is_unverified() -> Non
     artifacts = compile_project(project)
     system = materialize(project, "openai", "test")
     attempt = TraceAttempt("commander:1", "commander-attempt-1", 1)
-    session = OpenAINormalizedTraceRouter().open_session(
-        artifacts.ir,
-        system.plan,
-        run_id="run-missing-selection",
-    )
-    session.record_output_schema_failure(
-        agent="IncidentCommander",
-        attempt=attempt,
-    )
+    session = OpenAINormalizedTraceRouter().open_session(system, run_id="run-missing-selection")
+    with session:
+        with session.bind_attempt(attempt, agent=system.agents["IncidentCommander"]):
+            session.record_output_schema_failure(attempt=attempt)
 
     results = assess_controls(artifacts.ir, system.plan, session.normalized_trace())
     output_result = next(

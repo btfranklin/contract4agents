@@ -156,8 +156,9 @@ this ownership pattern:
 
 ```python
 try:
-    context = await system.context.resolve_agent(
-        "SupportAgent",
+    agent = system.agents["SupportAgent"]
+    context = await system.resolve_context_for_agent(
+        agent,
         {"request": request},
         run_id=run_id,
         thread_id=thread_id,
@@ -229,8 +230,9 @@ system = materialize(
     profile="production",
     normalized_trace_sink=trace_sink,
 )
-context = await system.context.resolve_agent(
-    "SupportAgent",
+agent = system.agents["SupportAgent"]
+context = await system.resolve_context_for_agent(
+    agent,
     {"request": request},
     run_id=run_id,
     thread_id=thread_id,

@@ -237,7 +237,7 @@ result = await Runner.run(agent, input=run_input)
 ```
 
 If the entry agent declares datasource or external context, resolve it through
-`system.context.resolve_agent(...)` first and pass the returned rendered values
+`system.resolve_context_for_agent(...)` first and pass the returned rendered values
 through the application's normal SDK context or input strategy. Resolution
 validates contract types, enforces declared cache scopes, and emits normalized
 provenance events. Contract4Agents deliberately does not hide the remaining
@@ -285,17 +285,13 @@ from contract4agents.tracing import OpenAINormalizedTraceRouter, TraceAttempt
 router = OpenAINormalizedTraceRouter()
 add_trace_processor(router)  # once at process startup
 
-session = router.open_session(
-    system.context.ir,
-    system.plan,
-    run_id=run_id,
-    thread_id=thread_id,
-)
+planner = system.agents["Planner"]
+session = router.open_session(system, run_id=run_id, thread_id=thread_id)
 attempt = TraceAttempt("planner:1", "planner:attempt:1", 1)
 with session:
-    with session.bind_attempt(attempt, agent="Planner"):
-        result = await Runner.run(agent, input=prompt)
-        session.record_result(result, agent="Planner", attempt=attempt)
+    with session.bind_attempt(attempt, agent=planner):
+        result = await Runner.run(planner, input=prompt)
+        session.record_result(result)
 
 snapshot = session.closed_snapshot
 trace = snapshot.trace
@@ -315,18 +311,17 @@ an attempt:
 
 ```python
 attempt = TraceAttempt("planner:1", "planner:attempt:1", 1)
-with session.bind_attempt(attempt, agent="Planner"):
+with session.bind_attempt(attempt, agent=planner):
     result = await Runner.run(planner, input=prompt)
 
 session.normalize_response_events(
     result.raw_responses,
-    agent="Planner",
     attempt=attempt,
 )
 ```
 
 If the runner raises, call
-`session.normalize_exception_responses(exception, agent=..., attempt=...)`
+`session.normalize_exception_responses(exception, attempt=...)`
 before retrying or reraising so provider-hosted call evidence preserved in
 `exception.run_data.raw_responses` is not lost. This helper is deliberately
 duck-typed and does not classify a general Agents SDK exception as an output
@@ -347,7 +342,6 @@ tool was expected:
 ```python
 session.normalize_response_events(
     result.raw_responses,
-    agent="CurrentTruthScout",
     attempt=attempt,
 )
 trace = session.normalized_trace()
@@ -386,8 +380,7 @@ only from the matching pair:
 
 ```python
 session = router.open_session(
-    system.context.ir,
-    system.plan,
+    system,
     run_id=run_id,
     thread_id=thread_id,
     prior_trace=loaded_trace,

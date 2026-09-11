@@ -74,6 +74,7 @@ system = materialize(
 )
 
 triage_agent = system.agents["TriageAgent"]
+input_type = system.input_type_for_agent(triage_agent)
 artifacts = system.artifacts
 plan = system.plan
 input_types = system.agent_input_types
@@ -125,10 +126,11 @@ run_input = system.serialize_input_for_agent(
 ```
 
 `system.validate_input_for_agent(...)` returns the validated Pydantic value when
-the host needs it before serialization. `system.agent_input_types` exposes the
-same strict types by contract agent name. Invalid scalar coercions, missing
-fields, extra fields, and input for an agent with no parameters fail before a
-provider request starts.
+the host needs it before serialization. `system.input_type_for_agent(...)`
+returns the strict type for the selected agent. `system.agent_input_types`
+keeps the name-based map for enumeration and inspection. Invalid scalar
+coercions, missing fields, extra fields, and input for an agent with no
+parameters fail before a provider request starts.
 
 ## Structural Output and Domain Validation
 

@@ -149,7 +149,7 @@ and resumes the native agent with Strands `interruptResponse` content. The
 materializer does not own the UI or decide whether approval is granted.
 
 Datasource and external-context values are resolved through
-`system.context.resolve_agent(...)`. The host then supplies those rendered,
+`system.resolve_context_for_agent(...)`. The host then supplies those rendered,
 typed values through its application-specific invocation strategy.
 
 ## Runtime Trace and Assurance
@@ -165,16 +165,13 @@ from contract4agents.tracing import (
 
 router = StrandsNormalizedTraceRouter()
 router.attach(system.graph)
-session = router.open_session(
-    system.context.ir,
-    system.plan,
-    run_id=run_id,
-)
+agent = system.agents["IncidentCommander"]
+session = router.open_session(system, run_id=run_id)
 attempt = TraceAttempt("incident:1", "incident:attempt:1", 1)
 
 with session:
-    with session.bind_attempt(attempt, agent="IncidentCommander"):
-        result = await system.agents["IncidentCommander"].invoke_async(prompt)
+    with session.bind_attempt(attempt, agent=agent):
+        result = await agent.invoke_async(prompt)
 
 snapshot = session.closed_snapshot
 trace = snapshot.trace

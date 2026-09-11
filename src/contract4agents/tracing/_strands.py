@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from contract4agents.ir import CanonicalIR
-from contract4agents.planning import MaterializationPlan
 from contract4agents.tracing._closure import (
     TraceClosureEvidence,
     TraceInstrumentationChannel,
@@ -27,6 +25,9 @@ from contract4agents.tracing._provider_evidence import (
     ProviderUsageEvidence,
 )
 from contract4agents.tracing._sinks import NormalizedTraceSink
+
+if TYPE_CHECKING:
+    from contract4agents.materialization import MaterializationResult
 
 _STRANDS_CAPTURED_CHANNELS: frozenset[TraceInstrumentationChannel] = frozenset(
     {
@@ -49,8 +50,7 @@ class StrandsNormalizedTraceRouter(NativeHookTraceRouterCore):
 
     def open_session(
         self,
-        ir: CanonicalIR,
-        plan: MaterializationPlan,
+        system: MaterializationResult,
         *,
         run_id: str,
         thread_id: str | None = None,
@@ -61,8 +61,7 @@ class StrandsNormalizedTraceRouter(NativeHookTraceRouterCore):
         self.ensure_open()
         return StrandsNormalizedTraceSession(
             self,
-            ir,
-            plan,
+            system,
             run_id=run_id,
             thread_id=thread_id,
             sink=sink,
@@ -101,8 +100,7 @@ class StrandsNormalizedTraceSession(NativeHookTraceSession):
     def __init__(
         self,
         router: StrandsNormalizedTraceRouter,
-        ir: CanonicalIR,
-        plan: MaterializationPlan,
+        system: MaterializationResult,
         *,
         run_id: str,
         thread_id: str | None = None,
@@ -112,8 +110,7 @@ class StrandsNormalizedTraceSession(NativeHookTraceSession):
     ) -> None:
         super().__init__(
             router,
-            ir,
-            plan,
+            system,
             provider="strands",
             session_name="Strands trace",
             provenance_source="strands-agents-sdk-hook",
@@ -204,12 +201,10 @@ class StrandsNormalizedTraceSession(NativeHookTraceSession):
                 )
                 if getattr(result, "structured_output", None) is not None:
                     self.record_output_accepted(
-                        agent=self._current_agent_id(),
                         evidence_refs=evidence_refs,
                     )
                 else:
                     self.record_output_schema_failure(
-                        agent=self._current_agent_id(),
                         evidence_refs=evidence_refs,
                     )
                     self._mark_response_incomplete(

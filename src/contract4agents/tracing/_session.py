@@ -7,10 +7,9 @@ import time
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-from contract4agents.ir import CanonicalIR, SemanticId, semantic_id
-from contract4agents.planning import MaterializationPlan
+from contract4agents.ir import SemanticId, semantic_id
 from contract4agents.tracing._capture import (
     AttemptCaptureState,
     build_trace_closure,
@@ -38,14 +37,16 @@ from contract4agents.tracing._provider_evidence import (
 )
 from contract4agents.tracing._sinks import NormalizedTraceSink
 
+if TYPE_CHECKING:
+    from contract4agents.materialization import MaterializationResult
+
 
 class NormalizedTraceSessionCore:
     """Reusable attempt, resume, event, and closure state for one provider run."""
 
     def __init__(
         self,
-        ir: CanonicalIR,
-        plan: MaterializationPlan,
+        system: MaterializationResult,
         *,
         provider: str,
         session_name: str,
@@ -57,10 +58,16 @@ class NormalizedTraceSessionCore:
         prior_trace: NormalizedTrace | None = None,
         prior_closure: TraceClosureEvidence | None = None,
     ) -> None:
+        ir = system.context.ir
+        plan = system.plan
         if plan.contract_digest == "" or not run_id.strip():
             raise ValueError("plan and run_id are required")
         self.ir = ir
         self.plan = plan
+        self._native_agent_ids = {
+            id(native_agent): (native_agent, agent_id)
+            for agent_id, native_agent in system.graph.agents.items()
+        }
         self.context = TraceRunContext(
             run_id,
             thread_id or run_id,
@@ -133,7 +140,7 @@ class NormalizedTraceSessionCore:
         self,
         attempt: TraceAttempt,
         *,
-        agent: str | SemanticId,
+        agent: object,
     ) -> Iterator[None]:
         """Bind attempt identity while the host executes one provider invocation."""
 
@@ -145,7 +152,7 @@ class NormalizedTraceSessionCore:
             raise RuntimeError(
                 f"Enter the {self._session_name} session before binding an attempt"
             )
-        agent_id = self._require_agent(agent)
+        agent_id = self._require_native_agent(agent)
         self._attempt_state(attempt, agent_id)
         attempt_token = self._attempt_context.set(attempt)
         try:
@@ -235,13 +242,12 @@ class NormalizedTraceSessionCore:
     def record_output_schema_failure(
         self,
         *,
-        agent: str | SemanticId,
         attempt: TraceAttempt | None = None,
         evidence_refs: tuple[str, ...] = (),
     ) -> TraceEvent:
         """Record a host-observed canonical output validation failure."""
 
-        selected, agent_id = self._require_attempt_agent(attempt, agent)
+        selected, agent_id = self._require_attempt_identity(attempt)
         return self._record_host_event(
             event_id=(
                 f"contract4agents:{agent_id}:attempt:{selected.attempt_id}:"
@@ -257,13 +263,12 @@ class NormalizedTraceSessionCore:
     def record_output_accepted(
         self,
         *,
-        agent: str | SemanticId,
         attempt: TraceAttempt | None = None,
         evidence_refs: tuple[str, ...] = (),
     ) -> TraceEvent:
         """Record adapter- or host-validated canonical output evidence."""
 
-        selected, agent_id = self._require_attempt_agent(attempt, agent)
+        selected, agent_id = self._require_attempt_identity(attempt)
         return self._record_host_event(
             event_id=(
                 f"contract4agents:{agent_id}:attempt:{selected.attempt_id}:"
@@ -279,14 +284,12 @@ class NormalizedTraceSessionCore:
     def record_host_domain_validation_started(
         self,
         *,
-        agent: str | SemanticId,
         attempt: TraceAttempt | None = None,
         evidence_refs: tuple[str, ...] = (),
     ) -> TraceEvent:
         """Record that the host started application-owned domain validation."""
 
         return self._record_host_domain_validation(
-            agent=agent,
             attempt=attempt,
             outcome="started",
             evidence_refs=evidence_refs,
@@ -295,14 +298,12 @@ class NormalizedTraceSessionCore:
     def record_host_domain_validation_accepted(
         self,
         *,
-        agent: str | SemanticId,
         attempt: TraceAttempt | None = None,
         evidence_refs: tuple[str, ...] = (),
     ) -> TraceEvent:
         """Record that application-owned domain validation accepted the output."""
 
         return self._record_host_domain_validation(
-            agent=agent,
             attempt=attempt,
             outcome="accepted",
             evidence_refs=evidence_refs,
@@ -311,14 +312,12 @@ class NormalizedTraceSessionCore:
     def record_host_domain_validation_failure(
         self,
         *,
-        agent: str | SemanticId,
         attempt: TraceAttempt | None = None,
         evidence_refs: tuple[str, ...] = (),
     ) -> TraceEvent:
         """Record a content-free application-owned domain validation failure."""
 
         return self._record_host_domain_validation(
-            agent=agent,
             attempt=attempt,
             outcome="failed",
             evidence_refs=evidence_refs,
@@ -327,12 +326,11 @@ class NormalizedTraceSessionCore:
     def _record_host_domain_validation(
         self,
         *,
-        agent: str | SemanticId,
         attempt: TraceAttempt | None,
         outcome: Literal["started", "accepted", "failed"],
         evidence_refs: tuple[str, ...],
     ) -> TraceEvent:
-        selected, agent_id = self._require_attempt_agent(attempt, agent)
+        selected, agent_id = self._require_attempt_identity(attempt)
         return self._record_host_event(
             event_id=(
                 f"contract4agents:{agent_id}:attempt:{selected.attempt_id}:"
@@ -348,7 +346,6 @@ class NormalizedTraceSessionCore:
     def record_terminal_attempt(
         self,
         *,
-        agent: str | SemanticId,
         outcome: Literal["succeeded", "failed"],
         attempt: TraceAttempt | None = None,
         evidence_refs: tuple[str, ...] = (),
@@ -357,7 +354,7 @@ class NormalizedTraceSessionCore:
 
         if outcome not in {"succeeded", "failed"}:
             raise ValueError(f"Unsupported terminal attempt outcome `{outcome}`")
-        selected, agent_id = self._require_attempt_agent(attempt, agent)
+        selected, agent_id = self._require_attempt_identity(attempt)
         return self._record_host_event(
             event_id=f"contract4agents:{agent_id}:attempt:{selected.attempt_id}:selected",
             event_type="attempt.selected",
@@ -692,13 +689,11 @@ class NormalizedTraceSessionCore:
             raise ValueError("attempt is required for attempt-aware evidence")
         return selected
 
-    def _require_attempt_agent(
+    def _require_attempt_identity(
         self,
         attempt: TraceAttempt | None,
-        agent: str | SemanticId,
     ) -> tuple[TraceAttempt, SemanticId]:
         selected = self._require_attempt(attempt)
-        agent_id = self._require_agent(agent)
         current = self._attempts.get(selected.attempt_id)
         prior = self._prior_attempt(selected.attempt_id)
         if current is not None and current.attempt != selected:
@@ -714,17 +709,15 @@ class NormalizedTraceSessionCore:
                 f"Attempt `{selected.attempt_id}` is not present in prior or current "
                 "execution evidence"
             )
-        expected = (
+        agent_id = (
             current.agent_id
             if current is not None
             else prior.agent_id
             if prior is not None
             else None
         )
-        if expected is not None and expected != agent_id:
-            raise ValueError(
-                f"Attempt `{selected.attempt_id}` belongs to `{expected}`, not `{agent_id}`"
-            )
+        if agent_id is None:
+            raise ValueError(f"Attempt `{selected.attempt_id}` was not bound to an agent")
         return selected, agent_id
 
     def _ensure_open(self) -> None:
@@ -754,6 +747,12 @@ class NormalizedTraceSessionCore:
         if agent_id not in self.ir.agents:
             raise ValueError(f"Unknown contract agent `{agent_id}`")
         return agent_id
+
+    def _require_native_agent(self, agent: object) -> SemanticId:
+        registered = self._native_agent_ids.get(id(agent))
+        if registered is not None and registered[0] is agent:
+            return registered[1]
+        raise ValueError("Agent must belong to this materialized system")
 
     def _record_host_event(
         self,

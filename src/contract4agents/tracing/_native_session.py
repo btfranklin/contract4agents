@@ -6,10 +6,8 @@ import threading
 from collections.abc import Iterable
 from contextvars import ContextVar, Token
 from types import TracebackType
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
-from contract4agents.ir import CanonicalIR
-from contract4agents.planning import MaterializationPlan
 from contract4agents.tracing._closure import (
     TraceClosureEvidence,
     TraceInstrumentationChannel,
@@ -25,6 +23,9 @@ from contract4agents.tracing._native_identities import (
 )
 from contract4agents.tracing._session import NormalizedTraceSessionCore
 from contract4agents.tracing._sinks import NormalizedTraceSink
+
+if TYPE_CHECKING:
+    from contract4agents.materialization import MaterializationResult
 
 
 class NativeHookTraceRouterCore:
@@ -83,8 +84,7 @@ class NativeHookTraceSession(NormalizedTraceSessionCore):
     def __init__(
         self,
         router: NativeHookTraceRouterCore,
-        ir: CanonicalIR,
-        plan: MaterializationPlan,
+        system: MaterializationResult,
         *,
         provider: str,
         session_name: str,
@@ -98,8 +98,7 @@ class NativeHookTraceSession(NormalizedTraceSessionCore):
     ) -> None:
         self.router = router
         super().__init__(
-            ir,
-            plan,
+            system,
             provider=provider,
             session_name=session_name,
             provenance_source=provenance_source,

@@ -417,17 +417,13 @@ async def test_real_strands_incident_slice_closes_after_delegate_approval_resume
     result = materialize(tmp_path, "strands", "test", provider=provider)
     router = StrandsNormalizedTraceRouter()
     router.attach(result.graph)
-    session = router.open_session(
-        artifacts.ir,
-        result.plan,
-        run_id="strands-incident-poc",
-    )
+    session = router.open_session(result, run_id="strands-incident-poc")
     attempt = TraceAttempt("incident:1", "incident-attempt-1", 1)
-    parent_id = semantic_id("agent", "Parent")
+    semantic_id("agent", "Parent")
     approval_tool = result.graph.grant_objects[semantic_id("grant", "Child", "records.lookup")]
 
     with session:
-        with session.bind_attempt(attempt, agent=parent_id):
+        with session.bind_attempt(attempt, agent=result.agents["Parent"]):
             interrupted = await cast(Any, result.graph.agent("Parent")).invoke_async("Resolve the incident.")
             assert interrupted.stop_reason == "interrupt"
             assert len(interrupted.interrupts) == 1

@@ -120,7 +120,8 @@ attempt = TraceAttempt(
     retry_of="research-section:1:attempt:1",
 )
 
-with session.bind_attempt(attempt, agent="SectionResearcher"):
+agent = system.agents["SectionResearcher"]
+with session.bind_attempt(attempt, agent=agent):
     result = await Runner.run(agent, input=prompt)
 ```
 
@@ -133,7 +134,6 @@ records that decision explicitly:
 
 ```python
 session.record_terminal_attempt(
-    agent="SectionResearcher",
     attempt=attempt,
     outcome="succeeded",
 )
@@ -174,7 +174,6 @@ those response items after each run:
 ```python
 events = session.normalize_response_events(
     result.raw_responses,
-    agent="CurrentTruthScout",
     attempt=attempt,
 )
 ```
@@ -186,7 +185,6 @@ reraises:
 ```python
 events = session.normalize_exception_responses(
     exception,
-    agent="CurrentTruthScout",
     attempt=attempt,
 )
 ```

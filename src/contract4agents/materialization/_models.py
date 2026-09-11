@@ -13,7 +13,7 @@ from pydantic import ValidationError
 
 from contract4agents.compiler import CompilerArtifacts, artifact_digests
 from contract4agents.ir import CanonicalIR, FrozenJsonValue, FrozenMap, SemanticId, freeze_json
-from contract4agents.materialization._context import ContextRuntime
+from contract4agents.materialization._context import ContextRuntime, ResolvedContextValue
 from contract4agents.materialization._errors import MaterializationError, MaterializationIssue
 from contract4agents.materialization._tracing import MaterializationTraceSink
 from contract4agents.planning import MaterializationPlan, PlannerCapabilities
@@ -477,6 +477,30 @@ class MaterializationResult:
             for identifier, input_type in self.graph.input_types.items()
         )
 
+    def input_type_for_agent(self, agent: object) -> type[object] | None:
+        """Return the strict invocation-input type for one native agent."""
+
+        _, _, input_type = self._details_for_agent(agent)
+        return input_type
+
+    async def resolve_context_for_agent(
+        self,
+        agent: object,
+        inputs: Mapping[str, object],
+        *,
+        run_id: str,
+        thread_id: str | None = None,
+    ) -> FrozenMap[str, ResolvedContextValue]:
+        """Resolve declared context for one native agent invocation."""
+
+        identifier, _, _ = self._details_for_agent(agent)
+        return await self.context._resolve_agent(
+            identifier,
+            inputs,
+            run_id=run_id,
+            thread_id=thread_id,
+        )
+
     def validate_input_for_agent(
         self,
         agent: object,
@@ -484,7 +508,7 @@ class MaterializationResult:
     ) -> object | None:
         """Validate one root-agent invocation against its contract signature."""
 
-        agent_name, input_type = self._input_details_for_agent(agent)
+        _, agent_name, input_type = self._details_for_agent(agent)
         if not isinstance(value, Mapping):
             raise MaterializationError(
                 (
@@ -539,15 +563,18 @@ class MaterializationResult:
 
         return self.graph.output_types
 
-    def _input_details_for_agent(self, agent: object) -> tuple[str, type[object] | None]:
+    def _details_for_agent(
+        self,
+        agent: object,
+    ) -> tuple[SemanticId, str, type[object] | None]:
         for identifier, native_agent in self.graph.agents.items():
             if native_agent is agent:
-                return identifier.parts[0], self.graph.input_types[identifier]
+                return identifier, identifier.parts[0], self.graph.input_types[identifier]
         raise MaterializationError(
             (
                 MaterializationIssue(
                     "MAT205",
-                    "Input agent must belong to this materialized system",
+                    "Agent must belong to this materialized system",
                 ),
             )
         )
