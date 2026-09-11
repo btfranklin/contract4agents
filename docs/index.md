@@ -1,36 +1,34 @@
 # Documentation Index
 
-Contract4Agents has one supported product path:
-
-```text
-Declare -> Compile -> Plan -> Materialize -> Run -> Trace -> Assure
-```
-
-Portable contracts own agent semantics. Target bindings own target-specific
-implementation choices. Generated plans, runtime objects, traces, eval reports,
-and assurance bundles are derived from those two authorities.
+Start with a working agent, then use the references for the features you need.
+Contracts define the agents. Target bindings select implementations and models.
+Your application supplies the tools and runs the generated SDK agents.
 
 ## Start Here
 
 - [First Contract Project](tutorials/first-contract-project.md) builds the
   smallest contract-first agent from scratch.
 - [Using Contract4Agents in an Application](tutorials/using-contract4agents-with-an-agent-app.md)
-  covers materialization, host responsibilities, traces, and assurance.
+  explains integration choices as your application grows.
+- [Incident Command](../examples/incident-command/README.md) is the complete
+  beginner-facing multi-agent example.
+- [Vision](../VISION.md) explains the product purpose.
+
+## Check Behavior and Business Rules
+
+These guides cover optional assessment and application-specific design:
+
 - [Enforcing Business Policy with Host Tools](tutorials/enforcing-business-policy.md)
   shows where transactional rules such as refund eligibility belong, and how
   contracts, approvals, and evidence connect to that host enforcement.
-- [Healthcare Workflows: A Safety Pattern](tutorials/healthcare-safety-pattern.md)
+- [Healthcare Workflow Design Example](tutorials/healthcare-safety-pattern.md)
   helps regulated healthcare teams decide whether Contract4Agents fits around
   their existing access, policy, and clinical-governance controls.
-- [Vendor and Payment Changes: A Safety Pattern](tutorials/vendor-payment-safety-pattern.md)
+- [Vendor and Payment Workflow Design Example](tutorials/vendor-payment-safety-pattern.md)
   shows how agents can analyze and route finance work without receiving payment
   authority or replacing vendor-verification controls.
-- [Capture and Assure a Run](tutorials/trace-and-assure.md) completes the
-  runtime path with attempt-bound OpenAI capture, closure, assessment, and a
-  portable assurance bundle.
-- [Incident Command](../examples/incident-command/README.md) is the complete
-  beginner-facing example.
-- [Vision](../VISION.md) explains the product thesis.
+- [Capture and Assure a Run](tutorials/trace-and-assure.md) records an OpenAI run,
+  checks its evidence, and creates a review bundle.
 
 ## Define and Compile
 
@@ -42,15 +40,9 @@ and assurance bundles are derived from those two authorities.
 - [Context and Datasources](runtime/context-and-datasources.md): explicit value
   origins, target bindings, provenance, rendering, caching, and evidence.
 - [Grammar](reference/grammar.md): compact implemented syntax map.
-- [Parser Internals](architecture/parser-internals.md): parser maintenance map.
 
 ## Plan, Materialize, and Run
 
-- [System Design](architecture/system-design.md): lifecycle components and
-  ownership boundaries.
-- [Provider Contributor Map](architecture/provider-contributor-map.md): change
-  route for planning, native construction, validation, tracing, tests, and
-  provider documentation.
 - [OpenAI Target](reference/openai-adapter.md): planning and native OpenAI
   Agents SDK materialization.
 - [Strands Target](reference/strands-adapter.md): native Strands agents,
@@ -84,6 +76,10 @@ and assurance bundles are derived from those two authorities.
 
 ## Project and Contributor References
 
+- [System Design](architecture/system-design.md): components and ownership.
+- [Parser Internals](architecture/parser-internals.md): parser maintenance map.
+- [Provider Contributor Map](architecture/provider-contributor-map.md): where to
+  change provider planning, construction, validation, and tracing.
 - [Semantic Model](architecture/semantic-model.md): accepted detailed
   implementation specification.
 - [SDK Pattern Survey](research/agent-sdk-pattern-survey.md): provider
@@ -98,6 +94,8 @@ and assurance bundles are derived from those two authorities.
 - `README.md` is the public front door.
 - `AGENTS.md` is the coding-agent operating map.
 - This index is the documentation map.
+- Tutorials explain one task, its prerequisites, and a usable example.
+- References retain detailed rules; design proposals are marked as proposals.
 - Portable semantics belong in the language and architecture references.
 - Target-specific behavior belongs in target references.
 - Unresolved decisions belong in `decisions/open-questions.md`.

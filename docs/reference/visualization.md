@@ -1,7 +1,9 @@
 # Visualization Reference
 
-Visualization is a read-only review surface over derived Contract4Agents
-artifacts. It never becomes a second source of truth.
+Use `visualize` to explore agents, tools, context, and relationships in a
+contract. It writes a standalone HTML page you can open locally. Add a target
+plan or trace to compare the declaration with its implementation and recorded
+activity.
 
 ```bash
 contract4agents visualize agent_contracts \
@@ -18,7 +20,7 @@ The static output contains:
 
 ## System Review Page
 
-The page opens with a calm system map rather than the full semantic inventory.
+The page opens with a system map.
 It shows every agent and every delegation or handoff. Select an agent to focus
 the map on its meaningful neighborhood:
 
@@ -63,7 +65,7 @@ artifacts. Every layer preserves the same semantic IDs and digests.
 ## Layered Python API
 
 The graph builder also accepts reviewed plan, normalized trace, and control
-results to construct all four truth layers without collapsing them:
+results to construct the four review layers:
 
 ```python
 from contract4agents import compile_project

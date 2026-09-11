@@ -1,12 +1,12 @@
 # Releasing
 
-Releases use GitHub Releases as the changelog surface and PyPI publishing
-trigger. The release flow must be tag-first so `release-notes-scribe` can draft
-the GitHub Release notes before the release is published.
+Push a version tag to create a draft GitHub Release. Review the generated notes,
+then publish the release to start PyPI publication. GitHub Releases also serves
+as the project changelog.
 
 ## Required Local Checks
 
-Run the canonical local validation and build before tagging:
+From a prepared development checkout, run validation and build before tagging:
 
 ```bash
 npm --prefix tests/typescript ci
@@ -20,18 +20,18 @@ npm --prefix editors/vscode run package
 pdm run pytest tests/offline/tooling/test_language_server.py
 ```
 
-`pdm run validate` runs Ruff, strict mypy, docs-check, and the offline test
-suite. Live OpenAI tests remain opt-in and are not part of the release gate
+`pdm run validate` runs Ruff, strict mypy, docs-check, the offline Python tests,
+and editor tests. Live OpenAI tests remain opt-in and are not part of the release gate
 unless the release changes live adapter behavior.
 
 ## Process
 
-1. Choose the next semantic version tag, for example `v0.1.0`.
-2. Create and push the tag:
+1. Choose the next semantic version tag.
+2. Replace `vX.Y.Z` with that tag, then create and push it:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag vX.Y.Z
+git push origin vX.Y.Z
 ```
 
 3. Wait for the `Create Draft Release` workflow to complete.

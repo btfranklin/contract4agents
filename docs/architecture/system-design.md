@@ -1,6 +1,13 @@
 # System Design
 
-Contract4Agents is a source-to-evidence system for contract-first agent teams.
+Contract4Agents derives agent artifacts from a typed external specification.
+The specification makes structure, guardrails, and expectations explicit.
+Validation, evals, traces, and assurance help check the generated artifacts and
+application behavior against that specification.
+
+Read this page for the system boundaries. For a complete application example,
+start with the [adoption tutorial](../tutorials/using-contract4agents-with-an-agent-app.md).
+The [semantic model](semantic-model.md) defines the detailed rules.
 
 ```mermaid
 flowchart LR
@@ -15,9 +22,9 @@ flowchart LR
     Plan --> Assure
 ```
 
-## Authorities
+## What Users Write
 
-There are exactly two authored authorities:
+Agent configuration has two sources:
 
 1. Portable `.contract` and `.eval` source owns semantic intent.
 2. `contract4agents.targets.toml` owns target-specific implementations,
@@ -25,6 +32,7 @@ There are exactly two authored authorities:
 
 Canonical IR, generated code, instructions, plans, native objects, trace views,
 eval reports, visualizations, diffs, and assurance bundles are derived.
+The host supplies tool implementations and application workflow separately.
 
 ## Compile
 
@@ -52,7 +60,9 @@ binding coverage. The provider-neutral plan resolves:
 - host obligations, caveats, and expected event types.
 
 Every mapping is exact, host-enforced, emulated, degraded, or unsupported.
-Required degraded or unsupported semantics stop the lifecycle before execution.
+Required degraded or unsupported semantics block planning for the selected
+target. This is a check on faithful generation, not supervision of the host's
+execution.
 
 ## Materialize
 
@@ -70,6 +80,11 @@ and deterministic workflow. Named contract composition supplies model-selected
 delegations and handoffs; it does not become general programming-language
 control flow.
 
+Generated validators and framework hooks implement the declared guardrails
+supported by the target. Host obligations describe the integration work that
+remains with the application. They do not prescribe a new runtime architecture
+or give Contract4Agents authority over host decisions.
+
 ## Trace
 
 The normalized trace schema preserves contract and plan digests, stable semantic IDs,
@@ -77,13 +92,11 @@ causal relationships, provider-native correlation, provenance, evidence links,
 and audience-safe redaction. It supplements provider trace systems rather than
 replacing them.
 
-Plan event types identify expected event-family occurrence. Identity-bound
-closure evidence proves which attempts and instrumentation channels were
-covered. Event absence cannot prove a negative claim when that closure is
-missing or incomplete. Versioned closure frontiers bind that claim to one exact
-ordered trace snapshot. Adapter sessions may resume from a validated snapshot
-and conservatively extend retry-chain evidence, but persistence transactions and
-workflow recovery remain host responsibilities.
+An absent event is useful evidence only if the relevant part of the run was
+fully recorded. Trace closure records which attempts and event channels were
+captured and identifies the exact trace snapshot. Retry and recovery details
+are defined in the [semantic model](semantic-model.md#trace-identity-and-evidence).
+The host owns trace storage and workflow recovery.
 
 ## Assure
 

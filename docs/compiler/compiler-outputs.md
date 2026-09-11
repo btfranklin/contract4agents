@@ -1,6 +1,12 @@
 # Compiler Outputs
 
-`contract4agents compile` has one canonical pipeline:
+Use `compile` to write JSON Schemas, agent instructions, and readable summaries
+from your contracts. Use `generate` to write Python or TypeScript types that
+application code can import. Use the Python `materialize()` API to construct
+SDK agents in memory; it does not write application source files.
+
+All three start from the same compiled contract model, called the canonical
+intermediate representation (IR):
 
 ```text
 portable source -> parsed AST -> semantic analysis -> canonical IR -> artifacts
@@ -38,10 +44,9 @@ docs/
   descriptions, and controls whose audience explicitly includes `model`.
 - `docs/` contains reviewer-facing summaries generated from the IR.
 
-Permissions and output-conformance controls already exist in canonical IR;
-target support belongs in the materialization plan; implementations belong in
-target bindings. The compiler does not emit a second agent manifest, behavioral
-rule pack, adapter capability matrix, or language-specific schema authority.
+The IR retains tool permissions and output requirements. Target planning uses
+these declarations to select supported mappings; target bindings supply the
+tool and context implementations.
 
 ## Determinism and Freshness
 
@@ -56,9 +61,10 @@ pdm run contract4agents compile agent_contracts --out .contract/build --check
 stale. A normal compile replaces only managed artifact directories and preserves
 adjacent outputs such as visualization or target plans.
 
-Use `compile` for the portable review bundle. Use `generate` only when
-application code imports generated source. Generation requires at least one
-explicit target and accepts repeated targets:
+## Generated Application Types
+
+Generation requires at least one explicit language target. Repeat `--target`
+to generate both languages:
 
 ```bash
 contract4agents generate agent_contracts --target python --out src/generated

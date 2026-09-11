@@ -11,6 +11,11 @@ The goal is not to copy any one SDK. The goal is to make Contract4Agents' source
 
 Survey reviewed: July 28, 2026.
 
+This is a dated design study, not setup guidance or a current SDK API reference.
+For supported mappings and usage, use the
+[documentation index](../index.md). The comparison below explains why the
+contract separates concepts that SDKs represent differently.
+
 ## Sources
 
 - OpenAI Agents SDK guide: https://developers.openai.com/api/docs/guides/agents

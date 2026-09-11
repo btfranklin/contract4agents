@@ -71,13 +71,15 @@ The instructions contain model-visible goal, guidance, and composition
 descriptions. The evaluator-only rubric and hidden control expression do not
 appear there.
 
-The plan shows the exact model selection, shared capability bindings,
-authorization mechanisms, composition graph, context providers, derived and
-explicit controls, host obligations, and expected event types.
+Compare the contract's `use` declarations with the plan's tool bindings and
+approval settings. Then compare the commander's declared output with
+`schemas/IncidentBrief.json`. These files show what the contract produces
+without reading the adapter implementation.
 
 ## Materialize
 
-With one of the target extras installed:
+With one of the target extras installed, construct the SDK agents. This call
+does not run an investigation:
 
 ```python
 from contract4agents import materialize

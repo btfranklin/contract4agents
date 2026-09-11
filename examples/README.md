@@ -1,6 +1,16 @@
 # Public Examples
 
-Every public example follows the same contract-first structure:
+Start with [Incident Command](incident-command/README.md). It shows how a
+contract defines a team, binds its tools, and produces instructions and schemas.
+The other examples add larger research teams and provider-native search.
+
+These are repository examples. Run their commands after the repository setup
+in the [README](../README.md). Their offline replay assesses supplied evidence;
+it does not call a model or run the generated agents.
+
+## Files You Will Use
+
+Every public example follows the same structure:
 
 ```text
 example-name/
@@ -14,10 +24,9 @@ example-name/
   eval-data.json                   deterministic offline replay evidence
 ```
 
-The contract project is canonical for semantic behavior. Target bindings do
-not repeat agents, prompts, authorization, output types, controls, or
-composition. Eval data supplies run evidence; it does not restate the expected
-runtime inventory.
+Read `agents/` to see what each agent does, then follow its references to types
+and capabilities. The target file selects the implementations. `evals/` states
+the expectations; `eval-data.json` supplies the evidence used to assess them.
 
 ## Common Local Loop
 
@@ -34,9 +43,14 @@ pdm run contract4agents visualize ROOT --target openai --profile test \
   --out .contract/build/example/visualization
 ```
 
-The `test` profile and file-backed replay evidence require no provider
-credentials. This command assesses supplied output and trace evidence; it does
-not invoke the planned graph. Generated `.contract/` output is disposable.
+`seed.py` creates local fixture data. `check` validates the declarations and
+bindings. `compile` writes schemas and instructions. `plan` reports how the
+selected target represents the contract. `eval replay` assesses the supplied
+output and events. `visualize` writes diagrams for inspection.
+
+These commands require no provider credentials. Binding checks can import local
+Python modules; imports execute module-level code. Generated `.contract/` output
+is disposable.
 
 Run `generate` separately only when an application imports generated types,
 and select only the language targets it consumes. For example:
@@ -85,7 +99,9 @@ Copy semantic declarations, not provider wiring. For a new project:
 4. declare only controls and rubrics with clear assessment ownership;
 5. create a target binding for the selected runtime;
 6. inspect the plan before materialization;
-7. collect normalized traces and assess them against the same plan.
+7. run the resulting SDK agents from application code.
+
+When useful, collect normalized traces and assess them against the same plan.
 
 Host code should contain the real implementations, credentials, approval UI,
 persistence, and deterministic workflow. It should not reconstruct the agent

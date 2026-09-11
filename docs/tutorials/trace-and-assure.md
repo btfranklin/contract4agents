@@ -1,37 +1,25 @@
 # Capture and Assure a Run
 
-This tutorial continues the [First Contract Project](first-contract-project.md)
-through the final two Contract4Agents phases:
+This optional tutorial adds trace capture and a review bundle to the
+[First Contract Project](first-contract-project.md). Use it when you want to
+compare a run with declared expectations. You do not need trace capture to
+construct and use an agent.
 
-```text
-Declare -> Compile -> Plan -> Materialize -> Run -> Trace -> Assure
-```
+You will save three files: the generated agent's configuration checks, the
+observed events, and a record of capture coverage called *closure evidence*.
+Coverage matters because a missing event can mean either that an action did
+not occur or that it was not recorded.
 
-The application still owns execution, retries, persistence, and recovery.
-Contract4Agents captures portable evidence, proves which instrumentation paths
-closed, assesses declared controls, and assembles the review bundle.
-
-## What Each Artifact Proves
-
-| Artifact | What it establishes |
-| --- | --- |
-| `NormalizedTrace` | What events were observed under one contract and plan |
-| `GraphValidationEvidence` | Which final native configuration properties and schemas matched the plan |
-| `TraceClosureEvidence` | Which attempts and instrumentation channels were completely captured |
-| `TraceFrontier` | The exact ordered trace snapshot attested by the closure |
-| `TraceCaptureSnapshot` | One internally consistent trace-plus-closure pair |
-| `TraceClosureManifest` | Versioned closure evidence for every run in a trace artifact |
-| `attempt.selected` | Which host-owned retry attempt governs logical-run output assurance |
-
-Event occurrence and instrumentation closure answer different questions. Seeing
-one tool event does not prove every tool path was captured; closure evidence is
-what allows an absence or upper bound to support assurance.
+The example makes a live OpenAI request. It requires the first tutorial's
+project and API key. The application continues to own execution and retries.
 
 ## Register One Process Router
 
 The OpenAI Agents SDK trace-processor registry is process-global. Register one
 router when the process starts, then open a disposable session for each logical
 run:
+
+Create `your_app/trace_support.py` with this setup:
 
 ```python
 from agents import add_trace_processor
@@ -45,9 +33,9 @@ Do not register a router for every run.
 
 ## Capture One Attempt
 
-The example below uses the `SupportResponder` from the first tutorial. Attempt
-identity belongs to the host because the host decides whether and when to
-retry.
+Place this code after the router setup in the same Python module. It uses the
+`SupportResponder` from the first tutorial. The fixed request and attempt IDs
+are for this example; use distinct IDs for separate requests in an application.
 
 ```python
 import asyncio
@@ -64,7 +52,7 @@ from contract4agents.tracing import (
 
 async def run_support_request() -> None:
     system = materialize(
-        "agent_contracts",
+        "your_app/agent_contracts",
         target="openai",
         profile="development",
     )
@@ -85,7 +73,10 @@ async def run_support_request() -> None:
         with session.bind_attempt(attempt, agent="SupportResponder"):
             result = await Runner.run(
                 responder,
-                input="When will my order ship?",
+                input=system.serialize_agent_input(
+                    "SupportResponder",
+                    {"question": "When will my order ship?"},
+                ),
             )
             session.record_result(
                 result,
@@ -114,6 +105,12 @@ if __name__ == "__main__":
     asyncio.run(run_support_request())
 ```
 
+From the project root, run the capture module before the assessment commands:
+
+```bash
+pdm run python -m your_app.trace_support
+```
+
 Every successful SDK result must pass through `record_result(...)`, including a
 result with zero provider-hosted calls. That records a response-batch receipt.
 If `Runner.run(...)` raises, call
@@ -124,7 +121,7 @@ For a retry, create a new `TraceAttempt` with the next number and `retry_of`
 pointing to the prior attempt ID. Record exactly one terminal selection for the
 invocation when the host has made that decision.
 
-## Persist a Recovery Snapshot
+## Optional: Persist a Recovery Snapshot
 
 Call `session.snapshot()` while a session remains open to obtain the same
 trace-plus-closure type without closing capture:
@@ -145,7 +142,7 @@ The public CLI reconstructs the reviewed plan and assesses the normalized
 evidence locally:
 
 ```bash
-contract4agents assess agent_contracts \
+pdm run contract4agents assess your_app/agent_contracts \
   --target openai \
   --profile development \
   --trace .contract/evidence/support-run-123/trace.jsonl \
@@ -157,11 +154,11 @@ Observed violations fail assessment. Missing or insufficient evidence remains
 
 ## Assemble the Assurance Bundle
 
-Replay the deterministic evidence from the first tutorial and record the
-provenance for this review:
+Complete the optional eval setup in step 8 of the first tutorial before this
+step. Replay that supplied evidence and record the provenance for this review:
 
 ```bash
-contract4agents eval replay agent_contracts \
+pdm run contract4agents eval replay your_app/agent_contracts \
   --target openai \
   --profile development \
   --out .contract/evidence/eval-replay.json
@@ -173,7 +170,7 @@ printf '{"source":"support-service release review"}\n' \
 Then assemble the declared, planned, observed, and assessed artifacts:
 
 ```bash
-contract4agents assure agent_contracts \
+pdm run contract4agents assure your_app/agent_contracts \
   --target openai \
   --profile development \
   --materialization-evidence .contract/evidence/support-run-123/materialization-conformance.json \

@@ -1,6 +1,15 @@
 # Validation and Quality Gates
 
-Contract4Agents validation is offline by default and staged by responsibility.
+Use these checks when you change the repository. Normal validation runs
+offline and does not call a model provider.
+
+| Change | Checks |
+| --- | --- |
+| Documentation only | `pdm run docs-check`; also build when the README changes |
+| Python implementation | `pdm run validate` |
+| Language, CLI, adapters, or public examples | `pdm run validate` and `pdm run smoke:cli` |
+| Package files or build configuration | Full validation, `pdm build`, and `pdm run package-check` |
+| Editor or editor release workflow | The [VS Code extension checks](#vs-code-extension) below |
 
 ## Full Local Gate
 
@@ -17,6 +26,7 @@ The composite runs:
 - `pdm run typecheck`: strict mypy over `src`.
 - `pdm run docs-check`: repository documentation and link consistency.
 - `pdm run test:offline`: deterministic tests grouped by behavior family.
+- `pdm run test:editor`: VS Code extension tests.
 
 Run this before handing off implementation changes.
 
@@ -51,12 +61,10 @@ or public examples, also run:
 pdm run smoke:cli
 ```
 
-The smoke suite exercises every public example through the supported
-contract-first path: source check, target/profile plan, compilation,
-visualization, and eval replay campaign. Replay must consume supplied evidence,
-must not invoke a native graph, and must not depend on a second hand-authored
-runtime inventory. `scripts/smoke_cli.py` keeps the example and target matrix as
-structured data while the PDM command remains the stable entry point.
+The smoke suite checks each public example, builds its target plans, compiles
+its artifacts, creates visualizations, and replays its eval fixtures. Replay
+uses supplied evidence; it does not run agents. The example and target list
+lives in `scripts/smoke_cli.py`.
 
 ## Generated Artifact Freshness
 
@@ -89,7 +97,8 @@ Provider-neutral planner tests should prove:
 
 - every required binding is present exactly once;
 - target bindings cannot override contract-owned semantics;
-- callable shape checks never invoke business code;
+- callable shape checks do not call bound functions, though Python imports can
+  execute module-level code;
 - adapter binding validators reject ambiguous locator families and statically
   unsupported binding shapes;
 - required degraded or unsupported mappings fail closed;

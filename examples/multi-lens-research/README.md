@@ -13,10 +13,10 @@ through multiple specialist lenses, and synthesizes a source-backed brief.
 - `CounterargumentAnalyst`
 - `SynthesisWriter`
 
-The named edges in `composition.contract` explicitly map typed inputs and prior
-edge results. They represent model-selectable relationships. The separate
-`MultiLensResearchRun` run spec verifies deterministic host-owned stage
-ordering without turning the contract into a workflow engine.
+The named edges in `composition.contract` map typed inputs and prior results.
+The model can select these specialist calls. Separately, `MultiLensResearchRun`
+declares expectations for a workflow that application code runs. Its assessor
+checks supplied stage evidence; the declaration does not schedule those stages.
 
 ## Shared Capabilities
 
@@ -24,16 +24,16 @@ ordering without turning the contract into a workflow engine.
 citation formatting, and expert review once. Agents receive explicit grants to
 the subset they need. Implementations are bound once under each selected target.
 
-## Honest Isolation
+## Isolation Requirements
 
 The `FreshResearchContext` profile declares context, capability, state,
 filesystem, network, secret, and return-channel requirements independently. It
 selects the in-process environment in the target profile.
 
 The plan reports which dimensions the provider enforces, emulates, inherits,
-or cannot support. In-process execution does not pretend to provide an OS or
-network security boundary. A stronger required profile would need a stronger
-environment provider and would otherwise fail closed.
+or cannot support. In-process execution cannot provide an OS or network
+security boundary. If a contract requires such a boundary, planning needs an
+environment provider that supplies it.
 
 ## Assurance
 
@@ -43,6 +43,8 @@ The normalized trace joins those declarations to the exact composition and
 capability events by stable semantic ID.
 
 ## Run the Offline Loop
+
+From the repository root after installing the repository dependencies:
 
 ```bash
 pdm run python examples/multi-lens-research/data/seed.py
@@ -65,6 +67,8 @@ what the supplied evidence is assessed against. The example also includes
 
 ## Materialize
 
+With the OpenAI target extra installed, construct the SDK agents:
+
 ```python
 from contract4agents import materialize
 
@@ -77,5 +81,6 @@ system = materialize(
 director = system.agents["ResearchDirector"]
 ```
 
-The host runs `director` through the normal SDK and retains deterministic
+This call constructs `director`; it does not run a research request. The host
+runs `director` through the normal SDK and retains deterministic
 workflow, persistence, live source access, credentials, and review decisions.

@@ -5,9 +5,41 @@ This document is the authority for the ownership model and the decisions
 that must remain consistent across the language, IR, targets, runtime, traces,
 evals, and assurance system.
 
+This is a reference for implementors, not a first-use tutorial. Start with the
+[adoption tutorial](../tutorials/using-contract4agents-with-an-agent-app.md)
+to build an agent, or [System Design](system-design.md) for a shorter overview.
+
+Use the section that matches your task:
+
+- [Source model](#source-model): declarations, types, grants, and composition.
+- [Canonical IR](#canonical-ir): identities, digests, and serialized structure.
+- [Target bindings](#target-bindings) and [plans](#provider-neutral-plan): connect
+  declarations to implementations.
+- [Materialization API](#materialization-api): construct and check SDK objects.
+- [Trace evidence](#trace-identity-and-evidence) and [assessment](#assurance-results):
+  check recorded behavior against the contract.
+
+## Product scope
+
+The external specification is the primary product. It makes agent structure,
+guardrails, and expectations explicit and supplies the source for generated
+schemas, instructions, documentation, and framework objects. Implementors
+should not have to infer the contract from application code or repeat it in
+provider configuration.
+
+Contract4Agents checks whether the artifacts it derives represent that
+specification. Generated validators and framework hooks can implement declared
+guardrails. The host retains execution and operational authority; host
+obligations describe integration responsibilities. Validation, evals, traces,
+and assurance support checking the implementation, without requiring a
+prescribed host runtime or continuous assessment. This ownership boundary does
+not weaken required target mappings or the evidence rules for an assessment.
+
 ## Product lifecycle
 
-Contract4Agents follows one lifecycle:
+The following stages show how the parts connect. Applications can use generated
+files without materializing agents, and can use agents without collecting traces
+or assembling assurance bundles:
 
 ```text
 Declare -> Compile -> Plan -> Materialize -> Run -> Trace -> Assure
@@ -333,8 +365,7 @@ rubrics, or thresholds into model instructions.
 
 ### Composition
 
-Composition edges are named top-level declarations. They replace `routes` and
-the string-valued `composition` list:
+Composition edges are named top-level declarations:
 
 ```contract
 composition investigate_logs from IncidentCommander to LogInvestigator:
@@ -416,9 +447,12 @@ aggregation. Planning fails for a windowed rule until a bound telemetry
 provider supplies that capability. No runnable plan can omit a declared
 operational control.
 
-## Complete proposed source
+## Combined Source Example
 
-The following small project exercises every core concept:
+The following example combines types, tools, context, delegation, and assessment
+declarations. Its network isolation requirement needs a supporting environment;
+the in-process binding shown later cannot satisfy it. For a runnable local
+example, use [Incident Command](../../examples/incident-command/README.md).
 
 ```contract
 type IncidentRequest:
@@ -622,8 +656,8 @@ audiences, composition, or isolation requirements.
 Contract4Agents profiles own model identifiers and provider options. Environment
 variables own credentials and may select a target and profile, but binding files
 do not interpolate environment variables and profiles do not inherit. Tests and
-control planes may still supply bindings programmatically; the host must persist
-the resulting named materialization plan as the auditable runtime configuration.
+control planes may still supply bindings programmatically. To retain a record
+of that configuration, the host can persist the resulting materialization plan.
 
 ```toml
 schema_version = "1"
@@ -664,9 +698,9 @@ including `availability`, `authorization`, `execution`, `goal`, `guidance`,
 `control`, `quality`, `audience`, and `isolation`.
 
 Python and TypeScript implementation locators are target-specific string values
-resolved by their adapters. Loading bindings may import configured callables to
-validate signatures, but it never calls application code during `check` or
-`plan`.
+resolved by their adapters. Loading bindings can import configured modules to
+validate callable signatures. `check` and `plan` do not invoke the bound tool
+functions, but Python imports execute module-level code.
 
 ## Provider-neutral plan
 
@@ -923,7 +957,8 @@ skipped semantic judge produces an `unverified` quality result with a reason.
 `applicability` is orthogonal to status. It is `applicable` when the requirement
 was assessed, `not_applicable` when a conditional control's `when` expression
 was proven false, and `unverified` when the condition could not be established.
-A false condition passes vacuously; an unknown condition never does.
+A false condition passes because the requirement does not apply. An unknown
+condition remains unverified.
 
 ## Eval replay campaigns
 

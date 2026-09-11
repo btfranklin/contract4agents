@@ -1,8 +1,10 @@
 # Run Specs
 
-Run specs declare verifiable expectations for deterministic workflow that the
-host application owns. They do not execute stages, branch, retry, loop, or
-transform data.
+Use a run spec when application code calls several agents and you want to
+declare expected stage results and relationships. For example, a research
+workflow can require evidence before synthesis and check that all cited IDs
+come from the allowed sources. The application runs the workflow and supplies
+the results for assessment.
 
 ```contract
 run_spec ResearchRun:
@@ -65,7 +67,7 @@ establishes the relevant instrumentation channel. Otherwise the result is
 unverified. Directly observed positive and ordering evidence does not require a
 global completeness claim.
 
-## IR and Assurance
+## Assess a Completed Workflow
 
 Run specs are stored in canonical IR with stable IDs and included in the
 contract digest. Canonical IR version 1 retains the derived-value declarations
@@ -105,6 +107,10 @@ result = assess_run_spec(
 )
 ```
 
+This example shows the API shape. The single stage observation is not enough
+to pass `ResearchRun` above: a complete result also needs its required
+specialist and synthesis observations and matching trace evidence.
+
 `RunSpecEvidence.status` is `complete`, `incomplete`, or `unverified`. A
 `complete` claim requires a host-owned completeness evidence reference. Each
 stage observation likewise links to a normalized trace event or an immutable
@@ -135,6 +141,8 @@ in the distinct `run-spec-results.json` artifact. The host supplies one
 that no run spec applied. Only selected declarations require results; missing
 selection or assessment evidence leaves the bundle incomplete.
 
+## Include Results in an Assurance Bundle
+
 The public CLI consumes one strict, versioned manifest:
 
 ```json
@@ -163,7 +171,7 @@ The public CLI consumes one strict, versioned manifest:
 Pass it with `contract4agents assure --run-spec-evidence ...`. Every trace run
 must have exactly one selection. A selected declaration requires evidence; an
 explicit null selection forbids evidence. The CLI computes results locally so
-the manifest cannot smuggle in a caller-authored passing assessor result.
+the manifest supplies observations rather than a precomputed passing result.
 
 This keeps the workflow implementation in Python or TypeScript while making its
 important stage and evidence invariants reviewable as code.

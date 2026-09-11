@@ -1,4 +1,4 @@
-# Healthcare Workflows: A Safety Pattern, Not a Compliance Recipe
+# Healthcare Workflow Design Example
 
 This is a docs-only design pattern for organizations evaluating Contract4Agents
 for a healthcare workflow. It uses no patient data, credentials, or production
@@ -11,8 +11,9 @@ The question this pattern answers is narrower:
 > We have a complex healthcare workflow. Where can Contract4Agents help, and
 > where must our existing healthcare systems enforce the safety boundary?
 
-Contract4Agents can make an agent graph, its permitted capabilities, its
-expected evidence, and its assurance results explicit. It does not replace
+Contract4Agents can define agent roles, typed outputs, tools, and context in
+external contracts, then construct the corresponding SDK agents. Optional
+evals and trace assessment help reviewers check results. It does not replace
 identity and access management, EHR controls, privacy operations, clinical
 governance, vendor agreements, or incident response.
 
@@ -81,6 +82,9 @@ and legal determination, not a model decision.
 
 ## What the Contract Describes
 
+This fragment shows the agent and tool declarations. The named input and
+output types would also need definitions in a complete project.
+
 For example, an appointment agent can receive a narrow capability rather than a
 calendar database:
 
@@ -145,9 +149,10 @@ access control.
   judge inputs, error reports, analytics, and support tickets need the same
   classification and redaction discipline as the primary workflow. Use
   synthetic data for ordinary development and evals.
-- **Fail closed and escalate.** Missing identity, expired scope, ambiguous
-  authorization, unavailable policy service, or incomplete evidence produces a
-  refusal, an escalation, or an `unverified` result—not a best guess.
+- **Handle missing information explicitly.** The host should refuse or
+  escalate a request when identity, scope, authorization, or the policy service
+  is unavailable. Incomplete assessment evidence produces `unverified`; that
+  assessment status is separate from the application's decision to act.
 - **Review cloud and vendor boundaries.** A cloud service that creates,
   receives, maintains, or transmits ePHI for the provider can create business
   associate obligations. Contract4Agents does not establish those agreements or
@@ -167,9 +172,9 @@ only happy-path answers. Useful synthetic or controlled cases include:
   policy re-check; and
 - an unavailable policy service, judge, or trace channel.
 
-The intended safe outcome is often a refusal, escalation, or `unverified`
-result. A system that makes a plausible answer while its evidence is incomplete
-is not demonstrating a safe workflow.
+Request failures should lead to the refusal or escalation defined by the
+application. Missing trace evidence should leave the relevant assessment
+`unverified`. Test both outcomes separately.
 
 ## Deciding Whether to Proceed
 
@@ -180,8 +185,8 @@ how a host policy service is connected, and what evidence supports a result.
 Do not proceed on the assumption that a contract, an eval score, or a provider
 integration itself supplies HIPAA compliance. First establish the provider's
 governance, authorized data boundaries, vendor posture, and human accountability.
-Then use Contract4Agents as the contract-and-evidence layer around that trusted
-foundation.
+Then use Contract4Agents to define the agents and generate their configuration
+within those established boundaries.
 
 ## Next Steps
 

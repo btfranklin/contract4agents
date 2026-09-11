@@ -1,8 +1,13 @@
 # Context and Datasources
 
-Every value supplied to an agent has an explicit origin. Contracts define the
-portable interface and provenance category; target bindings select the runtime
-implementation where one is needed.
+Declare context when an agent needs application data in addition to its input.
+Use external context for a named host value, such as the current account. Use a
+datasource when a function must resolve a value from typed arguments, such as
+an account's recent orders. Target bindings identify those Python functions.
+
+Contract4Agents provides type validation, rendering, and scoped caching for
+these values through `system.context`. The application resolves the context
+and supplies it to its SDK invocation.
 
 ## Origin Categories
 
@@ -13,7 +18,7 @@ implementation where one is needed.
 - `datasource`: the result of a declared typed resolver.
 - `external`: a named value supplied by a target-bound host provider.
 
-There is no generic “the host will somehow provide this” marker.
+These categories let readers find where each declared value comes from.
 
 ## Invocation and Edge Inputs
 
@@ -180,11 +185,14 @@ During planning and materialization Contract4Agents:
 1. verifies that every referenced datasource and external context exists;
 2. verifies input and output types;
 3. requires a compatible target binding;
-4. safely inspects callable shape when the binding supports it;
+4. imports and inspects callable signatures when the binding supports it;
 5. records the provider, provenance, rendering, caching, and sensitivity in the
    immutable plan;
 6. wires the implementation into the native graph;
 7. emits materialization evidence with stable semantic IDs.
+
+Signature inspection does not call the resolver, but importing its module can
+execute module-level code. Use bindings from application code you trust.
 
 During execution, the runtime or host resolves declared values, validates the
 result shape, applies rendering and redaction, records cache behavior, and emits

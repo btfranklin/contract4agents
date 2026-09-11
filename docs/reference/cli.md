@@ -1,16 +1,23 @@
 # CLI Reference
 
-All project commands accept an optional `ROOT`, defaulting to the current
-directory. Development examples in this repository add the `pdm run` prefix.
+Start with `check` to find contract errors. Use `compile` to write schemas,
+instructions, and summaries, or `generate` to write Python and TypeScript types.
+Use `plan` to inspect how a selected SDK target will represent the contract.
+The Python `materialize()` API constructs the SDK objects; there is no
+materialization CLI command.
+
+Commands that accept `[ROOT]` default to the current directory. `diff` requires
+two project paths. Repository development examples add the `pdm run` prefix.
 
 ## `check [ROOT]`
 
 Parse portable source and run semantic analysis. If
 `ROOT/contract4agents.targets.toml` exists, also validate its schema, every
 declared target's canonical binding coverage and callable shape, and every named
-profile's canonical-agent coverage. Inspectable Python locators may be imported,
-but application functions are never called. Without a target-binding file, the
-check remains provider-neutral.
+profile's canonical-agent coverage. Python modules may be imported to inspect
+bound functions. The functions are not invoked, but their module-level code can
+run during import. Without a target-binding file, the check remains
+provider-neutral.
 
 ```bash
 contract4agents check agent_contracts
@@ -62,8 +69,9 @@ remain machine-owned and must not be edited.
 
 ## `plan [ROOT]`
 
-Resolve a target/profile plan without constructing native agents or executing
-business code.
+Resolve a target/profile plan without constructing native agents or calling
+tool implementations. Binding inspection can execute module-level code during
+Python imports.
 
 ```bash
 contract4agents plan agent_contracts \

@@ -1,4 +1,4 @@
-# Vendor and Payment Changes: A Safety Pattern, Not a Payments System
+# Vendor and Payment Workflow Design Example
 
 This is a docs-only design pattern for organizations evaluating Contract4Agents
 for vendor onboarding, invoice review, or payment-change work. It uses no
@@ -12,7 +12,8 @@ The question this pattern answers is practical:
 
 Yes, when the agent system is a bounded analyst and router around the company's
 existing vendor-master, approval, fraud, and payment controls. Contract4Agents
-can make those boundaries and their evidence explicit. It is not a payment
+can define the agent roles, typed outputs, tools, and approval requirements in
+one external specification and generate the corresponding configuration. It is not a payment
 engine, identity-verification service, or fraud-control system.
 
 Business-email-compromise fraud often relies on spoofed or compromised accounts
@@ -70,7 +71,8 @@ segregation of duties, and the current vendor-master record.
 ## What the Contract Describes
 
 The contract can express the safe analysis and routing capabilities. For
-example:
+example, the fragment below defines tools and an agent. A complete project also
+needs definitions for the named input and output types:
 
 ```contract
 tool vendor_records.lookup(vendor_request_id: string) -> VendorMatch:
@@ -100,7 +102,6 @@ agent VendorIdentityReviewer(
     goal = "Identify mismatches and route uncertain vendor changes for independent review."
 ```
 
-There is intentionally no `payments.release` tool in this agent's contract.
 The target binding connects the permitted capabilities to normal company code:
 
 ```toml
@@ -162,9 +163,9 @@ Use synthetic data and test the boundaries, not only invoice extraction:
 - a retry after an ambiguous payment-service response; and
 - an unavailable vendor-master, fraud, or approval service.
 
-The safe expected result is often a held case, refusal, escalation, or
-`unverified` result. A polished model explanation is not evidence that the
-payment instruction is safe.
+The application may hold, refuse, or escalate a case. Separately, missing trace
+evidence leaves the relevant assessment `unverified`. Test the business
+decision and the assessment result separately.
 
 ## Division of Responsibility
 
@@ -178,15 +179,15 @@ payment instruction is safe.
 
 ## Deciding Whether to Proceed
 
-Use Contract4Agents when it makes an existing, governed finance workflow easier
-to understand and review. It can show that agents are confined to extraction,
-reconciliation, and routing while trusted services retain authority over money.
+Use Contract4Agents when it makes an existing finance workflow easier to
+understand and maintain. The contract declares extraction, reconciliation, and
+routing roles; generated configuration connects them to the permitted services.
 
 Do not proceed if the proposed value depends on an agent autonomously accepting
 vendor banking changes or releasing funds. First establish the verified
 vendor-master, independent confirmation, authorization, and transactional
-payment controls. Then use Contract4Agents as the contract-and-evidence layer
-around them.
+payment controls. Then use Contract4Agents to define and configure the agents
+that assist with that workflow.
 
 ## Next Steps
 

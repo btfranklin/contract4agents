@@ -1,193 +1,66 @@
 # Demo Agent Teams
 
-The customer-support and revenue-resolution examples started as brainstorming sketches. The current public demo surface is stronger and exercises the patterns found in the SDK survey.
+The public examples show how one contract project defines a team, its shared
+tools, typed results, and expectations. Each includes local fake data and
+recorded evidence for an offline replay. Replay does not run the agents.
 
-These three teams are current because together they cover shared capabilities,
-different authorization grants, provider-native bindings, typed composition,
-explicit context origins, structured outputs, hidden eval truth, semantic
-quality, contract-bound traces, and assurance controls.
+For setup commands, start with the [public examples guide](../../examples/README.md).
+Use this page to choose an example or design a new fixture.
 
-## Team 1: Incident Command
+## Choose an Example
 
-Purpose: investigate a production incident and produce an evidence-backed incident brief.
+| Example | Task | Main lesson |
+| --- | --- | --- |
+| [Incident Command](../../examples/incident-command/README.md) | Investigate an incident and prepare a brief. | Declare a shared tool once, grant different access to each agent, and generate specialist relationships. |
+| [Multi-Lens Research](../../examples/multi-lens-research/README.md) | Combine evidence, technical analysis, policy analysis, and counterarguments. | Map typed inputs and results between specialists; describe expectations for a host-run workflow. |
+| [Market Research Brief](../../examples/market-research-brief/README.md) | Combine documents, dated facts, competitor records, and customer signals. | Bind a portable search capability to a provider tool and assess source freshness. |
 
-Agents:
+Start with Incident Command. Its smaller team makes the relationship between
+contracts, bindings, generated instructions, and schemas easier to inspect.
+Then use Multi-Lens Research for composition and Market Research Brief for
+provider-tool differences. Each example's contract files contain the current
+agent, type, and capability definitions.
 
-- `IncidentCommander`: owns the final incident brief and delegates investigation.
-- `LogInvestigator`: searches service logs and extracts relevant errors.
-- `DeployAnalyst`: inspects recent deploys and configuration changes.
-- `MetricsAnalyst`: inspects service health, latency, error rate, and saturation metrics.
-- `CustomerImpactWriter`: converts technical findings into customer-facing impact language.
+## What the Examples Should Teach
 
-Typed context slots:
+Readers should be able to locate:
 
-- `IncidentReportRequest`
-- `ServiceCatalogEntry`
-- `TimeWindow`
-- `RecentDeploys`
-- `LogEvidenceBundle`
-- `MetricSnapshot`
-- `IncidentBrief`
+- The agent's inputs, output, goal, and instructions.
+- Its tool grants and named specialist relationships.
+- The Python or provider implementation selected by the target binding.
+- The generated instructions and schemas.
+- The expectations assessed by the replay, and the evidence supplied to it.
 
-Datasources:
+The examples also show approval declarations, context origins, quality rubrics,
+and controls. These are useful extensions of the agent definition; readers do
+not need to understand every assessment feature before using an agent.
 
-- `ServiceCatalogEntry` from service name.
-- `RecentDeploys` from service and time window.
-- `MetricSnapshot` from service and time window.
+## Local Tools and Data
 
-Tools:
+Use ordinary Python functions backed by fake local data. Keep IDs and timestamps
+stable so results can be reproduced. Record simulated side effects instead of
+writing to external services. Seed scripts must work without live credentials
+or network access.
 
-- `logs.search`
-- `deploys.list`
-- `metrics.query`
-- `status_page.draft_update` requiring approval.
+Keep evaluator-only facts separate from data available to the agent. In a live
+test, the agent must discover facts through its declared tools and context.
+In replay, the fixture supplies output and recorded events directly to the
+assessor. Do not describe those supplied events as proof of live agent behavior.
 
-Contract4Agents features exercised:
+See [Deterministic Eval Data](fake-tools-and-data.md) for the replay file format,
+audience channels, and negative cases.
 
-- Read-only tools.
-- Parallel specialist agents.
-- Evidence citation requirements.
-- Control requiring specialist evidence before the final cause claim.
-- Semantic eval for whether the final brief is clear and operationally useful.
-- Eval expectations proving `status_page.draft_update` was not called without
-  approval under complete telemetry.
+## Fixture Review
 
-Why it is a good fixture:
+Before adding an example, check that:
 
-- It mirrors a real operations process.
-- It has a clear distinction between evidence, inference, and external communication.
-- It exercises both deterministic trace checks and qualitative judgment.
+1. Its task explains a useful agent-definition pattern.
+2. Contracts own the types, grants, and composition; bindings select their
+   implementations without repeating those declarations.
+3. Local fake tools return realistic, repeatable data.
+4. The guide identifies what each command produces and whether it runs an agent.
+5. Replay expectations cover useful failures as well as passing evidence.
+6. Provider limits are stated where they affect the example.
 
-## Team 2: Multi-Lens Research
-
-Purpose: produce a sourced research brief by splitting evidence, technical, policy, counterargument, and synthesis work into separate lenses.
-
-Agents:
-
-- `ResearchDirector`: owns the final research workflow and review gate.
-- `EvidenceMapper`: searches, fetches, scores, and cites seeded sources.
-- `TechnicalLensAnalyst`: evaluates technical evidence.
-- `PolicySafetyLensAnalyst`: evaluates policy and safety implications.
-- `CounterargumentAnalyst`: finds contrary evidence and weak points.
-- `SynthesisWriter`: writes the final structured brief.
-
-Typed context slots:
-
-- `ResearchQuestion`
-- `SourceEvidence`
-- `EvidenceMap`
-- `TechnicalAssessment`
-- `PolicySafetyAssessment`
-- `CounterargumentSet`
-- `ResearchBrief`
-
-Tools:
-
-- `sources.search`
-- `sources.fetch`
-- `evidence.score`
-- `citation.format`
-- `expert_review.request` requiring approval.
-
-Contract4Agents features exercised:
-
-- Multi-agent composition.
-- Approval-gated review requests.
-- Structured intermediate outputs.
-- Semantic evals for balanced, source-backed synthesis.
-- Control requiring specialist evidence before synthesis.
-
-Why it is a good fixture:
-
-- It makes the model gather evidence before synthesis.
-- It tests whether specialist outputs stay distinct before final writing.
-- It exercises both deterministic trace checks and skipped semantic checks.
-
-## Team 3: Market Research Brief
-
-Purpose: produce a market-entry brief from local documents, dated current-fact snapshots, customer signals, competitor data, and a hosted web-search declaration.
-
-Agents:
-
-- `MarketResearchLead`: owns the final report and delegates specialist work.
-- `DocumentAnalyst`: reads seeded internal documents.
-- `CurrentTruthScout`: checks dated current-fact snapshots and can use the
-  portable `web.search` capability.
-- `CompetitorAnalyst`: compares seeded competitor records.
-- `CustomerSignalAnalyst`: extracts customer-signal evidence.
-- `ReportWriter`: writes the final structured report.
-
-Typed context slots:
-
-- `MarketResearchQuestion`
-- `DocumentEvidence`
-- `CurrentFactEvidence`
-- `CompetitorSnapshot`
-- `CustomerSignalSummary`
-- `MarketOpportunityReport`
-
-Tools:
-
-- `documents.search`
-- `documents.fetch`
-- `current_facts.search`
-- `current_facts.fetch`
-- `competitors.lookup`
-- `citation.format`
-- Portable capability `web.search`, bound to OpenAI provider-native web search
-  for the OpenAI target.
-
-
-Contract4Agents features exercised:
-
-- Provider-native binding metadata in the materialization plan.
-- Separation between internal documents and current facts.
-- Structured output with citations and freshness notes.
-- Semantic evals for source freshness and claim support.
-- Control requiring current facts for claims based on dated documents.
-
-Why it is a good fixture:
-
-- It proves a portable capability can select a provider-native implementation
-  without making the offline replay campaign call the network.
-- It makes freshness and source category visible in outputs.
-- It validates richer public examples with the same `eval replay` command as
-  Incident Command.
-
-## Recommended Fixture Order
-
-1. Start with `Incident Command` for parser, semantic analyzer, and trace-spy fixtures.
-2. Add `Multi-Lens Research` for specialist composition, approval-gated review, and source-evidence checks.
-3. Add `Market Research Brief` for hosted-tool metadata, freshness checks, and richer evidence categories.
-
-This order gives implementation a useful progression from read-only investigation to specialist synthesis to hosted-tool-aware research quality.
-
-## Historical/Future Sketch: Revenue Resolution
-
-`Revenue Resolution` is not part of the current public example surface. Keep it as future sketch material only if the repo later needs a billing-flavored approval and permission example.
-
-## Local Fake Tools And Data
-
-Every demo team should include local fake tools backed by fake local data. These tools should be real Python modules that execute through runtime primitives and emit normal traces, but they should not call remote connectors, vendor APIs, or live credentials.
-
-Use `docs/examples/fake-tools-and-data.md` as the deterministic eval-data guide.
-
-Recommended approach:
-
-- Seed a local SQLite database for each demo team.
-- Include hidden scenario truth that evals can read but agents cannot see directly.
-- Make agents discover the truth through normal tool calls and datasources.
-- Keep all data fake, deterministic, and reproducible from seed scripts.
-- Use tool outputs realistic enough to expose weak prompts, bad routing, missing evidence, or unsafe side effects.
-
-## Fixture Design Rules
-
-- Keep fixtures realistic enough to expose weak abstractions.
-- Keep data fake and local.
-- Bind test profiles to local Python fake tools or deterministic normalized
-  eval data.
-- Use hidden seeded truth to validate scenario discovery.
-- Make traces part of expected behavior.
-- Include at least one semantic eval in every team.
-- Include target-plan caveat tests where they clarify real OpenAI behavior.
-- Avoid turning demo data into a toy chatbot benchmark.
+Keep detailed inventories in the contract files. The guide should explain the
+choices and help the reader inspect the generated result.

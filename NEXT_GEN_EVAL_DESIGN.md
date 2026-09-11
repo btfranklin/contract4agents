@@ -1,11 +1,20 @@
 # Next-Generation Evaluation Design
 
-**Status:** remaining-work proposal for a materialized direct-entry assurance
-runner.
+**Status:** proposal for a native evaluation runner. The `eval run` command and
+Python runner API shown below are proposed interfaces, not usage instructions
+for the current package.
 
-The deterministic replay foundation is implemented. This document now defines
-only the remaining native evaluation path, the invariants that path must
-preserve, and the evidence gates for expanding it.
+Deterministic replay is implemented. The proposed addition would run a declared
+eval case against generated SDK agents, collect the results, and assess the
+case's expectations. This would let users test the artifacts derived from their
+contracts without writing a separate invocation and evidence collection loop.
+
+Read [Product Decision](#product-decision) and
+[Initial Supported Slice](#initial-supported-slice) for the scope. Use
+[Specific Recommended Roadmap](#specific-recommended-roadmap) for the work order.
+The middle sections specify bindings, fixtures, execution, and result files.
+[Areas Requiring Further Investigation or Discussion](#areas-requiring-further-investigation-or-discussion)
+lists choices that still need evidence or a decision.
 
 ## Product Decision
 
@@ -13,12 +22,12 @@ Contract4Agents should add a built-in path that invokes one declared entry agent
 from the reviewed native graph and assesses the resulting contract-bound
 evidence.
 
-That path closes the remaining product gap. Contract4Agents already declares
+That path fills the gap between declaring an eval and running it. Contract4Agents already declares
 eval cases, plans and materializes native graphs, captures normalized traces,
-and assesses controls. `eval replay` honestly assesses prerecorded evidence but
+and assesses controls. `eval replay` assesses prerecorded evidence but
 does not invoke a graph.
 
-The initial implementation should therefore deliver this spine:
+The initial implementation should support this sequence:
 
 ```text
 portable contract and eval case
@@ -31,19 +40,10 @@ portable contract and eval case
   -> small versioned result artifact
 ```
 
-It should not make that value contingent on first building:
-
-- a durable campaign job system;
-- resumable or idempotent campaign execution;
-- a second target-configuration control plane;
-- a generalized baseline-policy engine;
-- a whole-trial sandbox product;
-- operational-control aggregation;
-- approval execution before exact causal correlation exists; or
-- simultaneous execution support for every target adapter.
-
-The larger ideas remain legitimate future directions. They are not one
-indivisible feature and must earn their place through concrete use.
+The first release covers direct evaluation with one adapter. Scheduling,
+recovery, broader execution support, and other extensions have separate
+[scope limits](#non-goals-for-the-initial-native-release) and
+[evidence gates](#deferred-work-and-evidence-gates).
 
 ## Current Implementation Boundary
 
@@ -72,7 +72,8 @@ Replay assessment supports deterministic examples, imported production
 evidence, application-owned execution, and assurance without model or provider
 access. It remains supported under the explicit `replay` name.
 
-The new path is `run`: it materializes and invokes a native direct-entry agent.
+The proposed `run` path would construct and invoke the eval's declared entry
+agent through its native SDK.
 
 ## Product and Architecture Boundaries
 
@@ -117,13 +118,13 @@ OpenAI Agents SDK, Strands Agents, and Google ADK keep their native object and
 invocation models. Contract4Agents standardizes only the narrow request,
 identity, evidence, and assessment boundaries needed for a direct eval trial.
 
-### One normal materialization plan governs the graph and evidence
+### One Materialization Plan Identifies the Configuration
 
 The first implementation does not introduce an
 `EvalMaterializationPlan` parallel to `MaterializationPlan`.
 
 The selected eval bindings produce one ordinary, authoritative
-`MaterializationPlan`. Its digest governs:
+`MaterializationPlan`. Its digest identifies the configuration used by:
 
 - graph validation;
 - invocation identity;
@@ -150,15 +151,15 @@ the host. It owns:
 Target adapters own native invocation mechanics and provider correlation. They
 do not independently invent retry or terminal-selection semantics.
 
-### Assessment remains evidence, not enforcement
+### Assessment Checks the Trial Results
 
-Contracts, traces, approvals, judges, and assurance results do not enforce
-business authorization, transactions, production idempotency, or organizational
-policy. Application code retains those responsibilities.
+The runner assesses the trial against declared expectations. Application code
+continues to implement business authorization, transactions, production
+idempotency, and organizational policy.
 
 ## Design Goals
 
-1. Add an honest `eval run` command and Python API that invoke a reviewed native
+1. Add an `eval run` command and Python API that invoke a reviewed native
    direct-entry graph.
 2. Reuse normal compilation, planning, materialization, tracing, closure, and
    assessment rather than building an eval-specific agent registry.
@@ -188,8 +189,6 @@ policy. Application code retains those responsibilities.
   validator exists.
 - Enforcing filesystem, network, process, or secret isolation in-process.
 - Shipping native execution for all three adapters simultaneously.
-
-These are deliberate boundaries, not accidental omissions.
 
 ## Remaining Public Product Shape
 
@@ -253,9 +252,9 @@ The runner must reject an initial-slice campaign before native invocation when:
 - required trace capture cannot be established; or
 - the plan contains a required degraded or unsupported mapping.
 
-Starting this narrowly is important. It lets the implementation prove the
-contract-to-execution-to-assurance path without pretending that approvals,
-provider-backed models, stronger isolation, or host workflows are solved.
+This slice tests the complete path from a contract to generated agents and
+assessed results. Later work can add approvals, provider-backed models,
+stronger isolation, and host workflow integration separately.
 
 ## Eval-Specific Bindings
 
@@ -289,15 +288,10 @@ The file must be complete for the selected target and profile. There is no
 fallback to `contract4agents.targets.toml`, no profile inheritance, and no
 post-plan replacement.
 
-This approach deliberately accepts some duplication of implementation locators
-while the product shape is being proven. It avoids immediately introducing:
-
-- base-versus-overlay precedence;
-- a second environment schema;
-- effective-binding merge diagnostics;
-- an eval-plan digest distinct from the materialization-plan digest;
-- eval-plan visualization; or
-- semantic diff for an unvalidated configuration model.
+Complete files can repeat implementation locators. The first release accepts
+that cost to reuse the existing binding schema, diagnostics, and plan digest.
+It needs no overlay precedence, separate eval plan, or new visualization and
+diff model.
 
 ### Possible follow-up: narrow `EvalBindings`
 
@@ -340,6 +334,10 @@ load contract and eval source
 
 Fixture validation may inspect canonical contract types before materialization,
 but project implementation imports occur only after binding and plan validation.
+
+This is a proposed requirement, not current planning behavior. Current binding
+checks import Python modules to inspect callable signatures. Implementation
+planning must resolve that difference before this ordering can be promised.
 
 The graph, trace, assessments, and result artifact must all identify the same
 plan digest.
@@ -555,14 +553,9 @@ cannot guarantee that arbitrary imported Python code will not:
 - spawn a process; or
 - perform an undeclared side effect.
 
-The correct promise is:
-
-> The runner seals resolution of Contract4Agents-declared dependencies to the
-> selected eval bindings and executes trusted local code in-process.
-
-It is not:
-
-> The runner proves that local code cannot reach production systems.
+The runner resolves declared dependencies only through the selected eval
+bindings. Users must select trusted implementations suitable for their test
+environment; arbitrary Python code can still reach production systems.
 
 ### Side effects
 
@@ -884,8 +877,7 @@ simple fail-fast option, but it does not resume after process termination.
 
 ## Specific Recommended Roadmap
 
-This is the recommended implementation order. It intentionally proves user
-value before building platform machinery.
+Implement one working evaluation path first, then expand it based on use.
 
 ### Phase 1: prove one native Strands spike
 
@@ -1134,7 +1126,7 @@ follow the canonical open-question process described above.
 
 ## Decision Summary
 
-Proceed with a materialized direct-entry assurance runner.
+Proceed with a native evaluation runner for one declared entry agent per case.
 
 The essential first-release promise is:
 
@@ -1159,6 +1151,5 @@ one real Strands vertical slice
   -> operational platform features only when usage demands them
 ```
 
-That sequence completes the product's contract-to-evidence loop without turning
-Contract4Agents into a general eval service before the direct runner has proved
-its value.
+The first useful result is a declared eval that can run against generated SDK
+agents and report whether its expectations were met.

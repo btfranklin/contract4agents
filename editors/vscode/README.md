@@ -1,18 +1,14 @@
 # Contract4Agents VS Code Extension
 
-Rich language support for Contract4Agents `.contract` and `.eval` files.
-
-This repo-first extension recognizes the Contract4Agents source files used by
-the Python toolchain. The grammar covers portable types and capabilities,
-agents and grants, context, composition, isolation, controls, quality, evals,
-run specs, and their expression vocabulary.
+Edit Contract4Agents `.contract` and `.eval` files with syntax highlighting,
+completions, diagnostics, and navigation. Install the extension from a GitHub
+Release and select a Python environment that has `contract4agents` installed.
 
 The extension provides syntax and semantic highlighting, hover documentation,
 type shapes and callable signatures, contextual completions, diagnostics and
 quick fixes, go to definition, references, rename, document and workspace
-symbols, and optional inlay hints. The VS Code client contains no independent
-language semantics: it starts the Python language server supplied by the
-`contract4agents` package.
+symbols, and optional inlay hints. It uses the package's Python language server,
+so editor feedback follows the same language rules as the CLI.
 
 ## Install From A GitHub Release
 

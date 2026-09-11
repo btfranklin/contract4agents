@@ -1,9 +1,18 @@
 # Contract Language
 
-Contract4Agents is a portable declarative language. Contracts describe
-desired agent semantics; target bindings describe how one runtime implements
-them. Python, TypeScript, provider, SDK, and deployment details are never
-portable source authority.
+The Contract4Agents language lets you define agent inputs, outputs, tools,
+instructions, and relationships in `.contract` files. Contract4Agents uses
+these declarations to generate schemas, instructions, and SDK objects.
+Target bindings connect the declarations to application functions and models.
+
+Start with [Portable Types](#portable-types), [Shared Capabilities](#shared-capabilities),
+and [Agents and Grants](#agents-and-grants). Add context and composition when
+agents need them. Controls, quality rubrics, evals, and run specs describe
+additional expectations you want to assess.
+
+For a complete application example, see the
+[adoption tutorial](../tutorials/using-contract4agents-with-an-agent-app.md).
+This page is the syntax and semantics reference.
 
 ## Portable Types
 
@@ -42,8 +51,8 @@ The portable constrained subset is:
 
 Each bound is optional, but a constrained type must declare at least one bound.
 String length bounds are non-negative integers. Integer bounds must be integers.
-List item bounds are non-negative integers. Each constrained type must declare
-at least one bound, and its minimum cannot be greater than its maximum. String
+List item bounds are non-negative integers. A minimum cannot be greater than
+its maximum. String
 length counts Unicode code points. Constraints can be used in type fields, tool
 and datasource parameters, context, lists, and nullable types. Lists keep their
 item type inside square brackets and put the constraint block before a nullable
@@ -138,12 +147,12 @@ Agent signatures are typed invocation inputs and one typed output. A grant is a
 relationship between an agent and a shared tool declaration; it does not
 redeclare the tool.
 
-Grant dimensions are orthogonal:
+Each grant answers separate questions:
 
-- `availability`: `enabled` or `denied`
-- `authorization`: `preapproved` or `approval_required`
-- `execution`: `host`, `provider_hosted`, `remote`, or a named target environment
-- optional `isolation`: a declared isolation profile
+- `availability`: can the agent use the tool? `enabled` or `denied`.
+- `authorization`: does a call need approval? `preapproved` or `approval_required`.
+- `execution`: where does the tool run? `host`, `provider_hosted`, `remote`, or a named target environment.
+- optional `isolation`: which declared isolation profile applies?
 
 An enabled grant requires explicit authorization and execution. A denied grant
 cannot declare authorization, execution, or isolation. Named execution
@@ -196,9 +205,9 @@ isolation EvidenceWorker:
 ```
 
 Planning reports support for each dimension and fails when a required boundary
-cannot be enforced. A compiler can construct fresh context and capability
-allowlists, but an environment provider must enforce filesystem, network,
-process, and secret boundaries.
+cannot be enforced. A materializer can construct fresh context and capability
+allowlists. Filesystem, network, process, and secret boundaries require an
+environment provider that supplies those restrictions.
 
 ## Guidance, Controls, and Quality
 

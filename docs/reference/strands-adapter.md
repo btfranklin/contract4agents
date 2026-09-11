@@ -1,9 +1,13 @@
 # Strands Target Reference
 
-The Strands target materializes canonical Contract4Agents IR into native
-`strands.Agent` and `AgentTool` objects. Contract4Agents constructs and validates
-the graph; application code owns invocation, approval UI, retries, sessions,
-persistence, recovery, concurrency, and deployment.
+The Strands target constructs native `strands.Agent` and `AgentTool` objects
+from your contracts. Your application invokes the returned agents and handles
+sessions and approval decisions.
+
+Start with [Target Bindings](#target-bindings), check
+[Semantic Support](#semantic-support), then use
+[Materialize and Run](#materialize-and-run). The trace sections explain the
+additional setup for assessment and recorded evidence.
 
 Install the optional target dependency:
 
@@ -195,7 +199,7 @@ Contract4Agents does not install a runner, callback handler, session manager,
 retry loop, observability backend, or deployment controller. Those remain host
 or platform responsibilities.
 
-## Provider evidence
+## Provider Evidence
 
 The trace bridge reports successful `AgentResult` usage from the public
 `metrics.accumulated_usage` shape. It records input, cached input, output, and

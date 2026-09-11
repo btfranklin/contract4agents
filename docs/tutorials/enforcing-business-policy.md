@@ -14,7 +14,11 @@ Contract4Agents makes the boundary explicit, wires the agent to the approved
 host capability, and records evidence about the decision. Your application
 owns the policy query, transaction, durable write, and any human approval UI.
 
-## The Safe Shape
+This is a design example, not a complete runnable project. The application
+types and database operations below stand for your existing business code.
+For a runnable introduction, use [First Contract Project](first-contract-project.md).
+
+## Request and Policy Check
 
 Use two independent gates:
 
@@ -73,10 +77,10 @@ agent CustomerSupportAgent(request: CustomerRequest) -> SupportDecision:
     ]
 ```
 
-`approval_required` creates a derived Contract4Agents control. The selected
-target must prove that approval occurs before the tool starts, or planning and
-assurance report the gap. Approval is still not the policy rule: an approver
-must not be able to make an ineligible refund succeed accidentally.
+`approval_required` tells the materializer to configure the target's supported
+approval mechanism. It also creates a control that can assess recorded approval
+events. Planning checks target support; trace assessment checks supplied run
+evidence. An approval does not replace the eligibility rule in the tool.
 
 ## 2. Bind It to the Policy Gateway
 
@@ -146,7 +150,7 @@ If the company permits exceptions, make them a separate, role-restricted host
 workflow with its own audit record. Do not make an ordinary approval a hidden
 policy bypass.
 
-## 4. Record the Business Decision as Evidence
+## 4. Optional: Record the Business Decision
 
 The policy service can emit a host-attested control result for the exact rule:
 
@@ -199,25 +203,13 @@ Include at least these cases:
 A quality rubric can assess whether the agent explains the refusal clearly and
 uses approved language. It is not the enforcement mechanism for eligibility.
 
-## What Contract4Agents Does—and Does Not—Do
+## What This Example Adds
 
-Contract4Agents does:
-
-- declare the action, typed result, grant, and approval requirement;
-- connect the action to the named host implementation through target bindings;
-- derive approval controls and validate the target's enforcement plan;
-- bind traces and host evidence to stable contract and plan identities; and
-- assess and package the evidence for eval, release, or incident review.
-
-Contract4Agents does not:
-
-- query refund history or classify similar products;
-- lock database rows, write refund offers, or provide idempotency;
-- make a human approval decision; or
-- turn a model instruction into an enforced business rule.
-
-Put the rule in the host policy gateway. Use Contract4Agents to make that
-gateway visible, correctly connected, reviewable, and evidenced.
+The contract defines the action, typed result, and approval requirement in one
+place. The target binding connects that definition to the refund service.
+Your existing service handles customer identity, eligibility, transactions,
+and retries. Optional trace assessment makes the recorded decisions easier to
+review against the declared expectations.
 
 ## Next Steps
 

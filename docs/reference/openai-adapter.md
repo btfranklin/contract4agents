@@ -1,9 +1,14 @@
 # OpenAI Target Reference
 
-The OpenAI target materializes canonical Contract4Agents IR into ordinary
-OpenAI Agents SDK objects. It is contract-first and plan-first: users review a
-provider-neutral materialization plan before the same mapping constructs the
-native graph.
+The OpenAI target constructs ordinary OpenAI Agents SDK agents from your
+contracts. It supplies instructions, typed tools, output types, and declared
+delegation or handoff relationships. Your application runs the returned agents
+with the SDK's `Runner`.
+
+For initial setup, read [Target Bindings](#target-bindings),
+[Materialize the Complete Graph](#materialize-the-complete-graph), and
+[Running](#running). The later evidence sections explain tracing when you want
+to assess a run against contract expectations.
 
 Install the optional target dependencies:
 
@@ -63,15 +68,16 @@ factories, output-type mappings, or composition registries.
 Profiles own model identifiers and provider options. Environment variables own
 credentials and may select a target and profile; target-binding files never
 interpolate environment variables. Programmatic bindings remain useful for
-tests and control planes, but the resulting named plan must be persisted as the
-auditable configuration used for the run.
+tests and control planes. Retain the resulting named plan when you need a
+record of the configuration used for a run.
 
 Nested provider options use TOML tables and arrays. Materialization converts the
 immutable plan values to ordinary dictionaries and lists before it constructs
 OpenAI Agents SDK `ModelSettings`.
 
 Python locators use `module:attribute`. Planning may import a locator to inspect
-its callable signature, but it never calls application code.
+its callable signature. It does not invoke the tool, but the import can execute
+module-level application code.
 
 ## Plan Without Constructing Agents
 
@@ -266,7 +272,10 @@ also reads public native agent/model-settings properties, tool approval flags,
 inventories, output mode, and schemas. Runtime provider spans remain separate
 and should be correlated into the normalized trace schema.
 
-Use the supplied Agents SDK tracing processor for runtime correlation:
+## Record a Run Trace
+
+Use the supplied Agents SDK tracing processor to connect runtime events to the
+contract's agents and tools:
 
 ```python
 from agents import add_trace_processor
@@ -276,7 +285,7 @@ router = OpenAINormalizedTraceRouter()
 add_trace_processor(router)  # once at process startup
 
 session = router.open_session(
-    artifacts.ir,
+    system.context.ir,
     system.plan,
     run_id=run_id,
     thread_id=thread_id,
@@ -296,6 +305,8 @@ The router and session map native agent, function-tool, delegation, and handoff
 spans to stable contract IDs, add output-validation evidence for successful
 agent spans, and preserve provider trace/span correlation. They intentionally
 do not copy raw provider inputs or outputs into normalized payloads.
+
+### Attempts and Failed Calls
 
 For a retried host invocation, bind portable attempt identity around each
 runner call. The binding annotates evidence but does not catch, retry, or select
@@ -326,7 +337,9 @@ Output controls assess the explicitly selected attempt for each invocation;
 earlier failed attempts remain auditable. Contract4Agents does not decide when
 an attempt is terminal or whether a retry is allowed.
 
-Every successful runner result must close its response path through
+### Provider-Hosted Tool Evidence
+
+For complete response evidence, every successful runner result must close its response path through
 `record_result(...)` or `normalize_response_events(...)`, even when no hosted
 tool was expected:
 
@@ -356,6 +369,8 @@ one the host never submitted. Closing the session produces identity-bound
 `TraceClosureEvidence`; incomplete SDK traces or missing success/exception
 response paths keep closure incomplete or unverified.
 
+### Save and Resume Trace Capture
+
 For a durable recovery point without closing the active session, capture an
 internally consistent pair after at least one normalized event exists:
 
@@ -370,7 +385,7 @@ only from the matching pair:
 
 ```python
 session = router.open_session(
-    artifacts.ir,
+    system.context.ir,
     system.plan,
     run_id=run_id,
     thread_id=thread_id,
@@ -386,6 +401,8 @@ output-schema failure evidence against a sealed prior attempt. Channel closure
 for a resumed run is conservative across every SDK-execution segment. A
 snapshot does not make trace, closure, and application state one transaction;
 the host owns persistence ordering, crash policy, and workflow recovery.
+
+### Call Status and Router Lifetime
 
 Supported hosted-call status is preserved: completed or succeeded calls emit
 `tool.completed`, failed, cancelled, or incomplete calls emit `tool.failed`,

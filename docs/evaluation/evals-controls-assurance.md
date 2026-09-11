@@ -1,10 +1,21 @@
 # Evals, Controls, and Assurance
 
-Contract4Agents evaluates declared intent against observed evidence. The same
-stable contract identities and control assessor are used for controlled eval
-runs and imported production traces.
+Use these tools to answer questions such as: Does this result match its declared
+type? Does the recorded run contain the required specialist call? Does a reviewer
+judge the result to be clear? Assessments use the expectations in the contract
+and the evidence supplied by the application or replay fixture.
 
-## Three Different Concerns
+These tools support the primary specification and generation workflow. They
+help implementors check declared guardrails and expectations against available
+evidence. They do not supervise application execution or require every
+application that uses generated artifacts to collect traces. When an application
+requests an assessment, the evidence and result rules below apply.
+
+For a first offline assessment, follow [Incident Command](../../examples/incident-command/README.md).
+Read [Replay Campaigns](#replay-campaigns) for fixture data and
+[Assurance Bundles](#assurance-bundles) for packaged review evidence.
+
+## Terms
 
 - A **control** is a required or advisory behavioral requirement with a named
   assessment mode and expected evidence.
@@ -50,9 +61,10 @@ Every assurance result is one of:
 - `unverified`: the evidence is missing, incomplete, malformed, or unable to
   establish the claim.
 
-The distinction is deliberately asymmetric. Positive events may prove a
-positive claim. Event absence proves a negative claim only when identity-bound
-closure proves the relevant instrumentation channel closed at that trace frontier.
+For example, a recorded tool call can establish that the tool was called. A
+missing tool call can establish that it was not called only if the relevant
+events were fully captured. Trace closure identifies the attempts, event
+channels, and exact trace snapshot that the recorder captured.
 
 Conditional controls evaluate `when` before `require`. A proven-false
 condition produces a passed result with `applicability = "not_applicable"`; the
@@ -229,8 +241,7 @@ derived values, and assertions. Neither result substitutes for the other.
 
 ## Semantic Diffs
 
-Structural text diffs are insufficient for high-reliability agent changes.
-Contract4Agents semantic diffs identify changes in:
+Semantic diffs supplement ordinary source diffs. They identify changes in:
 
 - capability access and authorization;
 - schemas and context exposure;

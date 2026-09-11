@@ -1,9 +1,15 @@
 # Trace Schema Reference
 
-Contract4Agents normalized trace schema version `1` connects observed execution
-to the exact contract and materialization plan that governed it. JSONL is the
-portable storage form; provider-native spans remain available through
-correlation references.
+Use normalized traces to compare recorded agent activity with the contract.
+Schema version `1` records agent and tool identities, events, and references to
+provider evidence. Each trace identifies the contract and plan used to assess
+it. JSONL stores one event per line.
+
+For initial tracing setup, use the relevant
+[OpenAI](openai-adapter.md#record-a-run-trace),
+[Strands](strands-adapter.md#runtime-trace-and-assurance), or
+[Google ADK](google-adk-adapter.md#materialize-run-and-trace) integration example.
+This page defines the stored events, identity rules, and completeness evidence.
 
 ## Event Envelope
 
@@ -160,6 +166,8 @@ attempt identity and evidence references, but no raw output or validation
 message. A host domain failure does not change the result of the derived
 contract output-conformance control.
 
+## OpenAI Response Normalization
+
 Provider-hosted tools are also visible in Agents SDK model responses. Normalize
 those response items after each run:
 
@@ -189,7 +197,7 @@ infer that an SDK exception was a schema failure. Host-side canonical output
 validation can record the narrower fact through
 `session.record_output_schema_failure(...)`.
 
-### Snapshots and recovery
+## Snapshots and Recovery
 
 After the session has at least one normalized event, `session.snapshot()`
 returns a `TraceCaptureSnapshot` containing an
@@ -215,7 +223,9 @@ selection. Contract4Agents does not coordinate application state, trace files,
 and closure files as a transaction, nor does it decide whether recovery or a
 retry is allowed.
 
-`normalize_openai_response_events(...)` is the corresponding standalone API.
+## OpenAI Hosted-Call Mapping
+
+`normalize_openai_response_events(...)` is the standalone response-normalization API.
 For recognized provider-hosted call items it resolves exactly one enabled
 `provider_hosted` grant whose plan locator matches the agent, provider, and
 tool. The currently materialized OpenAI tool is `web_search_call`, matched to

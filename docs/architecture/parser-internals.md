@@ -1,6 +1,7 @@
 # Parser Internals
 
-The source pipeline is intentionally simple:
+Use this reference when changing parsing, semantic checks, or editor support.
+The source pipeline is:
 
 ```text
 .contract/.eval -> Lark parse tree -> AST -> semantic analysis -> canonical IR
@@ -41,7 +42,7 @@ run-spec relations share one fail-closed expression subsystem:
 - `_model` owns parsed-expression values and errors.
 - `_refs` extracts semantic references for static checks.
 - `_eval` evaluates supported output, trace, hidden-truth, and derived-value
-relations against normalized inputs.
+  relations against normalized inputs.
 
 ## Language Service
 

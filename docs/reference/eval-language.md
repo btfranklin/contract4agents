@@ -1,8 +1,12 @@
 # Eval Language Reference
 
-`.eval` files declare scenarios against canonical agent IDs. The selected
-target plan supplies the runtime inventory and expected event types; eval source
-contains portable scenario givens and outcome expectations.
+Use `.eval` files to describe an agent scenario and the result you expect.
+Expectations can check output fields, tool calls, or a named quality rubric.
+The same case can be assessed against results from different models or targets.
+
+The built-in CLI replays supplied evidence; it does not run an agent to obtain
+new results. See [CLI replay options](cli.md#eval-replay-root) for that command
+and [Semantic Judge](semantic-judge.md) for quality decisions.
 
 ```contract
 eval answers_from_current_evidence for ResearchLead:

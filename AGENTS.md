@@ -1,6 +1,6 @@
 # Agent Instructions
 
-This repository is the design and implementation home for Contract4Agents, a typed declarative language for agent contracts.
+This repository is the design and implementation home for Contract4Agents, a toolkit for defining agents through typed external contracts.
 
 ## Repo Map
 

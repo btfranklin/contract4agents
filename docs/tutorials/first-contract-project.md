@@ -3,36 +3,45 @@
 This tutorial builds one small, runnable OpenAI agent. The contract defines the
 agent; the Python code supplies one ordinary tool and starts the finished agent.
 
+Steps 1–7 build and run the agent. Step 8 is an optional offline example of
+checking supplied results against the contract. The live run needs an OpenAI
+API key and can incur provider charges.
+
 ## 1. Create the Project
 
 ```text
 your-app/
-  agent_contracts/
-    agents/
-      support.contract
-    capabilities/
-      support.contract
-    evals/
-      support.eval
-    types/
-      support.contract
-    contract4agents.targets.toml
-    eval-data.json
   your_app/
     __init__.py
     run_agent.py
     tools.py
+    agent_contracts/
+      agents/
+        support.contract
+      capabilities/
+        support.contract
+      evals/
+        support.eval
+      types/
+        support.contract
+      contract4agents.targets.toml
+      eval-data.json
 ```
 
-Install Contract4Agents with OpenAI support:
+Use Python 3.11 or later. In a new directory, initialize a PDM project, then
+install Contract4Agents with OpenAI support:
 
 ```bash
+pdm init
 pdm add "contract4agents[openai]"
 ```
 
+Create the directories shown above and an empty `your_app/__init__.py` file.
+The `evals/` directory and `eval-data.json` file are only needed for step 8.
+
 ## 2. Define the Data
 
-Create `agent_contracts/types/support.contract`:
+Create `your_app/agent_contracts/types/support.contract`:
 
 ```contract
 type KnowledgeResult:
@@ -49,7 +58,7 @@ These types are the source of truth for tool and agent outputs.
 
 ## 3. Define the Tool
 
-Create `agent_contracts/capabilities/support.contract`:
+Create `your_app/agent_contracts/capabilities/support.contract`:
 
 ```contract
 tool knowledge.search(query: string) -> KnowledgeResult:
@@ -61,7 +70,7 @@ The contract says what the tool does. The Python implementation comes next.
 
 ## 4. Define the Agent
 
-Create `agent_contracts/agents/support.contract`:
+Create `your_app/agent_contracts/agents/support.contract`:
 
 ```contract
 agent SupportResponder(question: string) -> SupportReply:
@@ -86,6 +95,9 @@ decision lives here, not in Python or provider configuration.
 
 Create `your_app/tools.py`:
 
+This example returns a fixed answer. Replace it with your knowledge-base query
+when you connect a real service.
+
 ```python
 def search_knowledge(query: str) -> dict[str, object]:
     return {
@@ -94,7 +106,7 @@ def search_knowledge(query: str) -> dict[str, object]:
     }
 ```
 
-Create `agent_contracts/contract4agents.targets.toml`:
+Create `your_app/agent_contracts/contract4agents.targets.toml`:
 
 ```toml
 schema_version = "1"
@@ -109,10 +121,8 @@ python = "your_app.tools:search_knowledge"
 default_model = "gpt-5.6-luna"
 ```
 
-The binding connects the portable tool name to this application's Python
-function. It also chooses the model for this complete named profile. Every
-declared target needs at least one profile; a profile-level default can cover all
-canonical agents, while explicit agent overrides must name canonical agents.
+The binding connects the tool name to the Python function. The `development`
+profile selects the model. Each target needs at least one named profile.
 
 The binding is not a business-policy implementation. A host tool that changes
 money, entitlements, or customer records must enforce its own trusted business
@@ -124,9 +134,9 @@ Tools](enforcing-business-policy.md) for a refund-eligibility example.
 From `your-app/`, run:
 
 ```bash
-contract4agents check agent_contracts
-contract4agents compile agent_contracts --out .contract/build
-contract4agents plan agent_contracts --target openai --profile development \
+pdm run contract4agents check your_app/agent_contracts
+pdm run contract4agents compile your_app/agent_contracts --out .contract/build
+pdm run contract4agents plan your_app/agent_contracts --target openai --profile development \
   --out .contract/build/development-plan.json
 ```
 
@@ -147,7 +157,7 @@ from contract4agents import materialize
 
 async def main() -> None:
     system = materialize(
-        "agent_contracts",
+        "your_app/agent_contracts",
         target="openai",
         profile="development",
     )
@@ -173,9 +183,13 @@ pdm run python -m your_app.run_agent
 `materialize` compiles the contract, resolves the development profile, builds
 the native OpenAI agent and tool, and verifies the result against the plan.
 
-## 8. Run One Deterministic Eval
+## 8. Optional: Check a Supplied Result
 
-Create `agent_contracts/evals/support.eval`:
+This example checks a fixed output and event list. It does not test the agent
+you ran in step 7. Use it to learn how eval expectations work without another
+provider request.
+
+Create `your_app/agent_contracts/evals/support.eval`:
 
 ```contract
 eval answers_shipping_question for SupportResponder:
@@ -184,7 +198,7 @@ eval answers_shipping_question for SupportResponder:
     expect trace.tool_called(knowledge.search)
 ```
 
-Create `agent_contracts/eval-data.json`:
+Create `your_app/agent_contracts/eval-data.json`:
 
 ```json
 {
@@ -209,7 +223,8 @@ Create `agent_contracts/eval-data.json`:
               "event_type": "tool.completed",
               "semantic": {
                 "agent_id": "agent:SupportResponder",
-                "capability_id": "tool:knowledge.search"
+                "capability_id": "tool:knowledge.search",
+                "grant_id": "grant:SupportResponder:knowledge.search"
               }
             },
             {
@@ -238,7 +253,7 @@ Create `agent_contracts/eval-data.json`:
 Now replay the supplied eval evidence:
 
 ```bash
-contract4agents eval replay agent_contracts \
+pdm run contract4agents eval replay your_app/agent_contracts \
   --target openai \
   --profile development
 ```
@@ -250,9 +265,7 @@ connect the same contract to live or application-owned execution.
 
 ## Next Step
 
-You now have the first executable loop: contract, binding, plan, materialized
-agent, and deterministic replay assessment. Continue with
-[Capture and Assure a Run](trace-and-assure.md) to add production trace capture,
-instrumentation closure, control assessment, and an assurance bundle. For
-multiple agents, context providers, approvals, and host-ownership boundaries,
-use the [application guide](using-contract4agents-with-an-agent-app.md).
+You now have an agent defined by a contract and run by ordinary application
+code. Use the [application guide](using-contract4agents-with-an-agent-app.md)
+to add agents, context, or approvals. If you need evidence from actual runs,
+continue with [Capture and Assure a Run](trace-and-assure.md).

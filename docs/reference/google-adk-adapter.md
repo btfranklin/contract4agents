@@ -1,10 +1,13 @@
 # Google ADK Target Reference
 
-The Google ADK target materializes canonical Contract4Agents IR into ordinary
-`google.adk.agents.LlmAgent` and `google.adk.tools.BaseTool` objects. The
-materializer constructs and validates the native graph; application code keeps
-ownership of `App`, `Runner`, session services, retries, persistence,
-confirmation UI, and deployment.
+The Google ADK target constructs ordinary `google.adk.agents.LlmAgent` and
+`google.adk.tools.BaseTool` objects from your contracts. Your application adds
+the returned agent to an ADK `App` or `Runner` and supplies its session service.
+
+Start with [Target Bindings](#target-bindings) and
+[Semantic Mapping](#semantic-mapping) to configure the target and check its
+supported features. [Materialize, Run, and Trace](#materialize-run-and-trace)
+shows the integration shape, including the optional trace plugin.
 
 Install the optional target dependencies:
 
@@ -211,7 +214,7 @@ independent concurrent requests, resolve declared context through
 confirmation and resume, choose retry and terminal-attempt policy, and persist
 the resulting trace and assurance artifacts.
 
-## Provider evidence
+## Provider Evidence
 
 The trace plugin passes the public `LlmResponse` and callback exceptions to
 content-free normalizers. It inspects usage metadata, response identity,

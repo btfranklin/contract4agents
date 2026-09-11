@@ -25,7 +25,8 @@ have similar code.
 
 1. Define portable semantics only when the contract language must own the
    behavior.
-2. Validate target binding shapes without invoking host business code.
+2. Validate target binding shapes without calling the bound functions. Python
+   imports can execute module-level code during signature inspection.
 3. Declare contextual planning support in the provider adapter.
 4. Register the provider factory.
 5. Construct native SDK objects from the immutable materialization plan.

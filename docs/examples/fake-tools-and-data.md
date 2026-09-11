@@ -3,7 +3,11 @@
 Public examples use deterministic replay data to exercise contracts, plans,
 traces, controls, and quality criteria without provider credentials. The data
 is supplied evidence, not a second description of the agent system and not a
-native execution request.
+native execution request. A passing replay shows how the assessor handles the
+supplied evidence; it does not show that an agent produced that evidence.
+
+Use the [public examples](../../examples/README.md) to run a replay first.
+This reference explains how to write or change its fixture data.
 
 ## Responsibilities
 
@@ -106,8 +110,7 @@ evidence references, provenance, and safe
 redaction metadata when omitted. Explicit values are still strictly validated.
 
 Replay reports serialize an invocation digest and the explicit `report`
-projection. Raw invocation, host context, evaluator truth, and the removed
-generic `inputs` field are not exported.
+projection. Raw invocation, host context, and evaluator truth are not exported.
 
 ## Seed Scripts
 

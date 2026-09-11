@@ -1,8 +1,9 @@
 # Market Research Brief
 
-This example produces a current, source-backed market opportunity report from
-dated documents, refreshed facts, competitor evidence, customer signals, and
-provider-native web search.
+This example defines a team that prepares a market opportunity report from
+documents, dated fact snapshots, competitor evidence, customer signals, and
+provider-native web search. The offline replay uses fake local evidence and
+does not retrieve current market facts.
 
 ## Team
 
@@ -53,6 +54,8 @@ instructions.
 
 ## Run the Offline Loop
 
+From the repository root after installing the repository dependencies:
+
 ```bash
 pdm run python examples/market-research-brief/data/seed.py
 export CONTRACT4AGENTS_MARKET_RESEARCH_DB="$PWD/examples/market-research-brief/data/fixture.sqlite"
@@ -74,6 +77,8 @@ telemetry and host obligations would apply to a real run. Use
 
 ## Materialize
 
+With the OpenAI target extra installed, construct the SDK agents:
+
 ```python
 from contract4agents import materialize
 
@@ -86,5 +91,6 @@ system = materialize(
 lead = system.agents["MarketResearchLead"]
 ```
 
-The host executes the normal SDK object and owns live data credentials,
+This call constructs `lead`; it does not run a research request. The host
+executes the normal SDK object and owns live data credentials,
 approval decisions, persistence, and deterministic application workflow.
