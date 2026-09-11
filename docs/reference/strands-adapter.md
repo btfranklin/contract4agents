@@ -112,28 +112,23 @@ it does not claim that every Strands provider offers constrained decoding.
 
 ```python
 from contract4agents import materialize
-from contract4agents.adapters.strands import StrandsMaterializationProvider
-
-provider = StrandsMaterializationProvider()
 system = materialize(
     "agent_contracts",
     target="strands",
     profile="production",
-    provider=provider,
 )
 
-result = await system.agents["IncidentCommander"].invoke_async(user_request)
-output = provider.validate_result(
-    system.agents["IncidentCommander"],
-    result,
+agent = system.agents["IncidentCommander"]
+result = await agent.invoke_async(user_request)
+output = system.validate_output_for_agent(
+    agent,
+    result.structured_output,
 )
 ```
 
 `system.agents` contains native Strands agents keyed by contract name.
-`system.graph` also exposes generated output types, resolved implementations,
-native grant and composition objects, context runtime, environment evidence,
-and graph-validation evidence. `validate_result` fails closed if the returned
-`AgentResult` lacks valid contract structured output.
+`system.validate_output_for_agent(...)` fails closed if the native structured
+output does not satisfy the selected agent's contract type.
 
 A bound Python tool can return ordinary structural data or application
 Pydantic models, including models nested in mappings and lists. The adapter

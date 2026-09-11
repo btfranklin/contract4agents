@@ -53,10 +53,11 @@ def test_google_adk_provider_builds_and_validates_typed_graph(
     context = ContextRuntime(ir, plan, implementations, output_types)
     trace = RecordingMaterializationTraceSink()
     sdk = FakeGoogleADKSDK()
+    artifacts = build_artifacts(ir)
 
     graph = GoogleADKMaterializationProvider(sdk).build_graph(
         ir=ir,
-        artifacts=build_artifacts(ir),
+        artifacts=artifacts,
         target=target,
         plan=plan,
         implementations=implementations,

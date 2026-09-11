@@ -239,21 +239,13 @@ async def test_real_strands_sdk_builds_and_runs_typed_tools_without_live_calls(
     child_description = provider.sdk.describe_agent(child)
     assert child_description.approval_allowed_tools == ("Result",)
     assert child_description.output_type is result.graph.output_types["Result"]
-    accepted = provider.validate_result(
-        child,
-        SimpleNamespace(structured_output={"value": "accepted"}),
-    )
+    assert result.output_type_for_agent(child) is result.generated_types["Result"]
+    accepted = result.validate_output_for_agent(child, {"value": "accepted"})
     assert accepted.value == "accepted"
-    with pytest.raises(MaterializationError, match="MAT324"):
-        provider.validate_result(
-            child,
-            SimpleNamespace(structured_output=None),
-        )
-    with pytest.raises(MaterializationError, match="MAT324"):
-        provider.validate_result(
-            child,
-            SimpleNamespace(structured_output={"wrong": "shape"}),
-        )
+    with pytest.raises(MaterializationError, match="MAT207"):
+        result.validate_output_for_agent(child, None)
+    with pytest.raises(MaterializationError, match="MAT207"):
+        result.validate_output_for_agent(child, {"wrong": "shape"})
 
     native_tool = result.graph.grant_objects[semantic_id("grant", "Child", "records.lookup")]
     tool_description = provider.sdk.describe_tool(native_tool)
@@ -441,7 +433,10 @@ async def test_real_strands_incident_slice_closes_after_delegate_approval_resume
                 ]
             )
 
-    accepted = provider.validate_result(result.agents["Parent"], completed)
+    accepted = result.validate_output_for_agent(
+        result.agents["Parent"],
+        completed.structured_output,
+    )
     assert accepted.value == "needle"
     assert implementation_module.LOOKUPS == expected_lookups
     assert factory_calls == [

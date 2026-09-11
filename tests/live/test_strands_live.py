@@ -117,7 +117,7 @@ async def test_contract_first_incident_graph_runs_through_strands_bedrock(
                     limits={"turns": 12},
                 )
 
-    output = provider.validate_result(commander, result)
+    output = system.validate_output_for_agent(commander, result.structured_output)
     assert output.summary
     assert output.evidence
     snapshot = session.closed_snapshot

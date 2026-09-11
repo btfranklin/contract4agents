@@ -144,9 +144,6 @@ class StrandsSDK(Protocol):
 
     def describe_tool(self, tool: object) -> NativeStrandsToolDescription: ...
 
-    def validate_result(self, agent: object, result: object) -> object: ...
-
-
 class StrandsAgentsSDK:
     """Lazy concrete facade over the optional Strands Agents SDK."""
 
@@ -590,30 +587,6 @@ class StrandsAgentsSDK:
                 )
             ) from exc
 
-    def validate_result(self, agent: object, result: object) -> object:
-        description = self.describe_agent(agent)
-        structured_output = getattr(result, "structured_output", None)
-        if structured_output is None:
-            raise MaterializationError(
-                (
-                    MaterializationIssue(
-                        "MAT324",
-                        (f"Strands agent `{description.native_name}` did not produce required structured output"),
-                    ),
-                )
-            )
-        try:
-            return TypeAdapter(description.output_type).validate_python(structured_output)
-        except Exception as exc:  # noqa: BLE001 - provider result boundary.
-            raise MaterializationError(
-                (
-                    MaterializationIssue(
-                        "MAT324",
-                        (f"Strands agent `{description.native_name}` produced invalid structured output: {exc}"),
-                    ),
-                )
-            ) from exc
-
     def _remember_tool(
         self,
         tool: object,
@@ -656,11 +629,6 @@ class StrandsMaterializationProvider:
             expected_event_types=base.expected_event_types,
             mapping_resolver=base.mapping_resolver,
         )
-
-    def validate_result(self, agent: object, result: object) -> object:
-        """Fail closed unless a host-run invocation returns contract output."""
-
-        return self.sdk.validate_result(agent, result)
 
     def build_graph(
         self,

@@ -185,14 +185,6 @@ class FakeStrandsSDK:
             tool.output_schema,
         )
 
-    def validate_result(self, agent: object, result: object) -> object:
-        description = self.describe_agent(agent)
-        value = getattr(result, "structured_output", None)
-        if value is None:
-            raise ValueError("missing structured output")
-        return TypeAdapter(description.output_type).validate_python(value)
-
-
 def _input_schema(input_type: type[object] | None) -> Mapping[str, object]:
     if input_type is None:
         return {

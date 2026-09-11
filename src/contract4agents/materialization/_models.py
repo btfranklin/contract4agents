@@ -16,6 +16,7 @@ from contract4agents.ir import CanonicalIR, FrozenJsonValue, FrozenMap, Semantic
 from contract4agents.materialization._context import ContextRuntime, ResolvedContextValue
 from contract4agents.materialization._errors import MaterializationError, MaterializationIssue
 from contract4agents.materialization._tracing import MaterializationTraceSink
+from contract4agents.materialization._types import output_type_for, type_adapter_for
 from contract4agents.planning import MaterializationPlan, PlannerCapabilities
 from contract4agents.runtime import EnvironmentEnforcementEvidence, EnvironmentProvider
 from contract4agents.target_bindings import TargetBinding
@@ -560,6 +561,42 @@ class MaterializedSystem:
         if validated is None:
             return "{}"
         return cast(str, cast(Any, validated).model_dump_json())
+
+    def output_type_for_agent(self, agent: object) -> type[object]:
+        """Return the generated output type for one native agent."""
+
+        identifier, _, _ = self._details_for_agent(agent)
+        return cast(
+            type[object],
+            output_type_for(
+                self.plan.agents[identifier].output_type,
+                self.graph.output_types,
+            ),
+        )
+
+    def validate_output_for_agent(self, agent: object, value: object) -> object:
+        """Validate one native agent output against its contract type."""
+
+        identifier, agent_name, _ = self._details_for_agent(agent)
+        adapter = type_adapter_for(
+            self.plan.agents[identifier].output_type,
+            self.graph.output_types,
+        )
+        try:
+            return cast(object, adapter.validate_python(value))
+        except ValidationError as exc:
+            validation_summary = _safe_validation_summary(exc)
+        raise MaterializationError(
+            (
+                MaterializationIssue(
+                    "MAT207",
+                    (
+                        f"Output for agent `{agent_name}` does not satisfy its contract: "
+                        f"{validation_summary}"
+                    ),
+                ),
+            )
+        )
 
     @property
     def generated_types(self) -> FrozenMap[str, type[object]]:

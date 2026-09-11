@@ -73,9 +73,20 @@ def test_input_helpers_accept_real_native_agent_objects(target: str) -> None:
 
     validated = system.validate_input_for_agent(agent, values)
     serialized = system.serialize_input_for_agent(agent, values)
+    validated_output = system.validate_output_for_agent(
+        agent,
+        {
+            "summary": "Checkout is degraded.",
+            "likely_cause": "Recent deployment",
+            "evidence": ["error rate increased"],
+            "next_actions": ["inspect deployment"],
+        },
+    )
 
     assert validated is not None
+    assert validated_output is not None
     assert system.input_type_for_agent(agent) is system.agent_input_types["IncidentCommander"]
+    assert system.output_type_for_agent(agent) is system.generated_types["IncidentBrief"]
     assert json.loads(serialized)["request"]["service"] == "checkout"
 
 

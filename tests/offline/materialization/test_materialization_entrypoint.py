@@ -208,6 +208,14 @@ agent CountWorker(count: integer) -> Result:
     )
     counted = cast(Any, result.validate_input_for_agent(count_worker, {"count": 3}))
     assert counted.count == 3
+    assert result.output_type_for_agent(parent) is result.generated_types["Result"]
+    validated_output = cast(Any, result.validate_output_for_agent(parent, {"value": "accepted"}))
+    assert validated_output.value == "accepted"
+
+    with pytest.raises(MaterializationError) as caught:
+        result.validate_output_for_agent(parent, {"wrong": "output-secret"})
+    assert [issue.code for issue in caught.value.issues] == ["MAT207"]
+    assert "output-secret" not in str(caught.value)
 
     invalid_inputs: tuple[object, ...] = (
         {},
@@ -241,11 +249,23 @@ agent CountWorker(count: integer) -> Result:
         assert [issue.code for issue in caught.value.issues] == ["MAT205"]
         assert caught.value.issues[0].message == "Agent must belong to this materialized system"
 
+        with pytest.raises(MaterializationError) as caught:
+            result.output_type_for_agent(unknown_agent)
+        assert [issue.code for issue in caught.value.issues] == ["MAT205"]
+
+        with pytest.raises(MaterializationError) as caught:
+            result.validate_output_for_agent(unknown_agent, {})
+        assert [issue.code for issue in caught.value.issues] == ["MAT205"]
+
     cast(FakeAgent, parent).name = "Mutable SDK name"
     with pytest.raises(MaterializationError) as caught:
         result.validate_input_for_agent(parent, {})
     assert caught.value.issues[0].code == "MAT206"
     assert "Input for agent `Parent`" in caught.value.issues[0].message
+    with pytest.raises(MaterializationError) as caught:
+        result.validate_output_for_agent(parent, {})
+    assert caught.value.issues[0].code == "MAT207"
+    assert "Output for agent `Parent`" in caught.value.issues[0].message
 
 
 @pytest.mark.parametrize(
