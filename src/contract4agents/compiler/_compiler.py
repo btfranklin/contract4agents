@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from contract4agents.diagnostics import raise_if_errors
+from contract4agents.diagnostics import ContractError, Diagnostic, raise_if_errors
 from contract4agents.ir import (
     AgentIR,
     CanonicalIR,
@@ -51,6 +51,15 @@ def compile_project(
 ) -> CompilerArtifacts:
     """Compile a project, optionally writing or checking its artifacts."""
 
+    if check and output_dir is None:
+        raise ContractError(
+            [
+                Diagnostic(
+                    "COMPILE003",
+                    "Compiler artifact checks require an output directory",
+                )
+            ]
+        )
     project = parse_project(root)
     raise_if_errors(analyze_project(project).diagnostics)
     artifacts = build_artifacts(build_canonical_ir(project))

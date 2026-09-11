@@ -238,6 +238,13 @@ def test_compile_check_detects_stale_artifacts(tmp_path: Path) -> None:
     assert caught.value.diagnostics[0].code == "COMPILE001"
 
 
+def test_compile_check_requires_an_output_directory() -> None:
+    with pytest.raises(ContractError) as caught:
+        compile_project(INCIDENT, check=True)
+
+    assert caught.value.diagnostics[0].code == "COMPILE003"
+
+
 def test_constrained_types_compile_into_closed_json_schemas(tmp_path: Path) -> None:
     (tmp_path / "bounded.contract").write_text(
         """\
