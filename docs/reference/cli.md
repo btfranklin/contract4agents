@@ -4,7 +4,8 @@ Start with `check` to find contract errors. Use `compile` to write schemas,
 instructions, and summaries, or `generate` to write Python and TypeScript types.
 Use `plan` to inspect how a selected SDK target will represent the contract.
 The Python `materialize()` API constructs the SDK objects; there is no
-materialization CLI command.
+materialization CLI command. The eval, assessment, assurance, visualization,
+and diff commands are optional review tools. They are not the main build path.
 
 Commands that accept `[ROOT]` default to the current directory. `diff` requires
 two project paths. Repository development examples add the `pdm run` prefix.
@@ -226,7 +227,7 @@ attests that no declared run spec applied and cannot carry assessment evidence.
 
 ## `diff BEFORE AFTER`
 
-Report assurance-relevant semantic changes between two contract projects.
+Compare the semantic changes between two external contract projects.
 
 ```bash
 contract4agents diff approved-contracts candidate-contracts \

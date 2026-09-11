@@ -57,13 +57,13 @@ from contract4agents.tracing import (
 
 @click.group()
 def main() -> None:
-    """Build and review contract-first agent systems through assurance."""
+    """Define agent systems in external contracts and build native SDK objects."""
 
 
 @main.command()
 @click.argument("root", type=click.Path(path_type=Path), default=".", required=False)
 def check(root: Path) -> None:
-    """Validate portable contracts and any discovered target bindings."""
+    """Check external agent contracts and discovered target bindings."""
     try:
         project = parse_project(root)
         result = analyze_project(project)
@@ -102,7 +102,7 @@ def check(root: Path) -> None:
 )
 @click.option("--check", "check_mode", is_flag=True, help="Fail if generated artifacts are stale.")
 def compile_cmd(root: Path, output_dir: Path, check_mode: bool) -> None:
-    """Compile a Contract4Agents project into provider-neutral artifacts."""
+    """Compile external agent contracts into provider-neutral artifacts."""
     try:
         compile_project(root, output_dir, check=check_mode)
         click.echo("Contract4Agents compile passed")
@@ -129,7 +129,7 @@ def compile_cmd(root: Path, output_dir: Path, check_mode: bool) -> None:
 )
 @click.option("--check", "check_mode", is_flag=True, help="Fail if generated source is stale.")
 def generate_cmd(root: Path, output_dir: Path, targets: tuple[str, ...], check_mode: bool) -> None:
-    """Write selected application-consumed generated source."""
+    """Generate typed application source from external contracts."""
 
     try:
         artifacts = compile_project(root)
@@ -170,7 +170,7 @@ def plan_cmd(
     bindings_path: Path | None,
     output_path: Path | None,
 ) -> None:
-    """Resolve a native-object-free materialization plan without constructing agents."""
+    """Plan native SDK construction without building SDK objects."""
 
     try:
         system = plan_project(
@@ -237,7 +237,7 @@ def visualize_cmd(
     trace_path: Path | None,
     output_dir: Path,
 ) -> None:
-    """Generate static HTML visualization artifacts.
+    """Visualize a declared agent system and supplied evidence.
 
     ROOT defaults to the current directory. The default output directory is
     .contract/build/visualization.
@@ -278,7 +278,7 @@ def visualize_cmd(
 
 @main.group("eval")
 def eval_group() -> None:
-    """Assess declared eval cases."""
+    """Run optional assessments for declared eval cases."""
 
 
 @eval_group.command("replay")
@@ -302,7 +302,7 @@ def eval_replay_cmd(
     max_violation_rate: float | None,
     output_path: Path | None,
 ) -> None:
-    """Assess contract-derived eval cases from replayed evidence."""
+    """Assess declared eval cases from replayed evidence."""
     try:
         planned = plan_project(
             root,
@@ -389,7 +389,7 @@ def assess_cmd(
     trace_closure_path: Path | None,
     run_id: str | None,
 ) -> None:
-    """Assess contract-derived controls against a normalized trace."""
+    """Optionally assess declared controls against a normalized trace."""
     try:
         planned = plan_project(
             root,
@@ -481,7 +481,7 @@ def assure_cmd(
     provenance: Path | None,
     output_dir: Path,
 ) -> None:
-    """Assemble a deterministic declared/planned/observed assurance bundle."""
+    """Optionally assemble a deterministic assurance bundle."""
     planned = plan_project(
         root,
         target=target,
@@ -518,7 +518,7 @@ def assure_cmd(
 @click.argument("after", type=click.Path(path_type=Path, exists=True))
 @click.option("--out", "output_path", type=click.Path(path_type=Path), default=None)
 def diff_cmd(before: Path, after: Path, output_path: Path | None) -> None:
-    """Report assurance-relevant semantic changes between two contract projects."""
+    """Compare the semantics of two external contract projects."""
     before_ir = compile_project(before).ir
     after_ir = compile_project(after).ir
     result = semantic_diff(before_ir, after_ir)

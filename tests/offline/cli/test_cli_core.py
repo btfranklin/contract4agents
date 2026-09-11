@@ -30,7 +30,7 @@ def test_cli_help_and_check() -> None:
 
     assert help_result.exit_code == 0
     assert {"assess", "assure", "compile", "diff", "eval", "generate", "plan"} <= set(help_result.output.split())
-    assert "through assurance" in help_result.output
+    assert "Define agent systems in external contracts and build native SDK" in help_result.output
     assert check_result.exit_code == 0
     assert "passed" in check_result.output
     assert "replay" in eval_help.output
