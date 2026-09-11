@@ -29,6 +29,18 @@ def test_public_example_uses_canonical_source_semantics() -> None:
     assert project.agents["IncidentCommander"].grants[-1].authorization == "approval_required"
 
 
+@pytest.mark.parametrize("kind", ["missing", "file"])
+def test_parse_project_rejects_invalid_roots(tmp_path: Path, kind: str) -> None:
+    root = tmp_path / kind
+    if kind == "file":
+        root.write_text("not a project", encoding="utf-8")
+
+    with pytest.raises(ContractError) as caught:
+        parse_project(root)
+
+    assert caught.value.diagnostics[0].code == "PARSE002"
+
+
 def test_parser_builds_shared_capabilities_grants_context_and_assurance(tmp_path: Path) -> None:
     source = tmp_path / "surface.contract"
     source.write_text(

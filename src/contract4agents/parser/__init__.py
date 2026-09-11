@@ -5,11 +5,20 @@ from __future__ import annotations
 from pathlib import Path
 
 from contract4agents.ast import ContractModule, ContractProject
+from contract4agents.diagnostics import ContractError, Diagnostic
 from contract4agents.parser._parse import parse_source_syntax
 
 
 def parse_project(root: Path | str) -> ContractProject:
     root_path = Path(root)
+    if not root_path.exists():
+        raise ContractError(
+            [Diagnostic("PARSE002", f"Contract project root does not exist: `{root_path}`")]
+        )
+    if not root_path.is_dir():
+        raise ContractError(
+            [Diagnostic("PARSE002", f"Contract project root is not a directory: `{root_path}`")]
+        )
     modules = [parse_file(path) for path in _source_paths(root_path, "*.contract")]
     modules.extend(parse_file(path) for path in _source_paths(root_path, "*.eval"))
     return ContractProject(root=root_path, modules=modules)

@@ -50,6 +50,25 @@ def test_cli_check_keeps_projects_without_target_bindings_provider_neutral(tmp_p
     assert "Contract4Agents check passed" in result.output
 
 
+def test_cli_check_rejects_a_missing_project_root(tmp_path: Path) -> None:
+    result = CliRunner().invoke(main, ["check", str(tmp_path / "missing")])
+
+    assert result.exit_code != 0
+    assert "PARSE002" in result.output
+    assert "Contract4Agents check passed" not in result.output
+
+
+def test_cli_check_rejects_a_file_as_the_project_root(tmp_path: Path) -> None:
+    root = tmp_path / "project.contract"
+    root.write_text("", encoding="utf-8")
+
+    result = CliRunner().invoke(main, ["check", str(root)])
+
+    assert result.exit_code != 0
+    assert "PARSE002" in result.output
+    assert "Contract4Agents check passed" not in result.output
+
+
 def test_cli_check_validates_every_discovered_target_profile(tmp_path: Path) -> None:
     (tmp_path / "agent.contract").write_text(
         'type Reply:\n    text: string\n\nagent Responder() -> Reply:\n    goal = "Respond."\n',
