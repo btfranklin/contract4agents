@@ -72,7 +72,7 @@ effort = "high"
     assert isinstance(child_settings.retry, ModelRetrySettings)
     assert isinstance(child_settings.reasoning, Reasoning)
     assert child_settings.reasoning.effort == "high"
-    assert result.graph.validation.complete
+    assert result.validation.complete
 
 
 def test_concrete_openai_sdk_recursively_thaws_pass_through_model_options() -> None:
@@ -133,28 +133,28 @@ def test_openai_tool_uses_contract_schema_instead_of_callable_annotations(tmp_pa
     )
 
     result = materialize(tmp_path, "openai", "test")
-    tool = cast(FunctionTool, cast(Any, result.graph.agent("Child")).tools[0])
+    tool = cast(FunctionTool, cast(Any, result.agents["Child"]).tools[0])
     query_schema = cast(dict[str, object], tool.params_json_schema["properties"])["query"]
 
     assert query_schema == {"maxLength": 4000, "minLength": 1, "title": "Query", "type": "string"}
     assert tool.params_json_schema["additionalProperties"] is False
-    assert result.graph.validation.complete
-    round_trip = type(result.graph.validation).from_dict(result.graph.validation.to_dict())
-    assert round_trip == result.graph.validation
+    assert result.validation.complete
+    round_trip = type(result.validation).from_dict(result.validation.to_dict())
+    assert round_trip == result.validation
     evidence_path = tmp_path / "materialization-conformance.json"
-    evidence_path.write_text(result.graph.validation.to_json())
-    assert GraphValidationEvidence.load(evidence_path) == result.graph.validation
+    evidence_path.write_text(result.validation.to_json())
+    assert GraphValidationEvidence.load(evidence_path) == result.validation
     with pytest.raises(ValueError, match="Invalid graph validation evidence JSON"):
         GraphValidationEvidence.from_json("{")
-    inconsistent = json.loads(result.graph.validation.to_json())
+    inconsistent = json.loads(result.validation.to_json())
     inconsistent["complete"] = not inconsistent["complete"]
     with pytest.raises(ValueError, match="completeness is inconsistent"):
         GraphValidationEvidence.from_dict(inconsistent)
-    inconsistent = json.loads(result.graph.validation.to_json())
+    inconsistent = json.loads(result.validation.to_json())
     inconsistent["schema_conformance"][0]["declared_digest"] = "sha256:incorrect"
     with pytest.raises(ValueError, match="Declared schema digest is inconsistent"):
         GraphValidationEvidence.from_dict(inconsistent)
-    inconsistent = json.loads(result.graph.validation.to_json())
+    inconsistent = json.loads(result.validation.to_json())
     inconsistent["schema_conformance"][0]["materialized_digest"] = "sha256:incorrect"
     with pytest.raises(ValueError, match="Materialized schema digest is inconsistent"):
         GraphValidationEvidence.from_dict(inconsistent)

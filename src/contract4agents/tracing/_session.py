@@ -58,7 +58,7 @@ class NormalizedTraceSessionCore:
         prior_trace: NormalizedTrace | None = None,
         prior_closure: TraceClosureEvidence | None = None,
     ) -> None:
-        ir = system.context.ir
+        ir = system.graph.context.ir
         plan = system.plan
         if plan.contract_digest == "" or not run_id.strip():
             raise ValueError("plan and run_id are required")

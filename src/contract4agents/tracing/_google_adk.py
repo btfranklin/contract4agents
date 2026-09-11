@@ -65,10 +65,10 @@ class GoogleADKNormalizedTraceRouter(NativeHookTraceRouterCore):
             prior_closure=prior_closure,
         )
 
-    def attach(self, graph: object) -> GoogleADKNormalizedTraceRouter:
+    def attach(self, system: MaterializedSystem) -> GoogleADKNormalizedTraceRouter:
         """Register native identities before the host constructs its ADK Runner."""
 
-        self.register_graph(graph)
+        self.register_graph(system.graph)
         return self
 
     def plugin(self) -> object:

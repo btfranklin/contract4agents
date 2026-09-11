@@ -69,9 +69,10 @@ class StrandsNormalizedTraceRouter(NativeHookTraceRouterCore):
             prior_closure=prior_closure,
         )
 
-    def attach(self, graph: object) -> object:
+    def attach(self, system: MaterializedSystem) -> object:
         """Attach public Strands hooks to every native agent in one graph."""
 
+        graph = system.graph
         self.register_graph(graph)
         event_types = _load_hook_event_types()
         agents = getattr(graph, "agents", None)

@@ -39,7 +39,7 @@ async def test_google_adk_search_preserves_grounding_display_metadata(
     database = seed_market_data(tmp_path / "market.sqlite")
     monkeypatch.setenv("CONTRACT4AGENTS_MARKET_RESEARCH_DB", str(database))
     system = materialize(PROJECT, target="google_adk", profile="production")
-    router = GoogleADKNormalizedTraceRouter().attach(system.graph)
+    router = GoogleADKNormalizedTraceRouter().attach(system)
     app_name = "contract4agents_google_adk_live"
     user_id = "contract4agents"
     session_id = "google-adk-live-search"
@@ -99,7 +99,7 @@ async def test_google_adk_search_preserves_grounding_display_metadata(
     )
     snapshot = trace_session.closed_snapshot
     validate_trace_conformance(
-        system.context.ir,
+        system.artifacts.ir,
         system.plan,
         snapshot.trace,
     )

@@ -176,7 +176,7 @@ system = materialize(
     profile="production",
 )
 
-router = GoogleADKNormalizedTraceRouter().attach(system.graph)
+router = GoogleADKNormalizedTraceRouter().attach(system)
 agent = system.agents["ResearchLead"]
 app = App(
     name="contract_app",
@@ -207,7 +207,7 @@ identity is unavailable.
 
 The host must create a fresh or otherwise safely isolated graph/session for
 independent concurrent requests, resolve declared context through
-`system.context`, install the plugin in its ADK `App` or `Runner`, drive
+`system.resolve_context_for_agent(...)`, install the plugin in its ADK `App` or `Runner`, drive
 confirmation and resume, choose retry and terminal-attempt policy, and persist
 the resulting trace and assurance artifacts.
 

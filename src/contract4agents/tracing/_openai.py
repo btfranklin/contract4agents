@@ -205,7 +205,7 @@ class OpenAINormalizedTraceSession(NormalizedTraceSessionCore):
             prior_trace=prior_trace,
             prior_closure=prior_closure,
         )
-        self._span_mapper = OpenAISpanMapper(system.context.ir)
+        self._span_mapper = OpenAISpanMapper(system.graph.context.ir)
         self._span_attempt: dict[str, TraceAttempt | None] = {}
         self._activation_token: Token[OpenAINormalizedTraceSession | None] | None = None
 

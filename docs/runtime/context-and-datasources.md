@@ -6,7 +6,7 @@ datasource when a function must resolve a value from typed arguments, such as
 an account's recent orders. Target bindings identify those Python functions.
 
 Contract4Agents provides type validation, rendering, and scoped caching for
-these values through `system.context`. The application resolves the context
+these values through `system.resolve_context_for_agent(...)`. The application resolves the context
 and supplies it to its SDK invocation.
 
 ## Origin Categories
@@ -143,8 +143,8 @@ The plan reports how the selected target implements the requested cache mode.
 A required unsupported semantic fails closed.
 
 `ContextRuntime` owns these caches in memory. The host owns their lifetime. It
-must call `system.context.complete_run(run_id)` after all context work for one
-run has stopped. It must call `system.context.complete_thread(thread_id)` after
+must call `system.complete_run(run_id)` after all context work for one
+run has stopped. It must call `system.complete_thread(thread_id)` after
 all runs in one thread have stopped. A thread-scoped datasource can reuse a
 value across runs only when each resolution receives the same explicit
 `thread_id`. If `thread_id` is absent, the runtime uses `run_id`, and the thread
@@ -165,10 +165,10 @@ try:
     )
     # Run the agent with the resolved context.
 finally:
-    system.context.complete_run(run_id)
+    system.complete_run(run_id)
 
 # Call this only after all runs in the host thread have stopped.
-system.context.complete_thread(thread_id)
+system.complete_thread(thread_id)
 ```
 
 Equal concurrent misses in a `run` or `thread` cache use one provider

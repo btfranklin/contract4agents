@@ -93,7 +93,7 @@ def test_strands_hook_bridge_closes_attempt_and_correlates_tool(
     system, ir, plan, graph, agent, tool = _fixture("strands")
     event_types = _install_fake_strands_hooks(monkeypatch)
     router = StrandsNormalizedTraceRouter()
-    bridge = router.attach(graph)
+    bridge = router.attach(system)
     session = router.open_session(system, run_id="run-strands")
     attempt = TraceAttempt("invoke:1", "attempt-strands-1", 1)
 
@@ -167,7 +167,7 @@ async def test_google_adk_plugin_is_lazy_and_preserves_grounding_flags(
         "contract4agents.tracing._google_adk.import_module",
         lambda name: module,
     )
-    router = GoogleADKNormalizedTraceRouter().attach(graph)
+    router = GoogleADKNormalizedTraceRouter().attach(system)
     plugin = router.plugin()
     session = router.open_session(system, run_id="run-adk")
     attempt = TraceAttempt("invoke:1", "attempt-adk-1", 1)
@@ -258,7 +258,7 @@ async def test_google_adk_materializer_validation_failure_seals_closure(
         "contract4agents.tracing._google_adk.import_module",
         lambda name: module,
     )
-    router = GoogleADKNormalizedTraceRouter().attach(graph)
+    router = GoogleADKNormalizedTraceRouter().attach(system)
     plugin = router.plugin()
     session = router.open_session(system, run_id="run-adk-invalid")
     attempt = TraceAttempt("invoke:1", "attempt-adk-invalid-1", 1)
@@ -324,7 +324,7 @@ def test_strands_hook_without_host_attempt_fails_closed(
     del tool
     event_types = _install_fake_strands_hooks(monkeypatch)
     router = StrandsNormalizedTraceRouter()
-    router.attach(graph)
+    router.attach(system)
     session = router.open_session(system, run_id="run-unbound")
 
     with session:
@@ -342,7 +342,7 @@ def test_strands_missing_structured_output_records_failure(
     del tool
     event_types = _install_fake_strands_hooks(monkeypatch)
     router = StrandsNormalizedTraceRouter()
-    router.attach(graph)
+    router.attach(system)
     session = router.open_session(system, run_id="run-invalid-output")
     attempt = TraceAttempt("invoke:1", "attempt-invalid-output-1", 1)
 
@@ -400,7 +400,7 @@ def test_strands_nested_delegate_invocations_share_one_host_attempt(
     system = SimpleNamespace(graph=graph, context=graph.context, plan=plan)
     event_types = _install_fake_strands_hooks(monkeypatch)
     router = StrandsNormalizedTraceRouter()
-    router.attach(graph)
+    router.attach(system)
     session = router.open_session(system, run_id="run-nested")
     attempt = TraceAttempt("invoke:1", "attempt-nested-1", 1)
     shared_state = {"trace_id": "strands-shared-trace"}
@@ -480,7 +480,7 @@ def test_strands_interrupt_then_resume_is_not_an_output_failure(
     system, ir, plan, graph, agent, tool = _fixture("strands")
     event_types = _install_fake_strands_hooks(monkeypatch)
     router = StrandsNormalizedTraceRouter()
-    router.attach(graph)
+    router.attach(system)
     session = router.open_session(system, run_id="run-resume")
     attempt = TraceAttempt("invoke:1", "attempt-resume-1", 1)
 
@@ -535,9 +535,9 @@ def test_google_adk_plugin_missing_extra_is_actionable(
 def test_strands_attach_uses_installed_public_hook_types() -> None:
     hooks = pytest.importorskip("strands.hooks")
     system, ir, plan, graph, agent, tool = _fixture("strands")
-    del system, ir, plan, tool
+    del ir, plan, graph, tool
 
-    StrandsNormalizedTraceRouter().attach(graph)
+    StrandsNormalizedTraceRouter().attach(system)
 
     assert hooks.BeforeInvocationEvent in agent.hooks
     assert hooks.AfterInvocationEvent in agent.hooks

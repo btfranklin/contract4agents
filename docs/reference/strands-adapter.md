@@ -164,7 +164,7 @@ from contract4agents.tracing import (
 )
 
 router = StrandsNormalizedTraceRouter()
-router.attach(system.graph)
+router.attach(system)
 agent = system.agents["IncidentCommander"]
 session = router.open_session(system, run_id=run_id)
 attempt = TraceAttempt("incident:1", "incident:attempt:1", 1)

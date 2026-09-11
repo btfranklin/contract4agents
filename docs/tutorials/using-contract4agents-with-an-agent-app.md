@@ -79,7 +79,7 @@ artifacts = system.artifacts
 plan = system.plan
 input_types = system.agent_input_types
 structural_types = system.structural_output_types
-materialization_evidence = system.graph.validation.to_json()
+materialization_evidence = system.validation.to_json()
 ```
 
 If the application imports generated Python models, compare their digest with
@@ -279,7 +279,7 @@ assessment, and recovery examples.
 ## Optional: Release Review
 
 For a release or incident review, assemble an assurance bundle containing the
-approved canonical IR and plan, `system.graph.validation` evidence, normalized
+approved canonical IR and plan, `system.validation` evidence, normalized
 traces, trace closure, trace-evidence and control results, eval campaign
 summaries, and semantic diffs. Verify the bundle's digest references before
 review.

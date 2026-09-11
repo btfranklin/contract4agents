@@ -87,7 +87,7 @@ async def run_support_request() -> None:
     evidence_dir = Path(".contract/evidence/support-run-123")
     evidence_dir.mkdir(parents=True, exist_ok=True)
     (evidence_dir / "materialization-conformance.json").write_text(
-        system.graph.validation.to_json()
+        system.validation.to_json()
     )
     write_trace_jsonl(evidence_dir / "trace.jsonl", snapshot.trace)
     (evidence_dir / "trace-closure.json").write_text(

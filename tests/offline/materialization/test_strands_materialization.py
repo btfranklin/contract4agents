@@ -63,8 +63,8 @@ def test_strands_provider_builds_validated_graph_with_exact_controls(
         "model-supplied delegate values" in obligation.description for obligation in result.plan.host_obligations
     )
 
-    parent = result.graph.agent("Parent")
-    child = result.graph.agent("Child")
+    parent = result.agents["Parent"]
+    child = result.agents["Child"]
     assert isinstance(parent, FakeStrandsAgent)
     assert isinstance(child, FakeStrandsAgent)
     assert parent.native_name == native_name(
@@ -232,8 +232,8 @@ async def test_real_strands_sdk_builds_and_runs_typed_tools_without_live_calls(
         provider=provider,
     )
 
-    parent = result.graph.agent("Parent")
-    child = result.graph.agent("Child")
+    parent = result.agents["Parent"]
+    child = result.agents["Child"]
     assert isinstance(parent, strands.Agent)
     assert isinstance(child, strands.Agent)
     child_description = provider.sdk.describe_agent(child)
@@ -416,7 +416,7 @@ async def test_real_strands_incident_slice_closes_after_delegate_approval_resume
     provider = StrandsMaterializationProvider()
     result = materialize(tmp_path, "strands", "test", provider=provider)
     router = StrandsNormalizedTraceRouter()
-    router.attach(result.graph)
+    router.attach(result)
     session = router.open_session(result, run_id="strands-incident-poc")
     attempt = TraceAttempt("incident:1", "incident-attempt-1", 1)
     semantic_id("agent", "Parent")
@@ -424,13 +424,13 @@ async def test_real_strands_incident_slice_closes_after_delegate_approval_resume
 
     with session:
         with session.bind_attempt(attempt, agent=result.agents["Parent"]):
-            interrupted = await cast(Any, result.graph.agent("Parent")).invoke_async("Resolve the incident.")
+            interrupted = await cast(Any, result.agents["Parent"]).invoke_async("Resolve the incident.")
             assert interrupted.stop_reason == "interrupt"
             assert len(interrupted.interrupts) == 1
             assert implementation_module.LOOKUPS == []
             session.record_approval_requested(native_tool=approval_tool)
             session.record_approval(native_tool=approval_tool, approved=approved)
-            completed = await cast(Any, result.graph.agent("Parent")).invoke_async(
+            completed = await cast(Any, result.agents["Parent"]).invoke_async(
                 [
                     {
                         "interruptResponse": {
@@ -441,7 +441,7 @@ async def test_real_strands_incident_slice_closes_after_delegate_approval_resume
                 ]
             )
 
-    accepted = provider.validate_result(result.graph.agent("Parent"), completed)
+    accepted = provider.validate_result(result.agents["Parent"], completed)
     assert accepted.value == "needle"
     assert implementation_module.LOOKUPS == expected_lookups
     assert factory_calls == [
@@ -472,8 +472,8 @@ def test_strands_builds_cyclic_delegate_declarations_in_two_passes(
         provider=StrandsMaterializationProvider(FakeStrandsSDK()),
     )
 
-    first = cast(FakeStrandsAgent, result.graph.agent("First"))
-    second = cast(FakeStrandsAgent, result.graph.agent("Second"))
+    first = cast(FakeStrandsAgent, result.agents["First"])
+    second = cast(FakeStrandsAgent, result.agents["Second"])
     first_edge = cast(
         FakeStrandsTool,
         result.graph.composition_objects[semantic_id("edge", "ask_second")],
@@ -494,8 +494,8 @@ def test_strands_builds_cyclic_delegate_declarations_in_two_passes(
         "test",
         provider=StrandsMaterializationProvider(),
     )
-    assert isinstance(real.graph.agent("First"), strands.Agent)
-    assert isinstance(real.graph.agent("Second"), strands.Agent)
+    assert isinstance(real.agents["First"], strands.Agent)
+    assert isinstance(real.agents["Second"], strands.Agent)
     assert len(real.graph.composition_objects) == 2
 
 

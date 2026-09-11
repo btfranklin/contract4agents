@@ -422,12 +422,6 @@ class NativeAgentGraph:
     environment_evidence: tuple[EnvironmentEnforcementEvidence, ...]
     validation: GraphValidationEvidence
 
-    def agent(self, name: str) -> object:
-        for identifier, native_agent in self.agents.items():
-            if identifier.parts[0] == name:
-                return native_agent
-        raise KeyError(name)
-
 
 @dataclass(frozen=True)
 class MaterializedSystem:
@@ -463,10 +457,10 @@ class MaterializedSystem:
         return FrozenMap((identifier.parts[0], native_agent) for identifier, native_agent in self.graph.agents.items())
 
     @property
-    def context(self) -> ContextRuntime:
-        """Return the typed context resolver wired into the native graph."""
+    def validation(self) -> GraphValidationEvidence:
+        """Return evidence that the native graph matches the materialization plan."""
 
-        return self.graph.context
+        return self.graph.validation
 
     @property
     def agent_input_types(self) -> FrozenMap[str, type[object] | None]:
@@ -494,12 +488,22 @@ class MaterializedSystem:
         """Resolve declared context for one native agent invocation."""
 
         identifier, _, _ = self._details_for_agent(agent)
-        return await self.context._resolve_agent(
+        return await self.graph.context._resolve_agent(
             identifier,
             inputs,
             run_id=run_id,
             thread_id=thread_id,
         )
+
+    def complete_run(self, run_id: str) -> None:
+        """Release context state after one host run completes."""
+
+        self.graph.context.complete_run(run_id)
+
+    def complete_thread(self, thread_id: str) -> None:
+        """Release context state after one host thread completes."""
+
+        self.graph.context.complete_thread(thread_id)
 
     def validate_input_for_agent(
         self,

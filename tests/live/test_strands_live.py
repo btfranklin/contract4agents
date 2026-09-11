@@ -71,7 +71,7 @@ async def test_contract_first_incident_graph_runs_through_strands_bedrock(
         rendered_context,
     )
     router = StrandsNormalizedTraceRouter()
-    router.attach(system.graph)
+    router.attach(system)
     session = router.open_session(system, run_id=run_id)
     attempt = TraceAttempt(
         "incident-command:1",
@@ -81,7 +81,7 @@ async def test_contract_first_incident_graph_runs_through_strands_bedrock(
     approval_tools = {
         provider.sdk.describe_tool(native_tool).native_name: native_tool
         for grant_id, native_tool in system.graph.grant_objects.items()
-        if (grant := system.context.ir.grants[grant_id]).agent_id == semantic_id("agent", "IncidentCommander")
+        if (grant := system.artifacts.ir.grants[grant_id]).agent_id == semantic_id("agent", "IncidentCommander")
         and grant.authorization == "approval_required"
     }
 
@@ -122,7 +122,7 @@ async def test_contract_first_incident_graph_runs_through_strands_bedrock(
     assert output.evidence
     snapshot = session.closed_snapshot
     validate_trace_conformance(
-        system.context.ir,
+        system.artifacts.ir,
         system.plan,
         snapshot.trace,
     )

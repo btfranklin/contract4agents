@@ -87,13 +87,13 @@ def test_public_materialize_builds_and_validates_complete_native_graph(tmp_path:
     assert result.plan.adapter.name == "openai"
     assert result.plan.adapter.version == "fake-openai-1"
     assert "instructions/Parent.md" in result.plan.artifact_digests
-    assert result.graph.validation.plan_digest == result.plan.plan_digest
+    assert result.validation.plan_digest == result.plan.plan_digest
     assert result.structural_output_types == result.graph.output_types
     assert len(result.agents) == 3
-    assert result.agents["Parent"] is result.graph.agent("Parent")
-    parent = result.graph.agent("Parent")
-    child = result.graph.agent("Child")
-    reviewer = result.graph.agent("Reviewer")
+    assert result.agents["Parent"] is result.agents["Parent"]
+    parent = result.agents["Parent"]
+    child = result.agents["Child"]
+    reviewer = result.agents["Reviewer"]
     assert isinstance(parent, FakeAgent)
     assert isinstance(child, FakeAgent)
     assert isinstance(reviewer, FakeAgent)
@@ -170,8 +170,8 @@ def test_materialization_returns_the_compiler_artifacts_used_by_the_graph_and_pl
     assert result.graph.context.ir is result.artifacts.ir
     assert result.plan.contract_digest == result.artifacts.contract_digest
     assert result.plan.artifact_digests == artifact_digests(result.artifacts)
-    assert result.graph.validation.contract_digest == result.artifacts.contract_digest
-    assert result.graph.validation.plan_digest == result.plan.plan_digest
+    assert result.validation.contract_digest == result.artifacts.contract_digest
+    assert result.validation.plan_digest == result.plan.plan_digest
 
 
 def test_materialization_validates_and_serializes_root_agent_inputs(tmp_path: Path) -> None:
@@ -390,7 +390,7 @@ def test_injected_provider_supports_an_unknown_matching_adapter(tmp_path: Path) 
     )
 
     assert result.plan.adapter.name == "custom"
-    assert result.agents["Parent"] is result.graph.agent("Parent")
+    assert result.agents["Parent"] is result.agents["Parent"]
 
 
 def test_materialization_fails_if_native_graph_does_not_match_plan(tmp_path: Path) -> None:

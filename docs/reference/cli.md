@@ -204,7 +204,7 @@ Options:
 - `--target NAME`, `--profile NAME`: required.
 - `--bindings PATH`: optional binding override.
 - `--materialization-evidence PATH`: optional graph validation evidence from
-  `materialize(...).graph.validation`. It must contain complete configuration
+  `materialize(...).validation`. It must contain complete configuration
   and schema conformance records for a complete bundle.
 - `--trace PATH`: optional normalized trace.
 - `--trace-closure PATH`: optional versioned closure manifest covering every

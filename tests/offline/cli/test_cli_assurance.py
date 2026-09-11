@@ -178,7 +178,7 @@ def test_cli_assure_assesses_versioned_run_spec_evidence(tmp_path: Path) -> None
     run_spec_path.write_text(json.dumps(manifest.to_dict()))
     eval_path.write_text(json.dumps(campaign.to_dict()))
     provenance_path.write_text(json.dumps({"source": "unit-test"}))
-    materialization_path.write_text(json.dumps(materialized.graph.validation.to_dict()))
+    materialization_path.write_text(json.dumps(materialized.validation.to_dict()))
 
     result = CliRunner().invoke(
         main,

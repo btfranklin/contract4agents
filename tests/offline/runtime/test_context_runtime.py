@@ -74,7 +74,7 @@ async def test_materialized_context_runtime_maps_validates_caches_renders_and_tr
     )
     assert parent_context == FrozenMap()
 
-    result.context.complete_run("run-1")
+    result.complete_run("run-1")
     third = await result.resolve_context_for_agent(
         child,
         {"request": {"value": "needle"}},
@@ -138,7 +138,7 @@ async def test_context_runtime_enforces_thread_cache_and_records_provider_failur
     )
     assert first["current"].from_cache is False
     assert second["current"].from_cache is True
-    result.context.complete_thread("thread-1")
+    result.complete_thread("thread-1")
     third = await result.resolve_context_for_agent(
         child, {"request": {"value": "ok"}}, run_id="run-3", thread_id="thread-1"
     )
@@ -196,13 +196,13 @@ async def test_context_runtime_uses_single_flight_and_requires_inactive_completi
             identifier,
             current if identifier == datasource_id else implementation,
         )
-        for identifier, implementation in result.context.implementations.items()
+        for identifier, implementation in result.graph.context.implementations.items()
     )
     runtime = ContextRuntime(
-        result.context.ir,
-        result.context.plan,
+        result.graph.context.ir,
+        result.graph.context.plan,
         implementations,
-        result.context.output_types,
+        result.graph.context.output_types,
     )
     first_task = asyncio.create_task(
         runtime._resolve_agent(
@@ -272,13 +272,13 @@ async def test_context_runtime_waiter_cancellation_does_not_cancel_shared_resolu
             identifier,
             current if identifier == datasource_id else implementation,
         )
-        for identifier, implementation in result.context.implementations.items()
+        for identifier, implementation in result.graph.context.implementations.items()
     )
     runtime = ContextRuntime(
-        result.context.ir,
-        result.context.plan,
+        result.graph.context.ir,
+        result.graph.context.plan,
         implementations,
-        result.context.output_types,
+        result.graph.context.output_types,
     )
     first = asyncio.create_task(
         runtime._resolve_agent(
@@ -339,13 +339,13 @@ async def test_context_runtime_retries_after_provider_cancellation(tmp_path: Pat
             identifier,
             current if identifier == datasource_id else implementation,
         )
-        for identifier, implementation in result.context.implementations.items()
+        for identifier, implementation in result.graph.context.implementations.items()
     )
     runtime = ContextRuntime(
-        result.context.ir,
-        result.context.plan,
+        result.graph.context.ir,
+        result.graph.context.plan,
         implementations,
-        result.context.output_types,
+        result.graph.context.output_types,
     )
 
     with pytest.raises(asyncio.CancelledError):
