@@ -55,8 +55,9 @@ def test_cli_eval_replay_identity_tracks_the_selected_named_profile(
     runner = CliRunner()
     payloads: dict[str, dict[str, object]] = {}
 
-    async def fake_run_campaign(ir, plan, provider, config):  # type: ignore[no-untyped-def]
-        del ir, provider
+    async def fake_run_campaign(system, provider, config):  # type: ignore[no-untyped-def]
+        del provider
+        plan = system.plan
 
         class FakeReport:
             threshold_results = ()

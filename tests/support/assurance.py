@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import cast
 
+from contract4agents.compiler import artifact_digests, build_artifacts
 from contract4agents.ir import (
     AgentIR,
     Authorization,
@@ -28,7 +29,15 @@ from contract4agents.planning import (
     ControlMappingPlan,
     GrantMappingPlan,
     MaterializationPlan,
+    PlannedSystem,
 )
+
+
+def planned_system(ir: CanonicalIR, plan: MaterializationPlan) -> PlannedSystem:
+    """Join test IR and its plan through the public planned-system boundary."""
+
+    artifacts = build_artifacts(ir)
+    return PlannedSystem(artifacts, plan)
 
 
 def campaign_ir(
@@ -209,7 +218,7 @@ def campaign_plan(
         isolation=FrozenMap(),
         host_obligations=(),
         expected_event_types=telemetry,
-        artifact_digests=FrozenMap(),
+        artifact_digests=artifact_digests(build_artifacts(ir)),
     )
 
 

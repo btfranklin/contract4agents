@@ -7,9 +7,8 @@ from contract4agents.assurance._bundle import AssuranceBundle, assemble_assuranc
 from contract4agents.assurance._inputs import RunSpecAssessmentManifest
 from contract4agents.assurance._operational import assess_operational_controls
 from contract4agents.assurance._run_specs import assess_run_spec
-from contract4agents.ir import CanonicalIR
 from contract4agents.materialization import GraphValidationEvidence
-from contract4agents.planning import MaterializationPlan
+from contract4agents.planning import PlannedSystem
 from contract4agents.tracing import (
     NormalizedTrace,
     TraceClosureEvidence,
@@ -19,8 +18,7 @@ from contract4agents.tracing import (
 
 
 def assess_assurance_evidence(
-    contract: CanonicalIR,
-    plan: MaterializationPlan,
+    system: PlannedSystem,
     *,
     trace: NormalizedTrace | None,
     trace_closures: TraceClosureManifest | None,
@@ -31,25 +29,18 @@ def assess_assurance_evidence(
 ) -> AssuranceBundle:
     """Assess raw trace/run-spec evidence and assemble a deterministic bundle."""
 
+    contract = system.ir
     closures = trace_closures.closures if trace_closures is not None else None
     control_closure = None
     if trace is not None and len(trace.run_ids) == 1:
         control_closure = _closure_for_run(trace_closures, trace.run_ids[0])
-    control_results = (
-        assess_controls(contract, plan, trace, closure=control_closure)
-        if trace is not None
-        else None
-    )
+    control_results = assess_controls(system, trace, closure=control_closure) if trace is not None else None
     operational_control_results = (
-        assess_operational_controls(contract, plan, trace, closure=control_closure)
+        assess_operational_controls(system, trace, closure=control_closure)
         if trace is not None and contract.operational_controls
         else None
     )
-    selections = (
-        None
-        if run_spec_evidence is None
-        else tuple(item.selection for item in run_spec_evidence.runs)
-    )
+    selections = None if run_spec_evidence is None else tuple(item.selection for item in run_spec_evidence.runs)
     run_spec_results = None
     if run_spec_evidence is not None:
         if trace is None:
@@ -61,8 +52,7 @@ def assess_assurance_evidence(
             assert item.evidence is not None
             assessed.append(
                 assess_run_spec(
-                    contract,
-                    plan,
+                    system,
                     trace,
                     item.selection.run_spec_id,
                     item.evidence,
@@ -72,8 +62,7 @@ def assess_assurance_evidence(
             )
         run_spec_results = tuple(assessed)
     return assemble_assurance_bundle(
-        contract,
-        plan,
+        system,
         normalized_trace_jsonl=dumps_trace_jsonl(trace) if trace is not None else None,
         control_results=control_results,
         trace_closures=closures,

@@ -14,6 +14,7 @@ from contract4agents.assurance import (
     assemble_assurance_bundle,
     assess_run_spec,
 )
+from contract4agents.compiler import artifact_digests, build_artifacts
 from contract4agents.ir import (
     AgentIR,
     CanonicalIR,
@@ -46,6 +47,7 @@ from contract4agents.tracing import (
     dumps_trace_jsonl,
 )
 from contract4agents.visualization import build_visualization_graph
+from tests.support.assurance import planned_system
 from tests.support.portable_datetime import PORTABLE_DATETIME_CASES
 
 
@@ -55,7 +57,7 @@ def test_run_spec_assessment_passes_complete_typed_stage_and_assertion_evidence(
     trace = _trace(ir, plan)
     evidence = _evidence(ir)
 
-    result = assess_run_spec(ir, plan, trace, "ResearchRun", evidence)
+    result = assess_run_spec(planned_system(ir, plan), trace, "ResearchRun", evidence)
 
     assert result.status == "passed"
     assert [item.status for item in result.stages] == ["passed", "passed"]
@@ -78,7 +80,7 @@ def test_run_spec_assessment_never_treats_missing_stage_evidence_as_control_succ
         stage_observations=_evidence(ir).stage_observations[:1],
     )
 
-    result = assess_run_spec(ir, plan, trace, "ResearchRun", evidence)
+    result = assess_run_spec(planned_system(ir, plan), trace, "ResearchRun", evidence)
 
     assert result.status == "violated"
     assert next(item for item in result.stages if item.stage == "synthesis").status == "violated"
@@ -94,11 +96,11 @@ def test_run_spec_assessment_requires_explicit_workflow_and_trace_evidence() -> 
         _evidence(ir).stage_observations[:1],
     )
 
-    workflow_result = assess_run_spec(ir, plan, trace, "ResearchRun", incomplete)
+    workflow_result = assess_run_spec(planned_system(ir, plan), trace, "ResearchRun", incomplete)
+    trace_plan = replace(plan, expected_event_types=("agent.started", "workflow.closed"))
     trace_result = assess_run_spec(
-        ir,
-        replace(plan, expected_event_types=("agent.started", "workflow.closed")),
-        _trace(ir, replace(plan, expected_event_types=("agent.started", "workflow.closed"))),
+        planned_system(ir, trace_plan),
+        _trace(ir, trace_plan),
         "ResearchRun",
         _evidence(ir),
     )
@@ -151,7 +153,7 @@ def test_run_spec_assessment_rejects_wrong_agent_schema_cardinality_and_extra_st
         ("workflow-ledger:run-1",),
     )
 
-    result = assess_run_spec(ir, plan, trace, "ResearchRun", evidence)
+    result = assess_run_spec(planned_system(ir, plan), trace, "ResearchRun", evidence)
 
     assert result.status == "violated"
     assert result.unexpected_observation_ids == ("extra-1",)
@@ -176,15 +178,13 @@ def test_run_spec_assessment_validates_output_schema_and_linked_trace_evidence()
     )
 
     schema_result = assess_run_spec(
-        ir,
-        plan,
+        planned_system(ir, plan),
         trace,
         semantic_id("run_spec", "ResearchRun"),
         replace(base, stage_observations=(base.stage_observations[0], bad_output)),
     )
     evidence_result = assess_run_spec(
-        ir,
-        plan,
+        planned_system(ir, plan),
         trace,
         "run_spec:ResearchRun",
         replace(base, stage_observations=(base.stage_observations[0], missing_event)),
@@ -201,7 +201,7 @@ def test_trace_backed_stage_observation_requires_linked_agent_identity() -> None
     plan = _plan(ir)
     trace = NormalizedTrace(tuple(replace(event, semantic=TraceSemanticRefs()) for event in _trace(ir, plan).events))
 
-    result = assess_run_spec(ir, plan, trace, "ResearchRun", _evidence(ir))
+    result = assess_run_spec(planned_system(ir, plan), trace, "ResearchRun", _evidence(ir))
 
     assert all(item.status == "unverified" for item in result.stages)
     assert all("no linked event with agent identity" in item.reason for item in result.stages)
@@ -243,8 +243,7 @@ def test_run_spec_output_schema_uses_portable_datetime_profile(
         output={"answer": value},
     )
     result = assess_run_spec(
-        invalid_datetime_ir,
-        plan,
+        planned_system(invalid_datetime_ir, plan),
         _trace(invalid_datetime_ir, plan),
         "ResearchRun",
         replace(
@@ -275,7 +274,7 @@ def test_run_spec_stage_cardinality_supports_optional_absence_and_many_outputs()
         stage_observations=(writer, repeated),
     )
 
-    result = assess_run_spec(ir, plan, trace, "ResearchRun", evidence)
+    result = assess_run_spec(planned_system(ir, plan), trace, "ResearchRun", evidence)
 
     assert result.status == "passed"
     assert {item.stage: item.status for item in result.stages} == {
@@ -289,14 +288,14 @@ def test_run_spec_assessment_rejects_an_unknown_declaration() -> None:
     plan = _plan(ir)
 
     with pytest.raises(ValueError, match="does not declare run spec"):
-        assess_run_spec(ir, plan, _trace(ir, plan), "MissingRun", _evidence(ir))
+        assess_run_spec(planned_system(ir, plan), _trace(ir, plan), "MissingRun", _evidence(ir))
 
 
 def test_run_spec_results_are_distinct_assurance_bundle_evidence() -> None:
     ir = _ir()
     plan = _plan(ir)
     trace = _trace(ir, plan)
-    result = assess_run_spec(ir, plan, trace, "ResearchRun", _evidence(ir))
+    result = assess_run_spec(planned_system(ir, plan), trace, "ResearchRun", _evidence(ir))
     common = {
         "normalized_trace_jsonl": dumps_trace_jsonl(trace),
         "trace_closures": (_closure(trace),),
@@ -306,10 +305,9 @@ def test_run_spec_results_are_distinct_assurance_bundle_evidence() -> None:
         "materialization_evidence": _materialization_evidence(ir, plan),
     }
 
-    missing = assemble_assurance_bundle(ir, plan, **common)
+    missing = assemble_assurance_bundle(planned_system(ir, plan), **common)
     explicitly_missing = assemble_assurance_bundle(
-        ir,
-        plan,
+        planned_system(ir, plan),
         run_spec_results=(),
         run_spec_selections=(),
         **common,
@@ -321,8 +319,7 @@ def test_run_spec_results_are_distinct_assurance_bundle_evidence() -> None:
         ("workflow-ledger:run-1",),
     )
     complete = assemble_assurance_bundle(
-        ir,
-        plan,
+        planned_system(ir, plan),
         run_spec_results=(result,),
         run_spec_selections=(selection,),
         **common,
@@ -338,8 +335,7 @@ def test_run_spec_results_are_distinct_assurance_bundle_evidence() -> None:
 
     with pytest.raises(ValueError, match="does not match the bundle contract and plan"):
         assemble_assurance_bundle(
-            ir,
-            plan,
+            planned_system(ir, plan),
             run_spec_results=(replace(result, plan_digest=f"sha256:{'f' * 64}"),),
             run_spec_selections=(selection,),
             **common,
@@ -352,8 +348,7 @@ def test_assurance_bundle_accepts_explicit_no_applicable_run_spec() -> None:
     trace = _trace(ir, plan)
 
     bundle = assemble_assurance_bundle(
-        ir,
-        plan,
+        planned_system(ir, plan),
         normalized_trace_jsonl=dumps_trace_jsonl(trace),
         trace_closures=(_closure(trace),),
         control_results=(),
@@ -396,10 +391,9 @@ def test_assurance_bundle_requires_selection_for_each_trace_run() -> None:
         "provenance": {"sources": ["test"]},
     }
 
-    empty = assemble_assurance_bundle(ir, plan, run_spec_selections=(), **common)
+    empty = assemble_assurance_bundle(planned_system(ir, plan), run_spec_selections=(), **common)
     unrelated = assemble_assurance_bundle(
-        ir,
-        plan,
+        planned_system(ir, plan),
         run_spec_selections=(
             RunSpecSelection(
                 "other-run",
@@ -411,8 +405,7 @@ def test_assurance_bundle_requires_selection_for_each_trace_run() -> None:
         **common,
     )
     partial = assemble_assurance_bundle(
-        ir,
-        plan,
+        planned_system(ir, plan),
         run_spec_selections=(
             RunSpecSelection(
                 "run-1",
@@ -521,7 +514,7 @@ def _plan(ir: CanonicalIR) -> MaterializationPlan:
         FrozenMap(),
         FrozenMap(),
         FrozenMap(),
-        FrozenMap(),
+        artifact_digests(build_artifacts(ir)),
         (),
         ("agent.started",),
     )

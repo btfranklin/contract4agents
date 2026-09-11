@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from contract4agents import compile_project, materialize
+from contract4agents import PlannedSystem, materialize
 from contract4agents.ir import FrozenMap, SemanticId, semantic_id
 from contract4agents.tracing import (
     TRACE_CLOSURE_MANIFEST_VERSION,
@@ -229,7 +229,6 @@ def test_atomic_trace_file_sink_does_not_advance_memory_when_write_fails(
 
 def test_trace_conformance_rejects_missing_unknown_disabled_and_mismatched_tool_identity() -> None:
     project = ROOT / "examples" / "market-research-brief"
-    artifacts = compile_project(project)
     system = materialize(project, target="openai", profile="test")
     context = TraceRunContext(
         "run-conformance",
@@ -246,7 +245,7 @@ def test_trace_conformance_rejects_missing_unknown_disabled_and_mismatched_tool_
 
     missing = replace(base, semantic=TraceSemanticRefs(agent_id=base.semantic.agent_id))
     with pytest.raises(TraceConformanceError, match="TRC005"):
-        validate_trace_conformance(artifacts.ir, system.plan, NormalizedTrace((missing,)))
+        validate_trace_conformance(system, NormalizedTrace((missing,)))
 
     unknown = replace(
         base,
@@ -256,7 +255,7 @@ def test_trace_conformance_rejects_missing_unknown_disabled_and_mismatched_tool_
         ),
     )
     with pytest.raises(TraceConformanceError, match="TRC008"):
-        validate_trace_conformance(artifacts.ir, system.plan, NormalizedTrace((unknown,)))
+        validate_trace_conformance(system, NormalizedTrace((unknown,)))
 
     grant_id = base.semantic.grant_id
     assert grant_id is not None
@@ -271,7 +270,10 @@ def test_trace_conformance_rejects_missing_unknown_disabled_and_mismatched_tool_
     disabled_context = replace(context, plan_digest=disabled_plan.plan_digest)
     disabled = replace(base, context=disabled_context)
     with pytest.raises(TraceConformanceError, match="TRC009"):
-        validate_trace_conformance(artifacts.ir, disabled_plan, NormalizedTrace((disabled,)))
+        validate_trace_conformance(
+            PlannedSystem(system.artifacts, disabled_plan),
+            NormalizedTrace((disabled,)),
+        )
 
     mismatched_grant = next(
         grant
@@ -280,14 +282,14 @@ def test_trace_conformance_rejects_missing_unknown_disabled_and_mismatched_tool_
     )
     mismatched = replace(base, semantic=replace(base.semantic, grant_id=mismatched_grant.id))
     with pytest.raises(TraceConformanceError, match="TRC010"):
-        validate_trace_conformance(artifacts.ir, system.plan, NormalizedTrace((mismatched,)))
+        validate_trace_conformance(system, NormalizedTrace((mismatched,)))
 
     wrong_digest = replace(
         base,
         context=replace(context, contract_digest=f"sha256:{'c' * 64}"),
     )
     with pytest.raises(TraceConformanceError, match="TRC002"):
-        validate_trace_conformance(artifacts.ir, system.plan, NormalizedTrace((wrong_digest,)))
+        validate_trace_conformance(system, NormalizedTrace((wrong_digest,)))
 
 
 @pytest.mark.parametrize(

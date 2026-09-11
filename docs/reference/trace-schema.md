@@ -340,7 +340,8 @@ and the remaining suffix are not committed by the session. Retry, recovery,
 and workflow-state policy remain host responsibilities.
 
 Before assurance or eval scoring, Contract4Agents automatically calls
-`validate_trace_conformance(ir, plan, trace)`. It rejects digest mismatches,
+`validate_trace_conformance(system, trace)`. The planned or materialized system
+keeps the compiled contract and its selected plan together. The check rejects digest mismatches,
 explicit undeclared-capability evidence, tool events without complete semantic
 identity, and unknown, disabled, or mismatched grants through structured
 `TraceConformanceError.issues`.

@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from contract4agents.adapters.openai import openai_planner_capabilities
 from contract4agents.assurance import (
     AssessorIdentity,
     ControlResult,
@@ -14,20 +13,15 @@ from contract4agents.assurance import (
     verify_assurance_bundle,
     write_assurance_bundle,
 )
-from contract4agents.ir import (
-    CanonicalIR,
-    build_canonical_ir,
-    semantic_id,
-)
+from contract4agents.ir import CanonicalIR, semantic_id
 from contract4agents.materialization import (
     ConfigurationConformanceEvidence,
     GraphValidationEvidence,
     SchemaConformanceEvidence,
+    plan_project,
 )
 from contract4agents.materialization._configuration import MISSING, configuration_evidence
-from contract4agents.parser import parse_project
-from contract4agents.planning import MaterializationPlan, plan_materialization
-from contract4agents.target_bindings import load_target_bindings
+from contract4agents.planning import MaterializationPlan
 from contract4agents.tracing import (
     NormalizedTrace,
     ProviderCorrelation,
@@ -46,16 +40,13 @@ def test_assurance_bundle_is_deterministic_verified_and_explicit_about_missing_e
     tmp_path: Path,
 ) -> None:
     root = Path("examples/incident-command")
-    ir = build_canonical_ir(parse_project(root))
-    loaded = load_target_bindings(root, required=True)
-    assert loaded.bindings is not None
-    plan = plan_materialization(
-        ir,
-        loaded.bindings,
+    system = plan_project(
+        root,
         target="openai",
         profile="test",
-        capabilities=openai_planner_capabilities(),
     )
+    ir = system.ir
+    plan = system.plan
     results = _control_results(ir)
 
     attempt = TraceAttempt("commander:1", "commander-attempt-1", 1)
@@ -93,8 +84,7 @@ def test_assurance_bundle_is_deterministic_verified_and_explicit_about_missing_e
     )
     materialization_evidence = _materialization_evidence(ir, plan)
     first = assemble_assurance_bundle(
-        ir,
-        plan,
+        system,
         normalized_trace_jsonl=dumps_trace_jsonl(trace),
         trace_closures=(closure,),
         control_results=results,
@@ -103,8 +93,7 @@ def test_assurance_bundle_is_deterministic_verified_and_explicit_about_missing_e
         materialization_evidence=materialization_evidence,
     )
     second = assemble_assurance_bundle(
-        ir,
-        plan,
+        system,
         normalized_trace_jsonl=dumps_trace_jsonl(trace),
         trace_closures=(closure,),
         control_results=results,
@@ -120,8 +109,7 @@ def test_assurance_bundle_is_deterministic_verified_and_explicit_about_missing_e
     assert {path.name for path in written} >= {"attestation.json", "summary.html"}
 
     incomplete = assemble_assurance_bundle(
-        ir,
-        plan,
+        system,
         normalized_trace_jsonl=None,
         control_results=None,
         eval_results=None,
@@ -139,8 +127,7 @@ def test_assurance_bundle_is_deterministic_verified_and_explicit_about_missing_e
 
     for supplied in ((), results[:1]):
         incomplete_inventory = assemble_assurance_bundle(
-            ir,
-            plan,
+            system,
             normalized_trace_jsonl=dumps_trace_jsonl(trace),
             trace_closures=(closure,),
             control_results=supplied,
@@ -161,8 +148,7 @@ def test_assurance_bundle_is_deterministic_verified_and_explicit_about_missing_e
 
     with pytest.raises(ValueError, match="must have unique IDs"):
         assemble_assurance_bundle(
-            ir,
-            plan,
+            system,
             normalized_trace_jsonl=dumps_trace_jsonl(trace),
             trace_closures=(closure,),
             control_results=(results[0], results[0]),
@@ -174,8 +160,7 @@ def test_assurance_bundle_is_deterministic_verified_and_explicit_about_missing_e
     unknown = replace(results[0], control_id="control:Undeclared")
     with pytest.raises(ValueError, match="Undeclared IDs: control:Undeclared"):
         assemble_assurance_bundle(
-            ir,
-            plan,
+            system,
             normalized_trace_jsonl=dumps_trace_jsonl(trace),
             trace_closures=(closure,),
             control_results=(unknown, *results[1:]),
@@ -186,8 +171,7 @@ def test_assurance_bundle_is_deterministic_verified_and_explicit_about_missing_e
 
     with pytest.raises(ValueError, match="Missing IDs:"):
         assemble_assurance_bundle(
-            ir,
-            plan,
+            system,
             normalized_trace_jsonl=dumps_trace_jsonl(trace),
             trace_closures=(closure,),
             control_results=(unknown,),
@@ -206,16 +190,13 @@ def test_required_additional_configuration_record_emits_bundle017(
     status: str,
 ) -> None:
     root = Path("examples/incident-command")
-    ir = build_canonical_ir(parse_project(root))
-    loaded = load_target_bindings(root, required=True)
-    assert loaded.bindings is not None
-    plan = plan_materialization(
-        ir,
-        loaded.bindings,
+    system = plan_project(
+        root,
         target="openai",
         profile="test",
-        capabilities=openai_planner_capabilities(),
     )
+    ir = system.ir
+    plan = system.plan
     evidence = _materialization_evidence(ir, plan)
     agent_id = next(iter(plan.agents))
     extra = configuration_evidence(
@@ -233,8 +214,7 @@ def test_required_additional_configuration_record_emits_bundle017(
 
     assert not evidence.complete
     bundle = assemble_assurance_bundle(
-        ir,
-        plan,
+        system,
         normalized_trace_jsonl=None,
         control_results=None,
         eval_results=None,

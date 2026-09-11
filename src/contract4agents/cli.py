@@ -23,10 +23,10 @@ from contract4agents.codegen import (
     generate_code,
     write_generated_code,
 )
-from contract4agents.compiler import artifact_digests, compile_project
+from contract4agents.compiler import compile_project
 from contract4agents.diagnostics import ContractError, Diagnostic, raise_if_errors
 from contract4agents.eval_campaigns import CampaignConfig, CampaignThresholds, FileEvalProvider, run_campaign
-from contract4agents.ir import CanonicalIR, build_canonical_ir
+from contract4agents.ir import build_canonical_ir
 from contract4agents.materialization import (
     GraphValidationEvidence,
     MaterializationError,
@@ -35,17 +35,13 @@ from contract4agents.materialization import (
 from contract4agents.output_paths import validate_output_dir
 from contract4agents.parser import parse_project
 from contract4agents.planning import (
-    MaterializationPlan,
-    PlannerCapabilities,
     PlanningError,
     materialization_plan_data,
-    plan_materialization,
 )
 from contract4agents.semantics import analyze_project
 from contract4agents.target_bindings import (
     AdapterBindingValidator,
     AdapterProfileValidator,
-    TargetBindings,
     load_target_bindings,
     validate_target_binding_conformance,
 )
@@ -183,11 +179,14 @@ def plan_cmd(
             profile=profile,
             bindings=bindings_path,
         )
-        rendered = json.dumps(
-            materialization_plan_data(system.plan),
-            indent=2,
-            sort_keys=True,
-        ) + "\n"
+        rendered = (
+            json.dumps(
+                materialization_plan_data(system.plan),
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
+        )
         if output_path is None:
             click.echo(rendered, nl=False)
         else:
@@ -205,15 +204,6 @@ def plan_cmd(
         for materialization_issue in exc.issues:
             click.echo(materialization_issue.format(), err=True)
         raise click.ClickException("Contract4Agents planning failed") from exc
-
-
-def _planner_capabilities(target: str, adapter: str) -> PlannerCapabilities:
-    registration = get_adapter_registration(adapter)
-    if registration is None:
-        raise click.ClickException(
-            f"Target `{target}` selects adapter `{adapter}`, which has no installed planner"
-        )
-    return registration.planner_capabilities()
 
 
 def _adapter_binding_validator(adapter: str) -> AdapterBindingValidator | None:
@@ -261,10 +251,17 @@ def visualize_cmd(
         raise_if_errors(analyze_project(project).diagnostics)
         ir = build_canonical_ir(project)
         plan = None
+        planned = None
         if target is not None and profile is not None:
-            _planned_ir, plan, _bindings = _resolve_plan(root, target, profile, bindings_path)
+            planned = plan_project(
+                root,
+                target=target,
+                profile=profile,
+                bindings=bindings_path,
+            )
+            plan = planned.plan
         trace = load_trace_jsonl(trace_path) if trace_path is not None else None
-        results = assess_controls(ir, plan, trace) if plan is not None and trace is not None else ()
+        results = assess_controls(planned, trace) if planned is not None and trace is not None else ()
         graph = build_visualization_graph(
             ir,
             project_root=project.root,
@@ -307,13 +304,17 @@ def eval_replay_cmd(
 ) -> None:
     """Assess contract-derived eval cases from replayed evidence."""
     try:
-        ir, plan, _bindings = _resolve_plan(root, target, profile, bindings_path)
+        planned = plan_project(
+            root,
+            target=target,
+            profile=profile,
+            bindings=bindings_path,
+        )
         provider_path = data_path or Path(root) / "eval-data.json"
         provider = FileEvalProvider.load(provider_path)
         report = asyncio.run(
             run_campaign(
-                ir,
-                plan,
+                planned,
                 provider,
                 CampaignConfig(
                     campaign_id=f"{target}:{profile}",
@@ -337,9 +338,7 @@ def eval_replay_cmd(
         )
         click.echo(f"Results written to {destination}")
         failed_comparisons = tuple(
-            item
-            for item in report.threshold_results + report.regression_results
-            if item.status != "passed"
+            item for item in report.threshold_results + report.regression_results if item.status != "passed"
         )
         if rates.violated or rates.unverified or failed_comparisons:
             raise click.ClickException("Contract4Agents eval replay failed")
@@ -392,18 +391,21 @@ def assess_cmd(
 ) -> None:
     """Assess contract-derived controls against a normalized trace."""
     try:
-        ir, plan, _bindings = _resolve_plan(root, target, profile, bindings_path)
+        planned = plan_project(
+            root,
+            target=target,
+            profile=profile,
+            bindings=bindings_path,
+        )
         trace = load_trace_jsonl(trace_path)
         closure_manifest = _load_trace_closure_manifest(trace_closure_path)
         selected_run = run_id or (trace.run_ids[0] if len(trace.run_ids) == 1 else None)
         closure = _closure_for_run(closure_manifest, selected_run)
-        results = assess_controls(ir, plan, trace, closure=closure, run_id=run_id)
+        results = assess_controls(planned, trace, closure=closure, run_id=run_id)
         for result in results:
             click.echo(f"{result.status.upper()} {result.control_id}: {result.reason}")
         if any(result.status != "passed" for result in results):
-            raise click.ClickException(
-                "Contract4Agents assessment found violated or unverified controls"
-            )
+            raise click.ClickException("Contract4Agents assessment found violated or unverified controls")
         click.echo("Contract4Agents assessment passed")
     except TraceLoadError as exc:
         raise click.ClickException(f"Invalid normalized trace `{trace_path}`: {exc}") from exc
@@ -480,15 +482,19 @@ def assure_cmd(
     output_dir: Path,
 ) -> None:
     """Assemble a deterministic declared/planned/observed assurance bundle."""
-    ir, plan, _bindings = _resolve_plan(root, target, profile, bindings_path)
+    planned = plan_project(
+        root,
+        target=target,
+        profile=profile,
+        bindings=bindings_path,
+    )
     trace = load_trace_jsonl(trace_path) if trace_path is not None else None
     closure_manifest = _load_trace_closure_manifest(trace_closure_path)
     run_spec_manifest = _load_run_spec_manifest(run_spec_path)
     if run_spec_manifest is not None and trace is None:
         raise click.ClickException("--run-spec-evidence requires --trace")
     bundle = assess_assurance_evidence(
-        ir,
-        plan,
+        planned,
         trace=trace,
         trace_closures=closure_manifest,
         run_spec_evidence=run_spec_manifest,
@@ -524,52 +530,6 @@ def diff_cmd(before: Path, after: Path, output_path: Path | None) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(rendered)
         click.echo(f"Semantic diff written to {destination}")
-
-
-def _resolve_plan(
-    root: Path,
-    target: str,
-    profile: str,
-    bindings_path: Path | None,
-) -> tuple[CanonicalIR, MaterializationPlan, TargetBindings]:
-    artifacts = compile_project(root)
-    ir = artifacts.ir
-    loaded = load_target_bindings(Path(root).resolve(), bindings_path, required=True)
-    _print_diagnostics(list(loaded.diagnostics))
-    if not loaded.ok or loaded.bindings is None:
-        raise click.ClickException("Contract4Agents target-binding load failed")
-    selected_target = loaded.bindings.targets.get(target)
-    conformance = validate_target_binding_conformance(
-        ir,
-        loaded.bindings,
-        target,
-        project_root=Path(root).resolve(),
-        adapter_validator=(
-            _adapter_binding_validator(selected_target.adapter)
-            if selected_target is not None
-            else None
-        ),
-        profile_validator=(
-            _adapter_profile_validator(selected_target.adapter)
-            if selected_target is not None
-            else None
-        ),
-    )
-    _print_diagnostics(list(conformance.diagnostics))
-    if not conformance.ok:
-        raise click.ClickException("Contract4Agents target-binding conformance failed")
-    target_binding = selected_target
-    if target_binding is None:
-        raise click.ClickException(f"Target bindings do not declare `{target}`")
-    plan = plan_materialization(
-        ir,
-        loaded.bindings,
-        target=target,
-        profile=profile,
-        capabilities=_planner_capabilities(target, target_binding.adapter),
-        artifact_digests=artifact_digests(artifacts),
-    )
-    return ir, plan, loaded.bindings
 
 
 def _load_json_file(path: Path | None) -> object | None:

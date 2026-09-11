@@ -20,7 +20,6 @@ from contract4agents._strict_json import (
     require_exact_keys,
 )
 from contract4agents.assurance._models import AssessorIdentity, AssuranceStatus
-from contract4agents.compiler import build_artifacts
 from contract4agents.expressions._grammar import parse_contract_expression
 from contract4agents.expressions._model import ConditionalExpression, ExpressionError, ParsedExpression
 from contract4agents.expressions._trace_evaluation import assess_trace_expression
@@ -34,7 +33,7 @@ from contract4agents.ir import (
     SemanticId,
     freeze_json,
 )
-from contract4agents.planning import MaterializationPlan
+from contract4agents.planning import PlannedSystem
 from contract4agents.run_specs import derived_value_collection_member_type
 from contract4agents.tracing import (
     NormalizedTrace,
@@ -49,6 +48,8 @@ RunSpecEvidenceStatus = Literal["complete", "incomplete", "unverified"]
 _EVIDENCE_STATUSES = frozenset({"complete", "incomplete", "unverified"})
 _ASSESSOR = AssessorIdentity("contract4agents.run_specs", "1")
 _DIGEST_PATTERN = re.compile(r"sha256:[0-9a-f]{64}\Z")
+
+
 @dataclass(frozen=True)
 class RunSpecStageObservation:
     """One host-observed output for a declared run-spec stage."""
@@ -123,9 +124,7 @@ class RunSpecEvidence:
         object.__setattr__(self, "derived_values", values)
         object.__setattr__(self, "evidence_refs", _references("Evidence reference", self.evidence_refs))
         if self.status == "complete" and not self.evidence_refs:
-            raise ValueError(
-                "Complete run-spec evidence requires a workflow-completeness evidence reference"
-            )
+            raise ValueError("Complete run-spec evidence requires a workflow-completeness evidence reference")
 
     @property
     def complete(self) -> bool:
@@ -309,8 +308,7 @@ class RunSpecResult:
 
 
 def assess_run_spec(
-    ir: CanonicalIR,
-    plan: MaterializationPlan,
+    system: PlannedSystem,
     trace: NormalizedTrace,
     run_spec: str | SemanticId,
     evidence: RunSpecEvidence,
@@ -320,8 +318,10 @@ def assess_run_spec(
 ) -> RunSpecResult:
     """Assess one declared run spec without executing or controlling its workflow."""
 
+    ir = system.ir
+    plan = system.plan
     selected = _select_run(trace, run_id)
-    validate_trace_conformance(ir, plan, selected)
+    validate_trace_conformance(system, selected)
     declaration = _resolve_run_spec(ir, run_spec)
     trace_evidence = assess_trace_evidence(
         selected,
@@ -335,7 +335,7 @@ def assess_run_spec(
     }
     declared_stages = set(observations_by_stage)
     unexpected = tuple(item.observation_id for item in evidence.stage_observations if item.stage not in declared_stages)
-    schemas = build_artifacts(ir).schemas
+    schemas = system.artifacts.schemas
     stages = tuple(
         _assess_stage(stage, observations_by_stage[stage.name], evidence, schemas, selected)
         for stage in declaration.stages
@@ -645,11 +645,7 @@ def _evaluate_parsed(
 ) -> tuple[AssuranceStatus, str, tuple[TraceEvent, ...]]:
     if parsed.kind == "trace":
         stage_events = {
-            stage: tuple(
-                event_id
-                for observation in observations
-                for event_id in observation.evidence_event_ids
-            )
+            stage: tuple(event_id for observation in observations for event_id in observation.evidence_event_ids)
             for stage, observations in observations_by_stage.items()
         }
         result = assess_trace_expression(

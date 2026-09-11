@@ -11,6 +11,7 @@ from contract4agents.assurance import (
     OperationalControlResult,
     assess_operational_controls,
 )
+from contract4agents.compiler import artifact_digests, build_artifacts
 from contract4agents.expressions import ExpressionError, parse_operational_requirement
 from contract4agents.ir import (
     AgentIR,
@@ -38,6 +39,7 @@ from contract4agents.tracing import (
     TraceRunContext,
     TraceSemanticRefs,
 )
+from tests.support.assurance import planned_system
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -183,7 +185,7 @@ def _operational_fixture(
         FrozenMap(),
         FrozenMap(),
         FrozenMap(),
-        FrozenMap(),
+        artifact_digests(build_artifacts(ir)),
         (),
         (
             "attempt.selected",
@@ -314,7 +316,7 @@ def test_operational_assessor_supports_single_run_metrics_and_closure() -> None:
         "trace.retry_count == 0",
     )
     ir, plan, trace, closure = _operational_fixture(requirements)
-    results = assess_operational_controls(ir, plan, trace, closure=closure)
+    results = assess_operational_controls(planned_system(ir, plan), trace, closure=closure)
     assert [item.status for item in results] == ["passed"] * len(requirements)
     assert all(item.actual is not None for item in results)
 
@@ -325,13 +327,13 @@ def test_operational_assessor_supports_single_run_metrics_and_closure() -> None:
 )
 def test_operational_assessor_preserves_upper_bound_and_open_channel_semantics(requirement: str, expected: str) -> None:
     ir, plan, trace, closure = _operational_fixture((requirement,), closed=False)
-    result = assess_operational_controls(ir, plan, trace, closure=closure)[0]
+    result = assess_operational_controls(planned_system(ir, plan), trace, closure=closure)[0]
     assert result.status == expected
 
 
 def test_operational_assessor_marks_missing_usage_and_windowed_controls_unverified() -> None:
     ir, plan, trace, closure = _operational_fixture(("trace.input_tokens == 10",), include_usage=False)
-    result = assess_operational_controls(ir, plan, trace, closure=closure)[0]
+    result = assess_operational_controls(planned_system(ir, plan), trace, closure=closure)[0]
     assert result.status == "unverified"
     control = next(iter(ir.operational_controls.values()))
     windowed = replace(control, window="last 7 days")
@@ -339,6 +341,7 @@ def test_operational_assessor_marks_missing_usage_and_windowed_controls_unverifi
     windowed_plan = replace(
         plan,
         contract_digest=contract_digest(windowed_ir),
+        artifact_digests=artifact_digests(build_artifacts(windowed_ir)),
         operational_controls=FrozenMap(
             {windowed.id: replace(next(iter(plan.operational_controls.values())), window="last 7 days")}
         ),
@@ -357,7 +360,12 @@ def test_operational_assessor_marks_missing_usage_and_windowed_controls_unverifi
         )
     )
     assert (
-        assess_operational_controls(windowed_ir, windowed_plan, windowed_trace, closure=None)[0].status == "unverified"
+        assess_operational_controls(
+            planned_system(windowed_ir, windowed_plan),
+            windowed_trace,
+            closure=None,
+        )[0].status
+        == "unverified"
     )
 
 
@@ -376,15 +384,20 @@ def test_operational_assessor_handles_unsupported_grammar_and_bad_evidence() -> 
             for event in trace.events
         )
     )
-    assert assess_operational_controls(ir, unsupported_plan, unsupported_trace)[0].status == "unverified"
+    assert (
+        assess_operational_controls(planned_system(ir, unsupported_plan), unsupported_trace)[0].status == "unverified"
+    )
     bad_ir, bad_plan, bad_trace, _ = _operational_fixture(("not an operational expression",))
-    assert assess_operational_controls(bad_ir, bad_plan, bad_trace)[0].status == "unverified"
+    assert assess_operational_controls(planned_system(bad_ir, bad_plan), bad_trace)[0].status == "unverified"
 
     attempt_ir, attempt_plan, attempt_source, _ = _operational_fixture(("trace.attempt_count == 1",))
     no_attempt_trace = NormalizedTrace(
         tuple(replace(event, data={}) for event in attempt_source.events if event.event_type != "attempt.selected")
     )
-    assert assess_operational_controls(attempt_ir, attempt_plan, no_attempt_trace)[0].status == "unverified"
+    assert (
+        assess_operational_controls(planned_system(attempt_ir, attempt_plan), no_attempt_trace)[0].status
+        == "unverified"
+    )
 
     usage_ir, usage_plan, usage_source, _ = _operational_fixture(("trace.input_tokens == 10",))
     usage_event = next(event for event in usage_source.events if event.event_type == "provider.usage.reported")
@@ -392,14 +405,17 @@ def test_operational_assessor_handles_unsupported_grammar_and_bad_evidence() -> 
     malformed_trace = NormalizedTrace(
         tuple(malformed_usage if event.event_id == usage_event.event_id else event for event in usage_source.events)
     )
-    assert assess_operational_controls(usage_ir, usage_plan, malformed_trace)[0].status == "unverified"
+    assert assess_operational_controls(planned_system(usage_ir, usage_plan), malformed_trace)[0].status == "unverified"
 
     duration_ir, duration_plan, duration_source, _ = _operational_fixture(("trace.duration == 2s",))
     other_agent = semantic_id("agent", "Other")
     no_duration_trace = NormalizedTrace(
         tuple(replace(event, semantic=TraceSemanticRefs(agent_id=other_agent)) for event in duration_source.events)
     )
-    assert assess_operational_controls(duration_ir, duration_plan, no_duration_trace)[0].status == "unverified"
+    assert (
+        assess_operational_controls(planned_system(duration_ir, duration_plan), no_duration_trace)[0].status
+        == "unverified"
+    )
 
     outcome_ir, outcome_plan, outcome_source, _ = _operational_fixture(
         ("trace.failed_provider_call_count == 1",), include_usage=False
@@ -409,7 +425,7 @@ def test_operational_assessor_handles_unsupported_grammar_and_bad_evidence() -> 
     bad_outcome_trace = NormalizedTrace(
         tuple(bad_outcome if event.event_id == outcome_event.event_id else event for event in outcome_source.events)
     )
-    malformed_result = assess_operational_controls(outcome_ir, outcome_plan, bad_outcome_trace)[0]
+    malformed_result = assess_operational_controls(planned_system(outcome_ir, outcome_plan), bad_outcome_trace)[0]
     assert malformed_result.status == "unverified"
     assert malformed_result.actual is None
 
@@ -425,8 +441,7 @@ def test_provider_outcome_metric_ignores_malformed_unselected_attempt_evidence()
     )
 
     result = assess_operational_controls(
-        ir,
-        plan,
+        planned_system(ir, plan),
         NormalizedTrace(trace.events + (malformed_unselected,)),
     )[0]
 
@@ -446,8 +461,7 @@ def test_provider_outcome_metric_deduplicates_identical_valid_evidence() -> None
     )
 
     result = assess_operational_controls(
-        ir,
-        plan,
+        planned_system(ir, plan),
         duplicated_trace,
         closure=duplicated_closure,
     )[0]
@@ -473,7 +487,7 @@ def test_complete_provider_outcome_closure_rejects_malformed_evidence() -> None:
     )
 
     with pytest.raises(TraceClosureError, match="malformed outcome evidence"):
-        assess_operational_controls(ir, plan, invalid_trace, closure=invalid_closure)
+        assess_operational_controls(planned_system(ir, plan), invalid_trace, closure=invalid_closure)
 
 
 def test_complete_provider_outcome_closure_keeps_inconclusive_metric_unverified() -> None:
@@ -505,8 +519,7 @@ def test_complete_provider_outcome_closure_keeps_inconclusive_metric_unverified(
     )
 
     result = assess_operational_controls(
-        ir,
-        plan,
+        planned_system(ir, plan),
         inconclusive_trace,
         closure=inconclusive_closure,
     )[0]
@@ -525,7 +538,7 @@ def test_complete_provider_outcome_closure_rejects_missing_and_contradictory_evi
         frontier=TraceFrontier.from_trace(without_outcome),
     )
     with pytest.raises(TraceClosureError, match="has no outcome report"):
-        assess_operational_controls(ir, plan, without_outcome, closure=missing_closure)
+        assess_operational_controls(planned_system(ir, plan), without_outcome, closure=missing_closure)
 
     evidence = ProviderOutcomeEvidence.from_dict(event.data["evidence"])
     contradictory = replace(
@@ -547,12 +560,11 @@ def test_complete_provider_outcome_closure_rejects_missing_and_contradictory_evi
     )
     with pytest.raises(TraceClosureError, match="contradictory outcome evidence"):
         assess_operational_controls(
-            ir,
-            plan,
+            planned_system(ir, plan),
             contradictory_trace,
             closure=contradictory_closure,
         )
-    result = assess_operational_controls(ir, plan, contradictory_trace)[0]
+    result = assess_operational_controls(planned_system(ir, plan), contradictory_trace)[0]
     assert result.status == "unverified"
     assert result.actual is None
 
@@ -571,7 +583,7 @@ def test_operational_assessor_rejects_ambiguous_multi_run_trace() -> None:
         )
     )
     with pytest.raises(ValueError, match="multiple runs"):
-        assess_operational_controls(ir, plan, NormalizedTrace(trace.events + second.events))
+        assess_operational_controls(planned_system(ir, plan), NormalizedTrace(trace.events + second.events))
 
 
 def test_trace_closure_round_trips_provider_statuses() -> None:

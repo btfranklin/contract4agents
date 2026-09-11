@@ -10,6 +10,7 @@ import pytest
 
 from contract4agents import compile_project
 from contract4agents.adapters._registry import get_adapter_registration
+from contract4agents.compiler import artifact_digests
 from contract4agents.ir import SemanticId
 from contract4agents.planning import plan_materialization
 from contract4agents.target_bindings import load_target_bindings
@@ -47,6 +48,7 @@ def _fixture(target: str) -> tuple[object, object, object, object, _NativeAgent,
         target=target,
         profile="test",
         capabilities=registration.planner_capabilities(),
+        artifact_digests=artifact_digests(artifacts),
     )
     grant = next(
         grant
@@ -63,7 +65,13 @@ def _fixture(target: str) -> tuple[object, object, object, object, _NativeAgent,
         composition_objects={},
         context=SimpleNamespace(ir=artifacts.ir),
     )
-    system = SimpleNamespace(graph=graph, context=graph.context, plan=plan)
+    system = SimpleNamespace(
+        artifacts=artifacts,
+        ir=artifacts.ir,
+        graph=graph,
+        context=graph.context,
+        plan=plan,
+    )
     return system, artifacts.ir, plan, graph, agent, tool
 
 
@@ -148,7 +156,7 @@ def test_strands_hook_bridge_closes_attempt_and_correlates_tool(
     grant = ir.grants[tool_event.semantic.grant_id]
     assert tool_event.semantic.agent_id == grant.agent_id
     assert tool_event.semantic.capability_id == grant.capability_id
-    validate_trace_conformance(ir, plan, snapshot.trace)
+    validate_trace_conformance(system, snapshot.trace)
 
 
 class _BasePlugin:
@@ -243,7 +251,7 @@ async def test_google_adk_plugin_is_lazy_and_preserves_grounding_flags(
     output = next(event for event in snapshot.trace.events if event.event_type == "output.accepted")
     assert output.evidence_refs == ("google-adk:terminal-schema-validation",)
     assert sum(event.event_type == "output.accepted" for event in snapshot.trace.events) == 1
-    validate_trace_conformance(ir, plan, snapshot.trace)
+    validate_trace_conformance(system, snapshot.trace)
 
 
 @pytest.mark.asyncio

@@ -7,6 +7,7 @@ import pytest
 from contract4agents.assurance import (
     assess_controls,
 )
+from contract4agents.compiler import artifact_digests, build_artifacts
 from contract4agents.ir import (
     AgentIR,
     CanonicalIR,
@@ -30,7 +31,7 @@ from contract4agents.tracing import (
     TraceRunContext,
     TraceSemanticRefs,
 )
-from tests.support.assurance import campaign_ir, campaign_plan
+from tests.support.assurance import campaign_ir, campaign_plan, planned_system
 
 _CONTRACT_DIGEST = f"sha256:{'a' * 64}"
 _PLAN_DIGEST = f"sha256:{'b' * 64}"
@@ -137,7 +138,7 @@ def test_control_assessor_handles_approval_output_and_explicit_evidence() -> Non
     )
     trace = _conforming_trace(ir, plan, trace_events)
 
-    results = assess_controls(ir, plan, trace)
+    results = assess_controls(planned_system(ir, plan), trace)
 
     assert {result.status for result in results} == {"passed"}
     assert any(result.evidence_event_ids == ("evt-1", "evt-2", "evt-3", "evt-5") for result in results)
@@ -171,7 +172,7 @@ def test_control_assessor_approval_failure_and_missing_evidence_branches(
         for index, event_type in enumerate(events, 1)
     ) or (_event("evt-0", "run.started", capability=None, grant=None),)
 
-    result = assess_controls(ir, plan, _conforming_trace(ir, plan, trace_events))[0]
+    result = assess_controls(planned_system(ir, plan), _conforming_trace(ir, plan, trace_events))[0]
 
     assert result.status == expected_status
 
@@ -209,7 +210,7 @@ def test_control_assessor_requires_one_correlated_approval_for_each_tool_start()
         ),
     )
 
-    result = assess_controls(ir, plan, _conforming_trace(ir, plan, events))[0]
+    result = assess_controls(planned_system(ir, plan), _conforming_trace(ir, plan, events))[0]
 
     assert result.status == "violated"
     assert result.reason == "A capability invocation started without its own recorded approval."
@@ -239,7 +240,7 @@ def test_control_assessor_marks_missing_approval_identity_unverified() -> None:
         ),
     )
 
-    result = assess_controls(ir, plan, _conforming_trace(ir, plan, events))[0]
+    result = assess_controls(planned_system(ir, plan), _conforming_trace(ir, plan, events))[0]
 
     assert result.status == "unverified"
     assert "lacks the identity" in result.reason
@@ -276,8 +277,7 @@ def test_control_assessor_passes_two_separately_approved_tool_invocations() -> N
         )
 
     result = assess_controls(
-        ir,
-        plan,
+        planned_system(ir, plan),
         _conforming_trace(ir, plan, tuple(events)),
     )[0]
 
@@ -311,7 +311,7 @@ def test_control_assessor_rejects_approval_from_another_attempt() -> None:
         ),
     )
 
-    result = assess_controls(ir, plan, _conforming_trace(ir, plan, events))[0]
+    result = assess_controls(planned_system(ir, plan), _conforming_trace(ir, plan, events))[0]
 
     assert result.status == "violated"
 
@@ -349,7 +349,7 @@ def test_control_assessor_marks_duplicate_tool_start_identity_unverified() -> No
         ),
     )
 
-    result = assess_controls(ir, plan, _conforming_trace(ir, plan, events))[0]
+    result = assess_controls(planned_system(ir, plan), _conforming_trace(ir, plan, events))[0]
 
     assert result.status == "unverified"
     assert result.reason == "Multiple capability starts use the same invocation identity."
@@ -407,6 +407,7 @@ def test_control_assessor_deterministic_requirement_language(
     plan = replace(
         base_plan,
         contract_digest=contract_digest(ir),
+        artifact_digests=artifact_digests(build_artifacts(ir)),
         controls=FrozenMap(
             {
                 control.id: ControlMappingPlan(
@@ -422,7 +423,7 @@ def test_control_assessor_deterministic_requirement_language(
         expected_event_types=tuple(event.event_type for event in events),
     )
 
-    result = assess_controls(ir, plan, _conforming_trace(ir, plan, events))[0]
+    result = assess_controls(planned_system(ir, plan), _conforming_trace(ir, plan, events))[0]
 
     assert result.status == expected_status
 
@@ -476,8 +477,8 @@ def test_conditional_control_distinguishes_false_true_and_unverified_applicabili
         ("fixture:closure",),
     )
 
-    not_applicable = assess_controls(ir, plan, false_trace, closure=closure)[0]
-    unknown = assess_controls(ir, plan, false_trace)[0]
+    not_applicable = assess_controls(planned_system(ir, plan), false_trace, closure=closure)[0]
+    unknown = assess_controls(planned_system(ir, plan), false_trace)[0]
     tool_event = _event(
         "evt-tool",
         "tool.completed",
@@ -486,8 +487,7 @@ def test_conditional_control_distinguishes_false_true_and_unverified_applicabili
     )
     true_trace = _conforming_trace(ir, plan, (agent_event, tool_event))
     applicable = assess_controls(
-        ir,
-        plan,
+        planned_system(ir, plan),
         true_trace,
         closure=replace(
             closure,
@@ -533,14 +533,13 @@ def test_control_assessor_prefers_explicit_results_and_handles_output_failures()
     )
     trace = _conforming_trace(ir, plan, trace_events)
 
-    explicit = assess_controls(ir, plan, trace)[0]
+    explicit = assess_controls(planned_system(ir, plan), trace)[0]
     assert explicit.status == "violated"
     assert explicit.reason == "Explicit judge result."
 
     output_plan = campaign_plan(base, expected_event_types=("output.schema_failed",))
     failed = assess_controls(
-        base,
-        output_plan,
+        planned_system(base, output_plan),
         _conforming_trace(
             base,
             output_plan,

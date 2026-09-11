@@ -133,7 +133,7 @@ acquisition and future native acquisition. It invokes no agent, fixture
 resolver, approval source, or judge. It validates conformance and assesses
 deterministic expectations, controls, explicit judge outcomes, and trace
 evidence. Internally it uses the same
-`assess_controls(ir, plan, trace, closure=trace_closure)` API as production
+`assess_controls(system, trace, closure=trace_closure)` API as production
 trace assessment. Invalid digests, undeclared capabilities, and missing or
 contradictory tool/grant identities are rejected before scoring.
 
@@ -149,14 +149,16 @@ Run specs have a separate post-run assessor:
 
 ```python
 assess_run_spec(
-    ir,
-    plan,
+    system,
     trace,
     "ResearchRun",
     run_spec_evidence,
     closure=trace_closure,
 )
 ```
+
+Use a `PlannedSystem` from `plan_project(...)` when no SDK objects are needed.
+A `MaterializedSystem` also works because it extends `PlannedSystem`.
 
 The host still executes stages, computes derived values, and decides when its
 workflow is terminal. `RunSpecEvidence` supplies typed stage observations and
@@ -215,7 +217,8 @@ host deadline, cancellation, token-budget, persistence, retry, or fallback
 behavior.
 
 `assess_assurance_evidence(...)` is the library-level orchestration entry point.
-It accepts raw normalized trace, closure-manifest, run-spec manifest, and graph
+It accepts one planned or materialized system plus raw normalized trace,
+closure-manifest, run-spec manifest, and graph
 validation evidence objects, computes control and run-spec results, and
 delegates deterministic packaging to `assemble_assurance_bundle(...)`. Call the
 lower-level assembler only when the application already owns those assessed

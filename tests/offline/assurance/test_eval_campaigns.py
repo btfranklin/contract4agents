@@ -27,7 +27,7 @@ from contract4agents.ir import (
     semantic_id,
 )
 from contract4agents.tracing import TraceConformanceError
-from tests.support.assurance import campaign_ir, campaign_plan
+from tests.support.assurance import campaign_ir, campaign_plan, planned_system
 
 
 def _event_data(*, complete: bool = True) -> list[dict[str, object]]:
@@ -157,8 +157,9 @@ async def test_campaign_runs_repeated_trials_and_reports_deterministic_statistic
         ),
     )
 
-    result = await run_campaign(ir, plan, provider, config)
-    repeated = await run_campaign(ir, plan, provider, config)
+    system = planned_system(ir, plan)
+    result = await run_campaign(system, provider, config)
+    repeated = await run_campaign(system, provider, config)
 
     assert [trial.status for trial in result.cases[0].trials] == ["passed", "violated"]
     assert result.summary.rates.pass_rate == 0.5
@@ -256,7 +257,7 @@ async def test_trial_data_audiences_are_structurally_separate_and_reports_are_re
             return await delegate.judge(request)
 
     provider = RecordingProvider()
-    result = await run_campaign(ir, plan, provider, CampaignConfig("audience-separation"))
+    result = await run_campaign(planned_system(ir, plan), provider, CampaignConfig("audience-separation"))
     request = provider.execution_request
     judge_request = provider.judge_request
 
@@ -295,7 +296,11 @@ async def test_missing_event_types_and_judge_results_are_unverified(tmp_path: Pa
             }
         ],
     )
-    quality_result = await run_campaign(quality_ir, quality_plan, provider, CampaignConfig("missing-judge"))
+    quality_result = await run_campaign(
+        planned_system(quality_ir, quality_plan),
+        provider,
+        CampaignConfig("missing-judge"),
+    )
 
     assert quality_result.cases[0].trials[0].status == "unverified"
     assert quality_result.cases[0].trials[0].qualities[0].status == "unverified"
@@ -303,8 +308,7 @@ async def test_missing_event_types_and_judge_results_are_unverified(tmp_path: Pa
     negative_ir = campaign_ir(missing_judge=True, negative_expectation=True)
     negative_plan = campaign_plan(negative_ir, expected_event_types=("approval.requested", "output.accepted"))
     negative_result = await run_campaign(
-        negative_ir,
-        negative_plan,
+        planned_system(negative_ir, negative_plan),
         provider,
         CampaignConfig("incomplete-negative"),
     )
@@ -315,8 +319,7 @@ async def test_missing_event_types_and_judge_results_are_unverified(tmp_path: Pa
 
     incomplete_plan = campaign_plan(negative_ir, expected_event_types=("approval.requested", "event.never_emitted"))
     incomplete = await run_campaign(
-        negative_ir,
-        incomplete_plan,
+        planned_system(negative_ir, incomplete_plan),
         provider,
         CampaignConfig("incomplete-negative"),
     )
@@ -343,7 +346,7 @@ async def test_campaign_rejects_nonconforming_trace_before_scoring(tmp_path: Pat
     )
 
     with pytest.raises(TraceConformanceError, match="TRC004"):
-        await run_campaign(ir, plan, provider, CampaignConfig("nonconforming"))
+        await run_campaign(planned_system(ir, plan), provider, CampaignConfig("nonconforming"))
 
 
 @pytest.mark.asyncio
@@ -380,7 +383,11 @@ async def test_file_provider_supplies_approval_service_and_provider_failures_are
         tmp_path / "missing-trace.json",
         trials=[{"output": {"status": "ok", "message": "Published"}, "events": []}],
     )
-    result = await run_campaign(ir, plan, missing_trace_provider, CampaignConfig("provider-failure"))
+    result = await run_campaign(
+        planned_system(ir, plan),
+        missing_trace_provider,
+        CampaignConfig("provider-failure"),
+    )
     assert result.cases[0].trials[0].status == "unverified"
     assert "does not contain normalized trace events" in (result.cases[0].trials[0].diagnostic or "")
 

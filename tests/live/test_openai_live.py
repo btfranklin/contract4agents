@@ -85,7 +85,7 @@ async def test_contract_first_incident_graph_runs_through_openai(
     assert result.final_output.evidence
     snapshot = session.closed_snapshot
     trace = snapshot.trace
-    validate_trace_conformance(system.artifacts.ir, system.plan, trace)
+    validate_trace_conformance(system, trace)
     validate_trace_closure(trace, snapshot.closure)
     assert snapshot.closure.status == "complete"
     event_types = {event.event_type for event in trace.events}
@@ -153,4 +153,4 @@ async def test_openai_hosted_web_search_normalizes_to_exact_grant() -> None:
         sort_keys=True,
     )
     assert "Use the hosted web-search tool exactly once" not in rendered_trace
-    validate_trace_conformance(system.artifacts.ir, system.plan, trace)
+    validate_trace_conformance(system, trace)

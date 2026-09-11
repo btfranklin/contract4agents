@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from contract4agents.ir import CanonicalIR, SemanticId, contract_digest
-from contract4agents.planning import MaterializationPlan
+from contract4agents.planning import MaterializationPlan, PlannedSystem
 from contract4agents.tracing._models import NormalizedTrace, TraceEvent
 
 
@@ -27,19 +27,19 @@ class TraceConformanceError(ValueError):
             raise ValueError("TraceConformanceError requires at least one issue")
         self.issues = issues
         details = "; ".join(
-            f"{issue.code}{f' ({issue.event_id})' if issue.event_id else ''}: {issue.message}"
-            for issue in issues
+            f"{issue.code}{f' ({issue.event_id})' if issue.event_id else ''}: {issue.message}" for issue in issues
         )
         super().__init__(f"Normalized trace does not conform: {details}")
 
 
 def validate_trace_conformance(
-    ir: CanonicalIR,
-    plan: MaterializationPlan,
+    system: PlannedSystem,
     trace: NormalizedTrace,
 ) -> None:
     """Reject trace evidence that cannot be joined exactly to the IR and plan."""
 
+    ir = system.ir
+    plan = system.plan
     issues: list[TraceConformanceIssue] = []
     expected_contract_digest = contract_digest(ir)
     if plan.contract_digest != expected_contract_digest:

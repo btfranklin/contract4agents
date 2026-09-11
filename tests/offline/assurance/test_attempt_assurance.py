@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from contract4agents import compile_project, materialize
+from contract4agents import materialize
 from contract4agents.assurance import assess_controls
 from contract4agents.ir import SemanticId, semantic_id
 from contract4agents.tracing import (
@@ -129,7 +129,6 @@ def test_attempt_validation_is_scoped_to_each_normalized_run() -> None:
 
 def test_output_assurance_uses_explicit_terminal_attempt_without_erasing_failures() -> None:
     project = ROOT / "examples" / "incident-command"
-    artifacts = compile_project(project)
     system = materialize(project, target="openai", profile="test")
     first = TraceAttempt("commander:1", "commander-attempt-1", 1)
     second = TraceAttempt(
@@ -147,7 +146,7 @@ def test_output_assurance_uses_explicit_terminal_attempt_without_erasing_failure
         session.record_terminal_attempt(attempt=second, outcome="succeeded")
 
     trace = session.normalized_trace()
-    results = assess_controls(artifacts.ir, system.plan, trace)
+    results = assess_controls(system, trace)
     output_result = next(
         result for result in results if result.control_id == "control:IncidentCommander:output_conformance"
     )
@@ -159,7 +158,6 @@ def test_output_assurance_uses_explicit_terminal_attempt_without_erasing_failure
 
 def test_failed_selected_terminal_attempt_leaves_output_assurance_unverified() -> None:
     project = ROOT / "examples" / "incident-command"
-    artifacts = compile_project(project)
     system = materialize(project, target="openai", profile="test")
     attempt = TraceAttempt("commander:1", "commander-attempt-1", 1)
     session = OpenAINormalizedTraceRouter().open_session(system, run_id="run-terminal-failure")
@@ -180,7 +178,7 @@ def test_failed_selected_terminal_attempt_leaves_output_assurance_unverified() -
             )
         session.record_terminal_attempt(attempt=attempt, outcome="failed")
 
-    results = assess_controls(artifacts.ir, system.plan, session.normalized_trace())
+    results = assess_controls(system, session.normalized_trace())
     output_result = next(
         result for result in results if result.control_id == "control:IncidentCommander:output_conformance"
     )
@@ -191,7 +189,6 @@ def test_failed_selected_terminal_attempt_leaves_output_assurance_unverified() -
 
 def test_selected_schema_failed_attempt_violates_output_assurance() -> None:
     project = ROOT / "examples" / "incident-command"
-    artifacts = compile_project(project)
     system = materialize(project, target="openai", profile="test")
     attempt = TraceAttempt("commander:1", "commander-attempt-1", 1)
     session = OpenAINormalizedTraceRouter().open_session(system, run_id="run-selected-schema-failure")
@@ -200,7 +197,7 @@ def test_selected_schema_failed_attempt_violates_output_assurance() -> None:
             session.record_output_schema_failure(attempt=attempt)
         session.record_terminal_attempt(attempt=attempt, outcome="failed")
 
-    results = assess_controls(artifacts.ir, system.plan, session.normalized_trace())
+    results = assess_controls(system, session.normalized_trace())
     output_result = next(
         result for result in results if result.control_id == "control:IncidentCommander:output_conformance"
     )
@@ -211,7 +208,6 @@ def test_selected_schema_failed_attempt_violates_output_assurance() -> None:
 
 def test_attempt_scoped_output_without_terminal_selection_is_unverified() -> None:
     project = ROOT / "examples" / "incident-command"
-    artifacts = compile_project(project)
     system = materialize(project, target="openai", profile="test")
     attempt = TraceAttempt("commander:1", "commander-attempt-1", 1)
     session = OpenAINormalizedTraceRouter().open_session(system, run_id="run-missing-selection")
@@ -219,7 +215,7 @@ def test_attempt_scoped_output_without_terminal_selection_is_unverified() -> Non
         with session.bind_attempt(attempt, agent=system.agents["IncidentCommander"]):
             session.record_output_schema_failure(attempt=attempt)
 
-    results = assess_controls(artifacts.ir, system.plan, session.normalized_trace())
+    results = assess_controls(system, session.normalized_trace())
     output_result = next(
         result for result in results if result.control_id == "control:IncidentCommander:output_conformance"
     )

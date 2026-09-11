@@ -121,11 +121,7 @@ async def test_contract_first_incident_graph_runs_through_strands_bedrock(
     assert output.summary
     assert output.evidence
     snapshot = session.closed_snapshot
-    validate_trace_conformance(
-        system.artifacts.ir,
-        system.plan,
-        snapshot.trace,
-    )
+    validate_trace_conformance(system, snapshot.trace)
     validate_trace_closure(snapshot.trace, snapshot.closure)
     assert snapshot.closure.status == "complete"
     completed_agents = {

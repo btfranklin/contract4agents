@@ -9,7 +9,7 @@ from typing import Any, cast
 import pytest
 from pydantic import ValidationError
 
-from contract4agents import compile_project, materialize
+from contract4agents import materialize
 from contract4agents.adapters._native_names import native_name
 from contract4agents.ir import FrozenMap, freeze_json, semantic_id
 from contract4agents.materialization import (
@@ -403,7 +403,6 @@ async def test_real_strands_incident_slice_closes_after_delegate_approval_resume
         return scripted_models[cast(str, options["script"])]
 
     monkeypatch.setattr(implementation_module, "make_model", make_model)
-    artifacts = compile_project(tmp_path)
     provider = StrandsMaterializationProvider()
     result = materialize(tmp_path, target="strands", profile="test", provider=provider)
     router = StrandsNormalizedTraceRouter()
@@ -443,7 +442,7 @@ async def test_real_strands_incident_slice_closes_after_delegate_approval_resume
         ("test-model", {"script": "parent"}),
     ]
     snapshot = session.closed_snapshot
-    validate_trace_conformance(artifacts.ir, result.plan, snapshot.trace)
+    validate_trace_conformance(result, snapshot.trace)
     validate_trace_closure(snapshot.trace, snapshot.closure)
     assessment = assess_trace_evidence(
         snapshot.trace,

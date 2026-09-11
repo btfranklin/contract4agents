@@ -11,7 +11,7 @@ from contract4agents.assurance._models import (
 from contract4agents.expressions import ExpressionError, parse_trace_conjunction
 from contract4agents.expressions._trace_evaluation import assess_trace_expression
 from contract4agents.ir import CanonicalIR, ControlIR, SemanticId
-from contract4agents.planning import MaterializationPlan
+from contract4agents.planning import PlannedSystem
 from contract4agents.tracing import (
     NormalizedTrace,
     TraceAttempt,
@@ -26,8 +26,7 @@ _ASSESSOR = AssessorIdentity("contract4agents", "1")
 
 
 def assess_controls(
-    ir: CanonicalIR,
-    plan: MaterializationPlan,
+    system: PlannedSystem,
     trace: NormalizedTrace,
     *,
     closure: TraceClosureEvidence | None = None,
@@ -35,8 +34,10 @@ def assess_controls(
 ) -> tuple[ControlResult, ...]:
     """Assess every planned control without treating absent evidence as success."""
 
+    ir = system.ir
+    plan = system.plan
     selected = _select_run(trace, run_id)
-    validate_trace_conformance(ir, plan, selected)
+    validate_trace_conformance(system, selected)
     trace_evidence = assess_trace_evidence(
         selected,
         plan.expected_event_types,
@@ -117,9 +118,7 @@ def _assess_approval(
     )
     starts = [event for event in events if event.event_type == "tool.started"]
     approvals = [
-        event
-        for event in events
-        if event.event_type == "approval.completed" and event.data.get("approved") is True
+        event for event in events if event.event_type == "approval.completed" and event.data.get("approved") is True
     ]
     if starts and not approvals:
         return _result(control, "violated", "The capability started without recorded approval.", events)
@@ -218,8 +217,7 @@ def _assess_output(
         if event.event_type == "attempt.selected"
         and (
             event.semantic.agent_id == control.agent_id
-            or TraceAttempt.from_dict(event.data.get("attempt")).invocation_id
-            in output_invocations
+            or TraceAttempt.from_dict(event.data.get("attempt")).invocation_id in output_invocations
         )
     )
     if output_invocations and not terminal:
@@ -250,9 +248,7 @@ def _assess_output(
                 "Each invocation must select exactly one terminal attempt.",
                 evidence,
             )
-        attributed = tuple(
-            (TraceAttempt.from_dict(event.data["attempt"]), event) for event in events
-        )
+        attributed = tuple((TraceAttempt.from_dict(event.data["attempt"]), event) for event in events)
         observed_invocations = {attempt.invocation_id for attempt, _ in attributed}
         if not observed_invocations.issubset(selections):
             return _result(
@@ -267,8 +263,7 @@ def _assess_output(
             selected_events = tuple(
                 event
                 for attempt, event in attributed
-                if attempt.invocation_id == invocation_id
-                and attempt.attempt_id == selected.attempt_id
+                if attempt.invocation_id == invocation_id and attempt.attempt_id == selected.attempt_id
             )
             selected_evidence = selected_events + (selection_event,)
             assessed_evidence.extend(selected_evidence)
@@ -349,15 +344,8 @@ def _evaluate_control_expression(
         return "unverified", ()
     if not parsed or any(item.kind != "trace" for item in parsed):
         return "unverified", ()
-    results = tuple(
-        assess_trace_expression(item, ir=ir, trace=trace, trace_evidence=trace_evidence)
-        for item in parsed
-    )
-    evidence = {
-        event.event_id: event
-        for result in results
-        for event in result.events
-    }
+    results = tuple(assess_trace_expression(item, ir=ir, trace=trace, trace_evidence=trace_evidence) for item in parsed)
+    evidence = {event.event_id: event for result in results for event in result.events}
     status: AssuranceStatus
     if any(result.status == "violated" for result in results):
         status = "violated"

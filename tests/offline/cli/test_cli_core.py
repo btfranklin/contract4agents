@@ -7,7 +7,7 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-from contract4agents import compile_project, materialize
+from contract4agents import materialize
 from contract4agents.cli import main
 from contract4agents.eval_campaigns import CampaignConfig, FileEvalProvider, run_campaign
 from contract4agents.tracing import (
@@ -304,12 +304,10 @@ def test_cli_contract_first_workflow(tmp_path: Path) -> None:
 
 
 def _evaluated_trace():  # type: ignore[no-untyped-def]
-    artifacts = compile_project(EXAMPLE)
     result = materialize(EXAMPLE, target="openai", profile="test")
     campaign = asyncio.run(
         run_campaign(
-            artifacts.ir,
-            result.plan,
+            result,
             FileEvalProvider.load(EXAMPLE / "eval-data.json"),
             CampaignConfig("cli-test"),
         )

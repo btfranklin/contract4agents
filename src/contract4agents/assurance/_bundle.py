@@ -15,7 +15,7 @@ from contract4agents.assurance._operational import OperationalControlResult
 from contract4agents.assurance._run_specs import RunSpecResult, RunSpecSelection
 from contract4agents.ir import CanonicalIR, FrozenMap, canonical_ir_data, contract_digest
 from contract4agents.materialization import GraphValidationEvidence
-from contract4agents.planning import MaterializationPlan, materialization_plan_data
+from contract4agents.planning import MaterializationPlan, PlannedSystem, materialization_plan_data
 from contract4agents.tracing import (
     TRACE_CLOSURE_MANIFEST_VERSION,
     TraceClosureEvidence,
@@ -51,8 +51,7 @@ class AssuranceBundle:
 
 
 def assemble_assurance_bundle(
-    contract: CanonicalIR,
-    plan: MaterializationPlan,
+    system: PlannedSystem,
     *,
     normalized_trace_jsonl: str | None,
     control_results: tuple[ControlResult, ...] | None,
@@ -66,6 +65,8 @@ def assemble_assurance_bundle(
 ) -> AssuranceBundle:
     """Assemble all declared, planned, observed, and assessed evidence without timestamps."""
 
+    contract = system.ir
+    plan = system.plan
     expected_digest = contract_digest(contract)
     if plan.contract_digest != expected_digest:
         raise ValueError(f"Plan contract digest `{plan.contract_digest}` does not match contract `{expected_digest}`")
@@ -101,9 +102,7 @@ def assemble_assurance_bundle(
             message = "Materialized configuration conformance evidence is incomplete."
             if details:
                 message += f" Missing: {details}."
-            diagnostics.append(
-                BundleDiagnostic("BUNDLE017", message, "materialization-conformance.json")
-            )
+            diagnostics.append(BundleDiagnostic("BUNDLE017", message, "materialization-conformance.json"))
         materialization = materialization_evidence.to_dict()
     trace = _required_text(
         "normalized-trace.jsonl",
@@ -121,9 +120,7 @@ def assemble_assurance_bundle(
         raise ValueError("Trace closures must have unique run_id values")
     trace_run_ids = set(loaded_trace.run_ids) if loaded_trace is not None else set()
     closure_coverage_incomplete = loaded_trace is not None and (
-        trace_closures is None
-        or set(closure_runs) != trace_run_ids
-        or any(not item.complete for item in closures)
+        trace_closures is None or set(closure_runs) != trace_run_ids or any(not item.complete for item in closures)
     )
     if closure_coverage_incomplete:
         diagnostics.append(
@@ -161,8 +158,7 @@ def assemble_assurance_bundle(
             diagnostics.append(
                 BundleDiagnostic(
                     "BUNDLE018",
-                    "Control assessment evidence is missing for declared controls: "
-                    f"{', '.join(missing)}.",
+                    f"Control assessment evidence is missing for declared controls: {', '.join(missing)}.",
                     "control-results.json",
                 )
             )
@@ -184,9 +180,7 @@ def assemble_assurance_bundle(
             raise ValueError("Operational-control results must have unique IDs")
         unknown = sorted(set(result_ids) - declared_operational_ids)
         if unknown:
-            raise ValueError(
-                f"Operational-control results reference undeclared IDs: {', '.join(unknown)}"
-            )
+            raise ValueError(f"Operational-control results reference undeclared IDs: {', '.join(unknown)}")
         missing = sorted(declared_operational_ids - set(result_ids))
         operational = {"results": [item.to_dict() for item in operational_control_results]}
         if missing:
@@ -217,28 +211,16 @@ def assemble_assurance_bundle(
             )
         )
     unknown_selections = sorted(
-        item.run_spec_id
-        for item in selections
-        if item.run_spec_id is not None and item.run_spec_id not in declared_ids
+        item.run_spec_id for item in selections if item.run_spec_id is not None and item.run_spec_id not in declared_ids
     )
     if unknown_selections:
-        raise ValueError(
-            f"Run-spec selections reference undeclared IDs: {', '.join(unknown_selections)}"
-        )
+        raise ValueError(f"Run-spec selections reference undeclared IDs: {', '.join(unknown_selections)}")
     for result in results:
         if result.contract_digest != expected_digest or result.plan_digest != plan.plan_digest:
-            raise ValueError(
-                f"Run-spec result `{result.run_spec_id}` does not match the bundle contract and plan"
-            )
+            raise ValueError(f"Run-spec result `{result.run_spec_id}` does not match the bundle contract and plan")
         if result.run_spec_id not in declared_ids:
-            raise ValueError(
-                f"Run-spec assurance result references undeclared ID: {result.run_spec_id}"
-            )
-    selected_keys = {
-        (item.run_id, item.run_spec_id)
-        for item in selections
-        if item.run_spec_id is not None
-    }
+            raise ValueError(f"Run-spec assurance result references undeclared ID: {result.run_spec_id}")
+    selected_keys = {(item.run_id, item.run_spec_id) for item in selections if item.run_spec_id is not None}
     result_keys = [(item.run_id, item.run_spec_id) for item in results]
     if len(result_keys) != len(set(result_keys)):
         raise ValueError("Run-spec assurance results must be unique per run and run_spec_id")
@@ -319,10 +301,7 @@ def _missing_schema_boundaries(
     observed = {(item.semantic_id, item.boundary) for item in evidence.schema_conformance if item.matches}
     expected: set[tuple[object, str]] = set()
     for agent_id in contract.agents:
-        if not any(
-            (agent_id, boundary) in observed
-            for boundary in ("agent_output", "host_structural_output")
-        ):
+        if not any((agent_id, boundary) in observed for boundary in ("agent_output", "host_structural_output")):
             expected.add((agent_id, "agent_output"))
     for grant in contract.grants.values():
         if grant.availability != "enabled" or grant.capability_id.kind != "tool":
@@ -357,23 +336,20 @@ def _missing_configuration_properties(
     """Return required configuration properties absent or unpassed in evidence."""
 
     expected = {
-        *( (identifier, "agent.name") for identifier in plan.agents ),
-        *( (identifier, "agent.identity") for identifier in plan.agents ),
-        *( (identifier, "agent.model") for identifier in plan.agents ),
-        *( (identifier, "agent.model_options") for identifier in plan.agents ),
-        *( (identifier, "agent.output_type") for identifier in plan.agents ),
-        *( (identifier, "agent.output_mode") for identifier in plan.agents ),
-        *( (identifier, "agent.tools") for identifier in plan.agents ),
-        *( (identifier, "agent.handoffs") for identifier in plan.agents ),
-        *( (identifier, "grant.identity") for identifier in plan.grants ),
-        *( (identifier, "grant.approval") for identifier in plan.grants ),
-        *( (identifier, "edge.identity") for identifier in plan.composition ),
-        *( (identifier, "edge.schema") for identifier in plan.composition ),
+        *((identifier, "agent.name") for identifier in plan.agents),
+        *((identifier, "agent.identity") for identifier in plan.agents),
+        *((identifier, "agent.model") for identifier in plan.agents),
+        *((identifier, "agent.model_options") for identifier in plan.agents),
+        *((identifier, "agent.output_type") for identifier in plan.agents),
+        *((identifier, "agent.output_mode") for identifier in plan.agents),
+        *((identifier, "agent.tools") for identifier in plan.agents),
+        *((identifier, "agent.handoffs") for identifier in plan.agents),
+        *((identifier, "grant.identity") for identifier in plan.grants),
+        *((identifier, "grant.approval") for identifier in plan.grants),
+        *((identifier, "edge.identity") for identifier in plan.composition),
+        *((identifier, "edge.schema") for identifier in plan.composition),
     }
-    observed = {
-        (item.semantic_id, item.property_path)
-        for item in evidence.configuration_conformance
-    }
+    observed = {(item.semantic_id, item.property_path) for item in evidence.configuration_conformance}
     missing = [f"{identifier}:{path}" for identifier, path in expected - observed]
     missing.extend(
         f"{item.semantic_id}:{item.property_path} ({item.status})"

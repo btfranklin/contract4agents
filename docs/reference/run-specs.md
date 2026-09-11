@@ -92,20 +92,20 @@ evidence = RunSpecEvidence(
             evidence_event_ids=("evt-evidence-completed",),
         ),
     ),
-    derived_values=FrozenMap(
-        {"cited_ids": ("source-1",), "allowed_ids": ("source-1", "source-2")}
-    ),
+    derived_values=FrozenMap({"cited_ids": ("source-1",), "allowed_ids": ("source-1", "source-2")}),
     evidence_refs=("workflow-ledger:run-123",),
 )
 result = assess_run_spec(
-    ir,
-    plan,
+    system,
     trace,
     "ResearchRun",
     evidence,
     closure=trace_closure,
 )
 ```
+
+`system` is a `PlannedSystem` from `plan_project(...)` or a
+`MaterializedSystem` from `materialize(...)`.
 
 This example shows the API shape. The single stage observation is not enough
 to pass `ResearchRun` above: a complete result also needs its required

@@ -9,8 +9,8 @@ from typing import Any
 
 from contract4agents.assurance._models import AssessorIdentity, AssuranceStatus
 from contract4agents.expressions import ExpressionError, parse_operational_requirement
-from contract4agents.ir import CanonicalIR, SemanticId
-from contract4agents.planning import MaterializationPlan
+from contract4agents.ir import SemanticId
+from contract4agents.planning import PlannedSystem
 from contract4agents.tracing import (
     NormalizedTrace,
     ProviderOutcomeEvidence,
@@ -156,8 +156,7 @@ class OperationalControlResult:
 
 
 def assess_operational_controls(
-    ir: CanonicalIR,
-    plan: MaterializationPlan,
+    system: PlannedSystem,
     trace: NormalizedTrace,
     *,
     closure: TraceClosureEvidence | None = None,
@@ -165,8 +164,10 @@ def assess_operational_controls(
 ) -> tuple[OperationalControlResult, ...]:
     """Assess the supported single-run operational controls for one run."""
 
+    ir = system.ir
+    plan = system.plan
     selected = _select_run(trace, run_id)
-    validate_trace_conformance(ir, plan, selected)
+    validate_trace_conformance(system, selected)
     trace_evidence = assess_trace_evidence(
         selected,
         plan.expected_event_types,
@@ -233,8 +234,7 @@ def _assess_one(
         events = tuple(
             event
             for event in trace.events
-            if event.event_type == "provider.usage.reported"
-            and event.semantic.agent_id == agent_id
+            if event.event_type == "provider.usage.reported" and event.semantic.agent_id == agent_id
         )
         usage = _usage(events, selected_attempts)
         if usage is None:
@@ -259,8 +259,7 @@ def _assess_one(
         events = tuple(
             event
             for event in trace.events
-            if event.event_type == "provider.outcome.reported"
-            and event.semantic.agent_id == agent_id
+            if event.event_type == "provider.outcome.reported" and event.semantic.agent_id == agent_id
         )
         actual = _failed_provider_calls(events, selected_attempts)
         if actual is None:
@@ -279,8 +278,7 @@ def _assess_one(
         events = tuple(
             event
             for event in trace.events
-            if event.data.get("attempt") is not None
-            and event.semantic.agent_id == agent_id
+            if event.data.get("attempt") is not None and event.semantic.agent_id == agent_id
         )
         attempts = selected_attempts or all_attempts
         if not attempts:
@@ -294,9 +292,7 @@ def _assess_one(
                 operator=parsed.operator,
             )
         actual = (
-            len(attempts)
-            if parsed.metric == "attempt_count"
-            else sum(max(item.number - 1, 0) for item in attempts)
+            len(attempts) if parsed.metric == "attempt_count" else sum(max(item.number - 1, 0) for item in attempts)
         )
         evidence_events = events + selection_events
         required_channel = "agent"
@@ -364,9 +360,7 @@ def _usage(events: tuple[Any, ...], selected_attempts: tuple[TraceAttempt, ...])
     return values
 
 
-def _failed_provider_calls(
-    events: tuple[Any, ...], selected_attempts: tuple[TraceAttempt, ...]
-) -> int | None:
+def _failed_provider_calls(events: tuple[Any, ...], selected_attempts: tuple[TraceAttempt, ...]) -> int | None:
     selected_ids = {item.attempt_id for item in selected_attempts}
     outcomes: dict[tuple[str | None, str | None, str], ProviderOutcomeEvidence] = {}
     for event in events:
@@ -384,14 +378,8 @@ def _failed_provider_calls(
         if (
             evidence.agent_id != event.semantic.agent_id
             or evidence.attempt_id != attempt.attempt_id
-            or (
-                evidence.invocation_id is not None
-                and evidence.invocation_id != attempt.invocation_id
-            )
-            or (
-                evidence.attempt_number is not None
-                and evidence.attempt_number != attempt.number
-            )
+            or (evidence.invocation_id is not None and evidence.invocation_id != attempt.invocation_id)
+            or (evidence.attempt_number is not None and evidence.attempt_number != attempt.number)
             or not evidence.conclusive
         ):
             return None
@@ -399,10 +387,7 @@ def _failed_provider_calls(
         if existing is not None and existing != evidence:
             return None
         outcomes[evidence.outcome_identity] = evidence
-    return sum(
-        evidence.outcome in {"failed", "refused"}
-        for evidence in outcomes.values()
-    )
+    return sum(evidence.outcome in {"failed", "refused"} for evidence in outcomes.values())
 
 
 def _attempt_scope(

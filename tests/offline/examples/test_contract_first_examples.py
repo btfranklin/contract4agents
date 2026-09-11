@@ -37,8 +37,7 @@ def test_public_example_declares_materializes_and_evaluates(name: str) -> None:
     artifacts = result.artifacts
     campaign = asyncio.run(
         run_campaign(
-            artifacts.ir,
-            result.plan,
+            result,
             FileEvalProvider.load(project / "eval-data.json"),
             CampaignConfig(f"public-example:{name}"),
         )

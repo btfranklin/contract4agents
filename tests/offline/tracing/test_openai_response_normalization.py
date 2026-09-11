@@ -84,7 +84,6 @@ def _event(
 
 def test_openai_response_normalization_resolves_hosted_grants_and_excludes_payloads() -> None:
     project = ROOT / "examples" / "market-research-brief"
-    artifacts = compile_project(project)
     system = materialize(project, target="openai", profile="test")
     agent_id = SemanticId.parse("agent:CurrentTruthScout")
     context = TraceRunContext(
@@ -139,7 +138,7 @@ def test_openai_response_normalization_resolves_hosted_grants_and_excludes_paylo
     )
     assert "secret provider query" not in json.dumps(event.to_dict())
     assert "raw output" not in json.dumps(event.to_dict())
-    validate_trace_conformance(artifacts.ir, system.plan, NormalizedTrace(events))
+    validate_trace_conformance(system, NormalizedTrace(events))
 
     with pytest.raises(ValueError, match="found 0"):
         resolve_provider_tool_grant(
@@ -165,7 +164,6 @@ def test_openai_response_normalization_resolves_hosted_grants_and_excludes_paylo
 
 def test_openai_response_normalization_emits_undeclared_evidence_and_assurance_rejects_it() -> None:
     project = ROOT / "examples" / "market-research-brief"
-    artifacts = compile_project(project)
     system = materialize(project, target="openai", profile="test")
     context = TraceRunContext(
         "run-undeclared",
@@ -188,15 +186,14 @@ def test_openai_response_normalization_emits_undeclared_evidence_and_assurance_r
 
     assert events[1].event_type == "capability.undeclared"
     with pytest.raises(TraceConformanceError, match="TRC004") as exc_info:
-        validate_trace_conformance(artifacts.ir, system.plan, trace)
+        validate_trace_conformance(system, trace)
     assert exc_info.value.issues[0].event_id == ("openai:hosted-tool:resp_undeclared:ws_undeclared")
     with pytest.raises(TraceConformanceError, match="TRC004"):
-        assess_controls(artifacts.ir, system.plan, trace)
+        assess_controls(system, trace)
 
 
 def test_openai_response_normalization_fails_closed_for_other_hosted_calls() -> None:
     project = ROOT / "examples" / "market-research-brief"
-    artifacts = compile_project(project)
     system = materialize(project, target="openai", profile="test")
     context = TraceRunContext(
         "run-other-hosted",
@@ -229,7 +226,7 @@ def test_openai_response_normalization_fails_closed_for_other_hosted_calls() -> 
     assert events[2].data["provider_tool"] == "openai.mcp_list_tools"
     assert events[3].data["provider_tool"] == ("openai.unrecognized:future_provider_call")
     with pytest.raises(TraceConformanceError, match="TRC004"):
-        validate_trace_conformance(artifacts.ir, system.plan, NormalizedTrace(events))
+        validate_trace_conformance(system, NormalizedTrace(events))
 
 
 @pytest.mark.parametrize(

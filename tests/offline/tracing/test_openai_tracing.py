@@ -194,7 +194,6 @@ def test_trace_session_requires_agents_from_its_materialized_system() -> None:
 
 def test_host_domain_validation_is_distinct_from_contract_structure() -> None:
     project = ROOT / "examples" / "incident-command"
-    artifacts = compile_project(project)
     system = materialize(project, target="openai", profile="test")
     session = OpenAINormalizedTraceRouter().open_session(
         system,
@@ -227,7 +226,7 @@ def test_host_domain_validation_is_distinct_from_contract_structure() -> None:
     assert set(validation_events[2].data) == {"attempt", "validation_phase"}
     output_result = next(
         result
-        for result in assess_controls(artifacts.ir, system.plan, trace)
+        for result in assess_controls(system, trace)
         if result.control_id == "control:IncidentCommander:output_conformance"
     )
     assert output_result.status == "passed"

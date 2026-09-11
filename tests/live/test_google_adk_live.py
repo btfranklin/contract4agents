@@ -98,10 +98,6 @@ async def test_google_adk_search_preserves_grounding_display_metadata(
         for metadata in grounding
     )
     snapshot = trace_session.closed_snapshot
-    validate_trace_conformance(
-        system.artifacts.ir,
-        system.plan,
-        snapshot.trace,
-    )
+    validate_trace_conformance(system, snapshot.trace)
     validate_trace_closure(snapshot.trace, snapshot.closure)
     assert snapshot.closure.status == "complete"

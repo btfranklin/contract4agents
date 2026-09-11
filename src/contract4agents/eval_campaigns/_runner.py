@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from contract4agents.assurance import AssessorIdentity, AssuranceStatus, assess_controls
-from contract4agents.compiler import build_artifacts
 from contract4agents.eval_campaigns._expectations import assess_expectation
 from contract4agents.eval_campaigns._models import (
     BaselineSnapshot,
@@ -33,25 +32,25 @@ from contract4agents.eval_campaigns._provider import (
     JudgeRequest,
 )
 from contract4agents.ir import CanonicalIR, EvalIR, SemanticId, contract_digest
-from contract4agents.planning import MaterializationPlan
+from contract4agents.planning import MaterializationPlan, PlannedSystem
 from contract4agents.tracing import ProviderUsageEvidence, assess_trace_evidence, validate_trace_conformance
 
 
 async def run_campaign(
-    ir: CanonicalIR,
-    plan: MaterializationPlan,
+    system: PlannedSystem,
     provider: EvalProvider,
     config: CampaignConfig,
 ) -> CampaignResult:
     """Run every canonical `.eval` case against one reviewed materialization plan."""
 
+    ir = system.ir
+    plan = system.plan
     digest = contract_digest(ir)
     if plan.contract_digest != digest:
         raise ValueError("Materialization plan contract digest does not match the canonical IR")
     if not ir.evals:
         raise ValueError("Canonical IR does not contain any eval cases")
     inventory = _inventory(ir, plan)
-    schemas = build_artifacts(ir).schemas
     case_results: list[CaseResult] = []
     all_trials: list[TrialResult] = []
     for case in sorted(ir.evals.values(), key=lambda item: str(item.id)):
@@ -60,11 +59,9 @@ async def run_campaign(
                 await _run_trial(
                     case,
                     trial_index,
-                    ir=ir,
-                    plan=plan,
+                    system=system,
                     provider=provider,
                     inventory=inventory,
-                    schemas=schemas,
                 )
                 for trial_index in range(config.trial_count)
             ]
@@ -95,12 +92,12 @@ async def _run_trial(
     case: EvalIR,
     trial_index: int,
     *,
-    ir: CanonicalIR,
-    plan: MaterializationPlan,
+    system: PlannedSystem,
     provider: EvalProvider,
     inventory: EvalInventory,
-    schemas: Mapping[str, dict[str, object]],
 ) -> TrialResult:
+    ir = system.ir
+    plan = system.plan
     trial_id = f"trial:{case.id}:{trial_index + 1:04d}"
     trial_data: ResolvedTrialData | None = None
     try:
@@ -131,7 +128,7 @@ async def _run_trial(
     if evidence.execution_status == "succeeded":
         assert evidence.output is not None
         assert evidence.trace is not None
-        validate_trace_conformance(ir, plan, evidence.trace)
+        validate_trace_conformance(system, evidence.trace)
         judge_outcomes = await _resolve_judge_outcomes(
             case,
             trial_id,
@@ -140,29 +137,20 @@ async def _run_trial(
             provider,
         )
     return assess_finalized_evidence(
-        ir=ir,
-        plan=plan,
+        system,
         case=case,
         trial_id=trial_id,
         evidence=evidence,
-        evaluator_truth=(
-            trial_data.evaluator_truth if trial_data is not None else EvaluatorTruth()
-        ),
-        invocation_digest=(
-            trial_data.invocation.digest if trial_data is not None else None
-        ),
-        report_view=(
-            trial_data.report_view if trial_data is not None else RedactedTrialView()
-        ),
+        evaluator_truth=(trial_data.evaluator_truth if trial_data is not None else EvaluatorTruth()),
+        invocation_digest=(trial_data.invocation.digest if trial_data is not None else None),
+        report_view=(trial_data.report_view if trial_data is not None else RedactedTrialView()),
         judge_outcomes=judge_outcomes,
-        schemas=schemas,
     )
 
 
 def assess_finalized_evidence(
+    system: PlannedSystem,
     *,
-    ir: CanonicalIR,
-    plan: MaterializationPlan,
     case: EvalIR,
     trial_id: str,
     evidence: FinalizedTrialEvidence,
@@ -170,9 +158,12 @@ def assess_finalized_evidence(
     invocation_digest: str | None,
     report_view: RedactedTrialView,
     judge_outcomes: Mapping[SemanticId, JudgeOutcome],
-    schemas: Mapping[str, dict[str, object]],
 ) -> TrialResult:
     """Assess already finalized evidence without acquiring or executing a trial."""
+
+    ir = system.ir
+    plan = system.plan
+    schemas = system.artifacts.schemas
 
     if evidence.execution_status == "failed":
         return TrialResult(
@@ -196,7 +187,7 @@ def assess_finalized_evidence(
     assert evidence.trace is not None
     assert evidence.closure is not None
     metrics = _derive_usage_metrics(evidence)
-    validate_trace_conformance(ir, plan, evidence.trace)
+    validate_trace_conformance(system, evidence.trace)
     trace_evidence = assess_trace_evidence(
         evidence.trace,
         plan.expected_event_types,
@@ -214,22 +205,17 @@ def assess_finalized_evidence(
         )
         for expression in case.expectations
     )
-    case_control_ids = {
-        control.id for control in ir.controls.values() if control.agent_id == case.agent_id
-    }
+    case_control_ids = {control.id for control in ir.controls.values() if control.agent_id == case.agent_id}
     controls = tuple(
         result
-        for result in assess_controls(ir, plan, evidence.trace, closure=evidence.closure)
+        for result in assess_controls(system, evidence.trace, closure=evidence.closure)
         if SemanticId.parse(result.control_id) in case_control_ids
     )
     qualities = tuple(
-        _quality_result(quality_id, ir, judge_outcomes.get(quality_id))
-        for quality_id in case.quality_ids
+        _quality_result(quality_id, ir, judge_outcomes.get(quality_id)) for quality_id in case.quality_ids
     )
     required_control_ids = {
-        str(control.id)
-        for control in ir.controls.values()
-        if control.agent_id == case.agent_id and control.required
+        str(control.id) for control in ir.controls.values() if control.agent_id == case.agent_id and control.required
     }
     statuses = [result.status for result in expectations]
     statuses.extend(result.status for result in controls if result.control_id in required_control_ids)
@@ -344,9 +330,7 @@ def _threshold_results(
 ) -> tuple[ComparisonResult, ...]:
     comparisons: list[ComparisonResult] = []
     if thresholds.min_pass_rate is not None:
-        comparisons.append(
-            _comparison("threshold.pass_rate", summary.rates.pass_rate, ">=", thresholds.min_pass_rate)
-        )
+        comparisons.append(_comparison("threshold.pass_rate", summary.rates.pass_rate, ">=", thresholds.min_pass_rate))
     if thresholds.max_violation_rate is not None:
         comparisons.append(
             _comparison("threshold.violation_rate", summary.rates.violation_rate, "<=", thresholds.max_violation_rate)
