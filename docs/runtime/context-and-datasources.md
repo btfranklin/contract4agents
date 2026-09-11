@@ -45,9 +45,9 @@ composition investigate from IncidentCommander to LogInvestigator:
 Semantic analysis rejects missing target-input mappings.
 
 Materialization builds one strict input type for each agent and includes the
-declared parameters in the materialization plan. Host code uses
-`system.validate_agent_input(...)` or `system.serialize_agent_input(...)`
-before it starts an entry agent. This rejects missing fields, extra fields, and
+declared parameters in the materialization plan. Host code passes the selected
+native agent to `system.validate_input_for_agent(...)` or
+`system.serialize_input_for_agent(...)` before it starts that agent. This rejects missing fields, extra fields, and
 portable scalar coercions at the provider-neutral boundary. Provider adapters
 reuse the same input types for typed delegate boundaries.
 

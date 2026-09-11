@@ -73,8 +73,8 @@ async def run_support_request() -> None:
         with session.bind_attempt(attempt, agent="SupportResponder"):
             result = await Runner.run(
                 responder,
-                input=system.serialize_agent_input(
-                    "SupportResponder",
+                input=system.serialize_input_for_agent(
+                    responder,
                     {"question": "When will my order ship?"},
                 ),
             )

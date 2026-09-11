@@ -477,14 +477,14 @@ class MaterializationResult:
             for identifier, input_type in self.graph.input_types.items()
         )
 
-    def validate_agent_input(
+    def validate_input_for_agent(
         self,
-        agent_name: str,
+        agent: object,
         value: Mapping[str, object],
     ) -> object | None:
         """Validate one root-agent invocation against its contract signature."""
 
-        input_type = self._agent_input_type(agent_name)
+        agent_name, input_type = self._input_details_for_agent(agent)
         if not isinstance(value, Mapping):
             raise MaterializationError(
                 (
@@ -521,14 +521,14 @@ class MaterializationResult:
             )
         )
 
-    def serialize_agent_input(
+    def serialize_input_for_agent(
         self,
-        agent_name: str,
+        agent: object,
         value: Mapping[str, object],
     ) -> str:
         """Validate and serialize one root-agent invocation for an SDK runner."""
 
-        validated = self.validate_agent_input(agent_name, value)
+        validated = self.validate_input_for_agent(agent, value)
         if validated is None:
             return "{}"
         return cast(str, cast(Any, validated).model_dump_json())
@@ -539,12 +539,17 @@ class MaterializationResult:
 
         return self.graph.output_types
 
-    def _agent_input_type(self, agent_name: str) -> type[object] | None:
-        for identifier, input_type in self.graph.input_types.items():
-            if identifier.parts[0] == agent_name:
-                return input_type
+    def _input_details_for_agent(self, agent: object) -> tuple[str, type[object] | None]:
+        for identifier, native_agent in self.graph.agents.items():
+            if native_agent is agent:
+                return identifier.parts[0], self.graph.input_types[identifier]
         raise MaterializationError(
-            (MaterializationIssue("MAT205", f"Unknown materialized agent `{agent_name}`"),)
+            (
+                MaterializationIssue(
+                    "MAT205",
+                    "Input agent must belong to this materialized system",
+                ),
+            )
         )
 
 

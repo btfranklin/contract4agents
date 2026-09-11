@@ -117,13 +117,14 @@ An agent signature is the runtime input contract for that agent. Validate and
 serialize the input before the host calls its SDK runner:
 
 ```python
-run_input = system.serialize_agent_input(
-    "TriageAgent",
+triage_agent = system.agents["TriageAgent"]
+run_input = system.serialize_input_for_agent(
+    triage_agent,
     {"request": request_data},
 )
 ```
 
-`system.validate_agent_input(...)` returns the validated Pydantic value when
+`system.validate_input_for_agent(...)` returns the validated Pydantic value when
 the host needs it before serialization. `system.agent_input_types` exposes the
 same strict types by contract agent name. Invalid scalar coercions, missing
 fields, extra fields, and input for an agent with no parameters fail before a

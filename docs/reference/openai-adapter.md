@@ -228,11 +228,12 @@ Run the returned object with the normal SDK API:
 ```python
 from agents import Runner
 
-run_input = system.serialize_agent_input(
-    "ResearchLead",
+agent = system.agents["ResearchLead"]
+run_input = system.serialize_input_for_agent(
+    agent,
     {"request": user_request},
 )
-result = await Runner.run(system.agents["ResearchLead"], input=run_input)
+result = await Runner.run(agent, input=run_input)
 ```
 
 If the entry agent declares datasource or external context, resolve it through

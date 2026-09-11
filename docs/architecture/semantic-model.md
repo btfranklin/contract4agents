@@ -817,8 +817,8 @@ result = materialize(
 commander = result.agents["IncidentCommander"]
 artifacts = result.artifacts
 plan = result.plan
-run_input = result.serialize_agent_input(
-    "IncidentCommander",
+run_input = result.serialize_input_for_agent(
+    commander,
     {"request": request_data},
 )
 ```

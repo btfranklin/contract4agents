@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ from contract4agents.materialization import RecordingMaterializationTraceSink
 
 ROOT = Path(__file__).resolve().parents[3]
 EXAMPLES = ("incident-command", "multi-lens-research", "market-research-brief")
+TARGETS = ("openai", "strands", "google_adk")
 
 
 @pytest.mark.integration
@@ -41,3 +43,29 @@ def test_public_example_declares_materializes_and_evaluates(name: str) -> None:
     assert campaign.summary.rates.passed == 1
     assert campaign.summary.rates.violated == 0
     assert campaign.summary.rates.unverified == 0
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("target", TARGETS)
+def test_input_helpers_accept_real_native_agent_objects(target: str) -> None:
+    system = materialize(ROOT / "examples" / "incident-command", target, "test")
+    agent = system.agents["IncidentCommander"]
+    values = {
+        "request": {
+            "service": "checkout",
+            "start": "2026-09-10T12:00:00Z",
+            "end": "2026-09-10T12:15:00Z",
+            "symptom": "Elevated errors",
+        },
+        "service": {"id": "svc-1", "name": "Checkout", "owner": "Commerce"},
+        "window": {
+            "start": "2026-09-10T12:00:00Z",
+            "end": "2026-09-10T12:15:00Z",
+        },
+    }
+
+    validated = system.validate_input_for_agent(agent, values)
+    serialized = system.serialize_input_for_agent(agent, values)
+
+    assert validated is not None
+    assert json.loads(serialized)["request"]["service"] == "checkout"

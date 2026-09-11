@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import traceback
+from copy import copy
 from pathlib import Path
 from types import ModuleType
 from typing import Any, cast
@@ -175,6 +176,16 @@ def test_materialization_returns_the_compiler_artifacts_used_by_the_graph_and_pl
 
 def test_materialization_validates_and_serializes_root_agent_inputs(tmp_path: Path) -> None:
     write_project(tmp_path)
+    contract_path = tmp_path / "system.contract"
+    contract_path.write_text(
+        contract_path.read_text(encoding="utf-8")
+        + """
+
+agent CountWorker(count: integer) -> Result:
+    goal = "Return one counted result."
+""",
+        encoding="utf-8",
+    )
     result = materialize(
         tmp_path,
         "openai",
@@ -185,10 +196,16 @@ def test_materialization_validates_and_serializes_root_agent_inputs(tmp_path: Pa
     parent_id = semantic_id("agent", "Parent")
     assert result.plan.agents[parent_id].parameters == result.artifacts.ir.agents[parent_id].parameters
     assert result.agent_input_types["Parent"] is result.graph.input_types[parent_id]
+    parent = result.agents["Parent"]
+    count_worker = result.agents["CountWorker"]
 
-    validated = cast(Any, result.validate_agent_input("Parent", {"request": {"value": "hello"}}))
+    validated = cast(Any, result.validate_input_for_agent(parent, {"request": {"value": "hello"}}))
     assert validated.request.value == "hello"
-    assert result.serialize_agent_input("Parent", {"request": {"value": "hello"}}) == ('{"request":{"value":"hello"}}')
+    assert result.serialize_input_for_agent(parent, {"request": {"value": "hello"}}) == (
+        '{"request":{"value":"hello"}}'
+    )
+    counted = cast(Any, result.validate_input_for_agent(count_worker, {"count": 3}))
+    assert counted.count == 3
 
     invalid_inputs: tuple[object, ...] = (
         {},
@@ -199,12 +216,29 @@ def test_materialization_validates_and_serializes_root_agent_inputs(tmp_path: Pa
     )
     for invalid in invalid_inputs:
         with pytest.raises(MaterializationError) as caught:
-            result.validate_agent_input("Parent", cast(Any, invalid))
+            result.validate_input_for_agent(parent, cast(Any, invalid))
         assert [issue.code for issue in caught.value.issues] == ["MAT206"]
 
+    copied_parent = copy(parent)
+    assert copied_parent == parent
+    second_result = materialize(
+        tmp_path,
+        "openai",
+        "test",
+        provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
+    )
+    foreign_parent = second_result.agents["Parent"]
+    for unknown_agent in (object(), copied_parent, foreign_parent):
+        with pytest.raises(MaterializationError) as caught:
+            result.validate_input_for_agent(unknown_agent, {})
+        assert [issue.code for issue in caught.value.issues] == ["MAT205"]
+        assert caught.value.issues[0].message == "Input agent must belong to this materialized system"
+
+    cast(FakeAgent, parent).name = "Mutable SDK name"
     with pytest.raises(MaterializationError) as caught:
-        result.validate_agent_input("Missing", {})
-    assert [issue.code for issue in caught.value.issues] == ["MAT205"]
+        result.validate_input_for_agent(parent, {})
+    assert caught.value.issues[0].code == "MAT206"
+    assert "Input for agent `Parent`" in caught.value.issues[0].message
 
 
 @pytest.mark.parametrize(
@@ -279,7 +313,7 @@ type Request:
     )
 
     with pytest.raises(MaterializationError) as caught:
-        result.validate_agent_input("Parent", {"request": invalid_request})
+        result.validate_input_for_agent(result.agents["Parent"], {"request": invalid_request})
 
     error = caught.value
     issue = error.issues[0]
@@ -307,10 +341,11 @@ def test_materialization_rejects_input_for_parameter_free_agent(tmp_path: Path) 
     )
 
     assert result.agent_input_types["Worker"] is None
-    assert result.validate_agent_input("Worker", {}) is None
-    assert result.serialize_agent_input("Worker", {}) == "{}"
+    worker = result.agents["Worker"]
+    assert result.validate_input_for_agent(worker, {}) is None
+    assert result.serialize_input_for_agent(worker, {}) == "{}"
     with pytest.raises(MaterializationError) as caught:
-        result.serialize_agent_input("Worker", {"unexpected": True})
+        result.serialize_input_for_agent(worker, {"unexpected": True})
     assert [issue.code for issue in caught.value.issues] == ["MAT206"]
 
 
