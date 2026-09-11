@@ -508,9 +508,6 @@ class OpenAINormalizedTraceSession(NormalizedTraceSessionCore):
 __all__ = [
     "OpenAINormalizedTraceRouter",
     "OpenAINormalizedTraceSession",
-    "normalize_openai_exception_responses",
-    "normalize_openai_response_events",
-    "resolve_provider_tool_grant",
 ]
 
 

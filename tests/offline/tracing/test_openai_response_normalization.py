@@ -21,10 +21,12 @@ from contract4agents.tracing import (
     TraceEvent,
     TraceRunContext,
     TraceSemanticRefs,
+    validate_trace_conformance,
+)
+from contract4agents.tracing.openai import (
     normalize_openai_exception_responses,
     normalize_openai_response_events,
     resolve_provider_tool_grant,
-    validate_trace_conformance,
 )
 
 CONTRACT_DIGEST = f"sha256:{'a' * 64}"

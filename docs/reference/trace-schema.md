@@ -189,7 +189,8 @@ events = session.normalize_exception_responses(
 )
 ```
 
-`normalize_openai_exception_responses(...)` is the standalone equivalent. It
+`contract4agents.tracing.openai.normalize_openai_exception_responses(...)` is
+the standalone equivalent. It
 does not catch exceptions, decide retries, emit a generic agent failure, or
 infer that an SDK exception was a schema failure. Host-side canonical output
 validation can record the narrower fact through
@@ -223,7 +224,8 @@ retry is allowed.
 
 ## OpenAI Hosted-Call Mapping
 
-`normalize_openai_response_events(...)` is the standalone response-normalization API.
+`contract4agents.tracing.openai.normalize_openai_response_events(...)` is the
+standalone response-normalization API.
 For recognized provider-hosted call items it resolves exactly one enabled
 `provider_hosted` grant whose plan locator matches the agent, provider, and
 tool. The currently materialized OpenAI tool is `web_search_call`, matched to

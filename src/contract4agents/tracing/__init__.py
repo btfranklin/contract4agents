@@ -49,9 +49,6 @@ from contract4agents.tracing._models import (
 from contract4agents.tracing._openai import (
     OpenAINormalizedTraceRouter,
     OpenAINormalizedTraceSession,
-    normalize_openai_exception_responses,
-    normalize_openai_response_events,
-    resolve_provider_tool_grant,
 )
 from contract4agents.tracing._opentelemetry import (
     OpenTelemetrySpan,
@@ -134,9 +131,6 @@ __all__ = [
     "export_open_telemetry",
     "load_trace_jsonl",
     "loads_trace_jsonl",
-    "normalize_openai_exception_responses",
-    "normalize_openai_response_events",
-    "resolve_provider_tool_grant",
     "validate_trace_conformance",
     "validate_trace_closure",
     "write_trace_jsonl",
