@@ -44,8 +44,8 @@ def lookup(query: str):
     )
     system = materialize(
         tmp_path,
-        "openai",
-        "test",
+        target="openai",
+        profile="test",
         provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
     )
 
@@ -98,8 +98,8 @@ class SelectedProvider:
     event_loop_thread = str(threading.get_ident())
     system = materialize(
         tmp_path,
-        "openai",
-        "test",
+        target="openai",
+        profile="test",
         provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
     )
 

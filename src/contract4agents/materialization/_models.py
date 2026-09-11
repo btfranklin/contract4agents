@@ -11,13 +11,13 @@ from typing import Any, Literal, Protocol, cast, runtime_checkable
 
 from pydantic import BaseModel, ValidationError
 
-from contract4agents.compiler import CompilerArtifacts, artifact_digests
+from contract4agents.compiler import CompilerArtifacts
 from contract4agents.ir import CanonicalIR, FrozenJsonValue, FrozenMap, SemanticId, freeze_json
 from contract4agents.materialization._context import ContextRuntime, ResolvedContextValue
 from contract4agents.materialization._errors import MaterializationError, MaterializationIssue
 from contract4agents.materialization._tracing import MaterializationTraceSink
 from contract4agents.materialization._types import output_type_for, type_adapter_for
-from contract4agents.planning import MaterializationPlan, PlannerCapabilities
+from contract4agents.planning import MaterializationPlan, PlannedSystem, PlannerCapabilities
 from contract4agents.runtime import EnvironmentEnforcementEvidence, EnvironmentProvider
 from contract4agents.target_bindings import TargetBinding
 
@@ -425,14 +425,13 @@ class NativeAgentGraph:
 
 
 @dataclass(frozen=True)
-class MaterializedSystem:
+class MaterializedSystem(PlannedSystem):
     graph: NativeAgentGraph
-    plan: MaterializationPlan
-    artifacts: CompilerArtifacts
 
     def __post_init__(self) -> None:
         """Keep the returned compilation, plan, and graph evidence joined."""
 
+        super().__post_init__()
         if self.graph.context.ir is not self.artifacts.ir:
             raise ValueError("Materialization graph context must use the returned compiler IR")
         if set(self.graph.input_types) != set(self.plan.agents):
@@ -442,10 +441,6 @@ class MaterializedSystem:
             for identifier in self.plan.agents
         ):
             raise ValueError("Materialization plan inputs must use the returned compiler IR")
-        if self.plan.contract_digest != self.artifacts.contract_digest:
-            raise ValueError("Materialization plan must use the returned compiler contract digest")
-        if self.plan.artifact_digests != artifact_digests(self.artifacts):
-            raise ValueError("Materialization plan must use the returned compiler artifact digests")
         if self.graph.validation.contract_digest != self.artifacts.contract_digest:
             raise ValueError("Graph validation must use the returned compiler contract digest")
         if self.graph.validation.plan_digest != self.plan.plan_digest:

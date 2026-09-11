@@ -10,7 +10,7 @@ from typing import Any, cast
 import pytest
 from pydantic import ValidationError
 
-from contract4agents import materialize
+from contract4agents import PlannedSystem, materialize, plan_project
 from contract4agents.adapters._openai_names import openai_tool_name
 from contract4agents.compiler import CompilerArtifacts, artifact_digests
 from contract4agents.ir import (
@@ -79,8 +79,8 @@ def test_public_materialize_builds_and_validates_complete_native_graph(tmp_path:
 
     result = materialize(
         tmp_path,
-        "openai",
-        "test",
+        target="openai",
+        profile="test",
         provider=OpenAIMaterializationProvider(sdk),
     )
 
@@ -120,6 +120,29 @@ def test_public_materialize_builds_and_validates_complete_native_graph(tmp_path:
         result_model(value="ok", undeclared=True)
 
 
+def test_plan_project_returns_the_exact_plan_used_by_materialization(tmp_path: Path) -> None:
+    write_project(tmp_path)
+    provider = OpenAIMaterializationProvider(FakeOpenAISDK())
+
+    planned = plan_project(
+        tmp_path,
+        target="openai",
+        profile="test",
+        provider=provider,
+    )
+    materialized = materialize(
+        tmp_path,
+        target="openai",
+        profile="test",
+        provider=provider,
+    )
+
+    assert isinstance(planned, PlannedSystem)
+    assert planned.ir is planned.artifacts.ir
+    assert materialized.plan == planned.plan
+    assert materialized.artifacts == planned.artifacts
+
+
 def test_materialization_rejects_a_loaded_host_module_without_replacing_it(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -132,8 +155,8 @@ def test_materialization_rejects_a_loaded_host_module_without_replacing_it(
     with pytest.raises(MaterializationError) as caught:
         materialize(
             tmp_path,
-            "openai",
-            "test",
+            target="openai",
+            profile="test",
             provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
         )
 
@@ -160,8 +183,8 @@ def test_materialization_returns_the_compiler_artifacts_used_by_the_graph_and_pl
     monkeypatch.setattr(entrypoint, "compile_project", compile_spy)
     result = materialize(
         tmp_path,
-        "openai",
-        "test",
+        target="openai",
+        profile="test",
         provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
     )
 
@@ -188,8 +211,8 @@ agent CountWorker(count: integer) -> Result:
     )
     result = materialize(
         tmp_path,
-        "openai",
-        "test",
+        target="openai",
+        profile="test",
         provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
     )
 
@@ -233,8 +256,8 @@ agent CountWorker(count: integer) -> Result:
     assert copied_parent == parent
     second_result = materialize(
         tmp_path,
-        "openai",
-        "test",
+        target="openai",
+        profile="test",
         provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
     )
     foreign_parent = second_result.agents["Parent"]
@@ -334,8 +357,8 @@ type Request:
     )
     result = materialize(
         tmp_path,
-        "openai",
-        "test",
+        target="openai",
+        profile="test",
         provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
     )
 
@@ -362,8 +385,8 @@ def test_materialization_rejects_input_for_parameter_free_agent(tmp_path: Path) 
     _write_parameter_free_project(tmp_path)
     result = materialize(
         tmp_path,
-        "openai",
-        "test",
+        target="openai",
+        profile="test",
         provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
     )
 
@@ -382,8 +405,8 @@ async def test_parameter_free_agent_supports_context_and_input_type_lookup(tmp_p
     _write_parameter_free_project(tmp_path)
     result = materialize(
         tmp_path,
-        "openai",
-        "test",
+        target="openai",
+        profile="test",
         provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
     )
     worker = result.agents["Worker"]
@@ -404,8 +427,8 @@ def test_injected_provider_supports_an_unknown_matching_adapter(tmp_path: Path) 
 
     result = materialize(
         tmp_path,
-        "custom",
-        "test",
+        target="custom",
+        profile="test",
         provider=CustomMaterializationProvider(FakeOpenAISDK()),
     )
 
@@ -419,8 +442,8 @@ def test_materialization_fails_if_native_graph_does_not_match_plan(tmp_path: Pat
     with pytest.raises(MaterializationError) as caught:
         materialize(
             tmp_path,
-            "openai",
-            "test",
+            target="openai",
+            profile="test",
             provider=OpenAIMaterializationProvider(FakeOpenAISDK(drop_attached_tools=True)),
         )
 
@@ -440,8 +463,8 @@ def test_materialization_fails_if_final_tool_schema_drops_contract_constraints(t
     with pytest.raises(MaterializationError) as caught:
         materialize(
             tmp_path,
-            "openai",
-            "test",
+            target="openai",
+            profile="test",
             provider=OpenAIMaterializationProvider(FakeOpenAISDK(drift_tool_schema=True)),
         )
 
@@ -454,8 +477,8 @@ def test_materialization_trace_sink_receives_stable_validated_configuration_even
 
     result = materialize(
         tmp_path,
-        "openai",
-        "test",
+        target="openai",
+        profile="test",
         provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
         materialization_trace_sink=sink,
     )

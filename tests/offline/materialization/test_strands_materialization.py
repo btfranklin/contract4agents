@@ -4,7 +4,6 @@ import importlib
 import json
 from collections.abc import AsyncIterator, Mapping, Sequence
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -46,8 +45,8 @@ def test_strands_provider_builds_validated_graph_with_exact_controls(
 
     result = materialize(
         tmp_path,
-        "strands",
-        "test",
+        target="strands",
+        profile="test",
         provider=StrandsMaterializationProvider(sdk),
         materialization_trace_sink=sink,
     )
@@ -111,8 +110,8 @@ def test_strands_provider_consumes_model_factories_once_per_agent(
 
     result = materialize(
         tmp_path,
-        "strands",
-        "test",
+        target="strands",
+        profile="test",
         provider=StrandsMaterializationProvider(sdk),
     )
 
@@ -135,8 +134,8 @@ def test_strands_provider_rejects_a_native_graph_that_drops_tools(
     with pytest.raises(MaterializationError) as caught:
         materialize(
             tmp_path,
-            "strands",
-            "test",
+            target="strands",
+            profile="test",
             provider=StrandsMaterializationProvider(FakeStrandsSDK(drop_attached_tools=True)),
         )
 
@@ -227,8 +226,8 @@ async def test_real_strands_sdk_builds_and_runs_typed_tools_without_live_calls(
 
     result = materialize(
         tmp_path,
-        "strands",
-        "test",
+        target="strands",
+        profile="test",
         provider=provider,
     )
 
@@ -406,7 +405,7 @@ async def test_real_strands_incident_slice_closes_after_delegate_approval_resume
     monkeypatch.setattr(implementation_module, "make_model", make_model)
     artifacts = compile_project(tmp_path)
     provider = StrandsMaterializationProvider()
-    result = materialize(tmp_path, "strands", "test", provider=provider)
+    result = materialize(tmp_path, target="strands", profile="test", provider=provider)
     router = StrandsNormalizedTraceRouter()
     router.attach(result)
     session = router.open_session(result, run_id="strands-incident-poc")
@@ -462,8 +461,8 @@ def test_strands_builds_cyclic_delegate_declarations_in_two_passes(
 
     result = materialize(
         tmp_path,
-        "strands",
-        "test",
+        target="strands",
+        profile="test",
         provider=StrandsMaterializationProvider(FakeStrandsSDK()),
     )
 
@@ -485,8 +484,8 @@ def test_strands_builds_cyclic_delegate_declarations_in_two_passes(
     strands = pytest.importorskip("strands")
     real = materialize(
         tmp_path,
-        "strands",
-        "test",
+        target="strands",
+        profile="test",
         provider=StrandsMaterializationProvider(),
     )
     assert isinstance(real.agents["First"], strands.Agent)
@@ -501,8 +500,8 @@ def test_strands_wraps_named_environment_delegate(
 
     result = materialize(
         tmp_path,
-        "strands",
-        "test",
+        target="strands",
+        profile="test",
         provider=StrandsMaterializationProvider(FakeStrandsSDK()),
     )
 

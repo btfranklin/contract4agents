@@ -28,8 +28,8 @@ async def test_materialized_context_runtime_maps_validates_caches_renders_and_tr
     runtime_sink = RecordingNormalizedTraceSink()
     result = materialize(
         tmp_path,
-        "openai",
-        "test",
+        target="openai",
+        profile="test",
         provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
         normalized_trace_sink=runtime_sink,
     )
@@ -88,8 +88,8 @@ async def test_materialized_context_runtime_rejects_invalid_invocation_shape(tmp
     write_project(tmp_path)
     result = materialize(
         tmp_path,
-        "openai",
-        "test",
+        target="openai",
+        profile="test",
         provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
     )
 
@@ -101,8 +101,8 @@ async def test_materialized_context_runtime_rejects_invalid_invocation_shape(tmp
     assert copied_child == child
     second_result = materialize(
         tmp_path,
-        "openai",
-        "test",
+        target="openai",
+        profile="test",
         provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
     )
     for unknown_agent in (object(), copied_child, second_result.agents["Child"]):
@@ -123,8 +123,8 @@ async def test_context_runtime_enforces_thread_cache_and_records_provider_failur
     sink = RecordingNormalizedTraceSink()
     result = materialize(
         tmp_path,
-        "openai",
-        "test",
+        target="openai",
+        profile="test",
         provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
         normalized_trace_sink=sink,
     )
@@ -150,8 +150,8 @@ async def test_context_runtime_enforces_thread_cache_and_records_provider_failur
     broken_sink = RecordingNormalizedTraceSink()
     broken = materialize(
         broken_root,
-        "openai",
-        "test",
+        target="openai",
+        profile="test",
         provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
         normalized_trace_sink=broken_sink,
     )
@@ -175,8 +175,8 @@ async def test_context_runtime_uses_single_flight_and_requires_inactive_completi
     write_project(tmp_path)
     result = materialize(
         tmp_path,
-        "openai",
-        "test",
+        target="openai",
+        profile="test",
         provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
     )
     started = asyncio.Event()
@@ -251,8 +251,8 @@ async def test_context_runtime_waiter_cancellation_does_not_cancel_shared_resolu
     write_project(tmp_path)
     result = materialize(
         tmp_path,
-        "openai",
-        "test",
+        target="openai",
+        profile="test",
         provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
     )
     started = asyncio.Event()
@@ -320,8 +320,8 @@ async def test_context_runtime_retries_after_provider_cancellation(tmp_path: Pat
     write_project(tmp_path)
     result = materialize(
         tmp_path,
-        "openai",
-        "test",
+        target="openai",
+        profile="test",
         provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
     )
     calls = 0

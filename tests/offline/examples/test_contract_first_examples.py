@@ -30,8 +30,8 @@ def test_public_example_declares_materializes_and_evaluates(name: str) -> None:
 
     result = materialize(
         project,
-        "openai",
-        "test",
+        target="openai",
+        profile="test",
         materialization_trace_sink=trace_sink,
     )
     artifacts = result.artifacts
@@ -55,7 +55,7 @@ def test_public_example_declares_materializes_and_evaluates(name: str) -> None:
 @pytest.mark.integration
 @pytest.mark.parametrize("target", TARGETS)
 def test_input_helpers_accept_real_native_agent_objects(target: str) -> None:
-    system = materialize(ROOT / "examples" / "incident-command", target, "test")
+    system = materialize(ROOT / "examples" / "incident-command", target=target, profile="test")
     agent = system.agents["IncidentCommander"]
     values = {
         "request": {
@@ -100,7 +100,7 @@ def test_input_helpers_accept_real_native_agent_objects(target: str) -> None:
     ),
 )
 def test_trace_sessions_bind_real_native_agent_objects(target: str, router_type: type[Any]) -> None:
-    system = materialize(ROOT / "examples" / "incident-command", target, "test")
+    system = materialize(ROOT / "examples" / "incident-command", target=target, profile="test")
     agent = system.agents["IncidentCommander"]
     router = router_type()
     session = router.open_session(system, run_id=f"{target}-offline-binding")

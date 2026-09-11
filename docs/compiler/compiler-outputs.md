@@ -98,6 +98,24 @@ the current working directory, and obvious source-owned directories.
 join target bindings to the canonical IR after compilation and report target
 support without changing portable semantics.
 
+Application code can make the same provider-neutral plan without constructing
+native agents:
+
+```python
+from contract4agents import plan_project
+
+system = plan_project(
+    "agent_contracts",
+    target="openai",
+    profile="production",
+)
+print(system.plan.plan_digest)
+```
+
+`plan_project()` returns a `PlannedSystem`. `materialize()` returns a
+`MaterializedSystem`, which adds native agents to the same compiled artifacts
+and plan.
+
 Each planned agent includes its typed invocation parameters. Parameter changes
 therefore change the plan digest. Materialization builds one strict input type
 per agent and exposes provider-neutral validation and serialization before the
@@ -106,6 +124,6 @@ host starts an SDK runner.
 Materialization reads the final native configuration and tool/output schemas. It
 compares them with the values derived from the contract and plan. A mismatch or
 missing required public property stops materialization. The returned
-`graph.validation` object contains deterministic configuration and schema
+`system.validation` object contains deterministic configuration and schema
 conformance records for assurance review. Arbitrary provider option payloads
 are represented by digests so credentials do not enter evidence files.

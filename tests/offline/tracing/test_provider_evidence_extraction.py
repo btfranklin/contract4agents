@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parents[3]
 def test_session_provider_reports_bind_attempt_identity_and_close_channels() -> None:
     project = ROOT / "examples" / "incident-command"
     compile_project(project)
-    system = materialize(project, "openai", "test")
+    system = materialize(project, target="openai", profile="test")
     router = OpenAINormalizedTraceRouter()
     session = router.open_session(system, run_id="provider-evidence")
     attempt = TraceAttempt("commander:1", "commander-attempt-1", 1)

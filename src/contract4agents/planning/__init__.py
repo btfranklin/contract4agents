@@ -36,6 +36,7 @@ from contract4agents.planning._serialization import (
     compute_plan_digest,
     materialization_plan_data,
 )
+from contract4agents.planning._system import PlannedSystem
 
 __all__ = [
     "PLAN_VERSION",
@@ -63,6 +64,7 @@ __all__ = [
     "PlannerCapabilities",
     "PlanningError",
     "PlanningIssue",
+    "PlannedSystem",
     "canonical_materialization_plan_json",
     "compute_plan_digest",
     "describe_locator",

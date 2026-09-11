@@ -85,7 +85,7 @@ def _event(
 def test_openai_response_normalization_resolves_hosted_grants_and_excludes_payloads() -> None:
     project = ROOT / "examples" / "market-research-brief"
     artifacts = compile_project(project)
-    system = materialize(project, "openai", "test")
+    system = materialize(project, target="openai", profile="test")
     agent_id = SemanticId.parse("agent:CurrentTruthScout")
     context = TraceRunContext(
         "run-hosted",
@@ -166,7 +166,7 @@ def test_openai_response_normalization_resolves_hosted_grants_and_excludes_paylo
 def test_openai_response_normalization_emits_undeclared_evidence_and_assurance_rejects_it() -> None:
     project = ROOT / "examples" / "market-research-brief"
     artifacts = compile_project(project)
-    system = materialize(project, "openai", "test")
+    system = materialize(project, target="openai", profile="test")
     context = TraceRunContext(
         "run-undeclared",
         "run-undeclared",
@@ -197,7 +197,7 @@ def test_openai_response_normalization_emits_undeclared_evidence_and_assurance_r
 def test_openai_response_normalization_fails_closed_for_other_hosted_calls() -> None:
     project = ROOT / "examples" / "market-research-brief"
     artifacts = compile_project(project)
-    system = materialize(project, "openai", "test")
+    system = materialize(project, target="openai", profile="test")
     context = TraceRunContext(
         "run-other-hosted",
         "run-other-hosted",
@@ -246,7 +246,7 @@ def test_openai_response_normalization_preserves_hosted_call_status(
     event_type: str,
 ) -> None:
     project = ROOT / "examples" / "market-research-brief"
-    system = materialize(project, "openai", "test")
+    system = materialize(project, target="openai", profile="test")
     context = TraceRunContext(
         f"run-{status}",
         f"run-{status}",
@@ -266,7 +266,7 @@ def test_openai_response_normalization_preserves_hosted_call_status(
 
 def test_openai_response_normalization_ignores_non_hosted_response_items() -> None:
     project = ROOT / "examples" / "market-research-brief"
-    system = materialize(project, "openai", "test")
+    system = materialize(project, target="openai", profile="test")
     context = TraceRunContext(
         "run-non-hosted",
         "run-non-hosted",
@@ -299,7 +299,7 @@ def test_openai_response_normalization_ignores_non_hosted_response_items() -> No
 def test_openai_processor_can_merge_hosted_response_events_into_its_sink() -> None:
     project = ROOT / "examples" / "market-research-brief"
     compile_project(project)
-    system = materialize(project, "openai", "test")
+    system = materialize(project, target="openai", profile="test")
     durable = RecordingNormalizedTraceSink()
     router = OpenAINormalizedTraceRouter()
     session = router.open_session(
@@ -327,7 +327,7 @@ def test_openai_processor_can_merge_hosted_response_events_into_its_sink() -> No
 
 def test_openai_exception_normalization_preserves_responses_and_attempt_identity() -> None:
     project = ROOT / "examples" / "market-research-brief"
-    system = materialize(project, "openai", "test")
+    system = materialize(project, target="openai", profile="test")
     context = TraceRunContext(
         "run-exception",
         "run-exception",

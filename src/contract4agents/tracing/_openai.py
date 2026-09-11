@@ -26,7 +26,6 @@ from contract4agents.tracing._models import (
 from contract4agents.tracing._openai_responses import (
     normalize_openai_exception_responses,
     normalize_openai_response_events,
-    resolve_provider_tool_grant,
 )
 from contract4agents.tracing._openai_spans import OpenAISpanMapper
 from contract4agents.tracing._openai_utils import (

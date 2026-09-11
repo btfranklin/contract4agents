@@ -27,7 +27,11 @@ from contract4agents.compiler import artifact_digests, compile_project
 from contract4agents.diagnostics import ContractError, Diagnostic, raise_if_errors
 from contract4agents.eval_campaigns import CampaignConfig, CampaignThresholds, FileEvalProvider, run_campaign
 from contract4agents.ir import CanonicalIR, build_canonical_ir
-from contract4agents.materialization import GraphValidationEvidence
+from contract4agents.materialization import (
+    GraphValidationEvidence,
+    MaterializationError,
+    plan_project,
+)
 from contract4agents.output_paths import validate_output_dir
 from contract4agents.parser import parse_project
 from contract4agents.planning import (
@@ -173,8 +177,17 @@ def plan_cmd(
     """Resolve a native-object-free materialization plan without constructing agents."""
 
     try:
-        _ir, plan, _bindings = _resolve_plan(root, target, profile, bindings_path)
-        rendered = json.dumps(materialization_plan_data(plan), indent=2, sort_keys=True) + "\n"
+        system = plan_project(
+            root,
+            target=target,
+            profile=profile,
+            bindings=bindings_path,
+        )
+        rendered = json.dumps(
+            materialization_plan_data(system.plan),
+            indent=2,
+            sort_keys=True,
+        ) + "\n"
         if output_path is None:
             click.echo(rendered, nl=False)
         else:
@@ -187,6 +200,10 @@ def plan_cmd(
     except PlanningError as exc:
         for issue in exc.issues:
             click.echo(issue.format(), err=True)
+        raise click.ClickException("Contract4Agents planning failed") from exc
+    except MaterializationError as exc:
+        for materialization_issue in exc.issues:
+            click.echo(materialization_issue.format(), err=True)
         raise click.ClickException("Contract4Agents planning failed") from exc
 
 

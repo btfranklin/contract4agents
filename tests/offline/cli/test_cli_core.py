@@ -305,7 +305,7 @@ def test_cli_contract_first_workflow(tmp_path: Path) -> None:
 
 def _evaluated_trace():  # type: ignore[no-untyped-def]
     artifacts = compile_project(EXAMPLE)
-    result = materialize(EXAMPLE, "openai", "test")
+    result = materialize(EXAMPLE, target="openai", profile="test")
     campaign = asyncio.run(
         run_campaign(
             artifacts.ir,

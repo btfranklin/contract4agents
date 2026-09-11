@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -16,7 +17,7 @@ from contract4agents.materialization._models import (
 )
 from contract4agents.materialization._tracing import NOOP_MATERIALIZATION_TRACE_SINK, MaterializationTraceSink
 from contract4agents.materialization._types import build_agent_input_types, build_pydantic_types
-from contract4agents.planning import plan_materialization
+from contract4agents.planning import PlannedSystem, plan_materialization
 from contract4agents.runtime import EnvironmentProvider, InProcessEnvironment
 from contract4agents.runtime._project_imports import load_project_python_ref as _load_project_python_ref
 from contract4agents.target_bindings import (
@@ -30,16 +31,92 @@ from contract4agents.tracing import NormalizedTraceSink
 
 def materialize(
     root: Path | str,
+    *,
     target: str,
     profile: str,
     bindings: TargetBindings | Path | str | None = None,
-    *,
     provider: MaterializationProvider | None = None,
     materialization_trace_sink: MaterializationTraceSink | None = None,
     normalized_trace_sink: NormalizedTraceSink | None = None,
 ) -> MaterializedSystem:
     """Compile, plan, construct, and validate one framework-native agent graph."""
 
+    prepared = _prepare_system(
+        root,
+        target=target,
+        profile=profile,
+        bindings=bindings,
+        provider=provider,
+    )
+    project_root = prepared.project_root
+    artifacts = prepared.system.artifacts
+    plan = prepared.system.plan
+    selected_provider = prepared.provider
+    target_binding = prepared.target_binding
+    environment = prepared.environment
+    implementations = _resolve_implementations(project_root, plan)
+    output_types = build_pydantic_types(artifacts.ir)
+    input_types = build_agent_input_types(artifacts.ir, output_types)
+    context_runtime = ContextRuntime(
+        artifacts.ir,
+        plan,
+        implementations,
+        output_types,
+        trace_sink=normalized_trace_sink,
+    )
+    graph = selected_provider.build_graph(
+        ir=artifacts.ir,
+        artifacts=artifacts,
+        target=target_binding,
+        plan=plan,
+        implementations=implementations,
+        input_types=input_types,
+        output_types=output_types,
+        context_runtime=context_runtime,
+        environment=environment,
+        materialization_trace_sink=(
+            materialization_trace_sink or NOOP_MATERIALIZATION_TRACE_SINK
+        ),
+    )
+    return MaterializedSystem(artifacts=artifacts, plan=plan, graph=graph)
+
+
+def plan_project(
+    root: Path | str,
+    *,
+    target: str,
+    profile: str,
+    bindings: TargetBindings | Path | str | None = None,
+    provider: MaterializationProvider | None = None,
+) -> PlannedSystem:
+    """Compile and plan one target without constructing native agents."""
+
+    return _prepare_system(
+        root,
+        target=target,
+        profile=profile,
+        bindings=bindings,
+        provider=provider,
+    ).system
+
+
+@dataclass(frozen=True)
+class _PreparedSystem:
+    project_root: Path
+    system: PlannedSystem
+    target_binding: TargetBinding
+    provider: MaterializationProvider
+    environment: EnvironmentProvider | None
+
+
+def _prepare_system(
+    root: Path | str,
+    *,
+    target: str,
+    profile: str,
+    bindings: TargetBindings | Path | str | None,
+    provider: MaterializationProvider | None,
+) -> _PreparedSystem:
     project_root = Path(root).resolve()
     artifacts = compile_project(project_root)
     resolved_bindings = _load_bindings(project_root, bindings)
@@ -89,31 +166,13 @@ def materialize(
         capabilities=selected_provider.planner_capabilities(environment),
         artifact_digests=artifact_digests(artifacts),
     )
-    implementations = _resolve_implementations(project_root, plan)
-    output_types = build_pydantic_types(artifacts.ir)
-    input_types = build_agent_input_types(artifacts.ir, output_types)
-    context_runtime = ContextRuntime(
-        artifacts.ir,
-        plan,
-        implementations,
-        output_types,
-        trace_sink=normalized_trace_sink,
-    )
-    graph = selected_provider.build_graph(
-        ir=artifacts.ir,
-        artifacts=artifacts,
-        target=target_binding,
-        plan=plan,
-        implementations=implementations,
-        input_types=input_types,
-        output_types=output_types,
-        context_runtime=context_runtime,
+    return _PreparedSystem(
+        project_root=project_root,
+        system=PlannedSystem(artifacts=artifacts, plan=plan),
+        target_binding=target_binding,
+        provider=selected_provider,
         environment=environment,
-        materialization_trace_sink=(
-            materialization_trace_sink or NOOP_MATERIALIZATION_TRACE_SINK
-        ),
     )
-    return MaterializedSystem(graph=graph, plan=plan, artifacts=artifacts)
 
 
 def _load_bindings(
@@ -261,4 +320,4 @@ def _resolve_implementations(root: Path, plan: object) -> FrozenMap[SemanticId, 
     if issues:
         raise MaterializationError(tuple(issues))
     return FrozenMap(values)
-__all__ = ["materialize"]
+__all__ = ["materialize", "plan_project"]

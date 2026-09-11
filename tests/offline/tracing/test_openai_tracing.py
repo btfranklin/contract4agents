@@ -97,7 +97,7 @@ def _event(
 def test_openai_processor_correlates_native_spans_without_copying_provider_payloads() -> None:
     project = ROOT / "examples" / "incident-command"
     compile_project(project)
-    system = materialize(project, "openai", "test")
+    system = materialize(project, target="openai", profile="test")
     router = OpenAINormalizedTraceRouter()
     session = router.open_session(
         system,
@@ -157,8 +157,8 @@ def test_openai_processor_correlates_native_spans_without_copying_provider_paylo
 
 def test_trace_session_requires_agents_from_its_materialized_system() -> None:
     project = ROOT / "examples" / "incident-command"
-    system = materialize(project, "openai", "test")
-    foreign_system = materialize(project, "openai", "test")
+    system = materialize(project, target="openai", profile="test")
+    foreign_system = materialize(project, target="openai", profile="test")
     agent = system.agents["IncidentCommander"]
     copied_agent = copy(agent)
     assert copied_agent == agent
@@ -195,7 +195,7 @@ def test_trace_session_requires_agents_from_its_materialized_system() -> None:
 def test_host_domain_validation_is_distinct_from_contract_structure() -> None:
     project = ROOT / "examples" / "incident-command"
     artifacts = compile_project(project)
-    system = materialize(project, "openai", "test")
+    system = materialize(project, target="openai", profile="test")
     session = OpenAINormalizedTraceRouter().open_session(
         system,
         run_id="run-domain-validation",
@@ -236,7 +236,7 @@ def test_host_domain_validation_is_distinct_from_contract_structure() -> None:
 def test_openai_processors_capture_only_their_bound_sdk_trace() -> None:
     project = ROOT / "examples" / "incident-command"
     compile_project(project)
-    system = materialize(project, "openai", "test")
+    system = materialize(project, target="openai", profile="test")
     router = OpenAINormalizedTraceRouter()
     first = router.open_session(system, run_id="run-first")
     second = router.open_session(system, run_id="run-second")
@@ -276,7 +276,7 @@ def test_openai_processors_capture_only_their_bound_sdk_trace() -> None:
 def test_openai_router_session_closes_lifecycle_and_zero_response_batch() -> None:
     project = ROOT / "examples" / "incident-command"
     compile_project(project)
-    system = materialize(project, "openai", "test")
+    system = materialize(project, target="openai", profile="test")
     router = OpenAINormalizedTraceRouter()
     session = router.open_session(system, run_id="run-closed")
     attempt = TraceAttempt("commander:1", "commander-attempt-1", 1)
@@ -311,7 +311,7 @@ def test_openai_router_session_closes_lifecycle_and_zero_response_batch() -> Non
 def test_openai_session_snapshot_binds_frontier_without_requiring_terminal_selection() -> None:
     project = ROOT / "examples" / "incident-command"
     compile_project(project)
-    system = materialize(project, "openai", "test")
+    system = materialize(project, target="openai", profile="test")
     router = OpenAINormalizedTraceRouter()
     session = router.open_session(system, run_id="run-snapshot")
     attempt = TraceAttempt("commander:1", "commander-attempt-1", 1)
@@ -364,7 +364,7 @@ def test_openai_session_retains_atomic_sink_frontier_when_emit_fails(
 ) -> None:
     project = ROOT / "examples" / "incident-command"
     compile_project(project)
-    system = materialize(project, "openai", "test")
+    system = materialize(project, target="openai", profile="test")
     context = TraceRunContext(
         "run-sink-failure",
         "run-sink-failure",
@@ -400,7 +400,7 @@ def test_openai_session_retains_atomic_sink_frontier_when_emit_fails(
 def test_openai_response_normalization_retains_acknowledged_prefix_on_sink_failure() -> None:
     project = ROOT / "examples" / "market-research-brief"
     compile_project(project)
-    system = materialize(project, "openai", "test")
+    system = materialize(project, target="openai", profile="test")
     sink = _FailOnEmissionSink(2)
     session = OpenAINormalizedTraceRouter().open_session(
         system,
@@ -432,7 +432,7 @@ def test_openai_response_normalization_retains_acknowledged_prefix_on_sink_failu
 def test_openai_span_failure_does_not_commit_mapping_or_orphaned_end_events() -> None:
     project = ROOT / "examples" / "incident-command"
     compile_project(project)
-    system = materialize(project, "openai", "test")
+    system = materialize(project, target="openai", profile="test")
     sink = _FailOnEmissionSink(1)
     router = OpenAINormalizedTraceRouter()
     session = router.open_session(
@@ -468,7 +468,7 @@ def test_openai_span_failure_does_not_commit_mapping_or_orphaned_end_events() ->
 def test_openai_span_end_failure_leaves_lifecycle_incomplete_at_accepted_prefix() -> None:
     project = ROOT / "examples" / "incident-command"
     compile_project(project)
-    system = materialize(project, "openai", "test")
+    system = materialize(project, target="openai", profile="test")
     sink = _FailOnEmissionSink(3)
     router = OpenAINormalizedTraceRouter()
     session = router.open_session(
@@ -508,7 +508,7 @@ def test_openai_span_end_failure_leaves_lifecycle_incomplete_at_accepted_prefix(
 def test_openai_trace_start_and_close_remain_retryable_after_sink_failure() -> None:
     project = ROOT / "examples" / "incident-command"
     compile_project(project)
-    system = materialize(project, "openai", "test")
+    system = materialize(project, target="openai", profile="test")
     trace_sink = _FailOnEmissionSink(1)
     router = OpenAINormalizedTraceRouter()
     traced = router.open_session(
@@ -544,7 +544,7 @@ def test_openai_trace_start_and_close_remain_retryable_after_sink_failure() -> N
 def test_openai_session_resumes_validated_closure_and_retry_chain() -> None:
     project = ROOT / "examples" / "incident-command"
     compile_project(project)
-    system = materialize(project, "openai", "test")
+    system = materialize(project, target="openai", profile="test")
     router = OpenAINormalizedTraceRouter()
     first = router.open_session(system, run_id="run-resumed")
     original = TraceAttempt("commander:1", "commander-attempt-1", 1)
@@ -683,7 +683,7 @@ def test_openai_session_resumes_validated_closure_and_retry_chain() -> None:
 def test_openai_session_close_releases_unended_provider_trace() -> None:
     project = ROOT / "examples" / "incident-command"
     compile_project(project)
-    system = materialize(project, "openai", "test")
+    system = materialize(project, target="openai", profile="test")
     router = OpenAINormalizedTraceRouter()
     session = router.open_session(system, run_id="run-abandoned")
     attempt = TraceAttempt("commander:1", "commander-attempt-1", 1)
@@ -717,7 +717,7 @@ def test_openai_session_close_releases_unended_provider_trace() -> None:
 def test_openai_processor_retains_model_metadata_without_generation_payloads() -> None:
     project = ROOT / "examples" / "incident-command"
     compile_project(project)
-    system = materialize(project, "openai", "test")
+    system = materialize(project, target="openai", profile="test")
     router = OpenAINormalizedTraceRouter()
     session = router.open_session(
         system,
@@ -757,7 +757,7 @@ def test_openai_processor_retains_model_metadata_without_generation_payloads() -
 def test_openai_processor_retains_model_from_agents_sdk_response_span() -> None:
     project = ROOT / "examples" / "market-research-brief"
     compile_project(project)
-    system = materialize(project, "openai", "test")
+    system = materialize(project, target="openai", profile="test")
     router = OpenAINormalizedTraceRouter()
     session = router.open_session(
         system,
@@ -800,7 +800,7 @@ def test_openai_processor_retains_model_from_agents_sdk_response_span() -> None:
 def test_openai_processor_binds_attempt_per_span_until_span_end() -> None:
     project = ROOT / "examples" / "incident-command"
     compile_project(project)
-    system = materialize(project, "openai", "test")
+    system = materialize(project, target="openai", profile="test")
     router = OpenAINormalizedTraceRouter()
     session = router.open_session(
         system,

@@ -30,7 +30,7 @@ def test_concrete_openai_materializer_builds_real_sdk_objects_without_live_calls
 
     write_project(tmp_path)
 
-    result = materialize(tmp_path, "openai", "test")
+    result = materialize(tmp_path, target="openai", profile="test")
 
     parent = result.agents["Parent"]
     child = result.agents["Child"]
@@ -63,7 +63,7 @@ effort = "high"
         encoding="utf-8",
     )
 
-    result = materialize(tmp_path, "openai", "test")
+    result = materialize(tmp_path, target="openai", profile="test")
 
     parent_settings = cast(Any, result.agents["Parent"]).model_settings
     child_settings = cast(Any, result.agents["Child"]).model_settings
@@ -132,7 +132,7 @@ def test_openai_tool_uses_contract_schema_instead_of_callable_annotations(tmp_pa
         )
     )
 
-    result = materialize(tmp_path, "openai", "test")
+    result = materialize(tmp_path, target="openai", profile="test")
     tool = cast(FunctionTool, cast(Any, result.agents["Child"]).tools[0])
     query_schema = cast(dict[str, object], tool.params_json_schema["properties"])["query"]
 
@@ -207,7 +207,7 @@ def context():
 """
     )
 
-    system = materialize(tmp_path, "openai", "test")
+    system = materialize(tmp_path, target="openai", profile="test")
     child = cast(Any, system.agents["Child"])
     tool = cast(FunctionTool, child.tools[0])
 
@@ -314,7 +314,7 @@ def context():
 """
     )
 
-    system = materialize(tmp_path, "openai", "test")
+    system = materialize(tmp_path, target="openai", profile="test")
     tool = cast(FunctionTool, cast(Any, system.agents["Child"]).tools[0])
 
     with pytest.raises(ValidationError) as caught:

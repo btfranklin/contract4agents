@@ -34,10 +34,10 @@ from contract4agents.tracing import (
     export_open_telemetry,
     load_trace_jsonl,
     loads_trace_jsonl,
-    normalize_openai_response_events,
     validate_trace_conformance,
     write_trace_jsonl,
 )
+from contract4agents.tracing.openai import normalize_openai_response_events
 
 CONTRACT_DIGEST = f"sha256:{'a' * 64}"
 PLAN_DIGEST = f"sha256:{'b' * 64}"
@@ -230,7 +230,7 @@ def test_atomic_trace_file_sink_does_not_advance_memory_when_write_fails(
 def test_trace_conformance_rejects_missing_unknown_disabled_and_mismatched_tool_identity() -> None:
     project = ROOT / "examples" / "market-research-brief"
     artifacts = compile_project(project)
-    system = materialize(project, "openai", "test")
+    system = materialize(project, target="openai", profile="test")
     context = TraceRunContext(
         "run-conformance",
         "run-conformance",

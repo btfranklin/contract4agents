@@ -55,7 +55,7 @@ def test_cli_reports_invalid_normalized_trace(tmp_path: Path) -> None:
 def test_cli_assure_assesses_versioned_run_spec_evidence(tmp_path: Path) -> None:
     project = ROOT / "examples" / "multi-lens-research"
     artifacts = compile_project(project)
-    materialized = materialize(project, "openai", "test")
+    materialized = materialize(project, target="openai", profile="test")
     campaign = asyncio.run(
         run_campaign(
             artifacts.ir,

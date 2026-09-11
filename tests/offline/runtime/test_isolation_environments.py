@@ -23,8 +23,8 @@ def test_supported_in_process_isolation_is_configured_and_evidenced(tmp_path: Pa
 
     result = materialize(
         tmp_path,
-        "openai",
-        "test",
+        target="openai",
+        profile="test",
         provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
     )
 
@@ -53,7 +53,7 @@ def test_concrete_openai_materializer_constructs_isolated_delegate_without_runni
 
     write_project(tmp_path, isolation=True)
 
-    result = materialize(tmp_path, "openai", "test")
+    result = materialize(tmp_path, target="openai", profile="test")
 
     parent = cast(Any, result.agents["Parent"])
     isolated_tool = next(item for item in parent.tools if item.name.endswith("ask_child"))
@@ -110,8 +110,8 @@ def test_strong_isolation_dimension_fails_closed_before_graph_construction(tmp_p
     with pytest.raises(PlanningError) as caught:
         materialize(
             tmp_path,
-            "openai",
-            "test",
+            target="openai",
+            profile="test",
             provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
         )
 
@@ -140,8 +140,8 @@ operational_control latency for Parent:
     with pytest.raises(PlanningError) as caught:
         materialize(
             tmp_path,
-            "openai",
-            "test",
+            target="openai",
+            profile="test",
             provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
         )
 
@@ -162,8 +162,8 @@ def test_strong_environment_provider_can_satisfy_filesystem_and_network_dimensio
 
     result = materialize(
         tmp_path,
-        "openai",
-        "test",
+        target="openai",
+        profile="test",
         provider=OpenAIMaterializationProvider(FakeOpenAISDK()),
     )
 

@@ -199,8 +199,8 @@ def test_openai_materialization_rejects_native_tool_that_drops_list_bound(tmp_pa
     with pytest.raises(MaterializationError) as caught:
         materialize(
             tmp_path,
-            "openai",
-            "test",
+            target="openai",
+            profile="test",
             provider=OpenAIMaterializationProvider(FakeOpenAISDK(drift_tool_schema=True)),
         )
 
@@ -294,8 +294,8 @@ def test_strands_materialization_rejects_native_tool_that_drops_list_bound(tmp_p
     with pytest.raises(MaterializationError) as caught:
         materialize(
             tmp_path,
-            "strands",
-            "test",
+            target="strands",
+            profile="test",
             provider=StrandsMaterializationProvider(FakeStrandsSDK(drop_list_bounds=True)),
         )
 

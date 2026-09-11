@@ -5,7 +5,7 @@ from contract4agents.materialization._context import (
     ContextRuntime,
     ResolvedContextValue,
 )
-from contract4agents.materialization._entrypoint import materialize
+from contract4agents.materialization._entrypoint import materialize, plan_project
 from contract4agents.materialization._errors import MaterializationError, MaterializationIssue
 from contract4agents.materialization._google_adk import (
     ADKSDK,
@@ -79,4 +79,5 @@ __all__ = [
     "StrandsMaterializationProvider",
     "StrandsSDK",
     "materialize",
+    "plan_project",
 ]
