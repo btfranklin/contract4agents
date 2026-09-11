@@ -35,7 +35,7 @@ class HostCallableBoundary:
         cls,
         display_name: str,
         implementation: Callable[..., object],
-        input_type: type[object] | None,
+        input_type: type[BaseModel] | None,
         output_adapter: TypeAdapter[Any],
     ) -> HostCallableBoundary:
         """Create a boundary from generated contract types."""

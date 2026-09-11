@@ -70,7 +70,7 @@ class GoogleADKNativeAgentDescription:
     native_name: str
     instructions: str
     model: str
-    input_type: type[object] | None
+    input_type: type[BaseModel] | None
     output_type: type[object]
     output_mode: OutputMode
     tools: tuple[object, ...]
@@ -102,7 +102,7 @@ class GoogleADKSDK(Protocol):
         model: str,
         model_options: Mapping[str, object],
         model_factory: object | None,
-        input_type: type[object] | None,
+        input_type: type[BaseModel] | None,
         output_type: type[object],
         output_mode: OutputMode,
         tools: tuple[object, ...],
@@ -114,7 +114,7 @@ class GoogleADKSDK(Protocol):
         native_name: str,
         description: str,
         implementation: object,
-        input_type: type[object] | None,
+        input_type: type[BaseModel] | None,
         output_adapter: TypeAdapter[Any],
         requires_approval: bool,
     ) -> object: ...
@@ -126,7 +126,7 @@ class GoogleADKSDK(Protocol):
         child_name: str,
         description: str,
         binding: BindingEntry,
-        input_type: type[object],
+        input_type: type[BaseModel],
         output_adapter: TypeAdapter[Any],
         requires_approval: bool,
     ) -> object: ...
@@ -137,7 +137,7 @@ class GoogleADKSDK(Protocol):
         native_name: str,
         description: str,
         child: object,
-        input_type: type[object] | None,
+        input_type: type[BaseModel] | None,
         output_adapter: TypeAdapter[Any],
     ) -> object: ...
 
@@ -147,7 +147,7 @@ class GoogleADKSDK(Protocol):
         native_name: str,
         description: str,
         child: object,
-        input_type: type[object] | None,
+        input_type: type[BaseModel] | None,
         output_adapter: TypeAdapter[Any],
         isolation_id: SemanticId,
         requested_dimensions: FrozenMap[str, str],
@@ -182,7 +182,7 @@ class ADKSDK:
         model: str,
         model_options: Mapping[str, object],
         model_factory: object | None,
-        input_type: type[object] | None,
+        input_type: type[BaseModel] | None,
         output_type: type[object],
         output_mode: OutputMode,
         tools: tuple[object, ...],
@@ -317,7 +317,7 @@ class ADKSDK:
         native_name: str,
         description: str,
         implementation: object,
-        input_type: type[object] | None,
+        input_type: type[BaseModel] | None,
         output_adapter: TypeAdapter[Any],
         requires_approval: bool,
     ) -> object:
@@ -358,7 +358,7 @@ class ADKSDK:
         child_name: str,
         description: str,
         binding: BindingEntry,
-        input_type: type[object],
+        input_type: type[BaseModel],
         output_adapter: TypeAdapter[Any],
         requires_approval: bool,
     ) -> object:
@@ -457,7 +457,7 @@ class ADKSDK:
         native_name: str,
         description: str,
         child: object,
-        input_type: type[object] | None,
+        input_type: type[BaseModel] | None,
         output_adapter: TypeAdapter[Any],
     ) -> object:
         isolated_child = _single_turn_child(child)
@@ -488,7 +488,7 @@ class ADKSDK:
         native_name: str,
         description: str,
         child: object,
-        input_type: type[object] | None,
+        input_type: type[BaseModel] | None,
         output_adapter: TypeAdapter[Any],
         isolation_id: SemanticId,
         requested_dimensions: FrozenMap[str, str],
@@ -688,7 +688,7 @@ class GoogleADKMaterializationProvider:
         target: TargetBinding,
         plan: MaterializationPlan,
         implementations: FrozenMap[SemanticId, object],
-        input_types: FrozenMap[SemanticId, type[object] | None],
+        input_types: FrozenMap[SemanticId, type[BaseModel] | None],
         output_types: FrozenMap[str, type[object]],
         context_runtime: ContextRuntime,
         environment: EnvironmentProvider | None,
@@ -881,7 +881,7 @@ def _contract_tool(
     *,
     name: str,
     description: str,
-    input_type: type[object] | None,
+    input_type: type[BaseModel] | None,
     output_adapter: TypeAdapter[Any],
     requires_approval: bool,
     invoke: _ToolInvoker,

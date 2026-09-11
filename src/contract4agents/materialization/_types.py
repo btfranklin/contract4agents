@@ -88,7 +88,7 @@ def build_parameter_model(
     name: str,
     parameters: tuple[ParameterIR, ...],
     output_types: FrozenMap[str, Any],
-) -> type[object] | None:
+) -> type[BaseModel] | None:
     if not parameters:
         return None
     fields: dict[str, tuple[Any, Any]] = {}
@@ -97,7 +97,7 @@ def build_parameter_model(
         fields[parameter.name] = (_annotation(parameter.type_ref, output_types), Field(default))
     create_model_any = cast(Any, create_model)
     return cast(
-        type[object],
+        type[BaseModel],
         create_model_any(
             name,
             __config__=ConfigDict(extra="forbid", strict=True, allow_inf_nan=False),
@@ -110,7 +110,7 @@ def build_parameter_model(
 def build_agent_input_types(
     ir: CanonicalIR,
     output_types: FrozenMap[str, Any],
-) -> FrozenMap[SemanticId, type[object] | None]:
+) -> FrozenMap[SemanticId, type[BaseModel] | None]:
     """Build one strict invocation-input type for each contract agent."""
 
     return FrozenMap(

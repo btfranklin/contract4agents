@@ -88,7 +88,7 @@ def test_public_materialize_builds_and_validates_complete_native_graph(tmp_path:
     assert result.plan.adapter.version == "fake-openai-1"
     assert "instructions/Parent.md" in result.plan.artifact_digests
     assert result.validation.plan_digest == result.plan.plan_digest
-    assert result.structural_output_types == result.graph.output_types
+    assert result.generated_types == result.graph.output_types
     assert len(result.agents) == 3
     assert result.agents["Parent"] is result.agents["Parent"]
     parent = result.agents["Parent"]

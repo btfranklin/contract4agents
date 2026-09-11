@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol, cast
 
-from pydantic import TypeAdapter
+from pydantic import BaseModel, TypeAdapter
 
 from contract4agents.adapters._openai import openai_planner_capabilities
 from contract4agents.adapters._openai_names import openai_tool_name
@@ -83,7 +83,7 @@ class OpenAISDK(Protocol):
         name: str,
         description: str,
         implementation: object,
-        input_type: type[object] | None,
+        input_type: type[BaseModel] | None,
         output_adapter: TypeAdapter[Any],
         requires_approval: bool,
     ) -> object: ...
@@ -96,7 +96,7 @@ class OpenAISDK(Protocol):
         name: str,
         description: str,
         child: object,
-        input_type: type[object] | None,
+        input_type: type[BaseModel] | None,
     ) -> object: ...
 
     def create_isolated_delegate_tool(
@@ -105,7 +105,7 @@ class OpenAISDK(Protocol):
         name: str,
         description: str,
         child: object,
-        input_type: type[object] | None,
+        input_type: type[BaseModel] | None,
         isolation_id: SemanticId,
         requested_dimensions: FrozenMap[str, str],
         declared_capabilities: tuple[str, ...],
@@ -127,7 +127,7 @@ class OpenAISDK(Protocol):
 
     def describe_tool(self, tool: object) -> NativeToolDescription: ...
 
-    def input_schema(self, input_type: type[object] | None) -> Mapping[str, object]: ...
+    def input_schema(self, input_type: type[BaseModel] | None) -> Mapping[str, object]: ...
 
     def output_schema(self, output_type: type[object]) -> Mapping[str, object]: ...
 
@@ -180,7 +180,7 @@ class AgentsSDK:
         name: str,
         description: str,
         implementation: object,
-        input_type: type[object] | None,
+        input_type: type[BaseModel] | None,
         output_adapter: TypeAdapter[Any],
         requires_approval: bool,
     ) -> object:
@@ -250,7 +250,7 @@ class AgentsSDK:
         name: str,
         description: str,
         child: object,
-        input_type: type[object] | None,
+        input_type: type[BaseModel] | None,
     ) -> object:
         native_child = cast(Any, child)
         return native_child.as_tool(
@@ -266,7 +266,7 @@ class AgentsSDK:
         name: str,
         description: str,
         child: object,
-        input_type: type[object] | None,
+        input_type: type[BaseModel] | None,
         isolation_id: SemanticId,
         requested_dimensions: FrozenMap[str, str],
         declared_capabilities: tuple[str, ...],
@@ -417,7 +417,7 @@ class AgentsSDK:
             ),
         )
 
-    def input_schema(self, input_type: type[object] | None) -> Mapping[str, object]:
+    def input_schema(self, input_type: type[BaseModel] | None) -> Mapping[str, object]:
         from agents.strict_schema import ensure_strict_json_schema
 
         schema = (
@@ -461,7 +461,7 @@ class OpenAIMaterializationProvider:
         target: TargetBinding,
         plan: MaterializationPlan,
         implementations: FrozenMap[SemanticId, object],
-        input_types: FrozenMap[SemanticId, type[object] | None],
+        input_types: FrozenMap[SemanticId, type[BaseModel] | None],
         output_types: FrozenMap[str, type[object]],
         context_runtime: ContextRuntime,
         environment: EnvironmentProvider | None,

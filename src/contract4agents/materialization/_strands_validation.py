@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, cast
 
-from pydantic import TypeAdapter
+from pydantic import BaseModel, TypeAdapter
 
 from contract4agents.compiler import CompilerArtifacts
 from contract4agents.ir import CanonicalIR, FrozenMap, SemanticId
@@ -38,7 +38,7 @@ def validate_strands_graph(
     agents: Mapping[SemanticId, object],
     grant_objects: Mapping[SemanticId, object],
     edge_objects: Mapping[SemanticId, object],
-    input_types: FrozenMap[SemanticId, type[object] | None],
+    input_types: FrozenMap[SemanticId, type[BaseModel] | None],
     output_types: FrozenMap[str, type[object]],
     agent_names: Mapping[SemanticId, str],
     capability_names: Mapping[SemanticId, str],
@@ -241,7 +241,7 @@ def _validate_configuration(
     agents: Mapping[SemanticId, object],
     grant_objects: Mapping[SemanticId, object],
     edge_objects: Mapping[SemanticId, object],
-    input_types: FrozenMap[SemanticId, type[object] | None],
+    input_types: FrozenMap[SemanticId, type[BaseModel] | None],
     output_types: FrozenMap[str, type[object]],
     sdk: StrandsSDK,
     agent_names: Mapping[SemanticId, str],
@@ -500,7 +500,7 @@ def _stable_schema(value: Mapping[str, object]) -> dict[str, object]:
     return cleaned
 
 
-def _input_schema(input_type: type[object] | None) -> Mapping[str, object]:
+def _input_schema(input_type: type[BaseModel] | None) -> Mapping[str, object]:
     if input_type is None:
         return {
             "type": "object",

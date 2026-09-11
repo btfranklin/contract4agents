@@ -264,7 +264,7 @@ def context():
         run_config=RunConfig(tracing_disabled=True),
     )
 
-    assert type(run.final_output) is system.structural_output_types["Result"]
+    assert type(run.final_output) is system.generated_types["Result"]
     assert run.final_output.value == "complete"
     assert len(scripted_model.inputs) == 2
     second_turn = cast(list[dict[str, object]], scripted_model.inputs[1])

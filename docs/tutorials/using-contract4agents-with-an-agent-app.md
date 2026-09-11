@@ -78,7 +78,7 @@ input_type = system.input_type_for_agent(triage_agent)
 artifacts = system.artifacts
 plan = system.plan
 input_types = system.agent_input_types
-structural_types = system.structural_output_types
+generated_types = system.generated_types
 materialization_evidence = system.validation.to_json()
 ```
 
@@ -144,7 +144,7 @@ Pydantic and Zod types validate values against them. See the
 [language reference](../language/contract-language.md) for string, list, and
 datetime rules.
 
-Use `system.structural_output_types` when host code needs the generated types.
+Use `system.generated_types` when host code needs the generated types.
 Keep prose limits, graph completeness, database checks, and other application
 rules in a separate host validation step. This order keeps provider usage and
 structural failures visible even when an application rule rejects the result.

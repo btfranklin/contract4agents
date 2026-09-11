@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, cast
 
+from pydantic import BaseModel
+
 from contract4agents.adapters._openai_names import openai_tool_name
 from contract4agents.compiler import CompilerArtifacts
 from contract4agents.ir import CanonicalIR, FrozenMap, SemanticId
@@ -31,7 +33,7 @@ def validate_openai_configuration(
     agents: Mapping[SemanticId, object],
     grant_objects: Mapping[SemanticId, object],
     edge_objects: Mapping[SemanticId, object],
-    input_types: FrozenMap[SemanticId, type[object] | None],
+    input_types: FrozenMap[SemanticId, type[BaseModel] | None],
     output_types: FrozenMap[str, type[object]],
     sdk: OpenAISDK,
 ) -> tuple[tuple[ConfigurationConformanceEvidence, ...], list[MaterializationIssue]]:
@@ -244,7 +246,7 @@ def validate_openai_graph(
     agents: Mapping[SemanticId, object],
     grant_objects: Mapping[SemanticId, object],
     edge_objects: Mapping[SemanticId, object],
-    input_types: FrozenMap[SemanticId, type[object] | None],
+    input_types: FrozenMap[SemanticId, type[BaseModel] | None],
     output_types: FrozenMap[str, type[object]],
 ) -> tuple[tuple[SchemaConformanceEvidence, ...], tuple[ConfigurationConformanceEvidence, ...]]:
     issues: list[MaterializationIssue] = []

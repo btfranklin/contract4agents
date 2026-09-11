@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 OutputMode = Literal["native", "emulated"]
 
 
-def _input_schema(input_type: type[object] | None) -> Mapping[str, object]:
+def _input_schema(input_type: type[BaseModel] | None) -> Mapping[str, object]:
     if input_type is None:
         return {"type": "object", "properties": {}, "additionalProperties": False}
     return cast(dict[str, object], cast(Any, input_type).model_json_schema())
@@ -93,7 +93,7 @@ def validate_google_adk_graph(
     agents: Mapping[SemanticId, object],
     grant_objects: Mapping[SemanticId, object],
     edge_objects: Mapping[SemanticId, object],
-    input_types: FrozenMap[SemanticId, type[object] | None],
+    input_types: FrozenMap[SemanticId, type[BaseModel] | None],
     output_types: FrozenMap[str, type[object]],
     names: NativeNameRegistry,
 ) -> tuple[tuple[SchemaConformanceEvidence, ...], tuple[ConfigurationConformanceEvidence, ...]]:
@@ -286,7 +286,7 @@ def _validate_configuration(
     agents: Mapping[SemanticId, object],
     grant_objects: Mapping[SemanticId, object],
     edge_objects: Mapping[SemanticId, object],
-    input_types: FrozenMap[SemanticId, type[object] | None],
+    input_types: FrozenMap[SemanticId, type[BaseModel] | None],
     output_types: FrozenMap[str, type[object]],
     sdk: GoogleADKSDK,
     names: NativeNameRegistry,

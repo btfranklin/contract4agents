@@ -430,7 +430,7 @@ def _validate_parameters(
         instance = model(**dict(values))
     except Exception as exc:
         raise ContextResolutionError(semantic_id, f"input validation failed ({type(exc).__name__})") from exc
-    return dict(instance.model_dump(mode="python"))  # type: ignore[attr-defined]
+    return dict(instance.model_dump(mode="python"))
 
 
 def _resolve_mapping(

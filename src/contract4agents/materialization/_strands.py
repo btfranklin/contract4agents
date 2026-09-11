@@ -10,7 +10,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol, cast
 
-from pydantic import TypeAdapter
+from pydantic import BaseModel, TypeAdapter
 
 from contract4agents.adapters._native_names import NativeNameRegistry
 from contract4agents.adapters._strands import strands_planner_capabilities
@@ -110,7 +110,7 @@ class StrandsSDK(Protocol):
         native_name: str,
         description: str,
         implementation: object,
-        input_type: type[object] | None,
+        input_type: type[BaseModel] | None,
         output_adapter: TypeAdapter[Any],
     ) -> object: ...
 
@@ -120,7 +120,7 @@ class StrandsSDK(Protocol):
         native_name: str,
         description: str,
         child: object,
-        input_type: type[object] | None,
+        input_type: type[BaseModel] | None,
         output_adapter: TypeAdapter[Any],
     ) -> object: ...
 
@@ -130,7 +130,7 @@ class StrandsSDK(Protocol):
         native_name: str,
         description: str,
         child: object,
-        input_type: type[object] | None,
+        input_type: type[BaseModel] | None,
         output_adapter: TypeAdapter[Any],
         isolation_id: SemanticId,
         requested_dimensions: FrozenMap[str, str],
@@ -273,7 +273,7 @@ class StrandsAgentsSDK:
         native_name: str,
         description: str,
         implementation: object,
-        input_type: type[object] | None,
+        input_type: type[BaseModel] | None,
         output_adapter: TypeAdapter[Any],
     ) -> object:
         try:
@@ -332,7 +332,7 @@ class StrandsAgentsSDK:
         native_name: str,
         description: str,
         child: object,
-        input_type: type[object] | None,
+        input_type: type[BaseModel] | None,
         output_adapter: TypeAdapter[Any],
     ) -> object:
         return self._create_typed_delegate(
@@ -350,7 +350,7 @@ class StrandsAgentsSDK:
         native_name: str,
         description: str,
         child: object,
-        input_type: type[object] | None,
+        input_type: type[BaseModel] | None,
         output_adapter: TypeAdapter[Any],
         isolation_id: SemanticId,
         requested_dimensions: FrozenMap[str, str],
@@ -377,7 +377,7 @@ class StrandsAgentsSDK:
         native_name: str,
         description: str,
         child: object,
-        input_type: type[object] | None,
+        input_type: type[BaseModel] | None,
         output_adapter: TypeAdapter[Any],
         isolation: tuple[
             SemanticId,
@@ -670,7 +670,7 @@ class StrandsMaterializationProvider:
         target: TargetBinding,
         plan: MaterializationPlan,
         implementations: FrozenMap[SemanticId, object],
-        input_types: FrozenMap[SemanticId, type[object] | None],
+        input_types: FrozenMap[SemanticId, type[BaseModel] | None],
         output_types: FrozenMap[str, type[object]],
         context_runtime: ContextRuntime,
         environment: EnvironmentProvider | None,
@@ -932,7 +932,7 @@ def _assign_name(
         ) from exc
 
 
-def _tool_context_name(input_type: type[object] | None) -> str:
+def _tool_context_name(input_type: type[BaseModel] | None) -> str:
     fields = set(cast(Any, input_type).model_fields) if input_type is not None else set()
     name = "__c4a_tool_context"
     while name in fields:
@@ -942,7 +942,7 @@ def _tool_context_name(input_type: type[object] | None) -> str:
 
 def _set_tool_signature(
     implementation: object,
-    input_type: type[object] | None,
+    input_type: type[BaseModel] | None,
     *,
     context_name: str,
     tool_context_type: object,

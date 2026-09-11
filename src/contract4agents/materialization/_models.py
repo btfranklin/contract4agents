@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Protocol, cast, runtime_checkable
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from contract4agents.compiler import CompilerArtifacts, artifact_digests
 from contract4agents.ir import CanonicalIR, FrozenJsonValue, FrozenMap, SemanticId, freeze_json
@@ -413,7 +413,7 @@ class NativeAgentGraph:
     """A framework-native graph and the resolved host implementations it uses."""
 
     agents: FrozenMap[SemanticId, object]
-    input_types: FrozenMap[SemanticId, type[object] | None]
+    input_types: FrozenMap[SemanticId, type[BaseModel] | None]
     output_types: FrozenMap[str, type[object]]
     implementations: FrozenMap[SemanticId, object]
     grant_objects: FrozenMap[SemanticId, object]
@@ -463,7 +463,7 @@ class MaterializedSystem:
         return self.graph.validation
 
     @property
-    def agent_input_types(self) -> FrozenMap[str, type[object] | None]:
+    def agent_input_types(self) -> FrozenMap[str, type[BaseModel] | None]:
         """Return strict invocation-input types by contract agent name."""
 
         return FrozenMap(
@@ -471,7 +471,7 @@ class MaterializedSystem:
             for identifier, input_type in self.graph.input_types.items()
         )
 
-    def input_type_for_agent(self, agent: object) -> type[object] | None:
+    def input_type_for_agent(self, agent: object) -> type[BaseModel] | None:
         """Return the strict invocation-input type for one native agent."""
 
         _, _, input_type = self._details_for_agent(agent)
@@ -509,7 +509,7 @@ class MaterializedSystem:
         self,
         agent: object,
         value: Mapping[str, object],
-    ) -> object | None:
+    ) -> BaseModel | None:
         """Validate one root-agent invocation against its contract signature."""
 
         _, agent_name, input_type = self._details_for_agent(agent)
@@ -534,7 +534,7 @@ class MaterializedSystem:
                 )
             return None
         try:
-            return cast(object, cast(Any, input_type).model_validate(value))
+            return cast(BaseModel, cast(Any, input_type).model_validate(value))
         except ValidationError as exc:
             validation_summary = _safe_validation_summary(exc)
         raise MaterializationError(
@@ -562,7 +562,7 @@ class MaterializedSystem:
         return cast(str, cast(Any, validated).model_dump_json())
 
     @property
-    def structural_output_types(self) -> FrozenMap[str, type[object]]:
+    def generated_types(self) -> FrozenMap[str, type[object]]:
         """Return generated contract types that exclude application domain validators."""
 
         return self.graph.output_types
@@ -570,7 +570,7 @@ class MaterializedSystem:
     def _details_for_agent(
         self,
         agent: object,
-    ) -> tuple[SemanticId, str, type[object] | None]:
+    ) -> tuple[SemanticId, str, type[BaseModel] | None]:
         for identifier, native_agent in self.graph.agents.items():
             if native_agent is agent:
                 return identifier, identifier.parts[0], self.graph.input_types[identifier]
@@ -604,7 +604,7 @@ class MaterializationProvider(Protocol):
         target: TargetBinding,
         plan: MaterializationPlan,
         implementations: FrozenMap[SemanticId, object],
-        input_types: FrozenMap[SemanticId, type[object] | None],
+        input_types: FrozenMap[SemanticId, type[BaseModel] | None],
         output_types: FrozenMap[str, type[object]],
         context_runtime: ContextRuntime,
         environment: EnvironmentProvider | None,
