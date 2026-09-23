@@ -25,7 +25,7 @@ python = "examples.incident_command_imports.context:active_incident"
 default_model = "test-model"
 
 [targets.openai.profiles.production]
-default_model = "gpt-5.2"
+default_model = "gpt-6-sol"
 
 [targets.strands]
 adapter = "strands"

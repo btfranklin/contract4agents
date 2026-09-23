@@ -47,10 +47,10 @@ provider = "contract4agents.runtime:InProcessEnvironment"
 default_model = "test-model"
 
 [targets.openai.profiles.production]
-default_model = "gpt-5.2"
+default_model = "gpt-6-sol"
 
 [targets.openai.profiles.production.agents.ResearchAgent]
-model = "gpt-5.6-luna"
+model = "gpt-6-luna"
 
 [targets.openai.profiles.production.options.retry]
 max_retries = 0

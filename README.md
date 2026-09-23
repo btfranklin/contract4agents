@@ -106,7 +106,7 @@ adapter = "openai"
 python = "your_app.tools:search_knowledge"
 
 [targets.openai.profiles.development]
-default_model = "gpt-5.6-luna"
+default_model = "gpt-6-luna"
 ```
 
 The target binding contains implementation choices. It does not repeat the

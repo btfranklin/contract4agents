@@ -684,10 +684,10 @@ default_model = "test-model"
 model = "test-model"
 
 [targets.openai.profiles.production]
-default_model = "gpt-5.2"
+default_model = "gpt-6-sol"
 
 [targets.openai.profiles.production.agents.LogInvestigator]
-model = "gpt-5.6-luna"
+model = "gpt-6-luna"
 ```
 
 `contract4agents check` discovers the default target-binding file when it is
@@ -742,7 +742,7 @@ addresses.
   "agents": {
     "agent:IncidentCommander": {
       "name": "IncidentCommander",
-      "model": "gpt-5.2",
+      "model": "gpt-6-sol",
       "model_options": {},
       "output_type": "type:IncidentDecision"
     }

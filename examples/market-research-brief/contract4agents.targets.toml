@@ -30,7 +30,7 @@ search_context_size = "medium"
 default_model = "test-model"
 
 [targets.openai.profiles.production]
-default_model = "gpt-5.2"
+default_model = "gpt-6-sol"
 
 [targets.google_adk]
 adapter = "google_adk"

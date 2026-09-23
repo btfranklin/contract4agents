@@ -28,7 +28,7 @@ default_model = "test-model"
 environment = "in_process"
 
 [targets.openai.profiles.production]
-default_model = "gpt-5.2"
+default_model = "gpt-6-sol"
 
 [targets.openai.profiles.production.options]
 environment = "in_process"

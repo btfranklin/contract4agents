@@ -94,7 +94,7 @@ adapter = "openai"
 python = "your_app.tools:search_knowledge"
 
 [targets.openai.profiles.development]
-default_model = "gpt-5.6-luna"
+default_model = "gpt-6-luna"
 ```
 
 The binding connects the contract tool to the Python function. The profile
