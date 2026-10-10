@@ -40,6 +40,8 @@ jobs:
               run: |
                   pdm install --group dev --group openai --group strands --group google-adk
                   npm ci --prefix tests/typescript
+            - name: Set up Perfect Doc
+              uses: ./.github/actions/setup-perfect-doc
             - name: Validate package
               run: |
                   pdm run validate:python

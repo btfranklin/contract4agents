@@ -13,6 +13,10 @@ offline and does not call a model provider.
 
 ## Full Local Gate
 
+Install the native [Perfect Doc](https://github.com/btfranklin/perfect-doc)
+executable on `PATH` before validation. On macOS, use
+`brew install btfranklin/tap/perfect-doc`.
+
 ```bash
 pdm install
 npm --prefix tests/typescript ci
@@ -24,11 +28,22 @@ The composite runs:
 
 - `pdm run lint`: Ruff over source, tests, and examples.
 - `pdm run typecheck`: strict mypy over `src`.
-- `pdm run docs-check`: repository documentation and link consistency.
+- `pdm run docs-check`: offline Perfect Doc structure and link checks, then
+  repository documentation consistency.
 - `pdm run test:offline`: deterministic tests grouped by behavior family.
 - `pdm run test:editor`: VS Code extension tests.
 
 Run this before handing off implementation changes.
+
+Perfect Doc uses `perfect-doc.toml`, GFM syntax, and GitHub heading anchors.
+The config selects maintained Markdown and excludes runtime prompt fragments,
+test fixtures, dependency files, and generated output. It checks local
+structure and references. It does not check factual claims, code behavior,
+rendering, or external reachability. Run its check directly with:
+
+```bash
+perfect-doc check . --offline --no-banner
+```
 
 ## Test Suite Structure
 

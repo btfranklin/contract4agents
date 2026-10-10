@@ -43,6 +43,7 @@ This repository is the design and implementation home for Contract4Agents, a too
 
 ## Validation
 
+- Install the native Perfect Doc executable on `PATH`. Run `pdm run docs-check` after Markdown changes; it runs `perfect-doc check . --offline --no-banner` with `perfect-doc.toml` and the repository consistency check. Both are part of `pdm run validate`.
 - Run `pdm run validate` before handing off code changes unless the task is docs-only and the scope clearly does not affect behavior.
 - Run `pdm build` when changing packaging metadata, README/license files, or build configuration.
 - Live OpenAI checks are opt-in; see `docs/quality/validation.md` before treating skipped live tests as coverage.

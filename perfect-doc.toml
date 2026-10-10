@@ -1,0 +1,35 @@
+# Check maintained documentation. Runtime prompts and generated files are outside this scope.
+include = ["**/*.md"]
+exclude = [
+    "**/.git/**",
+    "**/.venv/**",
+    "**/node_modules/**",
+    "**/.contract/**",
+    "**/.pdm-build/**",
+    "**/build/**",
+    "**/dist/**",
+    "**/tests/**",
+    "src/contract4agents/adapters/prompts/**",
+]
+required_paths = ["README.md", "AGENTS.md", "VISION.md", "docs/index.md"]
+
+[markdown]
+dialect = "gfm"
+anchors = "github"
+heading_start = 1
+single_h1 = true
+no_heading_skips = true
+nonempty_headings = true
+closed_fences = true
+table_columns = true
+undefined_references = true
+
+[links]
+allow_outside_root = false
+strict_case = true
+
+[routes]
+enabled = false
+
+[network]
+enabled = false

@@ -13,7 +13,9 @@ def test_pdm_docs_check_is_part_of_validate() -> None:
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
     scripts = pyproject["tool"]["pdm"]["scripts"]
 
-    assert scripts["docs-check"] == "python scripts/docs_check.py"
+    assert scripts["docs-check"]["composite"] == ["docs:structure", "docs:project"]
+    assert scripts["docs:structure"] == "perfect-doc check . --offline --no-banner"
+    assert scripts["docs:project"] == "python scripts/docs_check.py"
     assert scripts["test"] == "pytest"
     assert scripts["test:offline"].startswith("pytest tests/offline ")
     assert scripts["smoke:cli"] == "python scripts/smoke_cli.py"

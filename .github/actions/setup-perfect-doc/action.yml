@@ -1,0 +1,18 @@
+name: Set up Perfect Doc
+description: Install the native Linux documentation checker and verify its checksum.
+runs:
+    using: composite
+    steps:
+        - name: Install Perfect Doc
+          shell: bash
+          run: |
+              tool_dir="$RUNNER_TEMP/perfect-doc"
+              mkdir -p "$tool_dir"
+              cd "$tool_dir"
+              archive=perfect-doc-0.1.0-x86_64-unknown-linux-gnu.tar.gz
+              base=https://github.com/btfranklin/perfect-doc/releases/download/v0.1.0
+              curl --fail --location --silent --show-error "$base/$archive" --output "$archive"
+              curl --fail --location --silent --show-error "$base/SHA256SUMS" --output SHA256SUMS
+              sha256sum --check --ignore-missing SHA256SUMS
+              tar -xzf "$archive"
+              echo "$tool_dir/perfect-doc-0.1.0-x86_64-unknown-linux-gnu" >> "$GITHUB_PATH"

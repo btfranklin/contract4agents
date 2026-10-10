@@ -268,6 +268,13 @@ the CLI.
 
 From a checkout of this repository:
 
+Install the native [Perfect Doc](https://github.com/btfranklin/perfect-doc)
+executable and make it available on `PATH`. On macOS, use:
+
+```bash
+brew install btfranklin/tap/perfect-doc
+```
+
 ```bash
 pdm install
 npm --prefix tests/typescript ci
@@ -276,6 +283,10 @@ pdm run docs-check
 pdm run validate
 pdm build
 ```
+
+`pdm run docs-check` runs Perfect Doc offline with `perfect-doc.toml`, then
+checks repository documentation consistency. `pdm run validate` includes both
+documentation checks.
 
 See [Validation and Quality Gates](docs/quality/validation.md) for checks by
 change type and opt-in live tests. Coding agents should start with [AGENTS.md](AGENTS.md).
