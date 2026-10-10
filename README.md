@@ -7,10 +7,12 @@ in external specifications and turning those specifications into usable agent
 components. It includes a typed contract language, a compiler, code generators,
 and adapters for OpenAI Agents SDK, Strands Agents, and Google ADK.
 
-Write the agent's inputs, outputs, tools, instructions, and relationships in a
-`.contract` file. Contract4Agents derives schemas, documentation, and normal
-framework objects from that definition. Your application supplies the tool
-implementations and runs the agents.
+Define each agent in its own `.agent.contract` file. Keep its inputs, output,
+grants, context, `goal`, and `guidance` in that file. Put shared types and
+capabilities in `.types.contract` and `.capabilities.contract` files.
+Contract4Agents compiles all source files in the project together and derives
+schemas, documentation, and normal framework objects. Your application supplies
+the tool implementations and runs the agents.
 
 This gives you one place to read and change the agent design. You can review
 its guardrails and expectations without finding them across prompts, SDK
@@ -37,14 +39,15 @@ your_app/
   tools.py
   run_agent.py
   agent_contracts/
-    support.contract
+    support.agent.contract
+    support.types.contract
+    support.capabilities.contract
     contract4agents.targets.toml
 ```
 
 ### 1. Define the Agent and Its Tool
 
-Put the types, tool interface, and agent definition in
-`your_app/agent_contracts/support.contract`:
+Put the shared types in `your_app/agent_contracts/support.types.contract`:
 
 ```contract
 type KnowledgeResult:
@@ -55,11 +58,20 @@ type SupportReply:
     answer: string
     source_ids: list[string]
     needs_follow_up: boolean
+```
 
+Put the tool interface in
+`your_app/agent_contracts/support.capabilities.contract`:
+
+```contract
 tool knowledge.search(query: string) -> KnowledgeResult:
     description = "Search the approved support knowledge base."
     side_effect = false
+```
 
+Put the agent definition in `your_app/agent_contracts/support.agent.contract`:
+
+```contract
 agent SupportResponder(question: string) -> SupportReply:
     use knowledge.search:
         availability = enabled
@@ -77,6 +89,11 @@ agent SupportResponder(question: string) -> SupportReply:
 
 The tool declaration defines the interface. The `use` block gives this agent
 access to it. The agent's return type defines the structure of its answer.
+Names are global across the project. The agent can reference the shared tool
+and types directly. File boundaries organize the source; they do not create
+scope boundaries. Each named file suffix limits which declarations that file
+can contain. See [File Organization](docs/language/contract-language.md#file-organization)
+for the complete rules.
 
 ### 2. Supply the Implementation and Model
 

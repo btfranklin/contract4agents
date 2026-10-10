@@ -5,6 +5,11 @@ documents, dated fact snapshots, competitor evidence, customer signals, and
 provider-native web search. The offline replay uses fake local evidence and
 does not retrieve current market facts.
 
+Each agent has one `.agent.contract` file with its goal and guidance. Start
+with [MarketResearchLead](agents/market_research_lead.agent.contract). Shared
+types are in [`market.types.contract`](types/market.types.contract). All source
+files are compiled together, with global declaration names.
+
 ## Team
 
 `MarketResearchLead` delegates to document, current-truth, competitor, customer
@@ -14,7 +19,7 @@ does not provide parallel agent factories or handoff objects.
 
 ## Portable Capabilities, Target-Specific Implementations
 
-`capabilities/market.contract` declares document, current-fact, competitor,
+`capabilities/market.capabilities.contract` declares document, current-fact, competitor,
 citation, and web-search interfaces once. Most OpenAI target bindings point to
 local Python functions. `web.search` instead selects the provider-native web
 search implementation:

@@ -114,6 +114,20 @@ itself violate output conformance or prove a retry policy.
 
 ## Source model
 
+### File organization
+
+Each agent lives in an `.agent.contract` file with its signature, grants,
+context, goal, and guidance. Shared types and capabilities use separate files.
+The parser checks each recognized suffix against the file's declaration kinds
+and count. Generic `.contract` files can contain any current declaration mix.
+The exact rules are in
+[File Organization](../language/contract-language.md#file-organization).
+
+All project source files form one specification with global name resolution.
+File boundaries affect readability and diagnostic locations. They do not
+change declaration identities, target binding names, or generated output
+structure.
+
 ### Portable declarations
 
 Contract source supports these top-level semantic declarations:

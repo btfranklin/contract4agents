@@ -34,7 +34,66 @@ def parse_source_syntax(path: Path, source: str) -> ParsedSource:
         if isinstance(exc.orig_exc, ContractError):
             raise exc.orig_exc from exc
         raise
+    _validate_file_kind(path, module)
     return ParsedSource(module, tree)
+
+
+_DECLARATION_LABELS = {
+    "types": "type",
+    "enums": "enum",
+    "tools": "tool",
+    "datasources": "datasource",
+    "external_contexts": "external_context",
+    "isolations": "isolation",
+    "compositions": "composition",
+    "controls": "control",
+    "qualities": "quality",
+    "operational_controls": "operational_control",
+    "agents": "agent",
+    "run_specs": "run_spec",
+    "evals": "eval",
+}
+_FILE_KINDS: dict[str, tuple[str, ...]] = {
+    ".agent.contract": ("agents",),
+    ".types.contract": ("types", "enums"),
+    ".capabilities.contract": ("tools", "datasources", "external_contexts"),
+    ".composition.contract": ("compositions",),
+    ".assurance.contract": ("controls", "qualities", "operational_controls"),
+    ".run.contract": ("run_specs",),
+    ".eval": ("evals",),
+}
+
+
+def _validate_file_kind(path: Path, module: ContractModule) -> None:
+    suffix = next((item for item in _FILE_KINDS if path.name.endswith(item)), None)
+    if suffix is None:
+        return
+
+    allowed = _FILE_KINDS[suffix]
+    declarations = [(name, item) for name in _DECLARATION_LABELS for item in getattr(module, name)]
+    accepted = [item for name, item in declarations if name in allowed]
+    rejected = [(name, item) for name, item in declarations if name not in allowed]
+    if rejected or (allowed != ("agents",) and not accepted) or (
+        allowed == ("agents",) and len(accepted) != 1
+    ):
+        actual = ", ".join(_DECLARATION_LABELS[name] for name, _ in declarations) or "no declarations"
+        expected = " or ".join(_DECLARATION_LABELS[name] for name in allowed)
+        requirement = (
+            "exactly one agent and no other top-level declarations"
+            if suffix == ".agent.contract"
+            else f"one or more {expected} declarations and no other top-level declarations"
+        )
+        item = rejected[0][1] if rejected else (accepted[1] if len(accepted) > 1 else None)
+        span = getattr(item, "span", None) or SourceSpan(path, 1)
+        raise ContractError(
+            [
+                Diagnostic(
+                    "PARSE003",
+                    f"File `{path.name}` requires {requirement}; found {actual}",
+                    span=span,
+                )
+            ]
+        )
 
 
 def _raise(

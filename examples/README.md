@@ -14,10 +14,12 @@ Every public example follows the same structure:
 
 ```text
 example-name/
-  agents/                         portable agent definitions and grants
-  capabilities/                   shared tools, datasources, external context
-  types/                          portable structural types
-  evals/                          named scenarios and expectations
+  agents/*.agent.contract         one agent per file, with goal and guidance
+  capabilities/*.capabilities.contract
+                                  shared tools, datasources, external context
+  types/*.types.contract           shared structural types and enums
+  evals/*.eval                    named scenarios and expectations
+  run_specs/*.run.contract         optional host workflow specifications
   assurance.contract              controls, quality, operational controls
   composition.contract            named delegation and handoff edges
   contract4agents.targets.toml     target implementations and profiles
@@ -25,8 +27,19 @@ example-name/
 ```
 
 Read `agents/` to see what each agent does, then follow its references to types
-and capabilities. The target file selects the implementations. `evals/` states
-the expectations; `eval-data.json` supplies the evidence used to assess them.
+and capabilities. Each agent's `goal` and `guidance` are in its definition.
+The compiler collects all project source files and processes them as one
+specification. References use global names across files and directories.
+
+The parser checks named suffixes against their expected contents. Generic
+files such as `composition.contract` can combine declaration kinds. See
+[File Organization](../docs/language/contract-language.md#file-organization)
+for the allowed declarations and counts.
+
+The target file selects the implementations. `evals/` states the expectations;
+`eval-data.json` supplies the evidence used to assess them. Compiled instruction
+Markdown is generated from the agent goals, guidance, and other model-visible
+declarations.
 
 ## Common Local Loop
 

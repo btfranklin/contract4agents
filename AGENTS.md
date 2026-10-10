@@ -39,6 +39,7 @@ This repository is the design and implementation home for Contract4Agents, a too
 - Put durable design decisions in the relevant topical docs under `docs/`.
 - When a design question is unresolved, update `docs/decisions/open-questions.md` instead of burying the uncertainty in prose.
 - Prefer examples that can later become parser fixtures, runtime fixtures, or eval cases.
+- Keep each agent's `goal` and `guidance` in its `.agent.contract` file. File content rules live in `docs/language/contract-language.md`.
 
 ## Validation
 

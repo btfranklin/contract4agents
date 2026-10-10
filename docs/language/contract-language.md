@@ -14,6 +14,45 @@ For a complete application example, see the
 [adoption tutorial](../tutorials/using-contract4agents-with-an-agent-app.md).
 This page is the syntax and semantics reference.
 
+## File Organization
+
+Define each agent in its own `.agent.contract` file. Keep its signature,
+grants, context, `goal`, `description`, and `guidance` together. Shared types
+can stay in one `.types.contract` file. Use `.capabilities.contract` files for
+shared tool, datasource, and external context interfaces.
+
+The parser checks the contents of each file against its suffix:
+
+| Suffix | Allowed top-level declarations | Required count |
+| --- | --- | --- |
+| `.contract` | Any current declaration kind | Zero or more |
+| `.agent.contract` | `agent` | Exactly one |
+| `.types.contract` | `type`, `enum` | One or more |
+| `.capabilities.contract` | `tool`, `datasource`, `external_context` | One or more |
+| `.composition.contract` | `composition` | One or more |
+| `.assurance.contract` | `control`, `quality`, `operational_control` | One or more |
+| `.run.contract` | `run_spec` | One or more |
+| `.eval` | `eval` | One or more |
+
+Named `.contract` suffixes are matched in full. For example,
+`support.agent.contract` contains exactly one agent. A generic file such as
+`composition.contract` can combine composition edges and isolation profiles.
+An empty file or a declaration of another kind in a named file reports
+`PARSE003`. Agent grants and context requirements are part of the agent
+declaration and are valid in an `.agent.contract` file.
+
+The compiler collects all `.contract` and `.eval` files in the project and
+processes them as one specification. Names are global within each declaration
+kind; types and enums share a namespace. References use those names directly.
+File names and directories do not create scopes. Moving a declaration between
+valid files preserves its semantic ID and contract digest; its diagnostic
+source location changes.
+
+Instructions are authored through the agent's `goal` and `guidance`.
+The compiler derives instruction text from those fields and the other
+model-visible declarations. See [Compiler Outputs](../compiler/compiler-outputs.md)
+for the generated instruction files.
+
 ## Portable Types
 
 ```contract

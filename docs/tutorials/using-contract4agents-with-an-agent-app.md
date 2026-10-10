@@ -20,6 +20,13 @@ The commands below use the first tutorial's package layout, with contracts in
 `your_app/`. Keep the contracts within the application package when bindings
 refer to that package's Python tools.
 
+Keep each agent's `goal` and `guidance` in its `.agent.contract` file. Put
+shared types and capabilities in `.types.contract` and `.capabilities.contract`
+files. All project source files are compiled together, with global names.
+The parser checks each named suffix against the declarations it permits. See
+[File Organization](../language/contract-language.md#file-organization)
+for the file content rules.
+
 ## Ownership Boundary
 
 | Contract-owned | Target-binding-owned | Host-owned |

@@ -139,7 +139,7 @@ eval researches_section for SectionResearchAgent:
     given request = SectionResearchInput.fixture("default")
     expect output conforms SectionResearchBrief
 """
-    run_path = tmp_path / "research.eval"
+    run_path = tmp_path / "research.contract"
     run_path.write_text(run_spec)
     service.refresh_document(run_path)
 

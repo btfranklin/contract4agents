@@ -44,6 +44,10 @@ docs/
   descriptions, and controls whose audience explicitly includes `model`.
 - `docs/` contains reviewer-facing summaries generated from the IR.
 
+Keep authored goals and guidance in each agent's `.agent.contract` source.
+The files in `instructions/` are generated from that source and the other
+model-visible declarations.
+
 The IR retains tool permissions and output requirements. Target planning uses
 these declarations to select supported mappings; target bindings supply the
 tool and context implementations.

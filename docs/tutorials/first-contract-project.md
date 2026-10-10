@@ -1,8 +1,8 @@
 # First Contract Project
 
-This tutorial builds one small OpenAI agent. One contract file defines the
-agent, its tool, and the data that they exchange. Python supplies the tool
-implementation and runs the native agent.
+This tutorial builds one small OpenAI agent. The agent has its own contract
+file. Shared files define its tool and the data that they exchange. Python
+supplies the tool implementation and runs the native agent.
 
 You can complete the check and materialization steps offline. The final agent
 run needs an OpenAI API key and can incur provider charges.
@@ -16,7 +16,9 @@ your-app/
     run_agent.py
     tools.py
     agent_contracts/
-      support.contract
+      support.agent.contract
+      support.types.contract
+      support.capabilities.contract
       contract4agents.targets.toml
 ```
 
@@ -33,7 +35,7 @@ empty.
 
 ## 2. Define the Agent System
 
-Create `your_app/agent_contracts/support.contract`:
+Create `your_app/agent_contracts/support.types.contract`:
 
 ```contract
 type KnowledgeResult:
@@ -44,11 +46,19 @@ type SupportReply:
     answer: string
     source_ids: list[string]
     needs_follow_up: boolean
+```
 
+Create `your_app/agent_contracts/support.capabilities.contract`:
+
+```contract
 tool knowledge.search(query: string) -> KnowledgeResult:
     description = "Search the approved support knowledge base."
     side_effect = false
+```
 
+Create `your_app/agent_contracts/support.agent.contract`:
+
+```contract
 agent SupportResponder(question: string) -> SupportReply:
     use knowledge.search:
         availability = enabled
@@ -64,8 +74,19 @@ agent SupportResponder(question: string) -> SupportReply:
     ]
 ```
 
-The contract is the source of truth for the agent shape, tool access, and
-structured outputs. It does not contain the tool implementation.
+The project is the source of truth for the agent shape, tool access, and
+structured outputs. Each file has a limited set of declarations:
+
+- `.agent.contract` contains exactly one agent, including its `goal` and `guidance`.
+- `.types.contract` contains one or more types or enums.
+- `.capabilities.contract` contains one or more tools, datasources, or external context interfaces.
+
+The compiler collects all project source files and processes them together.
+Names are global, so the agent can reference `knowledge.search` and
+`SupportReply` directly. The files contain portable declarations; Python
+supplies the tool implementation. See
+[File Organization](../language/contract-language.md#file-organization)
+for the other file suffixes and their contents.
 
 ## 3. Implement and Bind the Tool
 

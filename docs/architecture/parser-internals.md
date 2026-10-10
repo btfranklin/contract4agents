@@ -24,6 +24,12 @@ assurance.
 - `contract4agents.parser._values` owns scalar and collection value helpers.
 
 The transformer validates only what is necessary to construct a coherent AST.
+The shared parse seam also checks recognized file suffixes against their
+allowed declaration kinds and count. It reports `PARSE003` for a mismatch.
+The CLI, public parser APIs, and editor use this same check. See
+[File Organization](../language/contract-language.md#file-organization)
+for the supported suffixes.
+
 Name resolution, ownership rules, type compatibility, grant conflicts, edge
 mappings, and assurance semantics belong in semantic analysis.
 

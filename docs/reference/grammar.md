@@ -4,6 +4,12 @@ The implemented language is the portable surface documented in
 [Contract Language](../language/contract-language.md). A project may contain
 `.contract` and `.eval` files.
 
+The parser also checks recognized file suffixes against their allowed
+top-level declarations. For example, an `.agent.contract` file must contain
+exactly one agent. Generic `.contract` files can combine declaration kinds.
+See [File Organization](../language/contract-language.md#file-organization)
+for the full suffix and count rules. All project files share global names.
+
 Top-level declarations are:
 
 - Native structural `type` declarations and closed string `enum` declarations,

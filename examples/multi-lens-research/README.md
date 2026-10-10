@@ -3,6 +3,12 @@
 This example models a larger research team that maps evidence, evaluates it
 through multiple specialist lenses, and synthesizes a source-backed brief.
 
+Each agent has one `.agent.contract` file with its goal and guidance. Start
+with [ResearchDirector](agents/research_director.agent.contract). Shared types
+are in [`research.types.contract`](types/research.types.contract), and the
+host workflow is in [`research_run.run.contract`](run_specs/research_run.run.contract).
+All source files are compiled together, with global declaration names.
+
 ## Team and Composition
 
 `ResearchDirector` can delegate to:
@@ -20,7 +26,7 @@ checks supplied stage evidence; the declaration does not schedule those stages.
 
 ## Shared Capabilities
 
-`capabilities/research.contract` defines source search/fetch, evidence scoring,
+`capabilities/research.capabilities.contract` defines source search/fetch, evidence scoring,
 citation formatting, and expert review once. Agents receive explicit grants to
 the subset they need. Implementations are bound once under each selected target.
 

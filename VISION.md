@@ -30,6 +30,11 @@ It should be compact enough for a model to understand, structured enough for
 static analysis, and precise enough for a human to review without reading
 generated provider code.
 
+Define each agent in its own `.agent.contract` file, with its goal and
+guidance. Shared files hold types, capabilities, and relationships. The project
+is compiled as one specification with global names. File boundaries organize
+the source; the parser checks that named suffixes match their contents.
+
 Contract4Agents is responsible for faithfully deriving artifacts from that
 specification and explaining what each target can represent. It does not
 supervise the host application or require implementors to adopt a prescribed

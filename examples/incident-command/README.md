@@ -4,6 +4,12 @@ This is the recommended first Contract4Agents example. It defines a typed
 incident-response team whose portable contracts can be reviewed independently
 of any SDK implementation.
 
+Each agent has one `.agent.contract` file. Start with
+[IncidentCommander](agents/incident_commander.agent.contract) for the
+signature, grants, context, goal, and guidance. Shared types are in
+[`incident.types.contract`](types/incident.types.contract). All source files
+are compiled together, and references use global declaration names.
+
 ## Team
 
 - `IncidentCommander` coordinates investigation and produces `IncidentBrief`.
@@ -17,7 +23,7 @@ agent-as-tool relationships. No host-maintained agent registry is needed.
 
 ## What to Notice
 
-`capabilities/incident.contract` defines every shared capability once. The
+`capabilities/incident.capabilities.contract` defines every shared capability once. The
 `logs.search` tool is granted to the investigator as `preapproved` and to the
 commander as `approval_required`. That difference belongs on the agent-tool
 relationship; each target binds the capability once.
