@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Mapping
 
+from contract4agents.ir import CanonicalJsonValue
 from contract4agents.visualization._types import (
     TruthView,
     VisualizationEdge,
@@ -23,7 +24,7 @@ def add_node(
     label: str,
     *,
     view: TruthView,
-    **facts: Any,
+    **facts: object,
 ) -> None:
     node = nodes.get(node_id)
     if node is None:
@@ -43,7 +44,7 @@ def add_edge(
     *,
     view: TruthView,
     discriminator: str = "",
-    **facts: Any,
+    **facts: object,
 ) -> None:
     edge_id = "|".join((kind, source, target, discriminator))
     edge = edges.get(edge_id)
@@ -61,12 +62,24 @@ def add_edge(
     edge["truth"][view].update(_facts(facts))
 
 
-def merge_facts(node: VisualizationNode, view: TruthView, **facts: Any) -> None:
+def merge_facts(node: VisualizationNode, view: TruthView, **facts: object) -> None:
     node["truth"][view].update(_facts(facts))
 
 
-def _facts(values: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in values.items() if value is not None and value != ""}
+def _facts(values: dict[str, object]) -> dict[str, CanonicalJsonValue]:
+    return {key: json_value(value) for key, value in values.items() if value is not None and value != ""}
+
+
+def json_value(value: object) -> CanonicalJsonValue:
+    """Convert internal facts to JSON values before storing them in the graph."""
+
+    if value is None or isinstance(value, str | bool | int | float):
+        return value
+    if isinstance(value, Mapping):
+        return {str(key): json_value(child) for key, child in value.items()}
+    if isinstance(value, tuple | list):
+        return [json_value(child) for child in value]
+    raise TypeError(f"Visualization fact is not JSON-compatible: {type(value).__name__}")
 
 
 __all__ = ["add_edge", "add_node", "empty_truth", "merge_facts"]

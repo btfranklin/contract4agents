@@ -7,7 +7,9 @@ import sys
 import threading
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import IO
+
+from contract4agents._strict_json import json_object
 
 
 def test_language_server_stdio_handshake_and_navigation(tmp_path: Path) -> None:
@@ -39,7 +41,7 @@ agent Researcher(request: Input) -> Output:
     )
     assert process.stdin is not None
     assert process.stdout is not None
-    messages: queue.Queue[dict[str, Any]] = queue.Queue()
+    messages: queue.Queue[dict[str, object]] = queue.Queue()
     threading.Thread(target=_read_messages, args=(process.stdout, messages), daemon=True).start()
 
     try:
@@ -62,11 +64,11 @@ agent Researcher(request: Input) -> Output:
             },
         )
         initialized = _response(messages, 1)
-        capabilities = initialized["result"]["capabilities"]
+        capabilities = _object(_object(initialized["result"])["capabilities"])
         assert capabilities["hoverProvider"] is True
         assert capabilities["definitionProvider"] is True
         assert capabilities["referencesProvider"] is True
-        assert capabilities["renameProvider"]["prepareProvider"] is True
+        assert _object(capabilities["renameProvider"])["prepareProvider"] is True
         assert "completionProvider" in capabilities
         assert capabilities["documentHighlightProvider"] is True
         assert capabilities["documentSymbolProvider"] is True
@@ -104,7 +106,7 @@ agent Researcher(request: Input) -> Output:
             },
         )
         hover = _response(messages, 2)
-        assert "provider executes" in hover["result"]["contents"]["value"]
+        assert "provider executes" in _text(_object(_object(hover["result"])["contents"])["value"])
 
         _send(
             process.stdin,
@@ -140,7 +142,7 @@ agent Researcher(request: Input) -> Output:
                 "context": {"includeDeclaration": True},
             },
         )
-        assert len(references) == 2
+        assert len(_array(references)) == 2
 
         highlights = _request(
             process.stdin,
@@ -152,7 +154,7 @@ agent Researcher(request: Input) -> Output:
                 "position": _lsp_position(source, "Input", occurrence=1),
             },
         )
-        assert len(highlights) == 2
+        assert len(_array(highlights)) == 2
 
         prepare_rename = _request(
             process.stdin,
@@ -164,7 +166,7 @@ agent Researcher(request: Input) -> Output:
                 "position": _lsp_position(source, "Input", occurrence=1),
             },
         )
-        assert prepare_rename["start"] == {"line": 10, "character": 26}
+        assert _object(prepare_rename)["start"] == {"line": 10, "character": 26}
 
         rename = _request(
             process.stdin,
@@ -177,7 +179,7 @@ agent Researcher(request: Input) -> Output:
                 "newName": "ResearchInput",
             },
         )
-        assert len(rename["changes"][path.as_uri()]) == 2
+        assert len(_array(_object(_object(rename)["changes"])[path.as_uri()])) == 2
 
         completion = _request(
             process.stdin,
@@ -189,7 +191,7 @@ agent Researcher(request: Input) -> Output:
                 "position": _lsp_position_after(source, "authorization = "),
             },
         )
-        assert {item["label"] for item in completion["items"]} == {
+        assert {_object(item)["label"] for item in _array(_object(completion)["items"])} == {
             "approval_required",
             "preapproved",
         }
@@ -201,8 +203,10 @@ agent Researcher(request: Input) -> Output:
             "textDocument/documentSymbol",
             {"textDocument": {"uri": path.as_uri()}},
         )
-        assert [item["name"] for item in document_symbols] == ["Input", "Output", "research.search", "Researcher"]
-        assert document_symbols[0]["children"][0]["name"] == "topic"
+        assert [_object(item)["name"] for item in _array(document_symbols)] == [
+            "Input", "Output", "research.search", "Researcher"
+        ]
+        assert _object(_array(_object(_array(document_symbols)[0])["children"])[0])["name"] == "topic"
 
         workspace_symbols = _request(
             process.stdin,
@@ -211,7 +215,7 @@ agent Researcher(request: Input) -> Output:
             "workspace/symbol",
             {"query": "research"},
         )
-        assert {item["name"] for item in workspace_symbols} == {"research.search", "Researcher"}
+        assert {_text(_object(item)["name"]) for item in _array(workspace_symbols)} == {"research.search", "Researcher"}
 
         semantic_tokens = _request(
             process.stdin,
@@ -220,8 +224,8 @@ agent Researcher(request: Input) -> Output:
             "textDocument/semanticTokens/full",
             {"textDocument": {"uri": path.as_uri()}},
         )
-        assert semantic_tokens["data"]
-        assert len(semantic_tokens["data"]) % 5 == 0
+        assert _object(semantic_tokens)["data"]
+        assert len(_array(_object(semantic_tokens)["data"])) % 5 == 0
 
         inlay_hints = _request(
             process.stdin,
@@ -236,7 +240,7 @@ agent Researcher(request: Input) -> Output:
                 },
             },
         )
-        assert [item["label"] for item in inlay_hints] == ["  (query: string) -> Output"]
+        assert [_object(item)["label"] for item in _array(inlay_hints)] == ["  (query: string) -> Output"]
 
         missing_hover = _request(
             process.stdin,
@@ -268,10 +272,15 @@ agent Researcher(request: Input) -> Output:
         published = _notification(
             messages,
             "textDocument/publishDiagnostics",
-            lambda item: any(diagnostic.get("code") == "SEM107" for diagnostic in item["params"]["diagnostics"]),
+            lambda item: any(
+                _object(diagnostic).get("code") == "SEM107"
+                for diagnostic in _array(_object(item["params"])["diagnostics"])
+            ),
         )
         authorization_diagnostic = next(
-            item for item in published["params"]["diagnostics"] if item.get("code") == "SEM107"
+            _object(item)
+            for item in _array(_object(published["params"])["diagnostics"])
+            if _object(item).get("code") == "SEM107"
         )
         code_actions = _request(
             process.stdin,
@@ -284,7 +293,7 @@ agent Researcher(request: Input) -> Output:
                 "context": {"diagnostics": [authorization_diagnostic]},
             },
         )
-        assert {item["title"] for item in code_actions} == {
+        assert {_text(_object(item)["title"]) for item in _array(code_actions)} == {
             "Set authorization to approval_required",
             "Set authorization to preapproved",
         }
@@ -317,13 +326,27 @@ agent Researcher(request: Input) -> Output:
             process.wait(timeout=5)
 
 
-def _send(stream: BinaryIO, message: dict[str, Any]) -> None:
+def _object(value: object) -> dict[str, object]:
+    return dict(json_object("JSON-RPC object", value))
+
+
+def _array(value: object) -> list[object]:
+    assert isinstance(value, list), value
+    return value
+
+
+def _text(value: object) -> str:
+    assert isinstance(value, str), value
+    return value
+
+
+def _send(stream: IO[bytes], message: dict[str, object]) -> None:
     body = json.dumps(message, separators=(",", ":")).encode()
     stream.write(f"Content-Length: {len(body)}\r\n\r\n".encode() + body)
     stream.flush()
 
 
-def _read_messages(stream: BinaryIO, messages: queue.Queue[dict[str, Any]]) -> None:
+def _read_messages(stream: IO[bytes], messages: queue.Queue[dict[str, object]]) -> None:
     while True:
         headers: dict[str, str] = {}
         while line := stream.readline():
@@ -334,10 +357,10 @@ def _read_messages(stream: BinaryIO, messages: queue.Queue[dict[str, Any]]) -> N
         if not headers:
             return
         body = stream.read(int(headers["content-length"]))
-        messages.put(json.loads(body))
+        messages.put(dict(json_object("JSON-RPC message", json.loads(body))))
 
 
-def _response(messages: queue.Queue[dict[str, Any]], request_id: int) -> dict[str, Any]:
+def _response(messages: queue.Queue[dict[str, object]], request_id: int) -> dict[str, object]:
     while True:
         message = messages.get(timeout=10)
         if message.get("id") == request_id:
@@ -346,21 +369,21 @@ def _response(messages: queue.Queue[dict[str, Any]], request_id: int) -> dict[st
 
 
 def _request(
-    stream: BinaryIO,
-    messages: queue.Queue[dict[str, Any]],
+    stream: IO[bytes],
+    messages: queue.Queue[dict[str, object]],
     request_id: int,
     method: str,
-    params: dict[str, Any],
-) -> Any:
+    params: dict[str, object],
+) -> object:
     _send(stream, {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params})
     return _response(messages, request_id)["result"]
 
 
 def _notification(
-    messages: queue.Queue[dict[str, Any]],
+    messages: queue.Queue[dict[str, object]],
     method: str,
-    predicate: Callable[[dict[str, Any]], bool],
-) -> dict[str, Any]:
+    predicate: Callable[[dict[str, object]], bool],
+) -> dict[str, object]:
     while True:
         message = messages.get(timeout=10)
         if message.get("method") == method and predicate(message):

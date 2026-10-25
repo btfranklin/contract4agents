@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from typing import TypedDict
 
 import pytest
 
@@ -49,6 +50,18 @@ from contract4agents.tracing import (
 from contract4agents.visualization import build_visualization_graph
 from tests.support.assurance import planned_system
 from tests.support.portable_datetime import PORTABLE_DATETIME_CASES
+
+
+class _BundleInputs(TypedDict):
+    normalized_trace_jsonl: str
+    control_results: tuple[()]
+    eval_results: object
+    provenance: object
+
+
+class _MaterializedBundleInputs(_BundleInputs):
+    trace_closures: tuple[TraceClosureEvidence, ...]
+    materialization_evidence: GraphValidationEvidence
 
 
 def test_run_spec_assessment_passes_complete_typed_stage_and_assertion_evidence() -> None:
@@ -229,7 +242,7 @@ def test_run_spec_output_schema_uses_portable_datetime_profile(
                     type_def,
                     fields=(TypeFieldIR("answer", parse_type_ref("datetime")),),
                 )
-                if identifier == brief_id
+                if identifier == brief_id and isinstance(type_def, TypeIR)
                 else type_def,
             )
             for identifier, type_def in base.types.items()
@@ -296,7 +309,7 @@ def test_run_spec_results_are_distinct_assurance_bundle_evidence() -> None:
     plan = _plan(ir)
     trace = _trace(ir, plan)
     result = assess_run_spec(planned_system(ir, plan), trace, "ResearchRun", _evidence(ir))
-    common = {
+    common: _MaterializedBundleInputs = {
         "normalized_trace_jsonl": dumps_trace_jsonl(trace),
         "trace_closures": (_closure(trace),),
         "control_results": (),
@@ -384,7 +397,7 @@ def test_assurance_bundle_requires_selection_for_each_trace_run() -> None:
         )
     )
     combined_trace = NormalizedTrace(trace.events + second_run.events)
-    common = {
+    common: _BundleInputs = {
         "normalized_trace_jsonl": dumps_trace_jsonl(combined_trace),
         "control_results": (),
         "eval_results": {"campaigns": []},

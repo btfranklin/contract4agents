@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import importlib
 import json
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Mapping, Sequence
 from pathlib import Path
-from typing import Any, cast
+from typing import TypeVar, cast
 
 import pytest
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
+from strands import Agent
+from strands.models.bedrock import BedrockModel
+from strands.types.content import Message
+from strands.types.interrupt import InterruptResponseContent
+from strands.types.streaming import StreamEvent
+from strands.types.tools import AgentTool
 
 from contract4agents import materialize
 from contract4agents.adapters._native_names import native_name
@@ -167,7 +173,7 @@ def test_concrete_strands_model_factory_wraps_failures(
 
 
 def test_concrete_strands_model_options_are_thawed_before_bedrock_validation() -> None:
-    from botocore.validate import ParamValidator
+    from botocore.validate import ParamValidator  # type: ignore[import-untyped]  # The provider ships no stubs.
 
     frozen = freeze_json(
         {"additional_request_fields": {"reasoning_config": {"type": "enabled", "budget_tokens": 1024}}}
@@ -175,7 +181,7 @@ def test_concrete_strands_model_options_are_thawed_before_bedrock_validation() -
     assert isinstance(frozen, FrozenMap)
 
     model = cast(
-        Any,
+        BedrockModel,
         StrandsAgentsSDK().create_model(
             model="global.anthropic.claude-sonnet-4-6",
             model_options=frozen,
@@ -240,7 +246,8 @@ async def test_real_strands_sdk_builds_and_runs_typed_tools_without_live_calls(
     assert child_description.output_type is result.graph.output_types["Result"]
     assert result.output_type_for_agent(child) is result.generated_types["Result"]
     accepted = result.validate_output_for_agent(child, {"value": "accepted"})
-    assert accepted.value == "accepted"
+    assert isinstance(accepted, BaseModel)
+    assert accepted.model_dump()["value"] == "accepted"
     with pytest.raises(MaterializationError, match="MAT207"):
         result.validate_output_for_agent(child, None)
     with pytest.raises(MaterializationError, match="MAT207"):
@@ -251,7 +258,7 @@ async def test_real_strands_sdk_builds_and_runs_typed_tools_without_live_calls(
     assert tool_description.native_name in child.tool_names
     events = [
         event
-        async for event in cast(Any, native_tool).stream(
+        async for event in cast(AgentTool, native_tool).stream(
             {
                 "name": tool_description.native_name,
                 "toolUseId": "tool-use-1",
@@ -266,7 +273,7 @@ async def test_real_strands_sdk_builds_and_runs_typed_tools_without_live_calls(
         "content": [{"json": {"value": "needle"}}],
     }
     with pytest.raises(ValidationError, match="query"):
-        async for _event in cast(Any, native_tool).stream(
+        async for _event in cast(AgentTool, native_tool).stream(
             {
                 "name": tool_description.native_name,
                 "toolUseId": "tool-use-invalid",
@@ -309,8 +316,10 @@ async def test_real_strands_incident_slice_closes_after_delegate_approval_resume
         "ask_child",
     )
 
+    OutputModel = TypeVar("OutputModel", bound=BaseModel)
+
     class ScriptedModel(Model):
-        def __init__(self, responses: Sequence[Mapping[str, object]]) -> None:
+        def __init__(self, responses: Sequence[Message]) -> None:
             self.responses = list(responses)
             self.index = 0
 
@@ -322,11 +331,11 @@ async def test_real_strands_incident_slice_closes_after_delegate_approval_resume
 
         async def structured_output(
             self,
-            output_model: type[object],
+            output_model: type[OutputModel],
             prompt: object,
             system_prompt: str | None = None,
             **kwargs: object,
-        ) -> AsyncIterator[Mapping[str, object]]:
+        ) -> AsyncGenerator[dict[str, OutputModel | object], None]:
             del output_model, prompt, system_prompt, kwargs
             raise AssertionError("Strands should use its structured-output tool in this path")
             yield {}  # pragma: no cover
@@ -337,13 +346,13 @@ async def test_real_strands_incident_slice_closes_after_delegate_approval_resume
             tool_specs: object = None,
             system_prompt: str | None = None,
             **kwargs: object,
-        ) -> AsyncIterator[Mapping[str, object]]:
+        ) -> AsyncIterator[StreamEvent]:
             del messages, tool_specs, system_prompt, kwargs
             response = self.responses[self.index]
             self.index += 1
             yield {"messageStart": {"role": "assistant"}}
-            for content in cast(Sequence[Mapping[str, object]], response["content"]):
-                tool_use = cast(Mapping[str, object], content["toolUse"])
+            for content in response["content"]:
+                tool_use = content["toolUse"]
                 yield {
                     "contentBlockStart": {
                         "start": {
@@ -414,28 +423,29 @@ async def test_real_strands_incident_slice_closes_after_delegate_approval_resume
 
     with session:
         with session.bind_attempt(attempt, agent=result.agents["Parent"]):
-            interrupted = await cast(Any, result.agents["Parent"]).invoke_async("Resolve the incident.")
+            interrupted = await cast(Agent, result.agents["Parent"]).invoke_async("Resolve the incident.")
             assert interrupted.stop_reason == "interrupt"
+            assert interrupted.interrupts is not None
             assert len(interrupted.interrupts) == 1
             assert implementation_module.LOOKUPS == []
             session.record_approval_requested(native_tool=approval_tool)
             session.record_approval(native_tool=approval_tool, approved=approved)
-            completed = await cast(Any, result.agents["Parent"]).invoke_async(
-                [
-                    {
-                        "interruptResponse": {
-                            "interruptId": interrupted.interrupts[0].id,
-                            "response": approval_response,
-                        }
-                    }
-                ]
-            )
+            interrupt_responses = [
+                InterruptResponseContent(
+                    interruptResponse={
+                        "interruptId": interrupted.interrupts[0].id,
+                        "response": approval_response,
+                    },
+                )
+            ]
+            completed = await cast(Agent, result.agents["Parent"]).invoke_async(interrupt_responses)
 
     accepted = result.validate_output_for_agent(
         result.agents["Parent"],
         completed.structured_output,
     )
-    assert accepted.value == "needle"
+    assert isinstance(accepted, BaseModel)
+    assert accepted.model_dump()["value"] == "needle"
     assert implementation_module.LOOKUPS == expected_lookups
     assert factory_calls == [
         ("test-model", {"script": "child"}),
@@ -518,7 +528,7 @@ def _tool_use_message(
     name: str,
     tool_use_id: str,
     tool_input: Mapping[str, object],
-) -> Mapping[str, object]:
+) -> Message:
     return {
         "role": "assistant",
         "content": [

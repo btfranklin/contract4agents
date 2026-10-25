@@ -6,8 +6,9 @@ import importlib
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Protocol, cast
+from typing import Protocol, TypedDict, cast
 
+from contract4agents._strict_json import json_array, json_object, json_string, json_strings
 from contract4agents.ir import FrozenJsonValue, FrozenMap
 from contract4agents.materialization._harness_configuration import (
     HarnessConfiguration,
@@ -22,17 +23,63 @@ _ARN = re.compile(
 _ENDPOINT = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,47}\Z")
 
 
-class HarnessControlClient(Protocol):
-    def get_harness(self, **kwargs: Any) -> Mapping[str, Any]: ...
+class HarnessPromptBlock(TypedDict):
+    text: str
 
-    def get_harness_endpoint(self, **kwargs: Any) -> Mapping[str, Any]: ...
+
+@dataclass(frozen=True)
+class HarnessInvocationSettings:
+    """Validated plan-owned AWS invocation fields."""
+
+    model: Mapping[str, object]
+    system_prompt: list[HarnessPromptBlock]
+    tools: list[Mapping[str, object]]
+    allowed_tools: list[str]
+    max_iterations: int
+    max_tokens: int
+    timeout_seconds: int
+
+    @classmethod
+    def from_configuration(cls, request: Mapping[str, object]) -> HarnessInvocationSettings:
+        prompts = []
+        for value in json_array("Harness system prompt", thaw(request["systemPrompt"])):
+            block = json_object("Harness prompt block", value)
+            prompts.append(HarnessPromptBlock(text=json_string("Harness prompt text", block["text"])))
+        limits = []
+        for key in ("maxIterations", "maxTokens", "timeoutSeconds"):
+            value = request[key]
+            if type(value) is not int or value <= 0:
+                raise TypeError(f"Harness `{key}` must be a positive integer")
+            limits.append(value)
+        return cls(
+            model=json_object("Harness model", thaw(request["model"])),
+            system_prompt=prompts,
+            tools=[
+                json_object("Harness inline tool", value)
+                for value in json_array("Harness tools", thaw(request["tools"]))
+            ],
+            allowed_tools=list(json_strings("Harness allowed tools", thaw(request["allowedTools"]))),
+            max_iterations=limits[0], max_tokens=limits[1], timeout_seconds=limits[2],
+        )
+
+
+class HarnessControlClient(Protocol):
+    def get_harness(self, *, harnessId: str, harnessVersion: str) -> Mapping[str, object]: ...
+
+    def get_harness_endpoint(self, *, harnessId: str, endpointName: str) -> Mapping[str, object]: ...
 
 
 class HarnessRuntimeClient(Protocol):
-    def invoke_harness(self, **kwargs: Any) -> Mapping[str, Any]: ...
+    def invoke_harness(
+        self, *, harnessArn: str, qualifier: str, runtimeSessionId: str,
+        runtimeUserId: str, actorId: str, messages: list[dict[str, object]],
+        model: Mapping[str, object], systemPrompt: list[HarnessPromptBlock],
+        tools: list[Mapping[str, object]], allowedTools: list[str],
+        maxIterations: int, maxTokens: int, timeoutSeconds: int,
+    ) -> Mapping[str, object]: ...
 
 
-def aws_client(service: str, *, region: str | None = None) -> Any:
+def aws_client(service: str, *, region: str | None = None) -> object:
     """Create a client with no SDK retries and no resource writes."""
 
     try:
@@ -107,17 +154,23 @@ def verify_harness_deployment(
         raise ValueError("Invalid Harness ARN or endpoint name")
     control = client or cast(HarnessControlClient, aws_client("bedrock-agentcore-control", region=match[2]))
     harness_id = match[4]
-    first = control.get_harness_endpoint(harnessId=harness_id, endpointName=endpoint_name)["endpoint"]
+    first = json_object(
+        "Harness endpoint", control.get_harness_endpoint(harnessId=harness_id, endpointName=endpoint_name)["endpoint"]
+    )
     _check_endpoint(first, harness_id, endpoint_name)
     version = str(first["liveVersion"])
-    observed = control.get_harness(harnessId=harness_id, harnessVersion=version)["harness"]
+    observed = json_object(
+        "Harness readback", control.get_harness(harnessId=harness_id, harnessVersion=version)["harness"]
+    )
     if observed.get("arn") != harness_arn or observed.get("harnessVersion") != version:
         raise ValueError("Harness readback has a different deployment identity")
     if observed.get("status") != "READY":
         raise ValueError("Harness is not ready")
     request = configuration.agents[agent_name].request
     _check_configuration(request, observed)
-    second = control.get_harness_endpoint(harnessId=harness_id, endpointName=endpoint_name)["endpoint"]
+    second = json_object(
+        "Harness endpoint", control.get_harness_endpoint(harnessId=harness_id, endpointName=endpoint_name)["endpoint"]
+    )
     _check_endpoint(second, harness_id, endpoint_name)
     if _endpoint_identity(first) != _endpoint_identity(second):
         raise ValueError("Harness endpoint changed during verification")
@@ -137,7 +190,7 @@ def verify_harness_deployment(
     )
 
 
-def _check_endpoint(endpoint: Mapping[str, Any], harness_id: str, name: str) -> None:
+def _check_endpoint(endpoint: Mapping[str, object], harness_id: str, name: str) -> None:
     if (
         endpoint.get("status") != "READY"
         or endpoint.get("harnessId") != harness_id
@@ -148,7 +201,7 @@ def _check_endpoint(endpoint: Mapping[str, Any], harness_id: str, name: str) -> 
         raise ValueError("Harness endpoint is not stable and ready")
 
 
-def _endpoint_identity(endpoint: Mapping[str, Any]) -> dict[str, object]:
+def _endpoint_identity(endpoint: Mapping[str, object]) -> dict[str, object]:
     return {
         key: str(endpoint.get(key, ""))
         for key in ("harnessId", "endpointName", "liveVersion", "targetVersion", "status", "updatedAt")

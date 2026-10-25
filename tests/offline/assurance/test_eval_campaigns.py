@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pytest
 
 from contract4agents.eval_campaigns import (
+    ApprovalDecision,
     ApprovalRequest,
     BaselineSnapshot,
     BaselineTolerance,
@@ -16,14 +18,17 @@ from contract4agents.eval_campaigns import (
     EvalProviderError,
     EvaluatorTruth,
     FileEvalProvider,
+    FinalizedTrialEvidence,
     HostFixtureContext,
     InvocationInputs,
+    JudgeDecision,
     JudgeRequest,
     RedactedTrialView,
     ResolvedTrialData,
     run_campaign,
 )
 from contract4agents.ir import (
+    EvalIR,
     semantic_id,
 )
 from contract4agents.tracing import TraceConformanceError
@@ -65,7 +70,7 @@ def _event_data(*, complete: bool = True) -> list[dict[str, object]]:
 def _write_eval_data(
     path: Path,
     *,
-    trials: list[dict[str, object]],
+    trials: Sequence[Mapping[str, object]],
 ) -> FileEvalProvider:
     closed_trials = [
         {
@@ -245,14 +250,17 @@ async def test_trial_data_audiences_are_structurally_separate_and_reports_are_re
             self.execution_request: EvalExecutionRequest | None = None
             self.judge_request: JudgeRequest | None = None
 
-        async def resolve_trial_data(self, case, *, trial_index):  # type: ignore[no-untyped-def]
+        async def resolve_trial_data(self, case: EvalIR, *, trial_index: int) -> ResolvedTrialData:
             return await delegate.resolve_trial_data(case, trial_index=trial_index)
 
-        async def execute(self, request: EvalExecutionRequest):  # type: ignore[no-untyped-def]
+        async def execute(self, request: EvalExecutionRequest) -> FinalizedTrialEvidence:
             self.execution_request = request
             return await delegate.execute(request)
 
-        async def judge(self, request: JudgeRequest):  # type: ignore[no-untyped-def]
+        async def approve(self, request: ApprovalRequest) -> ApprovalDecision | None:
+            return await delegate.approve(request)
+
+        async def judge(self, request: JudgeRequest) -> JudgeDecision | None:
             self.judge_request = request
             return await delegate.judge(request)
 

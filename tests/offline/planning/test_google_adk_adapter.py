@@ -306,7 +306,7 @@ def _agent_ir(
             agent_id,
             tool.id,
             "enabled",
-            "automatic",
+            "automatic",  # type: ignore[arg-type]
         )
         if tool is not None
         else None

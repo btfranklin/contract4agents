@@ -45,8 +45,11 @@ from contract4agents.materialization._tracing import (
     NoOpMaterializationTraceSink,
     RecordingMaterializationTraceSink,
 )
+from contract4agents.materialization._types import GeneratedEnum, GeneratedType
 
 __all__ = [
+    "GeneratedEnum",
+    "GeneratedType",
     "AgentCoreHarnessMaterializationProvider",
     "ADKSDK",
     "AgentsSDK",

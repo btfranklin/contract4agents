@@ -4,10 +4,19 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from click.testing import CliRunner
 
 from contract4agents.cli import main
-from contract4agents.ir import AgentIR, CanonicalIR, ParameterIR, parse_type_ref, semantic_id
+from contract4agents.ir import (
+    AgentIR,
+    CanonicalIR,
+    FrozenJsonValue,
+    ParameterIR,
+    freeze_json,
+    parse_type_ref,
+    semantic_id,
+)
 
 ROOT = Path(__file__).resolve().parents[3]
 EXAMPLE = ROOT / "examples" / "incident-command"
@@ -15,14 +24,14 @@ EXAMPLE = ROOT / "examples" / "incident-command"
 
 def test_cli_diff_serializes_changed_portable_defaults(
     tmp_path: Path,
-    monkeypatch,
-) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     before = tmp_path / "before"
     after = tmp_path / "after"
     before.mkdir()
     after.mkdir()
 
-    def contract(default: object) -> CanonicalIR:
+    def contract(default: FrozenJsonValue) -> CanonicalIR:
         agent_id = semantic_id("agent", "Worker")
         return CanonicalIR.create(
             agents=(
@@ -45,8 +54,8 @@ def test_cli_diff_serializes_changed_portable_defaults(
         )
 
     artifacts = {
-        before: SimpleNamespace(ir=contract({"z": "old", "a": "first"})),
-        after: SimpleNamespace(ir=contract({"y": "new"})),
+        before: SimpleNamespace(ir=contract(freeze_json({"z": "old", "a": "first"}))),
+        after: SimpleNamespace(ir=contract(freeze_json({"y": "new"}))),
     }
     monkeypatch.setattr("contract4agents.cli.compile_project", lambda path: artifacts[path])
 

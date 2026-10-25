@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from contract4agents.tracing._closure import (
     TraceClosureEvidence,
@@ -22,6 +22,7 @@ from contract4agents.tracing._provider_evidence import (
     ProviderOutcomeCategory,
     ProviderOutcomeEvidence,
     ProviderOutcomePhase,
+    ProviderUsageCoverage,
     ProviderUsageEvidence,
 )
 from contract4agents.tracing._sinks import NormalizedTraceSink
@@ -417,32 +418,32 @@ class _StrandsHookBridge:
     def __init__(self, router: StrandsNormalizedTraceRouter) -> None:
         self.router = router
 
-    def before_invocation(self, event: Any) -> None:
+    def before_invocation(self, event: object) -> None:
         session = self.router.current_session
         if isinstance(session, StrandsNormalizedTraceSession):
             session._on_invocation_start(event)
 
-    def after_invocation(self, event: Any) -> None:
+    def after_invocation(self, event: object) -> None:
         session = self.router.current_session
         if isinstance(session, StrandsNormalizedTraceSession):
             session._on_invocation_end(event)
 
-    def before_model(self, event: Any) -> None:
+    def before_model(self, event: object) -> None:
         session = self.router.current_session
         if isinstance(session, StrandsNormalizedTraceSession):
             session._on_model_start(event)
 
-    def after_model(self, event: Any) -> None:
+    def after_model(self, event: object) -> None:
         session = self.router.current_session
         if isinstance(session, StrandsNormalizedTraceSession):
             session._on_model_end(event)
 
-    def before_tool(self, event: Any) -> None:
+    def before_tool(self, event: object) -> None:
         session = self.router.current_session
         if isinstance(session, StrandsNormalizedTraceSession):
             session._on_tool_start(event)
 
-    def after_tool(self, event: Any) -> None:
+    def after_tool(self, event: object) -> None:
         session = self.router.current_session
         if isinstance(session, StrandsNormalizedTraceSession):
             session._on_tool_end(event)
@@ -538,6 +539,7 @@ def _strands_usage_evidence(
             attempt_id=attempt.attempt_id,
             invocation_id=attempt.invocation_id,
         )
+    coverage: ProviderUsageCoverage
     input_tokens = _strands_usage_value(usage, "inputTokens")
     output_tokens = _strands_usage_value(usage, "outputTokens")
     total_tokens = _strands_usage_value(usage, "totalTokens")
@@ -559,7 +561,7 @@ def _strands_usage_evidence(
         coverage = "partial"
     return ProviderUsageEvidence(
         scope="attempt",
-        coverage=coverage,  # type: ignore[arg-type]
+        coverage=coverage,
         aggregation_identity=attempt.attempt_id,
         aggregation_basis="Strands AgentResult.metrics.accumulated_usage",
         provenance="strands.AgentResult.metrics.accumulated_usage",

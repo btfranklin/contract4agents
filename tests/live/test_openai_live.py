@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -36,7 +37,8 @@ async def test_contract_first_incident_graph_runs_through_openai(
     if not os.environ.get("OPENAI_API_KEY"):
         pytest.skip("OPENAI_API_KEY is not configured")
 
-    from agents import RunConfig, Runner, set_trace_processors
+    from agents import Agent, RunConfig, Runner, set_trace_processors
+    from agents.tracing import TracingProcessor
 
     database = seed_incident_data(tmp_path / "incident.sqlite")
     monkeypatch.setenv("CONTRACT4AGENTS_INCIDENT_DB", str(database))
@@ -64,13 +66,13 @@ async def test_contract_first_incident_graph_runs_through_openai(
 
     router = OpenAINormalizedTraceRouter()
     session = router.open_session(system, run_id=run_id)
-    set_trace_processors([router])
+    set_trace_processors([cast(TracingProcessor, router)])
     prompt = PROMPT.read_text(encoding="utf-8").replace("{{CONTEXT}}", rendered_context)
     attempt = TraceAttempt("incident-command:1", "incident-command-attempt-1", 1)
     with session:
         with session.bind_attempt(attempt, agent=commander):
             result = await Runner.run(
-                commander,
+                cast(Agent[object], commander),
                 prompt,
                 max_turns=12,
                 run_config=RunConfig(
@@ -113,13 +115,14 @@ async def test_openai_hosted_web_search_normalizes_to_exact_grant() -> None:
     if not os.environ.get("OPENAI_API_KEY"):
         pytest.skip("OPENAI_API_KEY is not configured")
 
-    from agents import RunConfig, Runner, set_trace_processors
+    from agents import Agent, RunConfig, Runner, set_trace_processors
+    from agents.tracing import TracingProcessor
 
     system = materialize(WEB_SEARCH_PROJECT, target="openai", profile="production")
     run_id = "openai-live-web-search"
     router = OpenAINormalizedTraceRouter()
     session = router.open_session(system, run_id=run_id)
-    set_trace_processors([router])
+    set_trace_processors([cast(TracingProcessor, router)])
     # The SDK only attaches the provider response (including its model field)
     # when data capture is enabled. Our sole session deliberately retains
     # correlation and model metadata while excluding response input/output.
@@ -127,7 +130,7 @@ async def test_openai_hosted_web_search_normalizes_to_exact_grant() -> None:
     with session:
         with session.bind_attempt(attempt, agent=system.agents["CurrentTruthScout"]):
             result = await Runner.run(
-                system.agents["CurrentTruthScout"],
+                cast(Agent[object], system.agents["CurrentTruthScout"]),
                 WEB_SEARCH_PROMPT.read_text(encoding="utf-8"),
                 max_turns=4,
                 run_config=RunConfig(

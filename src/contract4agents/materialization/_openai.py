@@ -5,9 +5,9 @@ from __future__ import annotations
 import dataclasses
 import importlib.metadata
 import json
-from collections.abc import Mapping
+from collections.abc import Awaitable, Mapping
 from dataclasses import dataclass
-from typing import Any, Protocol, cast
+from typing import Protocol, cast
 
 from pydantic import BaseModel, TypeAdapter
 
@@ -29,6 +29,7 @@ from contract4agents.materialization._tracing import (
     _emit_materialization_events,
 )
 from contract4agents.materialization._types import (
+    GeneratedType,
     build_parameter_model,
     output_type_for,
     type_adapter_for,
@@ -38,7 +39,30 @@ from contract4agents.runtime import (
     EnvironmentProvider,
     EnvironmentRunRequest,
 )
+from contract4agents.runtime._utils import PythonCallable
 from contract4agents.target_bindings import BindingEntry, TargetBinding
+
+
+class _OutputSchemaShape(Protocol):
+    def json_schema(self) -> dict[str, object]: ...
+
+
+class _RunResult(Protocol):
+    final_output: object
+
+
+class _AgentShape(Protocol):
+    name: str
+    instructions: object
+    model: object
+    output_type: object
+    tools: list[object]
+    handoffs: list[object]
+
+    def as_tool(
+        self, *, tool_name: str, tool_description: str,
+        parameters: type[BaseModel] | None, include_input_schema: bool,
+    ) -> object: ...
 
 
 @dataclass(frozen=True)
@@ -46,7 +70,7 @@ class NativeAgentDescription:
     name: str
     instructions: str
     model: str
-    output_type: type[object]
+    output_type: object
     output_schema: Mapping[str, object]
     tools: tuple[object, ...]
     handoffs: tuple[object, ...]
@@ -73,7 +97,7 @@ class OpenAISDK(Protocol):
         instructions: str,
         model: str,
         model_options: Mapping[str, object],
-        output_type: type[object],
+        output_type: object,
         tools: tuple[object, ...],
     ) -> object: ...
 
@@ -84,7 +108,7 @@ class OpenAISDK(Protocol):
         description: str,
         implementation: object,
         input_type: type[BaseModel] | None,
-        output_adapter: TypeAdapter[Any],
+        output_adapter: TypeAdapter[object],
         requires_approval: bool,
     ) -> object: ...
 
@@ -129,7 +153,7 @@ class OpenAISDK(Protocol):
 
     def input_schema(self, input_type: type[BaseModel] | None) -> Mapping[str, object]: ...
 
-    def output_schema(self, output_type: type[object]) -> Mapping[str, object]: ...
+    def output_schema(self, output_type: object) -> Mapping[str, object]: ...
 
 
 class AgentsSDK:
@@ -148,7 +172,7 @@ class AgentsSDK:
         instructions: str,
         model: str,
         model_options: Mapping[str, object],
-        output_type: type[object],
+        output_type: object,
         tools: tuple[object, ...],
     ) -> object:
         try:
@@ -158,7 +182,7 @@ class AgentsSDK:
         options = thaw_mapping(model_options)
         options.pop("environment", None)
         try:
-            settings = cast(Any, ModelSettings)(**options) if options else None
+            settings = cast(PythonCallable[object], ModelSettings)(**options) if options else None
         except (TypeError, ValueError) as exc:
             raise MaterializationError(
                 (MaterializationIssue("MAT302", f"Invalid OpenAI model options for `{name}`: {exc}"),)
@@ -172,7 +196,7 @@ class AgentsSDK:
         }
         if settings is not None:
             kwargs["model_settings"] = settings
-        return cast(Any, Agent)(**kwargs)
+        return cast(PythonCallable[object], Agent)(**kwargs)
 
     def create_function_tool(
         self,
@@ -181,7 +205,7 @@ class AgentsSDK:
         description: str,
         implementation: object,
         input_type: type[BaseModel] | None,
-        output_adapter: TypeAdapter[Any],
+        output_adapter: TypeAdapter[object],
         requires_approval: bool,
     ) -> object:
         from agents import FunctionTool
@@ -192,7 +216,7 @@ class AgentsSDK:
             )
         boundary = HostCallableBoundary.create(
             name,
-            cast(Any, implementation),
+            implementation,
             input_type,
             output_adapter,
         )
@@ -233,7 +257,7 @@ class AgentsSDK:
             key: value for key, value in binding.values.items() if key not in {"provider", "tool", "provider_tool"}
         }
         try:
-            return cast(Any, WebSearchTool)(**options)
+            return cast(PythonCallable[object], WebSearchTool)(**options)
         except TypeError as exc:
             raise MaterializationError(
                 (
@@ -252,7 +276,7 @@ class AgentsSDK:
         child: object,
         input_type: type[BaseModel] | None,
     ) -> object:
-        native_child = cast(Any, child)
+        native_child = cast(_AgentShape, child)
         return native_child.as_tool(
             tool_name=openai_tool_name(name),
             tool_description=description,
@@ -276,17 +300,17 @@ class AgentsSDK:
         from pydantic import BaseModel, TypeAdapter
 
         if input_type is None:
-            schema: dict[str, Any] = {
+            schema: dict[str, object] = {
                 "type": "object",
                 "properties": {"input": {"type": "string"}},
                 "required": ["input"],
                 "additionalProperties": False,
             }
-            adapter: TypeAdapter[Any] | None = None
+            adapter: TypeAdapter[object] | None = None
         else:
             if not issubclass(input_type, BaseModel):
                 raise TypeError("Isolated delegate inputs must be Pydantic models")
-            adapter = TypeAdapter(input_type)
+            adapter = TypeAdapter[object](input_type)
             schema = adapter.json_schema()
 
         async def invoke_tool(context: object, input_json: str) -> object:
@@ -309,7 +333,7 @@ class AgentsSDK:
                 _capabilities: tuple[str, ...] | None,
             ) -> object:
                 run_input = child_input if isinstance(child_input, str) else json.dumps(child_input)
-                result = await cast(Any, Runner).run(
+                result = await cast(PythonCallable[Awaitable[_RunResult]], Runner.run)(
                     starting_agent=child,
                     input=run_input,
                     context=run_context,
@@ -343,7 +367,7 @@ class AgentsSDK:
         if history == "none":
 
             def discard_history(data: object) -> object:
-                return cast(Any, dataclasses.replace)(
+                return cast(PythonCallable[object], dataclasses.replace)(
                     data,
                     input_history=(),
                     pre_handoff_items=(),
@@ -352,7 +376,7 @@ class AgentsSDK:
                 )
 
             input_filter = discard_history
-        return cast(Any, handoff)(
+        return cast(PythonCallable[object], handoff)(
             child,
             tool_name_override=openai_tool_name(name),
             tool_description_override=description,
@@ -361,16 +385,16 @@ class AgentsSDK:
         )
 
     def attach(self, agent: object, *, tools: tuple[object, ...], handoffs: tuple[object, ...]) -> None:
-        native_agent = cast(Any, agent)
+        native_agent = cast(_AgentShape, agent)
         native_agent.tools = list(tools)
         native_agent.handoffs = list(handoffs)
 
     def describe(self, agent: object) -> NativeAgentDescription:
         from agents import AgentOutputSchema
 
-        native_agent = cast(Any, agent)
+        native_agent = cast(_AgentShape, agent)
         try:
-            output_type = cast(type[object], native_agent.output_type)
+            output_type = native_agent.output_type
             name = str(native_agent.name)
             instructions = str(native_agent.instructions)
             model = str(native_agent.model)
@@ -390,7 +414,7 @@ class AgentsSDK:
             instructions=instructions,
             model=model,
             output_type=output_type,
-            output_schema=cast(dict[str, object], AgentOutputSchema(output_type).json_schema()),
+            output_schema=cast(PythonCallable[_OutputSchemaShape], AgentOutputSchema)(output_type).json_schema(),
             tools=tools,
             handoffs=handoffs,
             model_settings=getattr(native_agent, "model_settings", None),
@@ -398,7 +422,7 @@ class AgentsSDK:
         )
 
     def describe_tool(self, tool: object) -> NativeToolDescription:
-        native_tool = cast(Any, tool)
+        native_tool = tool
         schema = getattr(native_tool, "params_json_schema", None)
         if not isinstance(schema, dict):
             raise MaterializationError(
@@ -407,30 +431,27 @@ class AgentsSDK:
         native_name = getattr(native_tool, "name", None)
         if not isinstance(native_name, str) or not native_name:
             raise MaterializationError((MaterializationIssue("MAT309", "OpenAI tool does not expose a public name"),))
+        approval: object = getattr(native_tool, "needs_approval", None)
         return NativeToolDescription(
             name=native_name,
             input_schema=cast(dict[str, object], schema),
-            needs_approval=(
-                cast(bool, native_tool.needs_approval)
-                if isinstance(getattr(native_tool, "needs_approval", None), bool)
-                else None
-            ),
+            needs_approval=approval if isinstance(approval, bool) else None,
         )
 
     def input_schema(self, input_type: type[BaseModel] | None) -> Mapping[str, object]:
         from agents.strict_schema import ensure_strict_json_schema
 
         schema = (
-            cast(dict[str, object], cast(Any, input_type).model_json_schema())
+            input_type.model_json_schema()
             if input_type is not None
             else {"type": "object", "properties": {}, "additionalProperties": False}
         )
         return cast(dict[str, object], ensure_strict_json_schema(schema))
 
-    def output_schema(self, output_type: type[object]) -> Mapping[str, object]:
+    def output_schema(self, output_type: object) -> Mapping[str, object]:
         from agents import AgentOutputSchema
 
-        return cast(dict[str, object], AgentOutputSchema(output_type).json_schema())
+        return cast(PythonCallable[_OutputSchemaShape], AgentOutputSchema)(output_type).json_schema()
 
 
 class OpenAIMaterializationProvider:
@@ -462,7 +483,7 @@ class OpenAIMaterializationProvider:
         plan: MaterializationPlan,
         implementations: FrozenMap[SemanticId, object],
         input_types: FrozenMap[SemanticId, type[BaseModel] | None],
-        output_types: FrozenMap[str, type[object]],
+        output_types: FrozenMap[str, GeneratedType],
         context_runtime: ContextRuntime,
         environment: EnvironmentProvider | None,
         materialization_trace_sink: MaterializationTraceSink,

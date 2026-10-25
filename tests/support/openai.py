@@ -6,7 +6,9 @@ import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
+
+from pydantic import BaseModel, TypeAdapter
 
 from contract4agents.adapters._openai_names import openai_tool_name
 from contract4agents.ir import FrozenMap, SemanticId
@@ -25,7 +27,7 @@ class FakeTool:
     isolation_id: SemanticId | None = None
     dimensions: FrozenMap[str, str] = field(default_factory=FrozenMap)
     declared_capabilities: tuple[str, ...] = ()
-    input_type: type[object] | None = None
+    input_type: type[BaseModel] | None = None
 
 
 @dataclass
@@ -41,7 +43,7 @@ class FakeAgent:
     instructions: str
     model: str
     model_options: Mapping[str, object]
-    output_type: type[object]
+    output_type: object
     tools: list[object]
     handoffs: list[object] = field(default_factory=list)
 
@@ -60,7 +62,7 @@ class FakeOpenAISDK:
         instructions: str,
         model: str,
         model_options: Mapping[str, object],
-        output_type: type[object],
+        output_type: object,
         tools: tuple[object, ...],
     ) -> object:
         return FakeAgent(name, instructions, model, model_options, output_type, list(tools))
@@ -71,7 +73,7 @@ class FakeOpenAISDK:
         name: str,
         description: str,
         implementation: object,
-        input_type: type[object] | None,
+        input_type: type[BaseModel] | None,
         output_adapter: object,
         requires_approval: bool,
     ) -> object:
@@ -98,7 +100,7 @@ class FakeOpenAISDK:
         name: str,
         description: str,
         child: object,
-        input_type: type[object] | None,
+        input_type: type[BaseModel] | None,
     ) -> object:
         del description, child
         return FakeTool(
@@ -113,7 +115,7 @@ class FakeOpenAISDK:
         name: str,
         description: str,
         child: object,
-        input_type: type[object] | None,
+        input_type: type[BaseModel] | None,
         isolation_id: SemanticId,
         requested_dimensions: FrozenMap[str, str],
         declared_capabilities: tuple[str, ...],
@@ -162,13 +164,13 @@ class FakeOpenAISDK:
         assert isinstance(tool, FakeTool)
         return NativeToolDescription(tool.name, tool.input_schema)
 
-    def input_schema(self, input_type: type[object] | None) -> Mapping[str, object]:
+    def input_schema(self, input_type: type[BaseModel] | None) -> Mapping[str, object]:
         if input_type is None:
             return {"type": "object", "properties": {}, "additionalProperties": False}
-        return cast(dict[str, object], cast(Any, input_type).model_json_schema())
+        return input_type.model_json_schema()
 
-    def output_schema(self, output_type: type[object]) -> Mapping[str, object]:
-        return cast(dict[str, object], cast(Any, output_type).model_json_schema())
+    def output_schema(self, output_type: object) -> Mapping[str, object]:
+        return TypeAdapter[object](output_type).json_schema()
 
 
 def write_project(

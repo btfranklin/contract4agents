@@ -2,18 +2,19 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from collections.abc import AsyncGenerator, Mapping
+from collections.abc import AsyncGenerator, Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Protocol, cast
 
 import pytest
-from pydantic import TypeAdapter, create_model
+from pydantic import BaseModel, TypeAdapter, create_model
 
 from contract4agents.adapters._native_names import native_name
 from contract4agents.compiler import build_artifacts
 from contract4agents.ir import (
     FrozenMap,
+    SemanticId,
     semantic_id,
 )
 from contract4agents.materialization import (
@@ -38,6 +39,14 @@ from tests.support.google_adk import (
 )
 
 
+class ADKTool(Protocol):
+    name: str
+
+    def run_async(self, *, args: dict[str, object], tool_context: _ToolContext) -> Awaitable[object]: ...
+
+    def _get_declaration(self) -> object: ...
+
+
 def test_google_adk_provider_builds_and_validates_typed_graph(
     tmp_path: Path,
 ) -> None:
@@ -49,7 +58,7 @@ def test_google_adk_provider_builds_and_validates_typed_graph(
     def lookup(query: str) -> dict[str, str]:
         return {"summary": query}
 
-    implementations = FrozenMap(((lookup_id, lookup),))
+    implementations: FrozenMap[SemanticId, object] = FrozenMap(((lookup_id, lookup),))
     context = ContextRuntime(ir, plan, implementations, output_types)
     trace = RecordingMaterializationTraceSink()
     sdk = FakeGoogleADKSDK()
@@ -94,7 +103,7 @@ def test_google_adk_provider_detects_dropped_native_tools(tmp_path: Path) -> Non
     target, plan = _target_and_plan(tmp_path, ir)
     output_types = build_pydantic_types(ir)
     lookup_id = semantic_id("tool", "records.lookup")
-    implementations = FrozenMap(((lookup_id, lambda query: {"summary": query}),))
+    implementations: FrozenMap[SemanticId, object] = FrozenMap(((lookup_id, lambda query: {"summary": query}),))
 
     with pytest.raises(Exception) as caught:
         GoogleADKMaterializationProvider(FakeGoogleADKSDK(drop_tools=True)).build_graph(
@@ -122,7 +131,7 @@ def test_google_adk_provider_detects_dropped_native_tools(tmp_path: Path) -> Non
 async def test_concrete_adk_tool_validates_approval_sync_async_and_outputs() -> None:
     input_type = create_model("LookupInput", query=(str, ...))
     output_type = create_model("LookupOutput", summary=(str, ...))
-    output_adapter = TypeAdapter(output_type)
+    output_adapter = TypeAdapter[object](output_type)
     calls: list[tuple[str, int]] = []
     main_thread = threading.get_ident()
 
@@ -147,17 +156,17 @@ async def test_concrete_adk_tool_validates_approval_sync_async_and_outputs() -> 
     assert description.input_schema == input_type.model_json_schema()
     assert description.output_schema == output_adapter.json_schema()
 
-    assert await tool.run_async(
+    assert await cast(ADKTool, tool).run_async(
         args={"query": "wait"},
         tool_context=waiting,
     ) == {"error": "Tool execution is awaiting approval."}
     assert waiting.requested
-    assert await tool.run_async(
+    assert await cast(ADKTool, tool).run_async(
         args={"query": "reject"},
         tool_context=rejected,
     ) == {"error": "Tool execution was rejected."}
     assert calls == []
-    assert await tool.run_async(
+    assert await cast(ADKTool, tool).run_async(
         args={"query": "approved"},
         tool_context=approved,
     ) == {"summary": "APPROVED"}
@@ -176,26 +185,28 @@ async def test_concrete_adk_tool_validates_approval_sync_async_and_outputs() -> 
         output_adapter=output_adapter,
         requires_approval=False,
     )
-    assert await async_tool.run_async(
+    assert await cast(ADKTool, async_tool).run_async(
         args={"query": "async"},
         tool_context=_ToolContext(),
     ) == {"summary": "async"}
 
 
 def test_concrete_adk_agent_uses_factory_once_without_reapplying_options() -> None:
+    from google.adk.agents import LlmAgent
     from google.adk.models import BaseLlm
+    from google.adk.models.llm_request import LlmRequest
     from google.adk.models.llm_response import LlmResponse
     from google.genai import types
 
-    class FakeModel(BaseLlm):
+    class FakeModel(BaseLlm):  # type: ignore[explicit-any]  # Pydantic inherits dynamic model options.
         async def generate_content_async(
             self,
-            llm_request: Any,
+            llm_request: LlmRequest,
             stream: bool = False,
-        ) -> AsyncGenerator[Any, None]:
+        ) -> AsyncGenerator[LlmResponse, None]:
             del llm_request, stream
-            if False:
-                yield None
+            raise NotImplementedError("This test only checks model configuration")
+            yield LlmResponse()  # pragma: no cover
 
     calls: list[tuple[str, dict[str, object]]] = []
 
@@ -228,12 +239,15 @@ def test_concrete_adk_agent_uses_factory_once_without_reapplying_options() -> No
             {"temperature": 0.2, "custom": {"entries": [{"enabled": True}]}},
         )
     ]
+    assert isinstance(agent, LlmAgent)
     assert isinstance(agent.model, FakeModel)
     assert agent.output_schema is None
+    assert agent.generate_content_config is not None
     assert agent.generate_content_config.temperature is None
+    assert isinstance(agent.instruction, str)
     assert "Return only one JSON value" in agent.instruction
     assert '"summary"' in agent.instruction
-    callback = agent.canonical_after_model_callbacks[0]
+    callback = cast(Callable[[object, LlmResponse], LlmResponse | None], agent.canonical_after_model_callbacks[0])
     valid = LlmResponse(
         content=types.Content(
             role="model",
@@ -287,13 +301,13 @@ def test_concrete_adk_agent_wraps_factory_failures(
 
 def test_concrete_adk_search_tool_builds_without_network() -> None:
     input_type = create_model("SearchInput", query=(str, ...))
-    result_type = create_model(
-        "SearchResult",
-        title=(str, ...),
-        url=(str, ...),
-        snippet=(str, ...),
-    )
-    output_type = create_model("SearchOutput", results=(list[result_type], ...))
+
+    class SearchResult(BaseModel):  # type: ignore[explicit-any]  # Pydantic inherits dynamic model options.
+        title: str
+        url: str
+        snippet: str
+
+    output_type = create_model("SearchOutput", results=(list[SearchResult], ...))
 
     tool = ADKSDK().create_google_search_tool(
         native_name="c4a_tool_web_search_deadbeef",
@@ -311,8 +325,13 @@ def test_concrete_adk_search_tool_builds_without_network() -> None:
         requires_approval=False,
     )
 
-    declaration = tool._get_declaration()
-    assert tool.name == "c4a_tool_web_search_deadbeef"
+    from google.genai.types import FunctionDeclaration
+
+    native_tool = cast(ADKTool, tool)
+    declaration = native_tool._get_declaration()
+    assert isinstance(declaration, FunctionDeclaration)
+    assert declaration.parameters_json_schema is not None
+    assert native_tool.name == "c4a_tool_web_search_deadbeef"
     assert declaration.parameters_json_schema["required"] == ["query"]
 
 
@@ -343,21 +362,21 @@ async def test_google_search_wrapper_preserves_grounding_and_fails_closed(
             tool_context: object,
         ) -> str:
             assert args == {"request": "contract semantics"}
-            cast_context = tool_context
-            cast_context.state["temp:_adk_grounding_metadata"] = {"renderedContent": "<div>Search suggestion</div>"}
+            assert isinstance(tool_context, _ToolContext)
+            tool_context.state["temp:_adk_grounding_metadata"] = {"renderedContent": "<div>Search suggestion</div>"}
             return self.result
 
     monkeypatch.setattr(agent_tool_module, "AgentTool", FakeAgentTool)
     input_type = create_model("GroundedSearchInput", query=(str, ...))
-    result_type = create_model(
-        "GroundedSearchResult",
-        title=(str, ...),
-        url=(str, ...),
-        snippet=(str, ...),
-    )
+
+    class GroundedSearchResult(BaseModel):  # type: ignore[explicit-any]  # Pydantic inherits dynamic model options.
+        title: str
+        url: str
+        snippet: str
+
     output_type = create_model(
         "GroundedSearchOutput",
-        results=(list[result_type], ...),
+        results=(list[GroundedSearchResult], ...),
     )
     tool = ADKSDK().create_google_search_tool(
         native_name="c4a_tool_grounded_search_deadbeef",
@@ -376,7 +395,7 @@ async def test_google_search_wrapper_preserves_grounding_and_fails_closed(
     )
     context = _ToolContext()
 
-    assert await tool.run_async(
+    assert await cast(ADKTool, tool).run_async(
         args={"query": "contract semantics"},
         tool_context=context,
     ) == {
@@ -388,11 +407,13 @@ async def test_google_search_wrapper_preserves_grounding_and_fails_closed(
             }
         ]
     }
-    assert "renderedContent" in context.state["temp:_adk_grounding_metadata"]
+    metadata = context.state["temp:_adk_grounding_metadata"]
+    assert isinstance(metadata, dict)
+    assert "renderedContent" in metadata
 
     FakeAgentTool.result = '{"results":[{"title":"Source","url":"https://example.test"}]}'
     with pytest.raises(ValueError):
-        await tool.run_async(
+        await cast(ADKTool, tool).run_async(
             args={"query": "contract semantics"},
             tool_context=context,
         )

@@ -7,7 +7,7 @@ import json
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TypeGuard
 
 from contract4agents.materialization._harness_configuration import content_digest
 
@@ -39,7 +39,7 @@ def _encode_stream_value(value: object) -> str:
     raise TypeError(f"Unsupported stream value: {type(value).__name__}")
 
 
-def decode_json(text: str) -> Any:
+def decode_json(text: str) -> object:
     """Reject duplicate keys and non-finite values before typed validation."""
 
     def pairs(items: list[tuple[str, object]]) -> dict[str, object]:
@@ -53,7 +53,16 @@ def decode_json(text: str) -> Any:
     def constant(value: str) -> object:
         raise ValueError("Non-finite JSON number")
 
-    return json.loads(text, object_pairs_hook=pairs, parse_constant=constant)
+    value: object = json.loads(text, object_pairs_hook=pairs, parse_constant=constant)
+    return value
+
+
+def _is_object(value: object) -> TypeGuard[Mapping[str, object]]:
+    return isinstance(value, Mapping) and all(isinstance(key, str) for key in value)
+
+
+def _nonnegative_number(value: object) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool) and value >= 0
 
 
 @dataclass
@@ -75,10 +84,10 @@ class HarnessStream:
     tool_name: str | None = None
     tool_use_id: str | None = None
     arguments: object = None
-    usage: list[Mapping[str, Any]] = field(default_factory=list)
+    usage: list[Mapping[str, int]] = field(default_factory=list)
 
     @classmethod
-    def read(cls, events: Iterable[Mapping[str, Any]]) -> HarnessStream:
+    def read(cls, events: Iterable[object]) -> HarnessStream:
         result = cls()
         blocks: dict[int, _Block] = {}
         started = False
@@ -94,11 +103,11 @@ class HarnessStream:
                 continue
             if byte_count > 8 * 1024 * 1024:
                 raise ValueError("Harness stream exceeds the client size limit")
-            if not isinstance(event, Mapping) or len(event) != 1:
+            if not _is_object(event) or len(event) != 1:
                 result.failure = "invalid_stream"
                 continue
             name, payload = next(iter(event.items()))
-            if not isinstance(payload, Mapping):
+            if not _is_object(payload):
                 result.failure = "invalid_stream"
                 continue
             if name in {"internalServerException", "runtimeClientError", "validationException"}:
@@ -126,28 +135,30 @@ class HarnessStream:
                         result.failure = "invalid_stream"
                         continue
                     start = payload["start"]
-                    if not isinstance(start, Mapping) or len(start) != 1:
+                    if not _is_object(start) or len(start) != 1:
                         result.failure = "invalid_stream"
                         continue
                     tool = start.get("toolUse")
                     if tool is not None and "toolUse" in start:
                         if (
-                            not isinstance(tool, Mapping)
+                            not _is_object(tool)
                             or not isinstance(tool.get("name"), str)
                             or not isinstance(tool.get("toolUseId"), str)
                             or set(tool) - {"name", "toolUseId", "type"}
-                            or _TOOL_IDENTIFIER.fullmatch(tool["name"]) is None
-                            or _TOOL_IDENTIFIER.fullmatch(tool["toolUseId"]) is None
+                            or _TOOL_IDENTIFIER.fullmatch(str(tool["name"])) is None
+                            or _TOOL_IDENTIFIER.fullmatch(str(tool["toolUseId"])) is None
                             or tool.get("type") not in (None, "tool_use")
                         ):
                             result.failure = "invalid_stream"
                             continue
-                        blocks[index] = _Block("tool", name=tool["name"], tool_use_id=tool["toolUseId"])
+                        tool_name, tool_id = tool["name"], tool["toolUseId"]
+                        assert isinstance(tool_name, str) and isinstance(tool_id, str)
+                        blocks[index] = _Block("tool", name=tool_name, tool_use_id=tool_id)
                     else:
                         result.failure = "unsupported_stream_event"
                 elif name == "contentBlockDelta":
                     delta = payload["delta"]
-                    if not isinstance(delta, Mapping) or len(delta) != 1:
+                    if not _is_object(delta) or len(delta) != 1:
                         result.failure = "invalid_stream"
                         continue
                     if "text" in delta:
@@ -155,13 +166,15 @@ class HarnessStream:
                         if block.stopped or block.kind != "text" or not isinstance(delta["text"], str):
                             result.failure = "invalid_stream"
                         else:
-                            block.text += delta["text"]
+                            text = delta["text"]
+                            assert isinstance(text, str)
+                            block.text += text
                     elif "toolUse" in delta:
                         block = blocks.get(index)
                         tool_delta = delta["toolUse"]
                         fragment = (
                             tool_delta.get("input")
-                            if isinstance(tool_delta, Mapping) and set(tool_delta) == {"input"}
+                            if _is_object(tool_delta) and set(tool_delta) == {"input"}
                             else None
                         )
                         if block is None or block.stopped or block.kind != "tool" or not isinstance(fragment, str):
@@ -171,7 +184,7 @@ class HarnessStream:
                     elif "reasoningContent" in delta:
                         reasoning = delta["reasoningContent"]
                         if (
-                            not isinstance(reasoning, Mapping)
+                            not _is_object(reasoning)
                             or set(reasoning)
                             - {
                                 "text",
@@ -203,13 +216,14 @@ class HarnessStream:
                 elif not started or stopped or any(not block.stopped for block in blocks.values()):
                     result.failure = "incomplete_stream"
                 stopped = True
-                result.stop_reason = payload.get("stopReason")
+                reason = payload.get("stopReason")
+                result.stop_reason = reason if isinstance(reason, str) else None
             elif name == "metadata":
                 usage = payload.get("usage")
                 metrics = payload.get("metrics")
                 if (
                     set(payload) != {"usage", "metrics"}
-                    or not isinstance(usage, Mapping)
+                    or not _is_object(usage)
                     or set(usage)
                     - {
                         "inputTokens",
@@ -219,17 +233,18 @@ class HarnessStream:
                         "cacheWriteInputTokens",
                     }
                     or not {"inputTokens", "outputTokens", "totalTokens"} <= set(usage)
-                    or any(type(usage[key]) is not int or usage[key] < 0 for key in usage)
-                    or not isinstance(metrics, Mapping)
+                    or any(type(value) is not int or value < 0 for value in usage.values())
+                    or not _is_object(metrics)
                     or set(metrics) != {"latencyMs"}
-                    or type(metrics.get("latencyMs")) not in {int, float}
-                    or metrics["latencyMs"] < 0
+                    or not isinstance(metrics.get("latencyMs"), int | float)
+                    or isinstance(metrics.get("latencyMs"), bool)
+                    or not _nonnegative_number(metrics["latencyMs"])
                 ):
                     result.failure = "invalid_stream"
                 else:
                     digest = content_digest(usage)
                     if digest not in usage_digests:
-                        result.usage.append(usage)
+                        result.usage.append({key: value for key, value in usage.items() if isinstance(value, int)})
                         usage_digests.add(digest)
             elif name == "hookEvent":
                 if (

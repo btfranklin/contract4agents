@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 from contract4agents._portable_validation import is_portable_datetime
-from contract4agents.ast import DatasourceDef, EnumDef, TypeDef
+from contract4agents.ast import DatasourceDef, EnumDef, SourceSpan, TypeDef
 from contract4agents.diagnostics import Diagnostic
 from contract4agents.ir._type_refs import (
     ConstrainedTypeRef,
@@ -89,15 +89,17 @@ def check_datasource(datasource: DatasourceDef, index: ProjectIndex) -> list[Dia
 def check_type_ref(
     raw_type: str,
     index: ProjectIndex,
-    span: object,
+    span: SourceSpan | None,
     context: str,
 ) -> list[Diagnostic]:
     try:
         parsed = parse_type_ref(raw_type)
     except ValueError as exc:
-        return [Diagnostic("SEM002", f"Invalid portable type `{raw_type}` in {context}", span=span, hint=str(exc))]  # type: ignore[arg-type]
+        return [
+            Diagnostic("SEM002", f"Invalid portable type `{raw_type}` in {context}", span=span, hint=str(exc))
+        ]
     unknown = sorted(name for name in _named_type_names(parsed) if name not in index.type_defs)
-    return [Diagnostic("SEM002", f"Unknown type `{name}` in {context}", span=span) for name in unknown]  # type: ignore[arg-type]
+    return [Diagnostic("SEM002", f"Unknown type `{name}` in {context}", span=span) for name in unknown]
 
 
 def _named_type_names(type_ref: TypeRef) -> set[str]:
@@ -118,7 +120,7 @@ def _check_enum_default(
     raw_type: str,
     raw_default: str,
     index: ProjectIndex,
-    span: object,
+    span: SourceSpan | None,
 ) -> list[Diagnostic]:
     try:
         type_ref = parse_type_ref(raw_type)
@@ -134,7 +136,7 @@ def _check_enum_default(
         Diagnostic(
             "SEM017",
             f"Default for field `{type_name}.{field_name}` does not conform to `{raw_type}`",
-            span=span,  # type: ignore[arg-type]
+            span=span,
         )
     ]
 

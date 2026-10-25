@@ -4,8 +4,8 @@ import json
 import sys
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
 
+from contract4agents._strict_json import json_object
 from contract4agents.materialization._harness_configuration import HarnessConfiguration
 
 
@@ -92,7 +92,7 @@ class FakeHarnessControlClient:
     ) -> None:
         from contract4agents.materialization._harness_configuration import thaw
 
-        self.request = thaw(configuration.agents[agent_name].request)
+        self.request = json_object("request", thaw(configuration.agents[agent_name].request))
         self.agent_name = agent_name
         self.harness_mutation: dict[str, object] = {}
         self.endpoint_mutation: dict[str, object] = {}
@@ -100,7 +100,7 @@ class FakeHarnessControlClient:
         self.get_harness_calls: list[dict[str, object]] = []
         self.get_endpoint_calls: list[dict[str, object]] = []
 
-    def get_harness(self, **kwargs: Any) -> Mapping[str, Any]:
+    def get_harness(self, **kwargs: object) -> Mapping[str, object]:
         self.get_harness_calls.append(dict(kwargs))
         harness = {
             **self.request,
@@ -111,7 +111,7 @@ class FakeHarnessControlClient:
         }
         return {"harness": harness}
 
-    def get_harness_endpoint(self, **kwargs: Any) -> Mapping[str, Any]:
+    def get_harness_endpoint(self, **kwargs: object) -> Mapping[str, object]:
         self.get_endpoint_calls.append(dict(kwargs))
         if self.endpoint_responses:
             endpoint = dict(self.endpoint_responses.pop(0))
@@ -135,7 +135,7 @@ class FakeHarnessRuntimeClient:
         self.streams = list(streams or [])
         self.requests: list[dict[str, object]] = []
 
-    def invoke_harness(self, **kwargs: Any) -> Mapping[str, Any]:
+    def invoke_harness(self, **kwargs: object) -> dict[str, list[dict[str, object]]]:
         self.requests.append(dict(kwargs))
         if not self.streams:
             raise AssertionError("No Harness stream was queued")

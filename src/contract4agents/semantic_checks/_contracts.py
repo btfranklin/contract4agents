@@ -4,16 +4,19 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
-from typing import Any
 
 from contract4agents.ast import (
     AgentDef,
     CompositionDef,
+    ContextRequirement,
     ControlDef,
     ExternalContextDef,
+    FieldDef,
     IsolationDef,
     OperationalControlDef,
     QualityDef,
+    SourceAttributeValue,
+    SourceSpan,
     ToolDef,
     TypeDef,
 )
@@ -276,13 +279,13 @@ def check_agent_contract(agent: AgentDef, index: ProjectIndex) -> list[Diagnosti
 def _resolve_context_mapping_type(
     expression: str,
     agent: AgentDef,
-    requirement: Any,
+    requirement: ContextRequirement,
     index: ProjectIndex,
 ) -> str | None:
     parts = expression.split(".")
     if len(parts) < 2 or parts[0] not in {"input", "context"} or any(not part for part in parts):
         return None
-    source: Any
+    source: FieldDef | ContextRequirement | None
     if parts[0] == "input":
         source = next((item for item in agent.parameters if item.name == parts[1]), None)
     else:
@@ -303,8 +306,8 @@ def _resolve_context_mapping_type(
     return current
 
 
-def _field_type(field: Any) -> str:
-    return f"{field.type_name}{'?' if getattr(field, 'nullable', False) else ''}"
+def _field_type(field: FieldDef | ContextRequirement) -> str:
+    return f"{field.type_name}{'?' if isinstance(field, FieldDef) and field.nullable else ''}"
 
 
 def check_composition(edge: CompositionDef, index: ProjectIndex) -> list[Diagnostic]:
@@ -473,7 +476,7 @@ def check_operational_control(item: OperationalControlDef, index: ProjectIndex) 
     return diagnostics
 
 
-def _check_parameters(parameters: Iterable[Any], index: ProjectIndex, owner: str) -> list[Diagnostic]:
+def _check_parameters(parameters: Iterable[FieldDef], index: ProjectIndex, owner: str) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     seen: set[str] = set()
     for parameter in parameters:
@@ -488,13 +491,17 @@ def _check_parameters(parameters: Iterable[Any], index: ProjectIndex, owner: str
     return diagnostics
 
 
-def _check_owned_declaration(name: str, agent: str, span: Any, label: str, index: ProjectIndex) -> list[Diagnostic]:
+def _check_owned_declaration(
+    name: str, agent: str, span: SourceSpan | None, label: str, index: ProjectIndex
+) -> list[Diagnostic]:
     if agent in index.agent_defs:
         return []
     return [Diagnostic("SEM130", f"{label} `{name}` references unknown agent `{agent}`", span=span)]
 
 
-def _check_audiences(name: str, value: Any, span: Any, *, default: bool) -> list[Diagnostic]:
+def _check_audiences(
+    name: str, value: SourceAttributeValue | list[str] | None, span: SourceSpan | None, *, default: bool
+) -> list[Diagnostic]:
     if value in (None, [], ()) and default:
         return []
     if not isinstance(value, list | tuple) or not value:
@@ -505,7 +512,7 @@ def _check_audiences(name: str, value: Any, span: Any, *, default: bool) -> list
     return [Diagnostic("SEM132", f"Declaration `{name}` has unknown audiences: {', '.join(unknown)}", span=span)]
 
 
-def _text(value: Any) -> str:
+def _text(value: SourceAttributeValue | list[str] | None) -> str:
     return unquote(str(value)) if value is not None else ""
 
 

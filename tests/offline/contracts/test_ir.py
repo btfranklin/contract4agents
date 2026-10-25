@@ -308,8 +308,8 @@ def _sample_ir(span: SourceSpan, *, reverse: bool = False) -> CanonicalIR:
         derived_from=grant.id,
         expected_evidence=("approval.requested", "approval.completed", "tool.started"),
     )
-    types = (request_type, decision_type, finding_type)
-    agents = (commander, investigator)
+    types: tuple[TypeIR, ...] = (request_type, decision_type, finding_type)
+    agents: tuple[AgentIR, ...] = (commander, investigator)
     if reverse:
         types = tuple(reversed(types))
         agents = tuple(reversed(agents))

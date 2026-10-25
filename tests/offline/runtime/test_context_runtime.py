@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from copy import copy
 from pathlib import Path
-from typing import Any, cast
+from typing import Protocol, cast
 
 import pytest
 
@@ -20,6 +20,11 @@ from contract4agents.materialization import (
 )
 from contract4agents.tracing import NoOpNormalizedTraceSink, RecordingNormalizedTraceSink
 from tests.support.openai import FakeAgent, FakeOpenAISDK, write_project
+
+
+class _ContextRecord(Protocol):
+    value: str
+
 
 
 @pytest.mark.asyncio
@@ -48,11 +53,11 @@ async def test_materialized_context_runtime_maps_validates_caches_renders_and_tr
         thread_id="thread-1",
     )
 
-    assert cast(Any, first["current"].value).value == "needle"
+    assert cast(_ContextRecord, first["current"].value).value == "needle"
     assert first["current"].rendered == "- **value:** needle"
     assert first["current"].from_cache is False
     assert second["current"].from_cache is True
-    assert cast(Any, first["metadata"].value).value == "context"
+    assert cast(_ContextRecord, first["metadata"].value).value == "context"
     assert second["metadata"].from_cache is True
     assert [event.event_type for event in runtime_sink.events] == [
         "datasource.resolved",
@@ -310,7 +315,7 @@ async def test_context_runtime_waiter_cancellation_does_not_cancel_shared_resolu
         run_id="run-1",
     )
 
-    assert cast(Any, resolved["current"].value).value == "shared"
+    assert cast(_ContextRecord, resolved["current"].value).value == "shared"
     assert cached["current"].from_cache is True
     assert calls == 1
 
@@ -354,5 +359,5 @@ async def test_context_runtime_retries_after_provider_cancellation(tmp_path: Pat
         semantic_id("agent", "Child"), {"request": {"value": "retry"}}, run_id="run-1"
     )
 
-    assert cast(Any, resolved["current"].value).value == "retry"
+    assert cast(_ContextRecord, resolved["current"].value).value == "retry"
     assert calls == 2

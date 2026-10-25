@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, NoReturn, cast
+from typing import NoReturn
 
-from lark import Tree, UnexpectedInput
+from lark import Token, Tree, UnexpectedInput
 from lark.exceptions import VisitError
 
 from contract4agents.ast import ContractModule, SourceSpan
@@ -18,7 +18,7 @@ from contract4agents.parser._transformer import _ModuleTransformer
 @dataclass(frozen=True)
 class ParsedSource:
     module: ContractModule
-    tree: Tree[Any]
+    tree: Tree[Token]
 
 
 def parse_source_syntax(path: Path, source: str) -> ParsedSource:
@@ -27,7 +27,7 @@ def parse_source_syntax(path: Path, source: str) -> ParsedSource:
     normalized = source if not source or source.endswith("\n") else source + "\n"
     try:
         tree = MODULE_PARSER.parse(normalized)
-        module = cast(ContractModule, _ModuleTransformer(path).transform(tree))
+        module = _ModuleTransformer(path).transform(tree)
     except UnexpectedInput as exc:
         _raise("PARSE001", "Invalid syntax", path, exc.line or 1, str(exc), exc.column or 1)
     except VisitError as exc:

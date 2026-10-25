@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any
 
-
-def coerce_name_list(value: Any) -> list[str]:
+def coerce_name_list(value: str | list[str]) -> list[str]:
     if isinstance(value, list):
         return [str(item) for item in value]
     return parse_name_list(str(value))

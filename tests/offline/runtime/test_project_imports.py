@@ -58,8 +58,11 @@ def test_project_import_loads_a_unique_dotted_package(tmp_path: Path) -> None:
             f"{package_name}.bindings:implementation",
         )
 
+        assert callable(implementation)
         assert implementation() == "project"
-        assert Path(sys.modules[f"{package_name}.bindings"].__file__).is_relative_to(tmp_path)
+        module_file = sys.modules[f"{package_name}.bindings"].__file__
+        assert module_file is not None
+        assert Path(module_file).is_relative_to(tmp_path)
     finally:
         _clear_modules(package_name)
 

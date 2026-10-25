@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import TypedDict
 
 import pytest
 
 from contract4agents.eval_campaigns._expectations import assess_expectation
 from contract4agents.ir import (
     AgentIR,
+    CanonicalIR,
     FrozenMap,
     parse_type_ref,
     semantic_id,
@@ -24,6 +26,12 @@ from tests.support.portable_datetime import PORTABLE_DATETIME_CASES
 
 _CONTRACT_DIGEST = f"sha256:{'a' * 64}"
 _PLAN_DIGEST = f"sha256:{'b' * 64}"
+
+
+class _ExpectationContext(TypedDict):
+    trace: NormalizedTrace
+    trace_evidence: TraceEvidenceAssessment
+    ir: CanonicalIR
 
 
 def _event(
@@ -112,7 +120,7 @@ def test_eval_schema_hidden_truth_and_invalid_expression_branches() -> None:
         "required": ["status"],
         "additionalProperties": False,
     }
-    common = {"trace": trace, "trace_evidence": _trace_evidence(True), "ir": campaign_ir()}
+    common: _ExpectationContext = {"trace": trace, "trace_evidence": _trace_evidence(True), "ir": campaign_ir()}
 
     assert (
         assess_expectation(

@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import tomllib
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, cast
 
+from contract4agents._strict_json import json_object
 from contract4agents.diagnostics import Diagnostic
 from contract4agents.target_bindings._models import (
     DEFAULT_TARGET_BINDINGS_FILENAME,
@@ -47,7 +48,7 @@ def load_target_bindings(
 
     try:
         with path.open("rb") as handle:
-            payload = tomllib.load(handle)
+            payload: object = tomllib.load(handle)
     except (OSError, tomllib.TOMLDecodeError) as exc:
         return TargetBindingsLoad(
             path=path,
@@ -58,7 +59,7 @@ def load_target_bindings(
     diagnostics = validate_target_bindings_payload(payload, path)
     if diagnostics:
         return TargetBindingsLoad(path=path, bindings=None, diagnostics=tuple(diagnostics))
-    return TargetBindingsLoad(path=path, bindings=_build_target_bindings(payload, path))
+    return TargetBindingsLoad(path=path, bindings=_build_target_bindings(json_object("target bindings", payload), path))
 
 
 def _target_bindings_path(root: Path, bindings_path: Path | str | None) -> Path:
@@ -68,13 +69,13 @@ def _target_bindings_path(root: Path, bindings_path: Path | str | None) -> Path:
     return path if path.is_absolute() else root / path
 
 
-def _build_target_bindings(payload: dict[str, Any], path: Path) -> TargetBindings:
-    raw_targets = cast(dict[str, dict[str, Any]], payload["targets"])
-    targets = {name: _build_target(raw_targets[name]) for name in sorted(raw_targets)}
+def _build_target_bindings(payload: Mapping[str, object], path: Path) -> TargetBindings:
+    raw_targets = json_object("targets", payload["targets"])
+    targets = {name: _build_target(json_object(f"targets.{name}", raw_targets[name])) for name in sorted(raw_targets)}
     return TargetBindings(path=path, schema_version=str(payload["schema_version"]), targets=targets)
 
 
-def _build_target(payload: dict[str, Any]) -> TargetBinding:
+def _build_target(payload: Mapping[str, object]) -> TargetBinding:
     return TargetBinding(
         adapter=str(payload["adapter"]),
         tools=_build_entries(payload.get("tools", {})),
@@ -85,29 +86,37 @@ def _build_target(payload: dict[str, Any]) -> TargetBinding:
     )
 
 
-def _build_entries(payload: dict[str, dict[str, object]]) -> dict[str, BindingEntry]:
-    return {name: BindingEntry(dict(payload[name])) for name in sorted(payload)}
+def _build_entries(payload: object) -> dict[str, BindingEntry]:
+    entries = json_object("binding entries", payload)
+    return {name: BindingEntry(dict(json_object(f"binding {name}", entries[name]))) for name in sorted(entries)}
 
 
-def _build_profiles(payload: dict[str, dict[str, Any]]) -> dict[str, TargetProfile]:
-    return {name: _build_profile(payload[name]) for name in sorted(payload)}
+def _build_profiles(payload: object) -> dict[str, TargetProfile]:
+    profiles = json_object("profiles", payload)
+    return {name: _build_profile(json_object(f"profile {name}", profiles[name])) for name in sorted(profiles)}
 
 
-def _build_profile(payload: dict[str, Any]) -> TargetProfile:
-    raw_agents = cast(dict[str, dict[str, Any]], payload.get("agents", {}))
-    agents = {name: _build_agent_profile(raw_agents[name]) for name in sorted(raw_agents)}
+def _build_profile(payload: Mapping[str, object]) -> TargetProfile:
+    raw_agents = json_object("profile agents", payload.get("agents", {}))
+    agents = {name: _build_agent_profile(json_object(f"agent {name}", raw_agents[name])) for name in sorted(raw_agents)}
     return TargetProfile(
-        default_model=cast(str | None, payload.get("default_model")),
+        default_model=_optional_model(payload.get("default_model")),
         agents=agents,
-        options=dict(cast(dict[str, object], payload.get("options", {}))),
+        options=dict(json_object("options", payload.get("options", {}))),
     )
 
 
-def _build_agent_profile(payload: dict[str, Any]) -> AgentProfile:
+def _build_agent_profile(payload: Mapping[str, object]) -> AgentProfile:
     return AgentProfile(
-        model=cast(str | None, payload.get("model")),
-        options=dict(cast(dict[str, object], payload.get("options", {}))),
+        model=_optional_model(payload.get("model")),
+        options=dict(json_object("options", payload.get("options", {}))),
     )
+
+
+def _optional_model(value: object) -> str | None:
+    if value is None or isinstance(value, str):
+        return value
+    raise TypeError("Model must be a string")
 
 
 __all__ = ["load_target_bindings"]

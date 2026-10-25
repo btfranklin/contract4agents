@@ -64,7 +64,9 @@ def test_loads_default_target_bindings_into_immutable_models(tmp_path: Path) -> 
     assert target.tools["incident.fetch_logs"].values["python"] == "incident_app.tools:fetch_logs"
     assert target.datasources["incident.timeline"].values["python"] == "incident_app.datasources:timeline"
     assert target.external_context["incident_record"].values["python"] == "incident_app.context:current_incident"
-    assert target.environments["in_process"].values["provider"].endswith("InProcessEnvironment")
+    provider = target.environments["in_process"].values["provider"]
+    assert isinstance(provider, str)
+    assert provider.endswith("InProcessEnvironment")
     assert target.profiles["test"].default_model == "test-model"
     assert target.profiles["test"].agents["LogInvestigator"].model == "gpt-5.6-luna"
     assert target.profiles["test"].options["tags"] == ("offline", "deterministic")
@@ -313,8 +315,14 @@ default_model = "model"
     data = target_bindings_dict(result.bindings)
     serialized = canonical_target_bindings_json(result.bindings)
 
-    assert list(data["targets"]) == ["alpha", "zeta"]  # type: ignore[arg-type]
-    assert list(data["targets"]["alpha"]["tools"]) == ["a.first", "z.last"]  # type: ignore[index]
+    targets = data["targets"]
+    assert isinstance(targets, dict)
+    assert list(targets) == ["alpha", "zeta"]
+    alpha = targets["alpha"]
+    assert isinstance(alpha, dict)
+    tools = alpha["tools"]
+    assert isinstance(tools, dict)
+    assert list(tools) == ["a.first", "z.last"]
     assert json.loads(serialized) == data
     assert str(tmp_path) not in serialized
     assert serialized == canonical_target_bindings_json(result.bindings)

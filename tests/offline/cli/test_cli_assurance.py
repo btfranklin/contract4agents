@@ -17,7 +17,7 @@ from contract4agents.assurance import (
 )
 from contract4agents.cli import main
 from contract4agents.eval_campaigns import CampaignConfig, FileEvalProvider, run_campaign
-from contract4agents.ir import semantic_id
+from contract4agents.ir import FrozenMap, semantic_id
 from contract4agents.tracing import (
     NormalizedTrace,
     TraceClosureManifest,
@@ -164,10 +164,10 @@ def test_cli_assure_assesses_versioned_run_spec_evidence(tmp_path: Path) -> None
                     "complete",
                     "The host workflow ledger is closed.",
                     observations,
-                    derived_values={
-                        "evidence_source_ids": ["SRC-001", "SRC-002"],
-                        "final_citation_ids": ["SRC-001", "SRC-002"],
-                    },
+                    derived_values=FrozenMap({
+                        "evidence_source_ids": ("SRC-001", "SRC-002"),
+                        "final_citation_ids": ("SRC-001", "SRC-002"),
+                    }),
                     evidence_refs=("workflow-ledger:run",),
                 ),
             ),

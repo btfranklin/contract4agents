@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Collection
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Literal
 
 from contract4agents.tracing._closure import (
     TraceClosureError,
@@ -57,7 +57,7 @@ class TraceEvidenceAssessment:
 
         return self.closure_digest is not None and channel in self.closed_channels
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "evidence_refs": list(self.evidence_refs),
             "closure_digest": self.closure_digest,

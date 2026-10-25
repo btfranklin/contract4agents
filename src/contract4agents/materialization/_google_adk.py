@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import importlib.metadata
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
-from typing import Any, Protocol, cast
+from typing import Protocol, cast
 
 from pydantic import BaseModel, TypeAdapter
 
@@ -41,6 +41,7 @@ from contract4agents.materialization._tracing import (
     _emit_materialization_events,
 )
 from contract4agents.materialization._types import (
+    GeneratedType,
     build_parameter_model,
     normalize_structural_value,
     output_type_for,
@@ -48,7 +49,24 @@ from contract4agents.materialization._types import (
 )
 from contract4agents.planning import MaterializationPlan, PlannerCapabilities
 from contract4agents.runtime import EnvironmentProvider, EnvironmentRunRequest
+from contract4agents.runtime._utils import PythonCallable
 from contract4agents.target_bindings import BindingEntry, TargetBinding
+
+
+class _ADKToolShape(Protocol):
+    async def run_async(self, *, args: dict[str, object], tool_context: object) -> object: ...
+
+
+class _ADKContextShape(Protocol):
+    async def run_node(self, node: object, *, node_input: object, use_sub_branch: bool) -> object: ...
+    def request_confirmation(self, *, hint: str, payload: dict[str, object]) -> None: ...
+
+
+class _ADKResponseShape(Protocol):
+    partial: bool | None
+    content: object | None
+    def get_function_calls(self) -> Sequence[object]: ...
+
 
 _ToolInvoker = Callable[[dict[str, object], object], Awaitable[object]]
 _OutputValidationObserver = Callable[[str, bool], None]
@@ -71,7 +89,7 @@ class GoogleADKNativeAgentDescription:
     instructions: str
     model: str
     input_type: type[BaseModel] | None
-    output_type: type[object]
+    output_type: object
     output_mode: OutputMode
     tools: tuple[object, ...]
     model_options: Mapping[str, object] | None = None
@@ -103,7 +121,7 @@ class GoogleADKSDK(Protocol):
         model_options: Mapping[str, object],
         model_factory: object | None,
         input_type: type[BaseModel] | None,
-        output_type: type[object],
+        output_type: object,
         output_mode: OutputMode,
         tools: tuple[object, ...],
     ) -> object: ...
@@ -115,7 +133,7 @@ class GoogleADKSDK(Protocol):
         description: str,
         implementation: object,
         input_type: type[BaseModel] | None,
-        output_adapter: TypeAdapter[Any],
+        output_adapter: TypeAdapter[object],
         requires_approval: bool,
     ) -> object: ...
 
@@ -127,7 +145,7 @@ class GoogleADKSDK(Protocol):
         description: str,
         binding: BindingEntry,
         input_type: type[BaseModel],
-        output_adapter: TypeAdapter[Any],
+        output_adapter: TypeAdapter[object],
         requires_approval: bool,
     ) -> object: ...
 
@@ -138,7 +156,7 @@ class GoogleADKSDK(Protocol):
         description: str,
         child: object,
         input_type: type[BaseModel] | None,
-        output_adapter: TypeAdapter[Any],
+        output_adapter: TypeAdapter[object],
     ) -> object: ...
 
     def create_isolated_delegate_tool(
@@ -148,7 +166,7 @@ class GoogleADKSDK(Protocol):
         description: str,
         child: object,
         input_type: type[BaseModel] | None,
-        output_adapter: TypeAdapter[Any],
+        output_adapter: TypeAdapter[object],
         isolation_id: SemanticId,
         requested_dimensions: FrozenMap[str, str],
         declared_capabilities: tuple[str, ...],
@@ -183,7 +201,7 @@ class ADKSDK:
         model_options: Mapping[str, object],
         model_factory: object | None,
         input_type: type[BaseModel] | None,
-        output_type: type[object],
+        output_type: object,
         output_mode: OutputMode,
         tools: tuple[object, ...],
     ) -> object:
@@ -253,7 +271,7 @@ class ADKSDK:
         generate_config: object | None = None
         if model_factory is None:
             try:
-                generate_config = cast(Any, types.GenerateContentConfig)(**options)
+                generate_config = cast(PythonCallable[object], types.GenerateContentConfig)(**options)
             except (TypeError, ValueError) as exc:
                 raise MaterializationError(
                     (
@@ -274,7 +292,7 @@ class ADKSDK:
             output_type,
         )
         try:
-            agent = cast(Any, LlmAgent)(
+            agent = cast(PythonCallable[object], LlmAgent)(
                 name=native_name,
                 description=description,
                 instruction=native_instructions,
@@ -318,7 +336,7 @@ class ADKSDK:
         description: str,
         implementation: object,
         input_type: type[BaseModel] | None,
-        output_adapter: TypeAdapter[Any],
+        output_adapter: TypeAdapter[object],
         requires_approval: bool,
     ) -> object:
         if not callable(implementation):
@@ -332,7 +350,7 @@ class ADKSDK:
             )
         boundary = HostCallableBoundary.create(
             native_name,
-            cast(Any, implementation),
+            implementation,
             input_type,
             output_adapter,
         )
@@ -359,7 +377,7 @@ class ADKSDK:
         description: str,
         binding: BindingEntry,
         input_type: type[BaseModel],
-        output_adapter: TypeAdapter[Any],
+        output_adapter: TypeAdapter[object],
         requires_approval: bool,
     ) -> object:
         try:
@@ -395,7 +413,7 @@ class ADKSDK:
                     ),
                 )
             )
-        search_agent = cast(Any, LlmAgent)(
+        search_agent = cast(PythonCallable[object], LlmAgent)(
             name=child_name,
             description="Contract-bound Google Search agent",
             instruction=_load_prompt("search.md"),
@@ -406,7 +424,7 @@ class ADKSDK:
             disallow_transfer_to_parent=True,
             disallow_transfer_to_peers=True,
         )
-        search_tool = cast(Any, AgentTool)(
+        search_tool = cast(PythonCallable[_ADKToolShape], AgentTool)(
             agent=search_agent,
             skip_summarization=True,
             include_plugins=True,
@@ -432,7 +450,7 @@ class ADKSDK:
                     ),
                 )
             )
-        input_adapter = TypeAdapter(input_type)
+        input_adapter = TypeAdapter[object](input_type)
 
         async def invoke(args: dict[str, object], tool_context: object) -> object:
             arguments = _validated_arguments(args, input_adapter)
@@ -458,14 +476,14 @@ class ADKSDK:
         description: str,
         child: object,
         input_type: type[BaseModel] | None,
-        output_adapter: TypeAdapter[Any],
+        output_adapter: TypeAdapter[object],
     ) -> object:
         isolated_child = _single_turn_child(child)
-        input_adapter = TypeAdapter(input_type) if input_type is not None else None
+        input_adapter = TypeAdapter[object](input_type) if input_type is not None else None
 
         async def invoke(args: dict[str, object], tool_context: object) -> object:
             arguments = _validated_arguments(args, input_adapter)
-            run_node = cast(Any, tool_context).run_node
+            run_node = cast(_ADKContextShape, tool_context).run_node
             raw = await run_node(
                 isolated_child,
                 node_input=arguments,
@@ -489,14 +507,14 @@ class ADKSDK:
         description: str,
         child: object,
         input_type: type[BaseModel] | None,
-        output_adapter: TypeAdapter[Any],
+        output_adapter: TypeAdapter[object],
         isolation_id: SemanticId,
         requested_dimensions: FrozenMap[str, str],
         declared_capabilities: tuple[str, ...],
         environment: EnvironmentProvider,
     ) -> object:
         isolated_child = _single_turn_child(child)
-        input_adapter = TypeAdapter(input_type) if input_type is not None else None
+        input_adapter = TypeAdapter[object](input_type) if input_type is not None else None
 
         async def invoke(args: dict[str, object], tool_context: object) -> object:
             arguments = _validated_arguments(args, input_adapter)
@@ -518,7 +536,7 @@ class ADKSDK:
                 capabilities: tuple[str, ...] | None,
             ) -> object:
                 del run_context, state, capabilities
-                run_node = cast(Any, tool_context).run_node
+                run_node = cast(_ADKContextShape, tool_context).run_node
                 raw = await run_node(
                     isolated_child,
                     node_input=child_input,
@@ -538,8 +556,8 @@ class ADKSDK:
         )
 
     def attach(self, agent: object, *, tools: tuple[object, ...]) -> None:
-        native_agent = cast(Any, agent)
-        native_agent.tools = list(tools)
+        native_agent = agent
+        setattr(native_agent, "tools", list(tools))  # noqa: B010 - SDK objects are opaque here.
         description = self._descriptions[id(agent)]
         self._descriptions[id(agent)] = GoogleADKNativeAgentDescription(
             semantic_name=description.semantic_name,
@@ -556,7 +574,7 @@ class ADKSDK:
         )
 
     def describe(self, agent: object) -> GoogleADKNativeAgentDescription:
-        native_agent = cast(Any, agent)
+        native_agent = agent
         try:
             metadata = self._descriptions[id(agent)]
         except KeyError as exc:
@@ -592,7 +610,7 @@ class ADKSDK:
         input_type = getattr(native_agent, "input_schema", metadata.input_type)
         output_type = metadata.output_type
         if isinstance(native_output_schema, type):
-            output_type = cast(type[object], native_output_schema)
+            output_type = native_output_schema
         if native_output_schema is None:
             output_mode: OutputMode = "emulated"
         else:
@@ -612,14 +630,14 @@ class ADKSDK:
             input_type=(input_type if isinstance(input_type, type) or input_type is None else metadata.input_type),
             output_type=output_type,
             output_mode=output_mode,
-            tools=tuple(cast(Any, native_tools)),
+            tools=tuple(cast(Sequence[object], native_tools)),
             model_options=metadata.model_options,
             model_observation_source=source,
             model_observed=model_observed,
         )
 
     def describe_tool(self, tool: object) -> GoogleADKNativeToolDescription:
-        native_tool = cast(Any, tool)
+        native_tool = tool
         # ADK has no public declaration accessor on BaseTool.  Keep this
         # private call isolated and fail closed if the installed major changes.
         if self.version != "unavailable" and self.version.split(".", 1)[0] not in {"1", "2"}:
@@ -643,15 +661,12 @@ class ADKSDK:
             raise MaterializationError(
                 (MaterializationIssue("MAT331", "Google ADK tool declaration has no JSON schemas"),)
             )
+        approval: object = getattr(native_tool, "requires_approval", None)
         return GoogleADKNativeToolDescription(
             native_name=str(declaration.name),
             input_schema=cast(dict[str, object], input_schema),
             output_schema=cast(dict[str, object], output_schema),
-            requires_approval=(
-                cast(bool, native_tool.requires_approval)
-                if isinstance(getattr(native_tool, "requires_approval", None), bool)
-                else None
-            ),
+            requires_approval=approval if isinstance(approval, bool) else None,
         )
 
 
@@ -689,7 +704,7 @@ class GoogleADKMaterializationProvider:
         plan: MaterializationPlan,
         implementations: FrozenMap[SemanticId, object],
         input_types: FrozenMap[SemanticId, type[BaseModel] | None],
-        output_types: FrozenMap[str, type[object]],
+        output_types: FrozenMap[str, GeneratedType],
         context_runtime: ContextRuntime,
         environment: EnvironmentProvider | None,
         materialization_trace_sink: MaterializationTraceSink,
@@ -882,7 +897,7 @@ def _contract_tool(
     name: str,
     description: str,
     input_type: type[BaseModel] | None,
-    output_adapter: TypeAdapter[Any],
+    output_adapter: TypeAdapter[object],
     requires_approval: bool,
     invoke: _ToolInvoker,
 ) -> object:
@@ -920,13 +935,13 @@ def _contract_tool(
         async def run_async(
             self,
             *,
-            args: dict[str, Any],
-            tool_context: Any,
-        ) -> Any:
+            args: dict[str, object],
+            tool_context: object,
+        ) -> object:
             if requires_approval:
                 confirmation = getattr(tool_context, "tool_confirmation", None)
                 if confirmation is None:
-                    tool_context.request_confirmation(
+                    cast(_ADKContextShape, tool_context).request_confirmation(
                         hint=f"Approve or reject the contract tool `{name}`.",
                         payload={"arguments": args, "tool": name},
                     )
@@ -958,7 +973,7 @@ def _single_turn_child(child: object) -> object:
 
 def _validated_arguments(
     args: Mapping[str, object],
-    adapter: TypeAdapter[Any] | None,
+    adapter: TypeAdapter[object] | None,
 ) -> dict[str, object]:
     if adapter is None:
         if args:
@@ -972,7 +987,7 @@ def _validated_arguments(
     raise TypeError("Contract tool inputs must validate to an object")
 
 
-def _validated_output(value: object, adapter: TypeAdapter[Any]) -> object:
+def _validated_output(value: object, adapter: TypeAdapter[object]) -> object:
     if isinstance(value, str):
         validated = adapter.validate_json(value)
     else:
@@ -982,16 +997,16 @@ def _validated_output(value: object, adapter: TypeAdapter[Any]) -> object:
 
 def _terminal_output_validator(
     semantic_name: str,
-    output_type: type[object],
+    output_type: object,
 ) -> Callable[[object, object], None]:
-    adapter = TypeAdapter(output_type)
+    adapter = TypeAdapter[object](output_type)
 
     def validate_terminal_output(
         callback_context: object,
         llm_response: object,
     ) -> None:
         del callback_context
-        response = cast(Any, llm_response)
+        response = cast(_ADKResponseShape, llm_response)
         if response.partial is True or response.get_function_calls():
             return
         content = response.content

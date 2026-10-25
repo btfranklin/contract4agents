@@ -2,17 +2,21 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Callable, Mapping
+from dataclasses import replace
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from typing import Any
+from typing import Protocol, cast
 
 import pytest
 
 from contract4agents import compile_project
 from contract4agents.adapters._registry import get_adapter_registration
-from contract4agents.compiler import artifact_digests
-from contract4agents.ir import SemanticId
-from contract4agents.planning import plan_materialization
+from contract4agents.compiler import CompilerArtifacts, artifact_digests
+from contract4agents.ir import CanonicalIR, FrozenMap, SemanticId
+from contract4agents.materialization import GraphValidationEvidence, MaterializedSystem, NativeAgentGraph
+from contract4agents.materialization._context import ContextRuntime
+from contract4agents.planning import MaterializationPlan, plan_materialization
 from contract4agents.target_bindings import load_target_bindings
 from contract4agents.tracing import TraceAttempt, validate_trace_conformance
 from contract4agents.tracing._google_adk import GoogleADKNormalizedTraceRouter
@@ -24,18 +28,21 @@ ROOT = Path(__file__).resolve().parents[3]
 class _NativeAgent:
     def __init__(self, name: str) -> None:
         self.name = name
-        self.hooks: dict[type[object], Any] = {}
+        self.hooks: dict[type[object], Callable[[object], None]] = {}
 
-    def add_hook(self, callback: Any, event_type: type[object]) -> None:
+    def add_hook(self, callback: Callable[[object], None], event_type: type[object]) -> None:
         self.hooks[event_type] = callback
 
 
 class _NativeTool:
     def __init__(self, name: str) -> None:
         self.name = name
+        self.tool_type: str | None = None
 
 
-def _fixture(target: str) -> tuple[object, object, object, object, _NativeAgent, _NativeTool]:
+def _fixture(
+    target: str,
+) -> tuple[MaterializedSystem, CanonicalIR, MaterializationPlan, NativeAgentGraph, _NativeAgent, _NativeTool]:
     project = ROOT / "examples" / "incident-command"
     artifacts = compile_project(project)
     loaded = load_target_bindings(project, required=True)
@@ -59,20 +66,64 @@ def _fixture(target: str) -> tuple[object, object, object, object, _NativeAgent,
     )
     agent = _NativeAgent("c4a_agent_incident_commander_a1b2c3d4")
     tool = _NativeTool("c4a_tool_status_publish_a1b2c3d4")
-    graph = SimpleNamespace(
+    system = _system(
+        artifacts,
+        plan,
         agents={grant.agent_id: agent},
-        grant_objects={grant.id: tool},
-        composition_objects={},
-        context=SimpleNamespace(ir=artifacts.ir),
+        grants={grant.id: tool},
     )
-    system = SimpleNamespace(
-        artifacts=artifacts,
-        ir=artifacts.ir,
-        graph=graph,
-        context=graph.context,
-        plan=plan,
-    )
+    graph = system.graph
     return system, artifacts.ir, plan, graph, agent, tool
+
+
+def _system(
+    artifacts: CompilerArtifacts,
+    plan: MaterializationPlan,
+    *,
+    agents: Mapping[SemanticId, object],
+    grants: Mapping[SemanticId, object] = FrozenMap(),
+    compositions: Mapping[SemanticId, object] = FrozenMap(),
+) -> MaterializedSystem:
+    context = ContextRuntime(artifacts.ir, plan, FrozenMap(), FrozenMap())
+    graph = NativeAgentGraph(
+        agents=FrozenMap(agents),
+        input_types=FrozenMap((identifier, None) for identifier in plan.agents),
+        output_types=FrozenMap(),
+        implementations=FrozenMap(),
+        grant_objects=FrozenMap(grants),
+        composition_objects=FrozenMap(compositions),
+        context=context,
+        environment_evidence=(),
+        validation=GraphValidationEvidence(
+            adapter=plan.adapter.name,
+            adapter_version=plan.adapter.version,
+            contract_digest=artifacts.contract_digest,
+            plan_digest=plan.plan_digest,
+            agent_ids=tuple(agents),
+            grant_ids=tuple(grants),
+            composition_ids=tuple(compositions),
+            schema_conformance=(),
+        ),
+    )
+    return MaterializedSystem(artifacts=artifacts, plan=plan, graph=graph)
+
+
+class _PluginCallbacks(Protocol):
+    async def before_run_callback(self, *, invocation_context: object) -> None: ...
+    async def after_run_callback(self, *, invocation_context: object) -> None: ...
+    async def on_run_error_callback(self, *, invocation_context: object, error: Exception) -> None: ...
+    async def before_agent_callback(self, *, agent: object, callback_context: object) -> None: ...
+    async def after_agent_callback(self, *, agent: object, callback_context: object) -> None: ...
+    async def on_agent_error_callback(self, *, agent: object, callback_context: object, error: Exception) -> None: ...
+    async def before_model_callback(self, *, callback_context: object, llm_request: object) -> None: ...
+    async def after_model_callback(self, *, callback_context: object, llm_response: object) -> None: ...
+    async def before_tool_callback(
+        self, *, tool: object, tool_args: dict[str, object], tool_context: object
+    ) -> None: ...
+    async def after_tool_callback(
+        self, *, tool: object, tool_args: dict[str, object], tool_context: object, result: dict[str, object]
+    ) -> None: ...
+    async def on_event_callback(self, *, invocation_context: object, event: object) -> None: ...
 
 
 def _install_fake_strands_hooks(
@@ -152,10 +203,12 @@ def test_strands_hook_bridge_closes_attempt_and_correlates_tool(
         "output.accepted",
         "agent.completed",
     ]
-    tool_event = next(event for event in snapshot.trace.events if event.event_type == "tool.started")
-    grant = ir.grants[tool_event.semantic.grant_id]
-    assert tool_event.semantic.agent_id == grant.agent_id
-    assert tool_event.semantic.capability_id == grant.capability_id
+    recorded_tool_event = next(event for event in snapshot.trace.events if event.event_type == "tool.started")
+    grant_id = recorded_tool_event.semantic.grant_id
+    assert grant_id is not None
+    grant = ir.grants[grant_id]
+    assert recorded_tool_event.semantic.agent_id == grant.agent_id
+    assert recorded_tool_event.semantic.capability_id == grant.capability_id
     validate_trace_conformance(system, snapshot.trace)
 
 
@@ -164,19 +217,23 @@ class _BasePlugin:
         self.name = name
 
 
+class _PluginModule(ModuleType):
+    BasePlugin: type[_BasePlugin]
+
+
 @pytest.mark.asyncio
 async def test_google_adk_plugin_is_lazy_and_preserves_grounding_flags(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     system, ir, plan, graph, agent, tool = _fixture("google_adk")
-    module = ModuleType("google.adk.plugins.base_plugin")
-    module.BasePlugin = _BasePlugin  # type: ignore[attr-defined]
+    module = _PluginModule("google.adk.plugins.base_plugin")
+    module.BasePlugin = _BasePlugin
     monkeypatch.setattr(
         "contract4agents.tracing._google_adk.import_module",
         lambda name: module,
     )
     router = GoogleADKNormalizedTraceRouter().attach(system)
-    plugin = router.plugin()
+    plugin = cast(_PluginCallbacks, router.plugin())
     session = router.open_session(system, run_id="run-adk")
     attempt = TraceAttempt("invoke:1", "attempt-adk-1", 1)
     invocation_context = SimpleNamespace(invocation_id="adk-invocation-1")
@@ -260,14 +317,14 @@ async def test_google_adk_materializer_validation_failure_seals_closure(
 ) -> None:
     system, ir, plan, graph, agent, tool = _fixture("google_adk")
     del tool
-    module = ModuleType("google.adk.plugins.base_plugin")
-    module.BasePlugin = _BasePlugin  # type: ignore[attr-defined]
+    module = _PluginModule("google.adk.plugins.base_plugin")
+    module.BasePlugin = _BasePlugin
     monkeypatch.setattr(
         "contract4agents.tracing._google_adk.import_module",
         lambda name: module,
     )
     router = GoogleADKNormalizedTraceRouter().attach(system)
-    plugin = router.plugin()
+    plugin = cast(_PluginCallbacks, router.plugin())
     session = router.open_session(system, run_id="run-adk-invalid")
     attempt = TraceAttempt("invoke:1", "attempt-adk-invalid-1", 1)
     invocation_context = SimpleNamespace(invocation_id="adk-invalid-1")
@@ -315,11 +372,7 @@ def test_native_router_rejects_one_name_for_multiple_semantic_ids() -> None:
     system, ir, plan, graph, agent, tool = _fixture("strands")
     del system, ir, plan, tool
     other_id = SemanticId.parse("agent:OtherAgent")
-    conflicting = SimpleNamespace(
-        agents={**graph.agents, other_id: _NativeAgent(agent.name)},
-        grant_objects=graph.grant_objects,
-        composition_objects={},
-    )
+    conflicting = replace(graph, agents=FrozenMap({**graph.agents, other_id: _NativeAgent(agent.name)}))
 
     with pytest.raises(ValueError, match="maps to multiple semantic IDs"):
         StrandsNormalizedTraceRouter().register_graph(conflicting)
@@ -380,7 +433,8 @@ def test_strands_nested_delegate_invocations_share_one_host_attempt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     project = ROOT / "examples" / "incident-command"
-    ir = compile_project(project).ir
+    artifacts = compile_project(project)
+    ir = artifacts.ir
     loaded = load_target_bindings(project, required=True)
     registration = get_adapter_registration("strands")
     assert loaded.bindings is not None
@@ -391,21 +445,18 @@ def test_strands_nested_delegate_invocations_share_one_host_attempt(
         target="strands",
         profile="test",
         capabilities=registration.planner_capabilities(),
+        artifact_digests=artifact_digests(artifacts),
     )
     edge = next(iter(ir.composition.values()))
     parent = _NativeAgent("c4a_agent_parent_a1b2c3d4")
     child = _NativeAgent("c4a_agent_child_a1b2c3d4")
     delegate = _NativeTool("c4a_delegate_investigate_a1b2c3d4")
-    graph = SimpleNamespace(
-        agents={
-            edge.source_agent_id: parent,
-            edge.target_agent_id: child,
-        },
-        grant_objects={},
-        composition_objects={edge.id: delegate},
-        context=SimpleNamespace(ir=ir),
+    system = _system(
+        artifacts,
+        plan,
+        agents={edge.source_agent_id: parent, edge.target_agent_id: child},
+        compositions={edge.id: delegate},
     )
-    system = SimpleNamespace(graph=graph, context=graph.context, plan=plan)
     event_types = _install_fake_strands_hooks(monkeypatch)
     router = StrandsNormalizedTraceRouter()
     router.attach(system)

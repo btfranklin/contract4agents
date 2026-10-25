@@ -19,6 +19,7 @@ from contract4agents.materialization._models import (
     NativeAgentGraph,
 )
 from contract4agents.materialization._tracing import MaterializationTraceSink, _emit_materialization_events
+from contract4agents.materialization._types import GeneratedType
 from contract4agents.planning import MaterializationPlan, PlannedSystem, PlannerCapabilities
 from contract4agents.runtime import EnvironmentProvider
 from contract4agents.target_bindings import TargetBinding
@@ -54,7 +55,7 @@ class AgentCoreHarnessMaterializationProvider:
         plan: MaterializationPlan,
         implementations: FrozenMap[SemanticId, object],
         input_types: FrozenMap[SemanticId, type[BaseModel] | None],
-        output_types: FrozenMap[str, type[object]],
+        output_types: FrozenMap[str, GeneratedType],
         context_runtime: ContextRuntime,
         environment: EnvironmentProvider | None,
         materialization_trace_sink: MaterializationTraceSink,

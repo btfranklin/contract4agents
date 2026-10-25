@@ -6,9 +6,9 @@ import copy
 import importlib.metadata
 import inspect
 import json
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Protocol, cast
+from typing import Protocol, cast
 
 from pydantic import BaseModel, TypeAdapter
 
@@ -40,6 +40,8 @@ from contract4agents.materialization._tracing import (
     _emit_materialization_events,
 )
 from contract4agents.materialization._types import (
+    GeneratedType,
+    annotation_name,
     build_parameter_model,
     normalize_structural_value,
     output_type_for,
@@ -47,7 +49,34 @@ from contract4agents.materialization._types import (
 )
 from contract4agents.planning import MaterializationPlan, PlannerCapabilities
 from contract4agents.runtime import EnvironmentProvider, EnvironmentRunRequest
+from contract4agents.runtime._utils import PythonCallable
 from contract4agents.target_bindings import TargetBinding
+
+
+class _ToolShape(Protocol):
+    tool_spec: dict[str, object]
+
+
+class _StreamTool(Protocol):
+    def stream(
+        self, tool_use: dict[str, object], invocation_state: dict[str, object],
+    ) -> AsyncIterator[Mapping[str, object]]: ...
+
+
+class _ToolRegistryShape(Protocol):
+    def register_dynamic_tool(self, tool: object) -> None: ...
+
+
+class _ToolContextShape(Protocol):
+    invocation_state: Mapping[str, object]
+    tool_use: Mapping[str, object]
+
+
+class _StrandsAgentShape(Protocol):
+    tool_names: Sequence[str]
+    tool_registry: _ToolRegistryShape
+
+    def as_tool(self, *, name: str, description: str | None, preserve_context: bool) -> object: ...
 
 
 @dataclass(frozen=True)
@@ -57,7 +86,7 @@ class NativeStrandsAgentDescription:
     native_name: str
     instructions: str
     model_identity: str
-    output_type: type[object]
+    output_type: object
     tool_names: tuple[str, ...]
     approval_allowed_tools: tuple[str, ...] | None
     model_options: Mapping[str, object] | None = None
@@ -99,7 +128,7 @@ class StrandsSDK(Protocol):
         instructions: str,
         model_identity: str,
         model: object,
-        output_type: type[object],
+        output_type: object,
         tools: tuple[object, ...],
         approval_allowed_tools: tuple[str, ...] | None,
     ) -> object: ...
@@ -111,7 +140,7 @@ class StrandsSDK(Protocol):
         description: str,
         implementation: object,
         input_type: type[BaseModel] | None,
-        output_adapter: TypeAdapter[Any],
+        output_adapter: TypeAdapter[object],
     ) -> object: ...
 
     def create_delegate_tool(
@@ -121,7 +150,7 @@ class StrandsSDK(Protocol):
         description: str,
         child: object,
         input_type: type[BaseModel] | None,
-        output_adapter: TypeAdapter[Any],
+        output_adapter: TypeAdapter[object],
     ) -> object: ...
 
     def create_isolated_delegate_tool(
@@ -131,7 +160,7 @@ class StrandsSDK(Protocol):
         description: str,
         child: object,
         input_type: type[BaseModel] | None,
-        output_adapter: TypeAdapter[Any],
+        output_adapter: TypeAdapter[object],
         isolation_id: SemanticId,
         requested_dimensions: FrozenMap[str, str],
         declared_capabilities: tuple[str, ...],
@@ -154,7 +183,7 @@ class StrandsAgentsSDK:
             self.version = "unavailable"
         self._agent_metadata: dict[
             int,
-            tuple[str, type[object], tuple[str, ...] | None, bool],
+            tuple[str, object, tuple[str, ...] | None, bool],
         ] = {}
         self._factory_model_ids: set[int] = set()
         self._tool_metadata: dict[int, NativeStrandsToolDescription] = {}
@@ -220,7 +249,7 @@ class StrandsAgentsSDK:
         instructions: str,
         model_identity: str,
         model: object,
-        output_type: type[object],
+        output_type: object,
         tools: tuple[object, ...],
         approval_allowed_tools: tuple[str, ...] | None,
     ) -> object:
@@ -234,7 +263,7 @@ class StrandsAgentsSDK:
         if approval_allowed_tools is not None:
             interventions = [HumanInTheLoop(allowed_tools=list(approval_allowed_tools))]
         try:
-            native_agent = cast(Any, Agent)(
+            native_agent = cast(PythonCallable[object], Agent)(
                 model=model,
                 tools=list(tools),
                 system_prompt=instructions,
@@ -271,7 +300,7 @@ class StrandsAgentsSDK:
         description: str,
         implementation: object,
         input_type: type[BaseModel] | None,
-        output_adapter: TypeAdapter[Any],
+        output_adapter: TypeAdapter[object],
     ) -> object:
         try:
             from strands.tools import PythonAgentTool
@@ -290,7 +319,7 @@ class StrandsAgentsSDK:
         output_schema = _output_schema(output_adapter)
         boundary = HostCallableBoundary.create(
             native_name,
-            cast(Any, implementation),
+            implementation,
             input_type,
             output_adapter,
         )
@@ -309,7 +338,7 @@ class StrandsAgentsSDK:
             "inputSchema": copy.deepcopy(dict(input_schema)),
             "outputSchema": copy.deepcopy(dict(output_schema)),
         }
-        native_tool = cast(Any, PythonAgentTool)(
+        native_tool = cast(PythonCallable[object], PythonAgentTool)(
             native_name,
             tool_spec,
             invoke,
@@ -330,7 +359,7 @@ class StrandsAgentsSDK:
         description: str,
         child: object,
         input_type: type[BaseModel] | None,
-        output_adapter: TypeAdapter[Any],
+        output_adapter: TypeAdapter[object],
     ) -> object:
         return self._create_typed_delegate(
             native_name=native_name,
@@ -348,7 +377,7 @@ class StrandsAgentsSDK:
         description: str,
         child: object,
         input_type: type[BaseModel] | None,
-        output_adapter: TypeAdapter[Any],
+        output_adapter: TypeAdapter[object],
         isolation_id: SemanticId,
         requested_dimensions: FrozenMap[str, str],
         declared_capabilities: tuple[str, ...],
@@ -375,7 +404,7 @@ class StrandsAgentsSDK:
         description: str,
         child: object,
         input_type: type[BaseModel] | None,
-        output_adapter: TypeAdapter[Any],
+        output_adapter: TypeAdapter[object],
         isolation: tuple[
             SemanticId,
             FrozenMap[str, str],
@@ -390,7 +419,7 @@ class StrandsAgentsSDK:
         except Exception as exc:  # noqa: BLE001 - optional provider boundary.
             raise _missing_strands_error() from exc
 
-        native_child = cast(Any, child)
+        native_child = cast(_StrandsAgentShape, child)
         inner = native_child.as_tool(
             name=native_name,
             description=description or None,
@@ -398,16 +427,18 @@ class StrandsAgentsSDK:
         )
         input_schema = _input_schema(input_type)
         output_schema = _output_schema(output_adapter)
-        input_adapter = TypeAdapter(input_type) if input_type is not None else None
+        input_adapter = TypeAdapter[object](input_type) if input_type is not None else None
 
         context_name = _tool_context_name(input_type)
 
         async def invoke(**values: object) -> object:
             tool_context = values.pop(context_name, None)
             payload = _validated_input(input_adapter, values)
-            invocation_state = dict(cast(Any, tool_context).invocation_state) if tool_context is not None else {}
+            invocation_state = (
+                dict(cast(_ToolContextShape, tool_context).invocation_state) if tool_context is not None else {}
+            )
             tool_use_id = (
-                str(cast(Any, tool_context).tool_use.get("toolUseId", "unknown"))
+                str(cast(_ToolContextShape, tool_context).tool_use.get("toolUseId", "unknown"))
                 if tool_context is not None
                 else "unknown"
             )
@@ -446,7 +477,7 @@ class StrandsAgentsSDK:
                 tool_use_id,
                 payload,
             )
-            async for event in cast(Any, inner).stream(
+            async for event in cast(_StreamTool, inner).stream(
                 inner_use,
                 invocation_state,
             ):
@@ -477,16 +508,16 @@ class StrandsAgentsSDK:
             context_name=context_name,
             tool_context_type=ToolContext,
         )
-        decorator = cast(Any, tool)(
+        decorator = cast(PythonCallable[Callable[[object], _ToolShape]], tool)(
             name=native_name,
             description=description or native_name,
             inputSchema=dict(input_schema),
             context=context_name,
         )
         native_tool = decorator(invoke)
-        tool_spec = dict(cast(Any, native_tool).tool_spec)
+        tool_spec = dict(native_tool.tool_spec)
         tool_spec["outputSchema"] = dict(output_schema)
-        cast(Any, native_tool).tool_spec = tool_spec
+        native_tool.tool_spec = tool_spec
         self._remember_tool(
             native_tool,
             native_name=native_name,
@@ -497,7 +528,7 @@ class StrandsAgentsSDK:
         return native_tool
 
     def attach(self, agent: object, *, tools: tuple[object, ...]) -> None:
-        native_agent = cast(Any, agent)
+        native_agent = cast(_StrandsAgentShape, agent)
         existing = set(native_agent.tool_names)
         for tool in tools:
             description = self.describe_tool(tool)
@@ -507,7 +538,7 @@ class StrandsAgentsSDK:
             existing.add(description.native_name)
 
     def describe_agent(self, agent: object) -> NativeStrandsAgentDescription:
-        native_agent = cast(Any, agent)
+        native_agent = cast(_StrandsAgentShape, agent)
         try:
             model_identity, output_type, allowed, factory_boundary = self._agent_metadata[id(agent)]
         except KeyError as exc:
@@ -553,7 +584,7 @@ class StrandsAgentsSDK:
             instructions=str(native_prompt or ""),
             model_identity=model_identity,
             output_type=output_type,
-            tool_names=tuple(cast(Any, native_names)),
+            tool_names=tuple(str(name) for name in cast(Sequence[object], native_names)),
             approval_allowed_tools=allowed,
             model_options=(dict(model_config) if isinstance(model_config, Mapping) else None),
             model_observation_source=model_source,
@@ -561,7 +592,7 @@ class StrandsAgentsSDK:
         )
 
     def describe_tool(self, tool: object) -> NativeStrandsToolDescription:
-        native_tool = cast(Any, tool)
+        native_tool = tool
         public_spec = getattr(native_tool, "tool_spec", MISSING)
         if isinstance(public_spec, Mapping):
             input_schema = public_spec.get("inputSchema")
@@ -639,7 +670,7 @@ class StrandsMaterializationProvider:
         plan: MaterializationPlan,
         implementations: FrozenMap[SemanticId, object],
         input_types: FrozenMap[SemanticId, type[BaseModel] | None],
-        output_types: FrozenMap[str, type[object]],
+        output_types: FrozenMap[str, GeneratedType],
         context_runtime: ContextRuntime,
         environment: EnvironmentProvider | None,
         materialization_trace_sink: MaterializationTraceSink,
@@ -714,10 +745,7 @@ class StrandsMaterializationProvider:
                 model_options=options,
                 factory=factory,
             )
-            agent_output_type = cast(
-                type[object],
-                output_type_for(agent.output_type, output_types),
-            )
+            agent_output_type = output_type_for(agent.output_type, output_types)
             approval_grants = [
                 ir.grants[grant_id]
                 for grant_id in agent.grant_ids
@@ -737,7 +765,9 @@ class StrandsMaterializationProvider:
                 delegates = [
                     edge_names[edge.id] for edge in ir.composition.values() if edge.source_agent_id == agent_id
                 ]
-                approval_allowed_tools = tuple(sorted(set(preapproved + delegates + [agent_output_type.__name__])))
+                approval_allowed_tools = tuple(
+                    sorted(set(preapproved + delegates + [annotation_name(agent_output_type)]))
+                )
             agents[agent_id] = self.sdk.create_agent(
                 native_name=agent_names[agent_id],
                 contract_name=agent.name,
@@ -901,7 +931,7 @@ def _assign_name(
 
 
 def _tool_context_name(input_type: type[BaseModel] | None) -> str:
-    fields = set(cast(Any, input_type).model_fields) if input_type is not None else set()
+    fields = set(input_type.model_fields) if input_type is not None else set()
     name = "__c4a_tool_context"
     while name in fields:
         name = f"_{name}"
@@ -918,7 +948,7 @@ def _set_tool_signature(
     parameters: list[inspect.Parameter] = []
     annotations: dict[str, object] = {}
     if input_type is not None:
-        for name, field in cast(Any, input_type).model_fields.items():
+        for name, field in input_type.model_fields.items():
             default = inspect.Parameter.empty if field.is_required() else field.default
             parameters.append(
                 inspect.Parameter(
@@ -938,13 +968,12 @@ def _set_tool_signature(
     )
     annotations[context_name] = tool_context_type
     annotations["return"] = object
-    native = cast(Any, implementation)
-    native.__signature__ = inspect.Signature(parameters)
-    native.__annotations__ = annotations
+    setattr(implementation, "__signature__", inspect.Signature(parameters))  # noqa: B010 - function metadata.
+    setattr(implementation, "__annotations__", annotations)  # noqa: B010 - function metadata.
 
 
 def _validated_input(
-    adapter: TypeAdapter[Any] | None,
+    adapter: TypeAdapter[object] | None,
     value: object,
 ) -> dict[str, object]:
     if not isinstance(value, Mapping):
@@ -960,7 +989,7 @@ def _validated_input(
     return cast(dict[str, object], dumped)
 
 
-def _validated_output(adapter: TypeAdapter[Any], value: object) -> object:
+def _validated_output(adapter: TypeAdapter[object], value: object) -> object:
     parsed = adapter.validate_python(normalize_structural_value(value))
     return adapter.dump_python(parsed, mode="json")
 
@@ -1015,15 +1044,15 @@ async def _collect_delegate_output(
     native_name: str,
     tool_use_id: str,
     payload: Mapping[str, object],
-    invocation_state: dict[str, Any],
-    output_adapter: TypeAdapter[Any],
+    invocation_state: dict[str, object],
+    output_adapter: TypeAdapter[object],
 ) -> object:
     try:
         from strands.interrupt import InterruptException
     except Exception as exc:  # noqa: BLE001 - optional provider boundary.
         raise _missing_strands_error() from exc
     inner_use = _delegate_tool_use(native_name, tool_use_id, payload)
-    async for event in cast(Any, inner).stream(inner_use, invocation_state):
+    async for event in cast(_StreamTool, inner).stream(inner_use, invocation_state):
         if not isinstance(event, Mapping):
             continue
         if "tool_interrupt_event" in event:
@@ -1043,12 +1072,12 @@ async def _collect_delegate_output(
     raise RuntimeError("Isolated Strands delegate did not produce a terminal result")
 
 
-def _strands_model_types() -> tuple[type[Any], type[Any]]:
+def _strands_model_types() -> tuple[type[object], PythonCallable[object]]:
     try:
         from strands.models import BedrockModel, Model
     except Exception as exc:  # noqa: BLE001 - optional provider boundary.
         raise _missing_strands_error() from exc
-    return Model, BedrockModel
+    return Model, cast(PythonCallable[object], BedrockModel)
 
 
 def _missing_strands_error() -> MaterializationError:

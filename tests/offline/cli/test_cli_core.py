@@ -5,6 +5,7 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 
 from contract4agents import materialize
@@ -12,6 +13,7 @@ from contract4agents.cli import main
 from contract4agents.eval_campaigns import CampaignConfig, FileEvalProvider, run_campaign
 from contract4agents.tracing import (
     NormalizedTrace,
+    TraceClosureEvidence,
     TraceClosureManifest,
     write_trace_jsonl,
 )
@@ -139,8 +141,8 @@ def test_cli_check_and_plan_reject_unsupported_openai_binding_shape(tmp_path: Pa
 
 def test_cli_plan_resolves_model_factory_from_the_project_root(
     tmp_path: Path,
-    monkeypatch,
-) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     project = tmp_path / "project"
     project.mkdir()
     elsewhere = tmp_path / "elsewhere"
@@ -303,7 +305,7 @@ def test_cli_contract_first_workflow(tmp_path: Path) -> None:
     assert '"contract_changes": []' in diff.output
 
 
-def _evaluated_trace():  # type: ignore[no-untyped-def]
+def _evaluated_trace() -> tuple[NormalizedTrace, TraceClosureEvidence]:
     result = materialize(EXAMPLE, target="openai", profile="test")
     campaign = asyncio.run(
         run_campaign(

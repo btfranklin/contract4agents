@@ -2,13 +2,18 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
-from typing import Any, cast
+from typing import Protocol, cast
 
 import pytest
 
 from contract4agents import materialize
 from contract4agents.materialization import OpenAIMaterializationProvider
 from tests.support.openai import FakeOpenAISDK, write_project
+
+
+class _ContextRecord(Protocol):
+    value: str
+
 
 
 @pytest.mark.parametrize("asynchronous", (False, True), ids=("sync", "async"))
@@ -55,8 +60,8 @@ def lookup(query: str):
         run_id="run-1",
     )
 
-    assert cast(Any, resolved["current"].value).value == "needle"
-    assert cast(Any, resolved["metadata"].value).value == "context"
+    assert cast(_ContextRecord, resolved["current"].value).value == "needle"
+    assert cast(_ContextRecord, resolved["metadata"].value).value == "context"
 
 
 @pytest.mark.parametrize("callable_shape", ("function", "callable"))
@@ -110,4 +115,4 @@ class SelectedProvider:
     )
 
     selected_context = "current" if boundary == "datasource" else "metadata"
-    assert cast(Any, resolved[selected_context].value).value != event_loop_thread
+    assert cast(_ContextRecord, resolved[selected_context].value).value != event_loop_thread

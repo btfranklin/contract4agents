@@ -41,6 +41,7 @@ from contract4agents.tracing._provider_evidence import (
     ProviderOutcomeCategory,
     ProviderOutcomeEvidence,
     ProviderOutcomePhase,
+    ProviderUsageCoverage,
     ProviderUsageEvidence,
 )
 from contract4agents.tracing._session import NormalizedTraceSessionCore
@@ -539,6 +540,7 @@ def _openai_usage_evidence(
     total_tokens = _safe_nonnegative_int(getattr(usage, "total_tokens", None))
     if cached_input_tokens is not None and input_tokens is not None and cached_input_tokens > input_tokens:
         cached_input_tokens = None
+    coverage: ProviderUsageCoverage
     numeric_facts = (
         request_count,
         input_tokens,
@@ -559,7 +561,7 @@ def _openai_usage_evidence(
             coverage = "complete"
     return ProviderUsageEvidence(
         scope="attempt",
-        coverage=coverage,  # type: ignore[arg-type]
+        coverage=coverage,
         aggregation_identity=attempt.attempt_id,
         aggregation_basis="OpenAI Agents SDK aggregate context_wrapper.usage",
         provenance="openai-agents-sdk.context_wrapper.usage",

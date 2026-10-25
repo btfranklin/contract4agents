@@ -3,15 +3,17 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, cast
+from typing import Protocol, cast
 
 import boto3  # type: ignore[import-untyped]
 import pytest
 from botocore.session import get_session  # type: ignore[import-untyped]
 from botocore.validate import ParamValidator  # type: ignore[import-untyped]
 
+from contract4agents._strict_json import json_array, json_object
 from contract4agents.adapters._native_names import native_name
 from contract4agents.adapters.agentcore_harness import (
+    HarnessConfiguration,
     agentcore_harness_planner_capabilities,
     build_harness_configuration,
     generate_harness_configuration,
@@ -19,6 +21,7 @@ from contract4agents.adapters.agentcore_harness import (
 from contract4agents.compiler import artifact_digests, compile_project
 from contract4agents.ir import semantic_id
 from contract4agents.materialization._harness_configuration import (
+    frozen_object,
     thaw,
 )
 from contract4agents.materialization._harness_deployment import verify_harness_deployment
@@ -34,7 +37,11 @@ from tests.support.agentcore_harness import (
 )
 
 
-def _configuration(root: Path) -> Any:
+class _RetryConfiguration(Protocol):
+    retries: dict[str, object]
+
+
+def _configuration(root: Path) -> HarnessConfiguration:
     return generate_harness_configuration(root, target="agentcore_harness", profile="test")
 
 
@@ -50,13 +57,14 @@ def test_configuration_is_deterministic_and_writes_no_aws_resources(
     first = _configuration(root)
     second = _configuration(root)
     agent = first.agents["Analyst"]
-    request = thaw(agent.request)
+    request = json_object("request", thaw(agent.request))
 
     assert first.agents["Analyst"].configuration_digest == second.agents["Analyst"].configuration_digest
     assert request["allowedTools"] == list(agent.tools)
     assert request["memory"] == {"disabled": {}}
     assert request["truncation"] == {"strategy": "none"}
-    assert request["model"]["bedrockModelConfig"]["apiFormat"] == "converse_stream"
+    model = json_object("model", request["model"])
+    assert json_object("bedrock config", model["bedrockModelConfig"])["apiFormat"] == "converse_stream"
     assert request["maxIterations"] == 10
     assert request["maxTokens"] == 4096
     assert request["timeoutSeconds"] == 120
@@ -75,11 +83,11 @@ def test_delegate_configuration_uses_one_declared_inline_function(tmp_path: Path
     expected_name = native_name("delegate", semantic_id("edge", "analyze"))
 
     assert tuple(parent.tools) == (expected_name,)
-    assert thaw(parent.request)["allowedTools"] == [expected_name]
-    assert thaw(parent.request)["tools"][0]["type"] == "inline_function"
+    assert parent.request_payload()["allowedTools"] == [expected_name]
+    assert json_object("tool", json_array("tools", parent.request_payload()["tools"])[0])["type"] == "inline_function"
 
 
-def test_long_agent_names_have_stable_distinct_harness_names(tmp_path):
+def test_long_agent_names_have_stable_distinct_harness_names(tmp_path: Path) -> None:
     root = write_project(tmp_path, delegate=True)
     source = root / "system.contract"
     prefix = "ResearchCoordinatorWithSharedPrefix"
@@ -88,7 +96,7 @@ def test_long_agent_names_have_stable_distinct_harness_names(tmp_path):
     second = _configuration(root)
     names = {name: agent.request["harnessName"] for name, agent in first.agents.items()}
     assert len(set(names.values())) == len(first.agents) == 2
-    assert all(len(name) <= 40 for name in names.values())
+    assert all(isinstance(name, str) and len(name) <= 40 for name in names.values())
     assert names == {name: agent.request["harnessName"] for name, agent in second.agents.items()}
     shape = get_session().get_service_model("bedrock-agentcore-control").operation_model("CreateHarness").input_shape
     for agent in first.agents.values():
@@ -96,7 +104,7 @@ def test_long_agent_names_have_stable_distinct_harness_names(tmp_path):
         assert not errors.has_errors(), errors.generate_report()
 
 
-def test_low_level_configuration_builder_rejects_duplicate_explicit_harness_names(tmp_path):
+def test_low_level_configuration_builder_rejects_duplicate_explicit_harness_names(tmp_path: Path) -> None:
     root = write_project(tmp_path, delegate=True)
     target_file = root / "contract4agents.targets.toml"
     target_file.write_text(target_file.read_text() + '\nharness_name = "SharedHarness"\n')
@@ -159,19 +167,19 @@ def test_computed_runtime_identity_is_retained_but_mounts_and_custom_network_are
                 client=control,
             )
         with pytest.raises(ValueError):
-            replace(deployment, observed_environment={"agentCoreRuntimeEnvironment": changed}).validate(
+            replace(deployment, observed_environment=frozen_object({"agentCoreRuntimeEnvironment": changed})).validate(
                 configuration,
                 "Analyst",
             )
 
 
-def test_adapter_created_aws_clients_disable_sdk_retries(monkeypatch):
+def test_adapter_created_aws_clients_disable_sdk_retries(monkeypatch: pytest.MonkeyPatch) -> None:
     from contract4agents.materialization._harness_deployment import aws_client
 
-    calls = []
+    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
     monkeypatch.setattr(boto3, "client", lambda *args, **kwargs: calls.append((args, kwargs)))
     aws_client("bedrock-agentcore", region="us-west-2")
-    assert calls[0][1]["config"].retries == {"total_max_attempts": 1}
+    assert cast(_RetryConfiguration, calls[0][1]["config"]).retries == {"total_max_attempts": 1}
 
 
 def test_deployment_verification_checks_readback_and_endpoint_stability(
@@ -193,10 +201,13 @@ def test_deployment_verification_checks_readback_and_endpoint_stability(
     assert len(control.get_endpoint_calls) == 2
     assert control.get_harness_calls == [{"harnessId": control.harness_id, "harnessVersion": "1"}]
 
-    for field in ("contract_digest", "plan_digest", "configuration_digest"):
+    for changed in (
+        replace(deployment, contract_digest="sha256:wrong"),
+        replace(deployment, plan_digest="sha256:wrong"),
+        replace(deployment, configuration_digest="sha256:wrong"),
+    ):
         with pytest.raises(ValueError, match="does not match"):
-            replace_any = cast(Any, replace)
-            replace_any(deployment, **{field: "sha256:wrong"}).validate(configuration, "Analyst")
+            changed.validate(configuration, "Analyst")
 
 
 def test_fake_runtime_client_returns_scripted_complete_streams() -> None:

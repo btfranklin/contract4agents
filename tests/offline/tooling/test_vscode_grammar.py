@@ -7,13 +7,13 @@ from typing import get_args
 from contract4agents.ast import Authorization, Availability, ContextOrigin, ExecutionBoundary
 from contract4agents.expressions._trace_ops import TRACE_OPS
 from contract4agents.ir._model import CompositionMode, HistoryMode
-from contract4agents.parser import parse_project
-from contract4agents.semantic_checks._contracts import (
+from contract4agents.language_spec import (
     ASSESSMENTS,
     AUDIENCES,
     ISOLATION_DIMENSIONS,
     SEVERITIES,
 )
+from contract4agents.parser import parse_project
 from contract4agents.semantics import analyze_project
 
 ROOT = Path(__file__).parents[3]

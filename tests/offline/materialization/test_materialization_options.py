@@ -21,5 +21,5 @@ def test_thaw_mapping_recursively_returns_ordinary_json_containers() -> None:
     }
     assert isinstance(thawed["retry"], dict)
     assert isinstance(thawed["entries"], list)
-    assert isinstance(thawed["entries"][0], dict)  # type: ignore[index]
+    assert isinstance(thawed["entries"][0], dict)
     assert isinstance(frozen["retry"], FrozenMap)

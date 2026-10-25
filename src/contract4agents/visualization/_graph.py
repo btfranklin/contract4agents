@@ -4,21 +4,21 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
 
 from contract4agents.assurance import ControlResult
 from contract4agents.ir import CanonicalIR, EnumIR, SemanticId, TypeRef, contract_digest, format_type_ref
 from contract4agents.planning import MaterializationPlan
-from contract4agents.tracing import NormalizedTrace
+from contract4agents.tracing import NormalizedTrace, TraceEvent
 from contract4agents.visualization._types import (
     VisualizationAgentDetail,
     VisualizationEdge,
     VisualizationGraph,
+    VisualizationInput,
     VisualizationNode,
 )
-from contract4agents.visualization._utils import add_edge, add_node
+from contract4agents.visualization._utils import add_edge, add_node, json_value
 
 VISUALIZATION_VERSION = "1"
 
@@ -110,7 +110,7 @@ def _add_declared(
                     "name": field.name,
                     "type": format_type_ref(field.type_ref),
                     "has_default": field.has_default,
-                    "default": _json_value(field.default),
+                    "default": json_value(field.default),
                 }
                 for field in item.fields
             ],
@@ -178,7 +178,7 @@ def _add_declared(
             view="declared",
             origin=item.origin,
             type=format_type_ref(item.type_ref),
-            input_mappings=_json_value(item.input_mappings),
+            input_mappings=json_value(item.input_mappings),
         )
         add_edge(edges, str(item.agent_id), str(item.id), "agent_context", item.origin, view="declared")
         if item.origin_id is not None:
@@ -212,7 +212,7 @@ def _add_declared(
             mode=item.mode,
             description=item.description,
             history=item.history,
-            input_mappings=_json_value(item.input_mappings),
+            input_mappings=json_value(item.input_mappings),
             audience=list(item.audience),
             isolation_id=str(item.isolation_id) if item.isolation_id is not None else None,
         )
@@ -297,7 +297,7 @@ def _add_declared(
             "eval",
             item.name,
             view="declared",
-            givens=_json_value(item.givens),
+            givens=json_value(item.givens),
             expectations=list(item.expectations),
             quality_ids=[str(value) for value in item.quality_ids],
         )
@@ -354,7 +354,7 @@ def _add_planned(
         target=plan.target,
         profile=plan.profile,
         plan_digest=plan.plan_digest,
-        artifact_digests=_json_value(plan.artifact_digests),
+        artifact_digests=json_value(plan.artifact_digests),
         expected_event_types=list(plan.expected_event_types),
     )
     for item in plan.agents.values():
@@ -365,7 +365,7 @@ def _add_planned(
             item.name,
             view="planned",
             model=item.model,
-            model_options=_json_value(item.model_options),
+            model_options=json_value(item.model_options),
             output_type=format_type_ref(item.output_type),
         )
         add_edge(edges, adapter_id, str(item.id), "adapter_materializes", "materializes", view="planned")
@@ -378,7 +378,7 @@ def _add_planned(
             kind,
             str(label),
             view="planned",
-            locator=_json_value(item.locator),
+            locator=json_value(item.locator),
             outcome=item.outcome,
             mechanism=item.mechanism,
             execution=item.execution,
@@ -528,20 +528,29 @@ def _add_observed(
             _record_observation(nodes[semantic_id], event)
 
 
-def _record_observation(node: VisualizationNode, event: Any) -> None:
+def _record_observation(node: VisualizationNode, event: TraceEvent) -> None:
     facts = node["truth"]["observed"]
-    facts["event_count"] = int(facts.get("event_count", 0)) + 1
+    count = facts.get("event_count", 0)
+    if not isinstance(count, int):
+        raise TypeError("Observed event count must be an integer")
+    facts["event_count"] = count + 1
     for key, value in (
         ("event_types", event.event_type),
         ("run_ids", event.context.run_id),
         ("providers", event.provider.name),
     ):
-        values = set(facts.get(key, []))
+        values = _string_set(facts.get(key, []))
         values.add(value)
-        facts[key] = sorted(values)
-    evidence = set(facts.get("evidence_refs", []))
+        facts[key] = json_value(sorted(values))
+    evidence = _string_set(facts.get("evidence_refs", []))
     evidence.update(event.evidence_refs)
-    facts["evidence_refs"] = sorted(evidence)
+    facts["evidence_refs"] = json_value(sorted(evidence))
+
+
+def _string_set(value: object) -> set[str]:
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise TypeError("Observed string facts must be a list of strings")
+    return {item for item in value if isinstance(item, str)}
 
 
 def _add_assured(
@@ -588,7 +597,7 @@ def _agent_details(ir: CanonicalIR, nodes: dict[str, VisualizationNode]) -> dict
     operational = list(ir.operational_controls.values())
     evals = list(ir.evals.values())
     for agent in sorted(ir.agents.values(), key=lambda item: item.name):
-        inputs = [
+        inputs: list[VisualizationInput] = [
             {"name": value.name, "type": format_type_ref(value.type_ref), "required": value.required}
             for value in agent.parameters
         ]
@@ -686,14 +695,6 @@ def _add_type_edge(
     if target not in nodes:
         add_node(nodes, target, "type_ref", rendered, view="declared", type=rendered)
     add_edge(edges, source, target, kind, label, view="declared", discriminator=label)
-
-
-def _json_value(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return {str(key): _json_value(item) for key, item in value.items()}
-    if isinstance(value, tuple | list):
-        return [_json_value(item) for item in value]
-    return value
 
 
 def _node_label(nodes: dict[str, VisualizationNode], node_id: str, fallback: str) -> str:

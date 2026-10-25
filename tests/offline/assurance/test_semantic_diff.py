@@ -24,6 +24,7 @@ from contract4agents.ir import (
     QualityIR,
     TypeFieldIR,
     TypeIR,
+    freeze_json,
     parse_type_ref,
     semantic_id,
 )
@@ -221,7 +222,7 @@ def test_semantic_diff_serializes_every_portable_default(
                             parse_type_ref(type_name),
                             required=False,
                             has_default=True,
-                            default=default,
+                            default=freeze_json(default),
                         ),
                     ),
                     parse_type_ref("Status"),

@@ -4,15 +4,15 @@ import sys
 import traceback
 from copy import copy
 from pathlib import Path
-from types import ModuleType
-from typing import Any, cast
+from types import FunctionType, ModuleType
+from typing import cast
 
 import pytest
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from contract4agents import PlannedSystem, materialize, plan_project
 from contract4agents.adapters._openai_names import openai_tool_name
-from contract4agents.compiler import CompilerArtifacts, artifact_digests
+from contract4agents.compiler import CompilerArtifacts, artifact_digests, compile_project
 from contract4agents.ir import (
     CanonicalIR,
     EnumIR,
@@ -26,23 +26,21 @@ from contract4agents.materialization import (
     OpenAIMaterializationProvider,
     RecordingMaterializationTraceSink,
 )
-from contract4agents.materialization._types import build_pydantic_types
+from contract4agents.materialization._types import GeneratedEnum, build_pydantic_types
 from contract4agents.planning import PlannerCapabilities
 from contract4agents.runtime import EnvironmentProvider
 from tests.support.openai import FakeAgent, FakeHandoff, FakeOpenAISDK, FakeTool, write_project
+from tests.support.python_types import generated_model
 
 
-class CustomMaterializationProvider:
+class CustomMaterializationProvider(OpenAIMaterializationProvider):
     adapter = "custom"
-
-    def __init__(self, sdk: FakeOpenAISDK) -> None:
-        self._provider = OpenAIMaterializationProvider(sdk)
 
     def planner_capabilities(
         self,
         environment: EnvironmentProvider | None,
     ) -> PlannerCapabilities:
-        base = self._provider.planner_capabilities(environment)
+        base = super().planner_capabilities(environment)
         return PlannerCapabilities.create(
             adapter=self.adapter,
             version=base.version,
@@ -54,8 +52,6 @@ class CustomMaterializationProvider:
             mapping_resolver=base.mapping_resolver,
         )
 
-    def build_graph(self, **kwargs: Any) -> Any:
-        return self._provider.build_graph(**kwargs)
 
 
 def test_runtime_pydantic_types_enforce_literal_enum_membership() -> None:
@@ -68,9 +64,27 @@ def test_runtime_pydantic_types_enforce_literal_enum_membership() -> None:
 
     types = build_pydantic_types(CanonicalIR.create(types=(result, status)))
 
-    assert types["Result"](status="accepted").status == "accepted"
+    result_model = generated_model(types, "Result")
+    assert result_model(status="accepted").model_dump() == {"status": "accepted"}
     with pytest.raises(ValidationError):
-        types["Result"](status="unknown")
+        result_model(status="unknown")
+
+
+def test_generated_enum_registry_exposes_validation_without_claiming_a_model_class(tmp_path: Path) -> None:
+    write_project(tmp_path)
+    source_path = tmp_path / "system.contract"
+    source_path.write_text(source_path.read_text() + '\nenum Status:\n    "accepted"\n    "failed"\n')
+    system = materialize(
+        tmp_path, target="openai", profile="test", provider=OpenAIMaterializationProvider(FakeOpenAISDK())
+    )
+
+    generated = system.generated_types["Status"]
+    assert isinstance(generated, GeneratedEnum)
+    assert generated.values == ("accepted", "failed")
+    assert generated.adapter.validate_python("accepted", strict=True) == "accepted"
+    for invalid in ("unknown", 1, True):
+        with pytest.raises(ValidationError):
+            generated.adapter.validate_python(invalid, strict=True)
 
 
 def test_public_materialize_builds_and_validates_complete_native_graph(tmp_path: Path) -> None:
@@ -111,11 +125,13 @@ def test_public_materialize_builds_and_validates_complete_native_graph(tmp_path:
     assert isinstance(native_grant, FakeTool)
     assert native_grant.requires_approval
     assert native_grant.implementation is result.graph.implementations[semantic_id("tool", "records.lookup")]
-    assert cast(Any, result.graph.implementations[semantic_id("datasource", "records.current")]).__name__ == "current"
-    assert cast(Any, result.graph.implementations[semantic_id("external", "request_context")]).__name__ == "context"
+    current = result.graph.implementations[semantic_id("datasource", "records.current")]
+    request_context = result.graph.implementations[semantic_id("external", "request_context")]
+    assert isinstance(current, FunctionType) and current.__name__ == "current"
+    assert isinstance(request_context, FunctionType) and request_context.__name__ == "context"
 
-    result_model = cast(Any, result.graph.output_types["Result"])
-    assert result_model(value="ok").value == "ok"
+    result_model = generated_model(result.graph.output_types, "Result")
+    assert result_model(value="ok").model_dump() == {"value": "ok"}
     with pytest.raises(ValidationError):
         result_model(value="ok", undeclared=True)
 
@@ -172,7 +188,7 @@ def test_materialization_returns_the_compiler_artifacts_used_by_the_graph_and_pl
     write_project(tmp_path)
     import contract4agents.materialization._entrypoint as entrypoint
 
-    original_compile = entrypoint.compile_project
+    original_compile = compile_project
     compiled: list[CompilerArtifacts] = []
 
     def compile_spy(root: Path | str) -> CompilerArtifacts:
@@ -224,16 +240,19 @@ agent CountWorker(count: integer) -> Result:
     assert result.input_type_for_agent(parent) is result.agent_input_types["Parent"]
     assert result.input_type_for_agent(count_worker) is result.agent_input_types["CountWorker"]
 
-    validated = cast(Any, result.validate_input_for_agent(parent, {"request": {"value": "hello"}}))
-    assert validated.request.value == "hello"
+    validated = result.validate_input_for_agent(parent, {"request": {"value": "hello"}})
+    assert validated is not None
+    assert validated.model_dump() == {"request": {"value": "hello"}}
     assert result.serialize_input_for_agent(parent, {"request": {"value": "hello"}}) == (
         '{"request":{"value":"hello"}}'
     )
-    counted = cast(Any, result.validate_input_for_agent(count_worker, {"count": 3}))
-    assert counted.count == 3
+    counted = result.validate_input_for_agent(count_worker, {"count": 3})
+    assert counted is not None
+    assert counted.model_dump() == {"count": 3}
     assert result.output_type_for_agent(parent) is result.generated_types["Result"]
-    validated_output = cast(Any, result.validate_output_for_agent(parent, {"value": "accepted"}))
-    assert validated_output.value == "accepted"
+    validated_output = result.validate_output_for_agent(parent, {"value": "accepted"})
+    assert isinstance(validated_output, BaseModel)
+    assert validated_output.model_dump() == {"value": "accepted"}
 
     with pytest.raises(MaterializationError) as caught:
         result.validate_output_for_agent(parent, {"wrong": "output-secret"})
@@ -249,7 +268,7 @@ agent CountWorker(count: integer) -> Result:
     )
     for invalid in invalid_inputs:
         with pytest.raises(MaterializationError) as caught:
-            result.validate_input_for_agent(parent, cast(Any, invalid))
+            result.validate_input_for_agent(parent, invalid)  # type: ignore[arg-type]  # Deliberately invalid input.
         assert [issue.code for issue in caught.value.issues] == ["MAT206"]
 
     copied_parent = copy(parent)

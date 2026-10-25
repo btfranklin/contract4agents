@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
 
 from contract4agents.diagnostics import Diagnostic
 from contract4agents.target_bindings._models import TARGET_BINDINGS_SCHEMA_VERSION
@@ -73,7 +72,7 @@ def validate_target_bindings_payload(payload: object, path: Path) -> list[Diagno
     return diagnostics
 
 
-def _validate_target(target: dict[str, Any], path: str) -> list[Diagnostic]:
+def _validate_target(target: Mapping[str, object], path: str) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     adapter = target.get("adapter")
     if not isinstance(adapter, str) or not adapter.strip():

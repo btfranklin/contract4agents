@@ -4,7 +4,7 @@ import asyncio
 import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated
 
 import pytest
 from pydantic import (
@@ -28,25 +28,25 @@ from contract4agents.materialization._types import type_adapter_for
 PortableDatetime = Annotated[datetime, BeforeValidator(parse_portable_datetime)]
 
 
-class ApplicationItem(BaseModel):
+class ApplicationItem(BaseModel):  # type: ignore[explicit-any]  # Pydantic constructor.
     model_config = ConfigDict(extra="forbid", strict=True)
 
     label: str
 
 
-class ContractItem(BaseModel):
+class ContractItem(BaseModel):  # type: ignore[explicit-any]  # Pydantic constructor.
     model_config = ConfigDict(extra="forbid", strict=True)
 
     label: StrictStr
 
 
-class ContractEnvelope(BaseModel):
+class ContractEnvelope(BaseModel):  # type: ignore[explicit-any]  # Pydantic constructor.
     model_config = ConfigDict(extra="forbid", strict=True)
 
     items: list[ContractItem]
 
 
-class ContractItems(RootModel[list[ContractItem]]):
+class ContractItems(RootModel[list[ContractItem]]):  # type: ignore[explicit-any]  # Pydantic constructor.
     model_config = ConfigDict(strict=True)
 
 
@@ -65,16 +65,17 @@ DATETIME_ARGUMENT_TYPE = create_model(
 
 
 def _boundary(
-    implementation: Any,
-    output: Any = StrictStr,
+    implementation: object,
+    output: object = StrictStr,
     *,
-    input_type: type[object] | None = ARGUMENTS_TYPE,
+    input_type: type[BaseModel] | None = ARGUMENTS_TYPE,
 ) -> HostCallableBoundary:
+    assert callable(implementation)
     return HostCallableBoundary.create(
         "records.lookup",
         implementation,
         input_type,
-        TypeAdapter(output),
+        TypeAdapter[object](output),
     )
 
 
@@ -306,9 +307,9 @@ async def test_invoke_keeps_strict_output_rejections(
     output_type: object,
 ) -> None:
     adapter = (
-        TypeAdapter(output_type)
+        TypeAdapter[object](output_type)
         if isinstance(output_type, type) and issubclass(output_type, BaseModel)
-        else TypeAdapter(output_type, config=ConfigDict(strict=True, allow_inf_nan=False))
+        else TypeAdapter[object](output_type, config=ConfigDict(strict=True, allow_inf_nan=False))
     )
     boundary = HostCallableBoundary.create(
         "records.lookup",

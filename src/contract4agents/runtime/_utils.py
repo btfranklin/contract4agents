@@ -5,10 +5,21 @@ from __future__ import annotations
 import asyncio
 import importlib
 from collections.abc import Coroutine
-from typing import Any
+from typing import Protocol, TypeVar
+
+T = TypeVar("T")
 
 
-def load_python_ref(reference: str) -> Any:
+ResultT_co = TypeVar("ResultT_co", covariant=True)
+
+
+class PythonCallable(Protocol[ResultT_co]):
+    """A callable loaded or constructed at a dynamic Python boundary."""
+
+    def __call__(self, *args: object, **kwargs: object) -> ResultT_co: ...
+
+
+def load_python_ref(reference: str) -> object:
     module_name, _, attr = reference.partition(":")
     if not module_name or not attr:
         raise ValueError(f"Invalid python reference: {reference}")
@@ -16,8 +27,8 @@ def load_python_ref(reference: str) -> Any:
     return getattr(module, attr)
 
 
-def run_async(coro: Coroutine[Any, Any, Any]) -> Any:
+def run_async(coro: Coroutine[object, object, T]) -> T:
     return asyncio.run(coro)
 
 
-__all__ = ["load_python_ref", "run_async"]
+__all__ = ["PythonCallable", "load_python_ref", "run_async"]

@@ -8,7 +8,6 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType
-from typing import Any
 
 
 class ProjectModuleCollisionError(ImportError):
@@ -33,7 +32,7 @@ def import_project_module(project_root: Path, module_name: str) -> ModuleType:
         return importlib.import_module(module_name)
 
 
-def load_project_python_ref(project_root: Path, reference: str) -> Any:
+def load_project_python_ref(project_root: Path, reference: str) -> object:
     """Load one `module:attribute` reference from a project root."""
 
     module_name, separator, attribute = reference.partition(":")

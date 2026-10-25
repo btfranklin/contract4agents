@@ -5,11 +5,10 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import dataclass, field
-from typing import Any
 
 from contract4agents.assurance._models import AssessorIdentity, AssuranceStatus
 from contract4agents.expressions import ExpressionError, parse_operational_requirement
-from contract4agents.ir import SemanticId
+from contract4agents.ir import CanonicalJsonValue, SemanticId
 from contract4agents.planning import PlannedSystem
 from contract4agents.tracing import (
     NormalizedTrace,
@@ -17,7 +16,9 @@ from contract4agents.tracing import (
     ProviderUsageEvidence,
     TraceAttempt,
     TraceClosureEvidence,
+    TraceEvent,
     TraceEvidenceAssessment,
+    TraceInstrumentationChannel,
     assess_trace_evidence,
     validate_trace_conformance,
 )
@@ -67,8 +68,7 @@ class OperationalControlResult:
             raise ValueError(f"Unsupported operational metric `{self.metric}`")
         if self.operator is not None and self.operator not in _OPERATORS:
             raise ValueError(f"Unsupported operational operator `{self.operator}`")
-        for name in ("actual", "target"):
-            value = getattr(self, name)
+        for name, value in (("actual", self.actual), ("target", self.target)):
             if value is not None:
                 if isinstance(value, bool) or not isinstance(value, int | float):
                     raise TypeError(f"Operational {name} must be numeric")
@@ -81,11 +81,11 @@ class OperationalControlResult:
     def control_id(self) -> str:
         return self.operational_control_id
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, CanonicalJsonValue]:
         return {
             "actual": self.actual,
             "assessment": self.assessment,
-            "assessor": self.assessor.to_dict(),
+            "assessor": {"name": self.assessor.name, "version": self.assessor.version},
             "evidence_event_ids": list(self.evidence_event_ids),
             "evidence_refs": list(self.evidence_refs),
             "metric": self.metric,
@@ -219,7 +219,7 @@ def _assess_one(
     selected_attempts, selection_events, all_attempts = _attempt_scope(trace, agent_id)
     evidence_events: tuple[object, ...] = ()
     actual: float | int | None
-    required_channel: str
+    required_channel: TraceInstrumentationChannel
     if parsed.metric == "duration":
         events = tuple(
             event
@@ -332,7 +332,7 @@ def _assess_one(
     )
 
 
-def _usage(events: tuple[Any, ...], selected_attempts: tuple[TraceAttempt, ...]) -> dict[str, int | None] | None:
+def _usage(events: tuple[TraceEvent, ...], selected_attempts: tuple[TraceAttempt, ...]) -> dict[str, int | None] | None:
     selected_ids = {item.attempt_id for item in selected_attempts}
     aggregates: dict[str, ProviderUsageEvidence] = {}
     for event in events:
@@ -349,18 +349,22 @@ def _usage(events: tuple[Any, ...], selected_attempts: tuple[TraceAttempt, ...])
         aggregates[evidence.aggregation_identity] = evidence
     if not aggregates or any(item.coverage != "complete" for item in aggregates.values()):
         return None
+
+    def total(values: tuple[int | None, ...]) -> int | None:
+        if any(value is None for value in values):
+            return None
+        return sum(value for value in values if value is not None)
+
     values = {
-        name: (
-            sum(getattr(item, name) or 0 for item in aggregates.values())
-            if all(getattr(item, name) is not None for item in aggregates.values())
-            else None
-        )
-        for name in ("request_count", "input_tokens", "output_tokens", "total_tokens")
+        "request_count": total(tuple(item.request_count for item in aggregates.values())),
+        "input_tokens": total(tuple(item.input_tokens for item in aggregates.values())),
+        "output_tokens": total(tuple(item.output_tokens for item in aggregates.values())),
+        "total_tokens": total(tuple(item.total_tokens for item in aggregates.values())),
     }
     return values
 
 
-def _failed_provider_calls(events: tuple[Any, ...], selected_attempts: tuple[TraceAttempt, ...]) -> int | None:
+def _failed_provider_calls(events: tuple[TraceEvent, ...], selected_attempts: tuple[TraceAttempt, ...]) -> int | None:
     selected_ids = {item.attempt_id for item in selected_attempts}
     outcomes: dict[tuple[str | None, str | None, str], ProviderOutcomeEvidence] = {}
     for event in events:
@@ -393,7 +397,7 @@ def _failed_provider_calls(events: tuple[Any, ...], selected_attempts: tuple[Tra
 def _attempt_scope(
     trace: NormalizedTrace,
     agent_id: SemanticId,
-) -> tuple[tuple[TraceAttempt, ...], tuple[Any, ...], tuple[TraceAttempt, ...]]:
+) -> tuple[tuple[TraceAttempt, ...], tuple[TraceEvent, ...], tuple[TraceAttempt, ...]]:
     selections = tuple(
         event
         for event in trace.events
@@ -422,7 +426,7 @@ def _attempt_scope(
     return tuple(sorted(selected_observed)), selections, tuple(sorted(attempts.values()))
 
 
-def _event_attempt_matches(event: Any, attempt_ids: set[str]) -> bool:
+def _event_attempt_matches(event: TraceEvent, attempt_ids: set[str]) -> bool:
     value = event.data.get("attempt")
     if value is None:
         return False
@@ -432,7 +436,7 @@ def _event_attempt_matches(event: Any, attempt_ids: set[str]) -> bool:
         return False
 
 
-def _duration(events: tuple[Any, ...], selected_attempts: tuple[TraceAttempt, ...]) -> float | None:
+def _duration(events: tuple[TraceEvent, ...], selected_attempts: tuple[TraceAttempt, ...]) -> float | None:
     chosen = events
     if selected_attempts:
         ids = {item.attempt_id for item in selected_attempts}
@@ -443,8 +447,8 @@ def _duration(events: tuple[Any, ...], selected_attempts: tuple[TraceAttempt, ..
     return max(timestamps) - min(timestamps)
 
 
-def _channel_closed(closure: TraceClosureEvidence | None, channel: str) -> bool:
-    return closure is not None and closure.covers(channel)  # type: ignore[arg-type]
+def _channel_closed(closure: TraceClosureEvidence | None, channel: TraceInstrumentationChannel) -> bool:
+    return closure is not None and closure.covers(channel)
 
 
 def _compare(actual: float | int, operator: str, target: float) -> bool:
@@ -463,7 +467,7 @@ def _result(
     status: AssuranceStatus,
     reason: str,
     *,
-    events: tuple[Any, ...] = (),
+    events: tuple[TraceEvent, ...] = (),
     metric: str | None = None,
     actual: float | int | None = None,
     target: float | int | None = None,

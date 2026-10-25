@@ -277,7 +277,7 @@ def test_resolver_rejects_isolated_delegation_and_non_input_mappings() -> None:
         "delegate",
         "Delegate work.",
         "none",
-        input_mappings={"question": "context.previous"},
+        input_mappings=FrozenMap({"question": "context.previous"}),
     )
     root_input = CompositionEdgeIR(
         semantic_id("edge", "root_input"),
@@ -287,13 +287,19 @@ def test_resolver_rejects_isolated_delegation_and_non_input_mappings() -> None:
         "delegate",
         "Delegate work.",
         "none",
-        input_mappings={"question": "input.request.value"},
+        input_mappings=FrozenMap({"question": "input.request.value"}),
     )
 
     declared = MappingSupport("unsupported", None)
-    assert resolver.composition_support(edge=isolated, declared=declared).outcome == "unsupported"
-    assert resolver.composition_support(edge=context_mapped, declared=declared).outcome == "unsupported"
-    assert resolver.composition_support(edge=root_input, declared=declared).outcome == "emulated"
+    isolated_support = resolver.composition_support(edge=isolated, declared=declared)
+    assert isolated_support is not None
+    assert isolated_support.outcome == "unsupported"
+    context_mapped_support = resolver.composition_support(edge=context_mapped, declared=declared)
+    assert context_mapped_support is not None
+    assert context_mapped_support.outcome == "unsupported"
+    root_input_support = resolver.composition_support(edge=root_input, declared=declared)
+    assert root_input_support is not None
+    assert root_input_support.outcome == "emulated"
 
 
 def test_tool_limit_counts_inline_delegates(tmp_path: Path) -> None:

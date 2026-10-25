@@ -156,6 +156,8 @@ def test_openai_processor_correlates_native_spans_without_copying_provider_paylo
 
 
 def test_trace_session_requires_agents_from_its_materialized_system() -> None:
+    from agents import Agent
+
     project = ROOT / "examples" / "incident-command"
     system = materialize(project, target="openai", profile="test")
     foreign_system = materialize(project, target="openai", profile="test")
@@ -173,6 +175,7 @@ def test_trace_session_requires_agents_from_its_materialized_system() -> None:
                 ):
                     pass
 
+        assert isinstance(agent, Agent)
         agent.name = "Mutable SDK name"
         attempt = TraceAttempt("commander:1", "commander-attempt-1", 1)
         with session.bind_attempt(attempt, agent=agent):

@@ -6,52 +6,84 @@ import pytest
 
 from contract4agents.eval_campaigns import TrialMetrics
 from contract4agents.ir import (
+    SemanticId,
     semantic_id,
 )
 from contract4agents.tracing import (
+    EvidenceState,
+    ProviderOutcome,
+    ProviderOutcomeCategory,
     ProviderOutcomeEvidence,
+    ProviderUsageCoverage,
     ProviderUsageEvidence,
+    ProviderUsageScope,
     provider_outcome_event_data,
     provider_usage_event_data,
 )
 
-
-def _outcome(**overrides: object) -> ProviderOutcomeEvidence:
-    values: dict[str, object] = {
-        "agent_id": semantic_id("agent", "Researcher"),
-        "attempt_id": "attempt-1",
-        "phase": "response",
-        "outcome": "succeeded",
-        "category": "transport",
-        "state": "observed",
-        "classifier_provenance": "test.provider",
-    }
-    values.update(overrides)
-    return ProviderOutcomeEvidence(**values)  # type: ignore[arg-type]
+_RESEARCHER = semantic_id("agent", "Researcher")
 
 
-def _usage(**overrides: object) -> ProviderUsageEvidence:
-    values: dict[str, object] = {
-        "scope": "attempt",
-        "coverage": "complete",
-        "aggregation_identity": "attempt-1",
-        "aggregation_basis": "one test call",
-        "provenance": "test.provider",
-        "request_count": 1,
-        "input_tokens": 10,
-        "cached_input_tokens": 2,
-        "output_tokens": 5,
-        "reasoning_tokens": 1,
-        "total_tokens": 15,
-        "agent_id": semantic_id("agent", "Researcher"),
-        "attempt_id": "attempt-1",
-    }
-    values.update(overrides)
-    return ProviderUsageEvidence(**values)  # type: ignore[arg-type]
+def _outcome(
+    *,
+    agent_id: SemanticId | str = _RESEARCHER,
+    state: EvidenceState = "observed",
+    outcome: ProviderOutcome = "succeeded",
+    category: ProviderOutcomeCategory = "transport",
+    classifier_provenance: str = "test.provider",
+    http_status: int | None = None,
+    provider_error_code: str | None = None,
+    response_id: str | None = None,
+    attempt_number: int | None = None,
+    retry_after_seconds: float | None = None,
+) -> ProviderOutcomeEvidence:
+    return ProviderOutcomeEvidence(
+        agent_id=agent_id,
+        attempt_id="attempt-1",
+        phase="response",
+        outcome=outcome,
+        category=category,
+        state=state,
+        classifier_provenance=classifier_provenance,
+        http_status=http_status,
+        provider_error_code=provider_error_code,
+        response_id=response_id,
+        attempt_number=attempt_number,
+        retry_after_seconds=retry_after_seconds,
+    )
 
+
+def _usage(
+    *,
+    scope: ProviderUsageScope = "attempt",
+    coverage: ProviderUsageCoverage = "complete",
+    aggregation_basis: str = "one test call",
+    request_count: int | None = 1,
+    input_tokens: int | None = 10,
+    cached_input_tokens: int | None = 2,
+    output_tokens: int | None = 5,
+    reasoning_tokens: int | None = 1,
+    total_tokens: int | None = 15,
+    agent_id: SemanticId | str | None = _RESEARCHER,
+) -> ProviderUsageEvidence:
+    return ProviderUsageEvidence(
+        scope=scope,
+        coverage=coverage,
+        aggregation_identity="attempt-1",
+        aggregation_basis=aggregation_basis,
+        provenance="test.provider",
+        request_count=request_count,
+        input_tokens=input_tokens,
+        cached_input_tokens=cached_input_tokens,
+        output_tokens=output_tokens,
+        reasoning_tokens=reasoning_tokens,
+        total_tokens=total_tokens,
+        agent_id=agent_id,
+        attempt_id="attempt-1",
+    )
 
 @pytest.mark.parametrize("state", ("observed", "inferred", "unavailable", "unverified"))
-def test_outcome_states_are_exact_and_round_trip(state: str) -> None:
+def test_outcome_states_are_exact_and_round_trip(state: EvidenceState) -> None:
     value = _outcome(state=state)
     encoded = value.to_json()
     assert json.loads(encoded) == value.to_dict()
@@ -112,7 +144,7 @@ def test_usage_zero_is_distinct_from_unavailable() -> None:
 )
 def test_usage_rejects_invalid_fields(field: str, value: object, message: str) -> None:
     with pytest.raises((TypeError, ValueError), match=message):
-        _usage(**{field: value})
+        _usage(**{field: value})  # type: ignore[arg-type]  # Exercise invalid constructor inputs.
 
 
 def test_usage_rejects_inconsistent_totals_and_complete_missing_values() -> None:
@@ -143,7 +175,7 @@ def test_usage_rejects_inconsistent_totals_and_complete_missing_values() -> None
 )
 def test_outcome_rejects_invalid_structured_facts(field: str, value: object, message: str) -> None:
     with pytest.raises((TypeError, ValueError), match=message):
-        _outcome(**{field: value})
+        _outcome(**{field: value})  # type: ignore[arg-type]  # Exercise invalid constructor inputs.
 
 
 def test_outcome_rejects_refusal_and_cancellation_category_mismatches() -> None:

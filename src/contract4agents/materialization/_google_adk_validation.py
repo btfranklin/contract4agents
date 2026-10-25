@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from importlib.resources import files
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 from pydantic import BaseModel, TypeAdapter
 
@@ -26,7 +26,13 @@ from contract4agents.materialization._models import (
     SchemaConformanceEvidence,
 )
 from contract4agents.materialization._options import thaw_mapping
-from contract4agents.materialization._types import build_parameter_model, output_type_for, type_adapter_for
+from contract4agents.materialization._types import (
+    GeneratedType,
+    annotation_name,
+    build_parameter_model,
+    output_type_for,
+    type_adapter_for,
+)
 from contract4agents.planning import MaterializationPlan
 
 if TYPE_CHECKING:
@@ -38,14 +44,14 @@ OutputMode = Literal["native", "emulated"]
 def _input_schema(input_type: type[BaseModel] | None) -> Mapping[str, object]:
     if input_type is None:
         return {"type": "object", "properties": {}, "additionalProperties": False}
-    return cast(dict[str, object], cast(Any, input_type).model_json_schema())
+    return input_type.model_json_schema()
 
 
 def _with_structured_output_instruction(
     instructions: str,
-    output_type: type[object],
+    output_type: object,
 ) -> str:
-    schema = cast(type[BaseModel], output_type).model_json_schema()
+    schema = TypeAdapter[object](output_type).json_schema()
     rendered = _load_prompt("structured_output.md").replace(
         "{{OUTPUT_SCHEMA}}",
         json.dumps(schema, ensure_ascii=False, separators=(",", ":"), sort_keys=True),
@@ -94,7 +100,7 @@ def validate_google_adk_graph(
     grant_objects: Mapping[SemanticId, object],
     edge_objects: Mapping[SemanticId, object],
     input_types: FrozenMap[SemanticId, type[BaseModel] | None],
-    output_types: FrozenMap[str, type[object]],
+    output_types: FrozenMap[str, GeneratedType],
     names: NativeNameRegistry,
 ) -> tuple[tuple[SchemaConformanceEvidence, ...], tuple[ConfigurationConformanceEvidence, ...]]:
     issues: list[MaterializationIssue] = []
@@ -287,7 +293,7 @@ def _validate_configuration(
     grant_objects: Mapping[SemanticId, object],
     edge_objects: Mapping[SemanticId, object],
     input_types: FrozenMap[SemanticId, type[BaseModel] | None],
-    output_types: FrozenMap[str, type[object]],
+    output_types: FrozenMap[str, GeneratedType],
     sdk: GoogleADKSDK,
     names: NativeNameRegistry,
 ) -> tuple[tuple[ConfigurationConformanceEvidence, ...], list[MaterializationIssue]]:
@@ -414,7 +420,7 @@ def _validate_configuration(
         )
         add(
             configuration_evidence(
-                agent_id, "agent.output_type", expected_output.__qualname__, native.output_type.__qualname__
+                agent_id, "agent.output_type", annotation_name(expected_output), annotation_name(native.output_type)
             ),
             agent_id,
         )

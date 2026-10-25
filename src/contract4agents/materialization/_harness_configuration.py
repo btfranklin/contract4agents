@@ -7,19 +7,21 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 from pydantic import BaseModel, TypeAdapter
 
 from contract4agents.adapters._native_names import native_name
 from contract4agents.ir import FrozenJsonValue, FrozenMap, SemanticId, freeze_json
 from contract4agents.materialization._types import (
+    GeneratedType,
     build_agent_input_types,
     build_parameter_model,
     build_pydantic_types,
     type_adapter_for,
 )
 from contract4agents.planning import PlannedSystem
+from contract4agents.target_bindings import TargetBindings
 
 
 def canonical_json(value: object) -> str:
@@ -32,7 +34,7 @@ def content_digest(value: object) -> str:
     return "sha256:" + hashlib.sha256(canonical_json(value).encode()).hexdigest()
 
 
-def thaw(value: object) -> Any:
+def thaw(value: object) -> object:
     if isinstance(value, Mapping):
         return {key: thaw(child) for key, child in value.items()}
     if isinstance(value, tuple | list):
@@ -55,7 +57,7 @@ class HarnessTool:
     name: str
     description: str
     input_type: type[BaseModel] | None
-    output_adapter: TypeAdapter[Any]
+    output_adapter: TypeAdapter[object]
     grant_id: SemanticId | None = None
     child_agent_id: SemanticId | None = None
     approval_required: bool = False
@@ -83,7 +85,7 @@ class HarnessAgentConfiguration:
     agent_id: SemanticId
     request: FrozenMap[str, FrozenJsonValue]
     input_type: type[BaseModel] | None
-    output_adapter: TypeAdapter[Any]
+    output_adapter: TypeAdapter[object]
     tools: FrozenMap[str, HarnessTool]
 
     @property
@@ -131,7 +133,7 @@ def build_harness_configuration(
     system: PlannedSystem,
     *,
     input_types: FrozenMap[SemanticId, type[BaseModel] | None] | None = None,
-    output_types: FrozenMap[str, type[object]] | None = None,
+    output_types: FrozenMap[str, GeneratedType] | None = None,
 ) -> HarnessConfiguration:
     """Derive AWS CLI CreateHarness input from the selected plan."""
 
@@ -235,7 +237,7 @@ def generate_harness_configuration(
     *,
     target: str,
     profile: str,
-    bindings: Any = None,
+    bindings: TargetBindings | Path | str | None = None,
 ) -> HarnessConfiguration:
     """Plan and generate configuration without AWS access."""
 

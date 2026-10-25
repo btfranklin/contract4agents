@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import threading
 import uuid
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import cast
 
 from pydantic import ValidationError
 
+from contract4agents._strict_json import json_object
 from contract4agents.ir import FrozenJsonValue, FrozenMap
 from contract4agents.materialization._harness_configuration import (
     HarnessAgentConfiguration,
@@ -17,9 +18,13 @@ from contract4agents.materialization._harness_configuration import (
     canonical_json,
     content_digest,
     frozen_object,
-    thaw,
 )
-from contract4agents.materialization._harness_deployment import HarnessDeployment, HarnessRuntimeClient, aws_client
+from contract4agents.materialization._harness_deployment import (
+    HarnessDeployment,
+    HarnessInvocationSettings,
+    HarnessRuntimeClient,
+    aws_client,
+)
 from contract4agents.materialization._harness_models import (
     HarnessApproval,
     HarnessCompleted,
@@ -319,17 +324,6 @@ class HarnessAgent:
     ) -> HarnessResult:
         trace = self._trace(context, parent_event_id=parent_event_id)
         trace.emit("agent.started")
-        request = {
-            "harnessArn": self.deployment.harness_arn,
-            "qualifier": self.deployment.endpoint_name,
-            "runtimeSessionId": context.session_id,
-            "runtimeUserId": context.principal_id,
-            "actorId": context.principal_id,
-            "messages": messages,
-        }
-        # Resend plan-owned fields so an application override cannot broaden grants.
-        for key in ("model", "systemPrompt", "tools", "allowedTools", "maxIterations", "maxTokens", "timeoutSeconds"):
-            request[key] = thaw(self.configuration.request[key])
         request_id: str | None = None
         response_key = str(uuid.uuid4())
         response_received = False
@@ -341,10 +335,31 @@ class HarnessAgent:
                     region=self.deployment.harness_arn.split(":")[3],
                 ),
             )
-            response = client.invoke_harness(**request)
+            settings = HarnessInvocationSettings.from_configuration(self.configuration.request)
+            response = client.invoke_harness(
+                harnessArn=self.deployment.harness_arn,
+                qualifier=self.deployment.endpoint_name,
+                runtimeSessionId=context.session_id,
+                runtimeUserId=context.principal_id,
+                actorId=context.principal_id,
+                messages=messages,
+                model=settings.model,
+                systemPrompt=settings.system_prompt,
+                tools=settings.tools,
+                allowedTools=settings.allowed_tools,
+                maxIterations=settings.max_iterations,
+                maxTokens=settings.max_tokens,
+                timeoutSeconds=settings.timeout_seconds,
+            )
             response_received = True
-            request_id = response.get("ResponseMetadata", {}).get("RequestId")
+            metadata = json_object("Harness response metadata", response.get("ResponseMetadata", {}))
+            observed_request_id = metadata.get("RequestId")
+            if observed_request_id is not None and not isinstance(observed_request_id, str):
+                raise TypeError("Harness request ID must be a string")
+            request_id = observed_request_id
             events = response["stream"]
+            if not isinstance(events, Iterable) or isinstance(events, str | bytes | Mapping):
+                raise TypeError("Harness response stream must be an event iterable")
             try:
                 stream = HarnessStream.read(events)
             finally:

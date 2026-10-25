@@ -3,9 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 
+from contract4agents import PlannedSystem
 from contract4agents.cli import main
+from contract4agents.eval_campaigns import CampaignConfig, FileEvalProvider
 
 ROOT = Path(__file__).resolve().parents[3]
 EXAMPLE = ROOT / "examples" / "incident-command"
@@ -50,12 +53,14 @@ def test_cli_eval_removed_ambiguous_command_form() -> None:
 
 def test_cli_eval_replay_identity_tracks_the_selected_named_profile(
     tmp_path: Path,
-    monkeypatch,
-) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     runner = CliRunner()
     payloads: dict[str, dict[str, object]] = {}
 
-    async def fake_run_campaign(system, provider, config):  # type: ignore[no-untyped-def]
+    async def fake_run_campaign(
+        system: PlannedSystem, provider: FileEvalProvider, config: CampaignConfig
+    ) -> object:
         del provider
         plan = system.plan
 

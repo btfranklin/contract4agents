@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, cast
+from typing import cast
 
 from contract4agents.ast import (
     AgentDef,
@@ -22,13 +22,14 @@ from contract4agents.ast import (
     OperationalControlDef,
     QualityDef,
     RunSpecDef,
+    SourceAttributeValue,
     ToolDef,
     TypeDef,
 )
 from contract4agents.ast import SourceSpan as AstSourceSpan
 from contract4agents.diagnostics import raise_if_errors
 from contract4agents.ir._collections import FrozenMap, freeze_json
-from contract4agents.ir._ids import SemanticId, semantic_id
+from contract4agents.ir._ids import SemanticId, SemanticKind, semantic_id
 from contract4agents.ir._model import (
     AgentIR,
     AssessmentMode,
@@ -436,7 +437,7 @@ def _type_ref(source: str) -> TypeRef:
 def _context_origin_id(origin: str, source: str | None) -> SemanticId | None:
     if source is None:
         return None
-    kinds = {
+    kinds: dict[str, SemanticKind] = {
         "datasource": "datasource",
         "external": "external",
         "handoff": "edge",
@@ -446,7 +447,7 @@ def _context_origin_id(origin: str, source: str | None) -> SemanticId | None:
     kind = kinds.get(origin)
     if kind is None:
         return None
-    return semantic_id(cast(Any, kind), source)
+    return semantic_id(kind, source)
 
 
 def _span(project: ContractProject, span: AstSourceSpan | None) -> SourceSpan | None:
@@ -468,25 +469,27 @@ def _default_value(raw: str | None) -> object:
         return unquote(raw)
 
 
-def _text(value: Any, default: str = "") -> str:
+def _text(value: SourceAttributeValue | list[str] | None, default: str = "") -> str:
     return unquote(str(value)) if value is not None else default
 
 
-def _optional_text(value: Any) -> str | None:
+def _optional_text(value: SourceAttributeValue | list[str] | None) -> str | None:
     return _text(value) if value is not None else None
 
 
-def _boolean(value: Any, *, default: bool) -> bool:
+def _boolean(value: SourceAttributeValue | list[str] | None, *, default: bool) -> bool:
     if value is None:
         return default
     return _text(value).lower() == "true"
 
 
-def _list(value: Any) -> list[str]:
+def _list(value: SourceAttributeValue | list[str] | None) -> list[str]:
     return [str(item) for item in value] if isinstance(value, list | tuple) else []
 
 
-def _audiences(value: Any, *, default: tuple[Audience, ...]) -> tuple[Audience, ...]:
+def _audiences(
+    value: SourceAttributeValue | list[str] | None, *, default: tuple[Audience, ...]
+) -> tuple[Audience, ...]:
     raw = _list(value)
     if not raw:
         return default

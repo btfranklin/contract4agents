@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Literal, TypeAlias
 
 from contract4agents.expressions._trace_ops import TraceOp
+
+ExpressionValue: TypeAlias = str | int | bool | None
 
 DataRelationOperator = Literal["subset_of", "contains_all", "equals_set", "intersects", "disjoint_from"]
 ExpressionKind = Literal[
@@ -31,7 +33,7 @@ class ParsedExpression:
     type_name: str | None = None
     field: str | None = None
     operator: str | None = None
-    value: Any = None
+    value: ExpressionValue = None
     trace_op: TraceOp | None = None
     args: tuple[str, ...] = ()
     left_ref: str | None = None

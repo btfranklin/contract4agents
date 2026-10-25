@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
+from contract4agents._strict_json import json_object, json_string
 from contract4agents.ir import FrozenJsonValue, FrozenMap
 from contract4agents.materialization._harness_configuration import content_digest, frozen_object, thaw
 from contract4agents.tracing import TraceAttempt
@@ -45,7 +46,7 @@ class HarnessRunContext:
 
     @classmethod
     def from_dict(cls, value: object) -> HarnessRunContext:
-        raw = thaw(frozen_object(value))
+        raw = json_object("Harness state", thaw(frozen_object(value)))
         if set(raw) != {
             "session_id",
             "principal_id",
@@ -56,8 +57,18 @@ class HarnessRunContext:
             "parent_event_id",
         }:
             raise ValueError("Invalid Harness context keys")
-        raw["attempt"] = TraceAttempt.from_dict(raw["attempt"])
-        return cls(**raw)
+        parent = raw["parent_event_id"]
+        if parent is not None and not isinstance(parent, str):
+            raise TypeError("Harness parent event ID must be a string")
+        return cls(
+            session_id=json_string("session_id", raw["session_id"]),
+            principal_id=json_string("principal_id", raw["principal_id"]),
+            authorization_context=json_string("authorization_context", raw["authorization_context"]),
+            run_id=json_string("run_id", raw["run_id"]),
+            thread_id=json_string("thread_id", raw["thread_id"]),
+            attempt=TraceAttempt.from_dict(raw["attempt"]),
+            parent_event_id=parent,
+        )
 
 
 @dataclass(frozen=True)
@@ -101,7 +112,7 @@ class HarnessPendingCall:
 
     @classmethod
     def from_dict(cls, value: object) -> HarnessPendingCall:
-        raw = thaw(frozen_object(value))
+        raw = json_object("Harness state", thaw(frozen_object(value)))
         if set(raw) != {
             "agent_id",
             "tool_name",
@@ -116,8 +127,19 @@ class HarnessPendingCall:
             "event_id",
         }:
             raise ValueError("Invalid pending Harness call keys")
-        raw["context"] = HarnessRunContext.from_dict(raw["context"])
-        return cls(**raw)
+        return cls(
+            agent_id=json_string("agent_id", raw["agent_id"]),
+            tool_name=json_string("tool_name", raw["tool_name"]),
+            tool_use_id=json_string("tool_use_id", raw["tool_use_id"]),
+            arguments=frozen_object(raw["arguments"]),
+            source_input=frozen_object(raw["source_input"]),
+            contract_digest=json_string("contract_digest", raw["contract_digest"]),
+            plan_digest=json_string("plan_digest", raw["plan_digest"]),
+            configuration_digest=json_string("configuration_digest", raw["configuration_digest"]),
+            deployment=frozen_object(raw["deployment"]),
+            context=HarnessRunContext.from_dict(raw["context"]),
+            event_id=json_string("event_id", raw["event_id"]),
+        )
 
 
 @dataclass(frozen=True)

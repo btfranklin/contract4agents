@@ -152,6 +152,10 @@ Pydantic and Zod types validate values against them. See the
 datetime rules.
 
 Use `system.generated_types` when host code needs the generated types.
+Record entries are Pydantic model classes. Enum entries are `GeneratedEnum`
+objects from `contract4agents.materialization`; their `values` field lists the
+allowed strings and their `adapter` validates values. Check the entry kind
+before use. An enum definition is not a model class.
 Keep prose limits, graph completeness, database checks, and other application
 rules in a separate host validation step. This order keeps provider usage and
 structural failures visible even when an application rule rejects the result.

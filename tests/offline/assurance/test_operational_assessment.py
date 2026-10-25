@@ -18,6 +18,7 @@ from contract4agents.ir import (
     CanonicalIR,
     FrozenMap,
     OperationalControlIR,
+    SemanticId,
     TypeIR,
     contract_digest,
     parse_type_ref,
@@ -25,8 +26,11 @@ from contract4agents.ir import (
 )
 from contract4agents.planning import AdapterPlan, AgentPlan, MaterializationPlan, OperationalControlMappingPlan
 from contract4agents.tracing import (
+    EvidenceState,
     NormalizedTrace,
     ProviderCorrelation,
+    ProviderOutcome,
+    ProviderOutcomeCategory,
     ProviderOutcomeEvidence,
     ProviderUsageEvidence,
     TraceAttempt,
@@ -36,47 +40,63 @@ from contract4agents.tracing import (
     TraceClosureManifest,
     TraceEvent,
     TraceFrontier,
+    TraceInstrumentationChannel,
     TraceRunContext,
     TraceSemanticRefs,
 )
 from tests.support.assurance import planned_system
 
 ROOT = Path(__file__).resolve().parents[3]
+_RESEARCHER = semantic_id("agent", "Researcher")
 
 
-def _outcome(**overrides: object) -> ProviderOutcomeEvidence:
-    values: dict[str, object] = {
-        "agent_id": semantic_id("agent", "Researcher"),
-        "attempt_id": "attempt-1",
-        "phase": "response",
-        "outcome": "succeeded",
-        "category": "transport",
-        "state": "observed",
-        "classifier_provenance": "test.provider",
-    }
-    values.update(overrides)
-    return ProviderOutcomeEvidence(**values)  # type: ignore[arg-type]
+def _outcome(
+    *,
+    agent_id: SemanticId = _RESEARCHER,
+    attempt_id: str = "attempt-1",
+    invocation_id: str | None = None,
+    outcome: ProviderOutcome = "succeeded",
+    category: ProviderOutcomeCategory = "transport",
+    state: EvidenceState = "observed",
+    classifier_provenance: str = "test.provider",
+    request_id: str | None = None,
+) -> ProviderOutcomeEvidence:
+    return ProviderOutcomeEvidence(
+        agent_id=agent_id,
+        attempt_id=attempt_id,
+        invocation_id=invocation_id,
+        phase="response",
+        outcome=outcome,
+        category=category,
+        state=state,
+        classifier_provenance=classifier_provenance,
+        request_id=request_id,
+    )
 
 
-def _usage(**overrides: object) -> ProviderUsageEvidence:
-    values: dict[str, object] = {
-        "scope": "attempt",
-        "coverage": "complete",
-        "aggregation_identity": "attempt-1",
-        "aggregation_basis": "one test call",
-        "provenance": "test.provider",
-        "request_count": 1,
-        "input_tokens": 10,
-        "cached_input_tokens": 2,
-        "output_tokens": 5,
-        "reasoning_tokens": 1,
-        "total_tokens": 15,
-        "agent_id": semantic_id("agent", "Researcher"),
-        "attempt_id": "attempt-1",
-    }
-    values.update(overrides)
-    return ProviderUsageEvidence(**values)  # type: ignore[arg-type]
-
+def _usage(
+    *,
+    agent_id: SemanticId = _RESEARCHER,
+    attempt_id: str = "attempt-1",
+    invocation_id: str | None = None,
+    aggregation_identity: str = "attempt-1",
+) -> ProviderUsageEvidence:
+    return ProviderUsageEvidence(
+        scope="attempt",
+        coverage="complete",
+        aggregation_identity=aggregation_identity,
+        aggregation_basis="one test call",
+        provenance="test.provider",
+        request_count=1,
+        input_tokens=10,
+        cached_input_tokens=2,
+        output_tokens=5,
+        reasoning_tokens=1,
+        total_tokens=15,
+        agent_id=agent_id,
+        attempt_id=attempt_id,
+        invocation_id=invocation_id,
+    )
 
 def test_operational_result_is_frozen_and_strictly_serializable() -> None:
     result = OperationalControlResult(
@@ -274,6 +294,9 @@ def _operational_fixture(
     trace = NormalizedTrace(tuple(events))
     if not closed:
         return ir, plan, trace, None
+    channels: tuple[tuple[TraceInstrumentationChannel, bool], ...] = (
+        ("agent", True), ("provider_outcome", include_outcome), ("provider_usage", include_usage),
+    )
     closure = TraceClosureEvidence(
         context,
         "complete",
@@ -281,11 +304,7 @@ def _operational_fixture(
         TraceFrontier.from_trace(trace),
         tuple(
             channel
-            for channel, present in (
-                ("agent", True),
-                ("provider_outcome", include_outcome),
-                ("provider_usage", include_usage),
-            )
+            for channel, present in channels
             if present
         ),
         (

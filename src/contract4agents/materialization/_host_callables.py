@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import cast
 
 from pydantic import BaseModel, TypeAdapter
 
 from contract4agents.materialization._types import normalize_structural_value
+from contract4agents.runtime._utils import PythonCallable
 
 
 @dataclass(frozen=True)
@@ -26,24 +27,26 @@ class HostCallableBoundary:
     """Validate, execute, and validate one bound Python host callable."""
 
     display_name: str
-    implementation: Callable[..., object]
-    input_adapter: TypeAdapter[Any] | None
-    output_adapter: TypeAdapter[Any]
+    implementation: PythonCallable[object]
+    input_adapter: TypeAdapter[object] | None
+    output_adapter: TypeAdapter[object]
 
     @classmethod
     def create(
         cls,
         display_name: str,
-        implementation: Callable[..., object],
+        implementation: object,
         input_type: type[BaseModel] | None,
-        output_adapter: TypeAdapter[Any],
+        output_adapter: TypeAdapter[object],
     ) -> HostCallableBoundary:
         """Create a boundary from generated contract types."""
 
+        if not callable(implementation):
+            raise TypeError(f"Host callable `{display_name}` must be callable")
         return cls(
             display_name=display_name,
-            implementation=implementation,
-            input_adapter=TypeAdapter(input_type) if input_type is not None else None,
+            implementation=cast(PythonCallable[object], implementation),
+            input_adapter=TypeAdapter[object](input_type) if input_type is not None else None,
             output_adapter=output_adapter,
         )
 
@@ -95,10 +98,10 @@ class HostCallableBoundary:
         )
 
 
-def _is_async_callable(implementation: Callable[..., object]) -> bool:
+def _is_async_callable(implementation: PythonCallable[object]) -> bool:
     if inspect.iscoroutinefunction(implementation):
         return True
-    return inspect.iscoroutinefunction(cast(Any, implementation).__call__)
+    return inspect.iscoroutinefunction(implementation.__call__)
 
 
 __all__ = ["HostCallableBoundary", "HostCallResult"]

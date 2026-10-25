@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
@@ -20,7 +20,12 @@ from contract4agents.materialization._configuration import (
 from contract4agents.materialization._errors import MaterializationError, MaterializationIssue
 from contract4agents.materialization._models import ConfigurationConformanceEvidence, SchemaConformanceEvidence
 from contract4agents.materialization._options import thaw_mapping
-from contract4agents.materialization._types import build_parameter_model, output_type_for
+from contract4agents.materialization._types import (
+    GeneratedType,
+    annotation_name,
+    build_parameter_model,
+    output_type_for,
+)
 from contract4agents.planning import MaterializationPlan
 
 if TYPE_CHECKING:
@@ -34,7 +39,7 @@ def validate_openai_configuration(
     grant_objects: Mapping[SemanticId, object],
     edge_objects: Mapping[SemanticId, object],
     input_types: FrozenMap[SemanticId, type[BaseModel] | None],
-    output_types: FrozenMap[str, type[object]],
+    output_types: FrozenMap[str, GeneratedType],
     sdk: OpenAISDK,
 ) -> tuple[tuple[ConfigurationConformanceEvidence, ...], list[MaterializationIssue]]:
     """Read OpenAI public properties and compare them with the plan."""
@@ -44,8 +49,8 @@ def validate_openai_configuration(
 
     def add(record: ConfigurationConformanceEvidence, identifier: SemanticId) -> None:
         records.append(record)
-        status = cast(Any, record).status
-        if cast(Any, record).required and status != "passed":
+        status = record.status
+        if record.required and status != "passed":
             issues.append(
                 MaterializationIssue(
                     "MAT410" if status == "violated" else "MAT411",
@@ -121,8 +126,8 @@ def validate_openai_configuration(
             configuration_evidence(
                 agent_id,
                 "agent.output_type",
-                expected_output.__qualname__,
-                native.output_type.__qualname__,
+                annotation_name(expected_output),
+                annotation_name(native.output_type),
             ),
             agent_id,
         )
@@ -247,7 +252,7 @@ def validate_openai_graph(
     grant_objects: Mapping[SemanticId, object],
     edge_objects: Mapping[SemanticId, object],
     input_types: FrozenMap[SemanticId, type[BaseModel] | None],
-    output_types: FrozenMap[str, type[object]],
+    output_types: FrozenMap[str, GeneratedType],
 ) -> tuple[tuple[SchemaConformanceEvidence, ...], tuple[ConfigurationConformanceEvidence, ...]]:
     issues: list[MaterializationIssue] = []
     schema_conformance: list[SchemaConformanceEvidence] = []

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 import pytest
 
@@ -49,14 +49,16 @@ def test_supported_in_process_isolation_is_configured_and_evidenced(tmp_path: Pa
 def test_concrete_openai_materializer_constructs_isolated_delegate_without_running_it(
     tmp_path: Path,
 ) -> None:
-    from agents import FunctionTool
+    from agents import Agent, FunctionTool
 
     write_project(tmp_path, isolation=True)
 
     result = materialize(tmp_path, target="openai", profile="test")
 
-    parent = cast(Any, result.agents["Parent"])
-    isolated_tool = next(item for item in parent.tools if item.name.endswith("ask_child"))
+    parent = cast(Agent[object], result.agents["Parent"])
+    isolated_tool = next(
+        item for item in parent.tools if isinstance(item, FunctionTool) and item.name.endswith("ask_child")
+    )
     assert isinstance(isolated_tool, FunctionTool)
     assert isolated_tool.params_json_schema["additionalProperties"] is False
     assert result.graph.environment_evidence[0].provider == InProcessEnvironment.provider_id

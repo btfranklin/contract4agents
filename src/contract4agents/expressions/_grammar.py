@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Any, Literal, cast
+from typing import Literal, cast
 
-from lark import Lark, Transformer, UnexpectedInput
+from lark import Lark, Token, Transformer, UnexpectedInput
 from lark.exceptions import VisitError
 
 from contract4agents.expressions._model import (
@@ -13,6 +13,7 @@ from contract4agents.expressions._model import (
     ConjunctiveExpression,
     ContractExpression,
     ExpressionError,
+    ExpressionValue,
     ParsedExpression,
 )
 from contract4agents.expressions._trace_ops import TRACE_OPS, is_trace_op
@@ -108,15 +109,15 @@ def parse_contract_expression(expression: str) -> list[ContractExpression]:
     return parsed if isinstance(parsed, list) else [parsed]
 
 
-class _ExpressionTransformer(Transformer[Any, Any]):
+class _ExpressionTransformer(Transformer[Token, object]):
     def __init__(self, expression: str) -> None:
         super().__init__()
         self.expression = expression
 
-    def output_conforms(self, items: list[Any]) -> ParsedExpression:
+    def output_conforms(self, items: list[object]) -> ParsedExpression:
         return ParsedExpression("output_conforms", self.expression, type_name=str(items[0]))
 
-    def output_compare(self, items: list[Any]) -> ParsedExpression:
+    def output_compare(self, items: list[object]) -> ParsedExpression:
         field, op, raw_expected = items
         return ParsedExpression(
             "output_compare",
@@ -126,7 +127,7 @@ class _ExpressionTransformer(Transformer[Any, Any]):
             value=literal(str(raw_expected)),
         )
 
-    def output_text(self, items: list[Any]) -> ParsedExpression:
+    def output_text(self, items: list[object]) -> ParsedExpression:
         field, op, needle = items
         return ParsedExpression(
             "output_text",
@@ -136,16 +137,16 @@ class _ExpressionTransformer(Transformer[Any, Any]):
             value=unquote(str(needle)),
         )
 
-    def hidden_truth(self, items: list[Any]) -> ParsedExpression:
+    def hidden_truth(self, items: list[object]) -> ParsedExpression:
         return ParsedExpression("hidden_truth", self.expression, field=str(items[0]))
 
-    def semantic_expr(self, items: list[Any]) -> ParsedExpression:
+    def semantic_expr(self, items: list[object]) -> ParsedExpression:
         target, criterion = items
         if str(target) != "output":
             raise ExpressionError("Semantic expectations currently support `output` only")
         return ParsedExpression("semantic", self.expression, field=str(target), value=unquote(str(criterion)))
 
-    def trace_expr(self, items: list[Any]) -> ParsedExpression:
+    def trace_expr(self, items: list[object]) -> ParsedExpression:
         raw_op = str(items[0])
         if not is_trace_op(raw_op):
             raise ExpressionError(f"Unsupported trace spy `{raw_op}`")
@@ -161,19 +162,19 @@ class _ExpressionTransformer(Transformer[Any, Any]):
                 raise ExpressionError(f"`trace.{raw_op}` count must be an integer") from exc
         return ParsedExpression("trace", self.expression, trace_op=op, args=args)
 
-    def trace_args(self, items: list[Any]) -> tuple[str, ...]:
+    def trace_args(self, items: list[object]) -> tuple[str, ...]:
         return tuple(str(item).strip() for item in items)
 
-    def trace_conjunction(self, items: list[Any]) -> ConjunctiveExpression:
+    def trace_conjunction(self, items: list[object]) -> ConjunctiveExpression:
         return ConjunctiveExpression(
             self.expression,
             tuple(cast(ParsedExpression, item) for item in items),
         )
 
-    def trace_arg(self, items: list[Any]) -> str:
+    def trace_arg(self, items: list[object]) -> str:
         return unquote(str(items[0]).strip())
 
-    def data_relation(self, items: list[Any]) -> ParsedExpression:
+    def data_relation(self, items: list[object]) -> ParsedExpression:
         left_ref, operator, right_ref = items
         return ParsedExpression(
             "data_relation",
@@ -183,16 +184,16 @@ class _ExpressionTransformer(Transformer[Any, Any]):
             right_ref=str(right_ref),
         )
 
-    def value_ref(self, items: list[Any]) -> str:
+    def value_ref(self, items: list[object]) -> str:
         return str(items[0])
 
-    def expect_wrapper(self, items: list[Any]) -> ParsedExpression:
+    def expect_wrapper(self, items: list[object]) -> ParsedExpression:
         return replace(cast(ParsedExpression, items[0]), wrapper="expect")
 
-    def require_wrapper(self, items: list[Any]) -> ParsedExpression:
+    def require_wrapper(self, items: list[object]) -> ParsedExpression:
         return replace(cast(ParsedExpression, items[0]), wrapper="require")
 
-    def forbid_wrapper(self, items: list[Any]) -> ParsedExpression:
+    def forbid_wrapper(self, items: list[object]) -> ParsedExpression:
         return ParsedExpression(
             "trace",
             self.expression,
@@ -202,10 +203,10 @@ class _ExpressionTransformer(Transformer[Any, Any]):
             approval_required=len(items) > 1,
         )
 
-    def forbid_approval(self, _items: list[Any]) -> str:
+    def forbid_approval(self, _items: list[object]) -> str:
         return "approved_by_human"
 
-    def when_wrapper(self, items: list[Any]) -> ConditionalExpression:
+    def when_wrapper(self, items: list[object]) -> ConditionalExpression:
         return ConditionalExpression(
             self.expression,
             cast(ParsedExpression, items[0]),
@@ -239,7 +240,7 @@ def _parse_with_lark(
         "contract_expr",
         "semantic_expr",
     ],
-) -> Any:
+) -> object:
     try:
         tree = EXPRESSION_PARSER.parse(expression, start=start)
         return _ExpressionTransformer(expression).transform(tree)
@@ -251,7 +252,7 @@ def _parse_with_lark(
         raise
 
 
-def literal(raw: str) -> Any:
+def literal(raw: str) -> ExpressionValue:
     value = raw.strip()
     if value == "null":
         return None

@@ -7,9 +7,10 @@ import json
 import os
 import uuid
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 import pytest
+from pydantic import BaseModel
 
 from contract4agents import materialize
 from contract4agents.adapters.agentcore_harness import (
@@ -43,9 +44,9 @@ def test_synthetic_harness_tool_continuation() -> None:
     deployments = {}
     for name, configured in configuration.agents.items():
         # Bound cost before any invocation. The test creates no AWS resources.
-        assert configured.request["maxIterations"] <= 4
-        assert configured.request["maxTokens"] <= 1024
-        assert configured.request["timeoutSeconds"] <= 60
+        for key, limit in (("maxIterations", 4), ("maxTokens", 1024), ("timeoutSeconds", 60)):
+            value = configured.request[key]
+            assert isinstance(value, int) and value <= limit
         deployments[name] = verify_harness_deployment(configuration, name, client=control, **references[name])
     selected = deployments["EvidenceAnalyst"]
     deployed = control.get_harness(
@@ -74,12 +75,14 @@ def test_synthetic_harness_tool_continuation() -> None:
         )
         assert isinstance(interrupted, HarnessInterrupted), "The synthetic route must exercise its source tool"
         tool = agent.configuration.tools[interrupted.pending.tool_name]
-        implementation = cast(Any, system.graph.implementations[tool.semantic_id])
+        implementation = system.graph.implementations[tool.semantic_id]
+        assert callable(implementation)
         value = implementation(**agent.tool_arguments(interrupted.pending, context=scope))
         completed = agent.resume(interrupted.pending, value, context=scope)
         assert isinstance(completed, HarnessCompleted)
         validated = system.validate_output_for_agent(agent, completed.value)
-        assert "synthetic-record-1" in cast(Any, validated).evidence_ids
+        assert isinstance(validated, BaseModel)
+        assert "synthetic-record-1" in validated.model_dump()["evidence_ids"]
     finally:
         # This is application cleanup of the new synthetic session only.
         # Existing Harness resources and endpoints remain deployment-owned.

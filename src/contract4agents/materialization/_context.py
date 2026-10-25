@@ -5,15 +5,16 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
-from contract4agents.ir import CanonicalIR, FrozenMap, SemanticId
+from contract4agents.ir import CanonicalIR, FrozenMap, ParameterIR, SemanticId
 from contract4agents.materialization._host_callables import HostCallableBoundary
 from contract4agents.materialization._types import (
+    GeneratedType,
     build_parameter_model,
     type_adapter_for,
 )
@@ -50,7 +51,7 @@ class ContextRuntime:
         ir: CanonicalIR,
         plan: MaterializationPlan,
         implementations: FrozenMap[SemanticId, object],
-        output_types: FrozenMap[str, type[object]],
+        output_types: FrozenMap[str, GeneratedType],
         *,
         trace_sink: NormalizedTraceSink | None = None,
     ) -> None:
@@ -94,7 +95,7 @@ class ContextRuntime:
                 continue
             boundaries[origin_id] = HostCallableBoundary.create(
                 display_name,
-                cast(Callable[..., object], implementation),
+                implementation,
                 input_type,
                 type_adapter_for(output_type, self.output_types),
             )
@@ -416,9 +417,9 @@ class ContextRuntime:
 
 def _validate_parameters(
     name: str,
-    parameters: tuple[Any, ...],
+    parameters: tuple[ParameterIR, ...],
     values: Mapping[str, object],
-    output_types: FrozenMap[str, type[object]],
+    output_types: FrozenMap[str, GeneratedType],
     semantic_id: SemanticId,
 ) -> dict[str, object]:
     model = build_parameter_model(name, parameters, output_types)

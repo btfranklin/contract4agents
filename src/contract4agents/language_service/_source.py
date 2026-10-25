@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 from lark import Token, Tree
 
@@ -57,7 +57,7 @@ class _TreeIndexer:
         self.occurrences: list[SourceOccurrence] = []
         self.declarations: list[SourceDeclaration] = []
 
-    def index(self, tree: Tree[Any]) -> None:
+    def index(self, tree: Tree[Token]) -> None:
         for declaration in _child_trees(tree):
             self._declaration(declaration)
         self.occurrences.sort(
@@ -70,12 +70,27 @@ class _TreeIndexer:
             )
         )
 
-    def _declaration(self, tree: Tree[Any]) -> None:
-        handler = getattr(self, f"_index_{tree.data}", None)
+    def _declaration(self, tree: Tree[Token]) -> None:
+        handlers: dict[str, Callable[[Tree[Token]], None]] = {
+            "type_def": self._index_type_def,
+            "enum_def": self._index_enum_def,
+            "tool_def": self._index_tool_def,
+            "datasource_def": self._index_datasource_def,
+            "external_context_def": self._index_external_context_def,
+            "isolation_def": self._index_isolation_def,
+            "agent_def": self._index_agent_def,
+            "composition_def": self._index_composition_def,
+            "control_def": self._index_control_def,
+            "quality_def": self._index_quality_def,
+            "operational_control_def": self._index_operational_control_def,
+            "eval_def": self._index_eval_def,
+            "run_spec_def": self._index_run_spec_def,
+        }
+        handler = handlers.get(str(tree.data))
         if handler is not None:
             handler(tree)
 
-    def _index_type_def(self, tree: Tree[Any]) -> None:
+    def _index_type_def(self, tree: Tree[Token]) -> None:
         tokens = _direct_tokens(tree)
         name = tokens[0]
         selection = self._definition(name, "type")
@@ -106,7 +121,7 @@ class _TreeIndexer:
                 )
         self._record_declaration(tree, str(name), "type", selection, tuple(fields))
 
-    def _index_enum_def(self, tree: Tree[Any]) -> None:
+    def _index_enum_def(self, tree: Tree[Token]) -> None:
         name = _direct_tokens(tree)[0]
         selection = self._definition(name, "type", context="enum")
         block = _child(tree, "enum_block")
@@ -120,13 +135,13 @@ class _TreeIndexer:
                 children.append(SourceDeclaration(value, "field", _tree_range(value_tree), value_range, "enum member"))
         self._record_declaration(tree, str(name), "enum", selection, tuple(children))
 
-    def _index_tool_def(self, tree: Tree[Any]) -> None:
+    def _index_tool_def(self, tree: Tree[Token]) -> None:
         self._callable(tree, "tool")
 
-    def _index_datasource_def(self, tree: Tree[Any]) -> None:
+    def _index_datasource_def(self, tree: Tree[Token]) -> None:
         self._callable(tree, "datasource")
 
-    def _callable(self, tree: Tree[Any], kind: SymbolKind) -> None:
+    def _callable(self, tree: Tree[Token], kind: SymbolKind) -> None:
         tokens = _direct_tokens(tree)
         name = tokens[0]
         return_type = _required_child(tree, "type_ref")
@@ -140,7 +155,7 @@ class _TreeIndexer:
         detail = f"{name}(...) -> {return_detail}"
         self._record_declaration(tree, str(name), kind, selection, tuple(children), detail)
 
-    def _index_external_context_def(self, tree: Tree[Any]) -> None:
+    def _index_external_context_def(self, tree: Tree[Token]) -> None:
         name = _direct_tokens(tree)[0]
         type_token = _required_child(tree, "type_ref")
         type_detail = self._source_for(type_token)
@@ -157,7 +172,7 @@ class _TreeIndexer:
             detail=f"{name} -> {type_detail}",
         )
 
-    def _index_isolation_def(self, tree: Tree[Any]) -> None:
+    def _index_isolation_def(self, tree: Tree[Token]) -> None:
         name = _direct_tokens(tree)[0]
         selection = self._definition(name, "isolation")
         block = _child(tree, "assignment_block")
@@ -165,7 +180,7 @@ class _TreeIndexer:
             self._assignment_block(block, "isolation", str(name))
         self._record_declaration(tree, str(name), "isolation", selection)
 
-    def _index_agent_def(self, tree: Tree[Any]) -> None:
+    def _index_agent_def(self, tree: Tree[Token]) -> None:
         tokens = _direct_tokens(tree)
         name, return_type = tokens[0], tokens[-1]
         selection = self._definition(name, "agent")
@@ -183,7 +198,7 @@ class _TreeIndexer:
         detail = f"agent {name}(...) -> {return_type}"
         self._record_declaration(tree, str(name), "agent", selection, tuple(children), detail)
 
-    def _index_composition_def(self, tree: Tree[Any]) -> None:
+    def _index_composition_def(self, tree: Tree[Token]) -> None:
         name, source, target = _direct_tokens(tree)
         selection = self._definition(name, "composition")
         self._reference(source, "agent", context="composition.source", container=str(name))
@@ -205,16 +220,16 @@ class _TreeIndexer:
         detail = f"composition {name} from {source} to {target}"
         self._record_declaration(tree, str(name), "composition", selection, detail=detail)
 
-    def _index_control_def(self, tree: Tree[Any]) -> None:
+    def _index_control_def(self, tree: Tree[Token]) -> None:
         self._agent_scoped_declaration(tree, "control")
 
-    def _index_quality_def(self, tree: Tree[Any]) -> None:
+    def _index_quality_def(self, tree: Tree[Token]) -> None:
         self._agent_scoped_declaration(tree, "quality")
 
-    def _index_operational_control_def(self, tree: Tree[Any]) -> None:
+    def _index_operational_control_def(self, tree: Tree[Token]) -> None:
         self._agent_scoped_declaration(tree, "operational_control")
 
-    def _agent_scoped_declaration(self, tree: Tree[Any], kind: SymbolKind) -> None:
+    def _agent_scoped_declaration(self, tree: Tree[Token], kind: SymbolKind) -> None:
         name, agent = _direct_tokens(tree)
         container = f"{agent}:{name}"
         selection = self._definition(name, kind, symbol_owner=str(agent), container=str(agent))
@@ -224,7 +239,7 @@ class _TreeIndexer:
             self._assignment_block(block, kind, container)
         self._record_declaration(tree, str(name), kind, selection, detail=f"{kind} for {agent}")
 
-    def _index_eval_def(self, tree: Tree[Any]) -> None:
+    def _index_eval_def(self, tree: Tree[Token]) -> None:
         name, agent = _direct_tokens(tree)
         container = f"{agent}:{name}"
         selection = self._definition(name, "eval", symbol_owner=str(agent), container=str(agent))
@@ -246,7 +261,7 @@ class _TreeIndexer:
                     self._index_expression_token(tokens[0], owner=container)
         self._record_declaration(tree, str(name), "eval", selection, detail=f"eval for {agent}")
 
-    def _index_run_spec_def(self, tree: Tree[Any]) -> None:
+    def _index_run_spec_def(self, tree: Tree[Token]) -> None:
         name = _direct_tokens(tree)[0]
         selection = self._definition(name, "run_spec")
         block = _child(tree, "run_spec_block")
@@ -254,7 +269,7 @@ class _TreeIndexer:
             self._assignment_block(block, "run_spec", str(name))
         self._record_declaration(tree, str(name), "run_spec", selection)
 
-    def _parameters(self, tree: Tree[Any], owner: str) -> list[SourceDeclaration]:
+    def _parameters(self, tree: Tree[Token], owner: str) -> list[SourceDeclaration]:
         params = _child(tree, "params")
         declarations: list[SourceDeclaration] = []
         if params is None:
@@ -278,14 +293,14 @@ class _TreeIndexer:
             )
         return declarations
 
-    def _grant(self, tree: Tree[Any], agent: str) -> None:
+    def _grant(self, tree: Tree[Token], agent: str) -> None:
         capability = _direct_tokens(tree)[0]
         self._reference(capability, "tool", context="grant.capability", container=agent)
         block = _child(tree, "assignment_block")
         if block is not None:
             self._assignment_block(block, "grant", f"{agent}:{capability}")
 
-    def _context(self, tree: Tree[Any], agent: str) -> None:
+    def _context(self, tree: Tree[Token], agent: str) -> None:
         tokens = _direct_tokens(tree)
         name, origin = tokens[:2]
         type_token = _required_child(tree, "type_ref")
@@ -311,11 +326,11 @@ class _TreeIndexer:
                 key = _direct_tokens(mapping)[0]
                 self._add(str(key), _token_range(key), "property", context="context.map", container=agent)
 
-    def _assignment_block(self, block: Tree[Any], context: str, owner: str) -> None:
+    def _assignment_block(self, block: Tree[Token], context: str, owner: str) -> None:
         for assignment in _children(block, "assignment"):
             self._assignment(assignment, context, owner)
 
-    def _assignment(self, tree: Tree[Any], context: str, owner: str) -> None:
+    def _assignment(self, tree: Tree[Token], context: str, owner: str) -> None:
         key = _direct_tokens(tree)[0]
         key_name = str(key)
         self._add(key_name, _token_range(key), "property", context=f"{context}.{key_name}", container=owner)
@@ -338,7 +353,7 @@ class _TreeIndexer:
             elif key_name in {"require", "assertions"} or context in {"eval", "operational_control"}:
                 self._index_expression(value, value_range, owner)
 
-    def _assignment_values(self, tree: Tree[Any]) -> Iterable[tuple[Token, SourceRange, str]]:
+    def _assignment_values(self, tree: Tree[Token]) -> Iterable[tuple[Token, SourceRange, str]]:
         scalar = next((item for item in tree.iter_subtrees() if item.data == "scalar_value"), None)
         if scalar is not None:
             token = _direct_tokens(scalar)[0]
@@ -411,7 +426,7 @@ class _TreeIndexer:
                 container=owner,
             )
 
-    def _type_references(self, source_item: Token | Tree[Any], *, owner: str) -> None:
+    def _type_references(self, source_item: Token | Tree[Token], *, owner: str) -> None:
         source = self._source_for(source_item)
         source_range = _source_range(source_item)
         for match in _TYPE_NAME_RE.finditer(source):
@@ -436,7 +451,7 @@ class _TreeIndexer:
                 container=owner,
             )
 
-    def _source_for(self, source_item: Token | Tree[Any]) -> str:
+    def _source_for(self, source_item: Token | Tree[Token]) -> str:
         if isinstance(source_item, Token):
             return str(source_item)
         return _source_text(self.source, _tree_range(source_item)).strip()
@@ -494,7 +509,7 @@ class _TreeIndexer:
 
     def _record_declaration(
         self,
-        tree: Tree[Any],
+        tree: Tree[Token],
         name: str,
         kind: SymbolKind,
         selection: SourceRange,
@@ -504,26 +519,26 @@ class _TreeIndexer:
         self.declarations.append(SourceDeclaration(name, kind, _tree_range(tree), selection, detail, children))
 
 
-def _child(tree: Tree[Any], data: str) -> Tree[Any] | None:
+def _child(tree: Tree[Token], data: str) -> Tree[Token] | None:
     return next((item for item in tree.children if isinstance(item, Tree) and item.data == data), None)
 
 
-def _required_child(tree: Tree[Any], data: str) -> Tree[Any]:
+def _required_child(tree: Tree[Token], data: str) -> Tree[Token]:
     child = _child(tree, data)
     if child is None:
         raise ValueError(f"Expected `{data}` in `{tree.data}`")
     return child
 
 
-def _children(tree: Tree[Any], data: str) -> list[Tree[Any]]:
+def _children(tree: Tree[Token], data: str) -> list[Tree[Token]]:
     return [item for item in tree.children if isinstance(item, Tree) and item.data == data]
 
 
-def _child_trees(tree: Tree[Any]) -> list[Tree[Any]]:
+def _child_trees(tree: Tree[Token]) -> list[Tree[Token]]:
     return [item for item in tree.children if isinstance(item, Tree)]
 
 
-def _direct_tokens(tree: Tree[Any]) -> list[Token]:
+def _direct_tokens(tree: Tree[Token]) -> list[Token]:
     return [item for item in tree.children if isinstance(item, Token)]
 
 
@@ -540,7 +555,7 @@ def _token_slice_range(token: Token, start: int, end: int) -> SourceRange:
     return _range_inside(token_range, start, end)
 
 
-def _source_range(source_item: Token | Tree[Any]) -> SourceRange:
+def _source_range(source_item: Token | Tree[Token]) -> SourceRange:
     if isinstance(source_item, Token):
         return _token_range(source_item)
     return _tree_range(source_item)
@@ -555,7 +570,7 @@ def _range_inside(source_range: SourceRange, start: int, end: int) -> SourceRang
     )
 
 
-def _tree_range(tree: Tree[Any]) -> SourceRange:
+def _tree_range(tree: Tree[Token]) -> SourceRange:
     meta = tree.meta
     return SourceRange(
         SourcePosition((meta.line or 1) - 1, (meta.column or 1) - 1),

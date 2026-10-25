@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -98,7 +97,12 @@ def test_input_helpers_accept_real_native_agent_objects(target: str) -> None:
         ("google_adk", GoogleADKNormalizedTraceRouter),
     ),
 )
-def test_trace_sessions_bind_real_native_agent_objects(target: str, router_type: type[Any]) -> None:
+def test_trace_sessions_bind_real_native_agent_objects(
+    target: str,
+    router_type: (
+        type[OpenAINormalizedTraceRouter] | type[StrandsNormalizedTraceRouter] | type[GoogleADKNormalizedTraceRouter]
+    ),
+) -> None:
     system = materialize(ROOT / "examples" / "incident-command", target=target, profile="test")
     agent = system.agents["IncidentCommander"]
     router = router_type()
@@ -109,4 +113,5 @@ def test_trace_sessions_bind_real_native_agent_objects(target: str, router_type:
         with session.bind_attempt(attempt, agent=agent):
             accepted = session.record_output_accepted()
 
+    assert accepted.semantic.agent_id is not None
     assert accepted.semantic.agent_id.parts == ("IncidentCommander",)

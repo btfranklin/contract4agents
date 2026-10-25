@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Literal
+
+from contract4agents.ir import CanonicalJsonValue
 
 AssuranceStatus = Literal["passed", "violated", "unverified"]
 ControlApplicability = Literal["applicable", "not_applicable", "unverified"]
@@ -76,10 +78,10 @@ class ControlResult:
         )
         object.__setattr__(self, "evidence_refs", _normalized_references("Evidence reference", self.evidence_refs))
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, CanonicalJsonValue]:
         return {
             "assessment": self.assessment,
-            "assessor": self.assessor.to_dict(),
+            "assessor": {"name": self.assessor.name, "version": self.assessor.version},
             "applicability": self.applicability,
             "control_id": self.control_id,
             "evidence_event_ids": list(self.evidence_event_ids),
@@ -106,7 +108,7 @@ def _require_text(label: str, value: str) -> None:
         raise ValueError(f"{label.capitalize()} must be a non-empty string")
 
 
-def _deterministic_json(value: dict[str, Any]) -> str:
+def _deterministic_json(value: dict[str, CanonicalJsonValue]) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
 

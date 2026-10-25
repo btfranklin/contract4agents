@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Literal, TypeGuard, cast
 
 from lark import Token, Transformer
 
@@ -38,12 +39,12 @@ from contract4agents.ast import (
 from contract4agents.parser._values import clean_list_item, split_csv, split_default, unquote
 
 
-class _ModuleTransformer(Transformer[Any, Any]):
+class _ModuleTransformer(Transformer[Token, ContractModule]):
     def __init__(self, path: Path) -> None:
         super().__init__()
         self.path = path
 
-    def start(self, items: list[Any]) -> ContractModule:
+    def start(self, items: list[object]) -> ContractModule:
         module = ContractModule(path=self.path)
         for item in items:
             if isinstance(item, TypeDef):
@@ -74,32 +75,32 @@ class _ModuleTransformer(Transformer[Any, Any]):
                 module.run_specs.append(item)
         return module
 
-    def type_def(self, items: list[Any]) -> TypeDef:
+    def type_def(self, items: list[object]) -> TypeDef:
         name = _token(items[0])
         fields = _type_fields(items[1:])
         return TypeDef(str(name), fields, _span(self.path, name))
 
-    def enum_def(self, items: list[Any]) -> EnumDef:
+    def enum_def(self, items: list[object]) -> EnumDef:
         name = _token(items[0])
-        values = next((item for item in items[1:] if isinstance(item, list)), [])
+        values = next((item for item in items[1:] if _is_string_list(item)), [])
         return EnumDef(str(name), values, _span(self.path, name))
 
-    def enum_block(self, items: list[Any]) -> list[str]:
+    def enum_block(self, items: list[object]) -> list[str]:
         return [str(item) for item in items]
 
-    def enum_value(self, items: list[Any]) -> str:
+    def enum_value(self, items: list[object]) -> str:
         return cast(str, json.loads(str(items[0])))
 
-    def field_block(self, items: list[Any]) -> list[FieldDef]:
+    def field_block(self, items: list[object]) -> list[FieldDef]:
         return [item for item in items if isinstance(item, FieldDef)]
 
-    def field(self, items: list[Any]) -> FieldDef:
+    def field(self, items: list[object]) -> FieldDef:
         name = _token(items[0])
         type_name, default = split_default(str(items[1]))
         nullable = type_name.endswith("?")
         return FieldDef(str(name), type_name.rstrip("?").strip(), nullable, default, _span(self.path, name))
 
-    def tool_def(self, items: list[Any]) -> ToolDef:
+    def tool_def(self, items: list[object]) -> ToolDef:
         parts = _callable_parts(items)
         attrs = _assignment_attrs(parts.body)
         return ToolDef(
@@ -111,7 +112,7 @@ class _ModuleTransformer(Transformer[Any, Any]):
             span=_span(self.path, parts.name),
         )
 
-    def datasource_def(self, items: list[Any]) -> DatasourceDef:
+    def datasource_def(self, items: list[object]) -> DatasourceDef:
         parts = _callable_parts(items)
         attrs = _assignment_attrs(parts.body)
         return_type = str(parts.return_type)
@@ -125,10 +126,10 @@ class _ModuleTransformer(Transformer[Any, Any]):
             span=_span(self.path, parts.name),
         )
 
-    def assignment_block(self, items: list[Any]) -> list[Any]:
-        return items
+    def assignment_block(self, items: list[object]) -> list[_Assignment]:
+        return [item for item in items if isinstance(item, _Assignment)]
 
-    def external_context_def(self, items: list[Any]) -> ExternalContextDef:
+    def external_context_def(self, items: list[object]) -> ExternalContextDef:
         name = _token(items[0])
         attrs = _assignment_attrs(items[2:])
         return ExternalContextDef(
@@ -140,12 +141,12 @@ class _ModuleTransformer(Transformer[Any, Any]):
             span=_span(self.path, name),
         )
 
-    def isolation_def(self, items: list[Any]) -> IsolationDef:
+    def isolation_def(self, items: list[object]) -> IsolationDef:
         name = _token(items[0])
         dimensions = {key: unquote(str(value)) for key, value in _assignment_attrs(items[1:]).items()}
         return IsolationDef(str(name), dimensions, _span(self.path, name))
 
-    def composition_def(self, items: list[Any]) -> CompositionDef:
+    def composition_def(self, items: list[object]) -> CompositionDef:
         name = _token(items[0])
         attrs = _assignment_attrs(items[3:])
         mappings = _mapping_attrs(items[3:])
@@ -161,14 +162,14 @@ class _ModuleTransformer(Transformer[Any, Any]):
             span=_span(self.path, name),
         )
 
-    def composition_block(self, items: list[Any]) -> list[Any]:
-        return items
+    def composition_block(self, items: list[object]) -> list[_Assignment | _Mapping]:
+        return [item for item in items if isinstance(item, _Assignment | _Mapping)]
 
-    def map_stmt(self, items: list[Any]) -> _Mapping:
+    def map_stmt(self, items: list[object]) -> _Mapping:
         name = _token(items[0])
         return _Mapping(str(name), str(items[1]).strip(), _span(self.path, name))
 
-    def control_def(self, items: list[Any]) -> ControlDef:
+    def control_def(self, items: list[object]) -> ControlDef:
         name = _token(items[0])
         attributes = _source_attributes(items[2:])
         return ControlDef(
@@ -187,7 +188,7 @@ class _ModuleTransformer(Transformer[Any, Any]):
             _span(self.path, name),
         )
 
-    def quality_def(self, items: list[Any]) -> QualityDef:
+    def quality_def(self, items: list[object]) -> QualityDef:
         name = _token(items[0])
         attrs = _assignment_attrs(items[2:])
         return QualityDef(
@@ -198,7 +199,7 @@ class _ModuleTransformer(Transformer[Any, Any]):
             _span(self.path, name),
         )
 
-    def operational_control_def(self, items: list[Any]) -> OperationalControlDef:
+    def operational_control_def(self, items: list[object]) -> OperationalControlDef:
         name = _token(items[0])
         attributes = _source_attributes(items[2:])
         return OperationalControlDef(
@@ -214,7 +215,7 @@ class _ModuleTransformer(Transformer[Any, Any]):
             _span(self.path, name),
         )
 
-    def agent_def(self, items: list[Any]) -> AgentDef:
+    def agent_def(self, items: list[object]) -> AgentDef:
         agent_parts = _agent_parts(items)
         grants: list[GrantDef] = []
         context: list[ContextRequirement] = []
@@ -242,45 +243,45 @@ class _ModuleTransformer(Transformer[Any, Any]):
             context,
         )
 
-    def agent_block(self, items: list[Any]) -> list[Any]:
-        return items
+    def agent_block(self, items: list[object]) -> list[_Assignment | GrantDef | ContextRequirement]:
+        return [item for item in items if isinstance(item, _Assignment | GrantDef | ContextRequirement)]
 
-    def params(self, items: list[Any]) -> list[FieldDef]:
+    def params(self, items: list[object]) -> list[FieldDef]:
         return [item for item in items if isinstance(item, FieldDef)]
 
-    def param(self, items: list[Any]) -> FieldDef:
+    def param(self, items: list[object]) -> FieldDef:
         name = _token(items[0])
         raw_type = str(items[1])
         return FieldDef(str(name), raw_type.rstrip("?"), raw_type.endswith("?"), span=_span(self.path, name))
 
-    def named_type_ref(self, items: list[Any]) -> str:
+    def named_type_ref(self, items: list[object]) -> str:
         return str(items[0])
 
-    def list_type_ref(self, items: list[Any]) -> str:
+    def list_type_ref(self, items: list[object]) -> str:
         return f"list[{items[0]}]"
 
-    def map_type_ref(self, items: list[Any]) -> str:
+    def map_type_ref(self, items: list[object]) -> str:
         return f"map[string,{items[0]}]"
 
-    def type_constraint(self, items: list[Any]) -> str:
+    def type_constraint(self, items: list[object]) -> str:
         return f"{items[0]}={items[1]}"
 
-    def constraint_block(self, items: list[Any]) -> tuple[str, ...]:
+    def constraint_block(self, items: list[object]) -> tuple[str, ...]:
         return tuple(str(item) for item in items)
 
-    def nullable_suffix(self, items: list[Any]) -> str:
+    def nullable_suffix(self, items: list[object]) -> str:
         return "?"
 
-    def type_ref(self, items: list[Any]) -> str:
+    def type_ref(self, items: list[object]) -> str:
         source = str(items[0])
-        constraints = next((item for item in items[1:] if isinstance(item, tuple)), ())
+        constraints = next((item for item in items[1:] if _is_string_tuple(item)), ())
         if constraints:
             source += f"({','.join(constraints)})"
         if "?" in items[1:]:
             source += "?"
         return source
 
-    def grant_stmt(self, items: list[Any]) -> GrantDef:
+    def grant_stmt(self, items: list[object]) -> GrantDef:
         name = _token(items[0])
         attrs = _assignment_attrs(items[1:])
         return GrantDef(
@@ -292,7 +293,7 @@ class _ModuleTransformer(Transformer[Any, Any]):
             span=_span(self.path, name),
         )
 
-    def context_stmt(self, items: list[Any]) -> ContextRequirement:
+    def context_stmt(self, items: list[object]) -> ContextRequirement:
         name = _token(items[0])
         source = next(
             (str(item) for item in items[3:] if isinstance(item, Token)),
@@ -308,36 +309,39 @@ class _ModuleTransformer(Transformer[Any, Any]):
             span=_span(self.path, name),
         )
 
-    def context_block(self, items: list[Any]) -> list[Any]:
-        return items
+    def context_block(self, items: list[object]) -> list[_Mapping]:
+        return [item for item in items if isinstance(item, _Mapping)]
 
-    def assignment(self, items: list[Any]) -> _Assignment:
+    def assignment(self, items: list[object]) -> _Assignment:
         name = _token(items[0])
-        return _Assignment(str(name), items[1], _span(self.path, name))
+        value = items[1]
+        if not isinstance(value, str) and not _is_string_list(value):
+            raise TypeError("Assignment values must be text or a list of text")
+        return _Assignment(str(name), value, _span(self.path, name))
 
-    def scalar_value(self, items: list[Any]) -> str:
+    def scalar_value(self, items: list[object]) -> str:
         return str(items[0]).strip()
 
-    def list_value(self, items: list[Any]) -> list[str]:
+    def list_value(self, items: list[object]) -> list[str]:
         for item in items:
-            if isinstance(item, list):
-                return cast(list[str], item)
+            if _is_string_list(item):
+                return item
         return []
 
-    def inline_list(self, items: list[Any]) -> list[str]:
+    def inline_list(self, items: list[object]) -> list[str]:
         content = next(
             (str(item) for item in items if isinstance(item, Token) and item.type == "INLINE_LIST_CONTENT"),
             "",
         )
         return [clean_list_item(item) for item in split_csv(content)]
 
-    def block_list(self, items: list[Any]) -> list[str]:
+    def block_list(self, items: list[object]) -> list[str]:
         return [str(item) for item in items if isinstance(item, str) and not isinstance(item, Token)]
 
-    def block_list_item(self, items: list[Any]) -> str:
+    def block_list_item(self, items: list[object]) -> str:
         return clean_list_item(str(items[0]))
 
-    def eval_def(self, items: list[Any]) -> EvalCase:
+    def eval_def(self, items: list[object]) -> EvalCase:
         name = _token(items[0])
         agent = str(items[1])
         givens: dict[str, str] = {}
@@ -352,16 +356,16 @@ class _ModuleTransformer(Transformer[Any, Any]):
                 expects.append(item.value)
         return EvalCase(str(name), agent, givens, expects, semantic, _span(self.path, name))
 
-    def eval_block(self, items: list[Any]) -> list[Any]:
-        return items
+    def eval_block(self, items: list[object]) -> list[_EvalStatement]:
+        return [item for item in items if isinstance(item, _EvalStatement)]
 
-    def given_stmt(self, items: list[Any]) -> _EvalStatement:
+    def given_stmt(self, items: list[object]) -> _EvalStatement:
         return _EvalStatement("given", str(items[0]), str(items[1]).strip())
 
-    def expect_stmt(self, items: list[Any]) -> _EvalStatement:
+    def expect_stmt(self, items: list[object]) -> _EvalStatement:
         return _EvalStatement("expect", "", str(items[0]).strip())
 
-    def run_spec_def(self, items: list[Any]) -> RunSpecDef:
+    def run_spec_def(self, items: list[object]) -> RunSpecDef:
         name = _token(items[0])
         attributes = _source_attributes(items[1:])
         return RunSpecDef(
@@ -375,8 +379,8 @@ class _ModuleTransformer(Transformer[Any, Any]):
             _span(self.path, name),
         )
 
-    def run_spec_block(self, items: list[Any]) -> list[Any]:
-        return items
+    def run_spec_block(self, items: list[object]) -> list[_Assignment]:
+        return [item for item in items if isinstance(item, _Assignment)]
 
 
 @dataclass(frozen=True)
@@ -384,7 +388,7 @@ class _AgentParts:
     name: Token
     params: list[FieldDef]
     return_type: Token
-    body: list[Any]
+    body: list[_Assignment | GrantDef | ContextRequirement]
 
 
 @dataclass(frozen=True)
@@ -392,7 +396,7 @@ class _CallableParts:
     name: Token
     params: list[FieldDef]
     return_type: str
-    body: list[Any]
+    body: list[_Assignment]
 
 
 @dataclass(frozen=True)
@@ -416,30 +420,33 @@ class _EvalStatement:
     value: str
 
 
-def _agent_parts(items: list[Any]) -> _AgentParts:
+def _agent_parts(items: list[object]) -> _AgentParts:
     payload = _agent_payload_items(items)
     name = _token(payload[0])
     cursor = 1
     params: list[FieldDef] = []
-    if cursor < len(payload) and _is_field_list(payload[cursor]):
-        params = cast(list[FieldDef], payload[cursor])
+    candidate = payload[cursor] if cursor < len(payload) else None
+    if _is_field_list(candidate):
+        params = candidate
         cursor += 1
     return_type = _token(payload[cursor])
-    return _AgentParts(name, params, return_type, payload[cursor + 1 :])
+    body = [item for item in payload[cursor + 1 :] if isinstance(item, _Assignment | GrantDef | ContextRequirement)]
+    return _AgentParts(name, params, return_type, body)
 
 
-def _callable_parts(items: list[Any]) -> _CallableParts:
+def _callable_parts(items: list[object]) -> _CallableParts:
     name = _token(items[0])
     cursor = 1
     params: list[FieldDef] = []
-    if cursor < len(items) and _is_field_list(items[cursor]):
-        params = cast(list[FieldDef], items[cursor])
+    candidate = items[cursor] if cursor < len(items) else None
+    if _is_field_list(candidate):
+        params = candidate
         cursor += 1
     return_type = str(items[cursor])
-    return _CallableParts(name, params, return_type, items[cursor + 1 :])
+    return _CallableParts(name, params, return_type, _assignment_items(items[cursor + 1 :]))
 
 
-def _type_fields(items: list[Any]) -> list[FieldDef]:
+def _type_fields(items: Sequence[object]) -> list[FieldDef]:
     fields: list[FieldDef] = []
     for item in items:
         if isinstance(item, list):
@@ -449,14 +456,18 @@ def _type_fields(items: list[Any]) -> list[FieldDef]:
     return fields
 
 
-def _assignment_attrs(items: list[Any]) -> dict[str, Any]:
-    attrs: dict[str, Any] = {}
+def _assignment_items(items: Sequence[object]) -> list[_Assignment]:
+    assignments: list[_Assignment] = []
     for item in items:
         if isinstance(item, list):
-            attrs.update(_assignment_attrs(item))
+            assignments.extend(_assignment_items(item))
         elif isinstance(item, _Assignment):
-            attrs[item.key] = item.value
-    return attrs
+            assignments.append(item)
+    return assignments
+
+
+def _assignment_attrs(items: Sequence[object]) -> dict[str, str | list[str]]:
+    return {item.key: item.value for item in _assignment_items(items)}
 
 
 def _source_attribute(assignment: _Assignment) -> SourceAttribute:
@@ -464,18 +475,12 @@ def _source_attribute(assignment: _Assignment) -> SourceAttribute:
     return SourceAttribute(assignment.key, value, assignment.span)
 
 
-def _source_attributes(items: list[Any]) -> dict[str, SourceAttribute]:
-    attributes: dict[str, SourceAttribute] = {}
-    for item in items:
-        if isinstance(item, list):
-            attributes.update(_source_attributes(item))
-        elif isinstance(item, _Assignment):
-            attribute = _source_attribute(item)
-            attributes[attribute.name] = attribute
-    return attributes
+def _source_attributes(items: Sequence[object]) -> dict[str, SourceAttribute]:
+    attributes = (_source_attribute(item) for item in _assignment_items(items))
+    return {item.name: item for item in attributes}
 
 
-def _mapping_attrs(items: list[Any]) -> dict[str, str]:
+def _mapping_attrs(items: Sequence[object]) -> dict[str, str]:
     mappings: dict[str, str] = {}
     for item in items:
         if isinstance(item, list):
@@ -485,8 +490,8 @@ def _mapping_attrs(items: list[Any]) -> dict[str, str]:
     return mappings
 
 
-def _agent_payload_items(items: list[Any]) -> list[Any]:
-    result: list[Any] = []
+def _agent_payload_items(items: Sequence[object]) -> list[object]:
+    result: list[object] = []
     for item in items:
         if isinstance(item, list) and not _is_field_list(item):
             result.extend(_agent_payload_items(item))
@@ -495,7 +500,7 @@ def _agent_payload_items(items: list[Any]) -> list[Any]:
     return result
 
 
-def _eval_statements(items: list[Any]) -> list[_EvalStatement]:
+def _eval_statements(items: Sequence[object]) -> list[_EvalStatement]:
     statements: list[_EvalStatement] = []
     for item in items:
         if isinstance(item, list):
@@ -505,22 +510,30 @@ def _eval_statements(items: list[Any]) -> list[_EvalStatement]:
     return statements
 
 
-def _is_field_list(value: Any) -> bool:
+def _is_field_list(value: object) -> TypeGuard[list[FieldDef]]:
     return isinstance(value, list) and all(isinstance(item, FieldDef) for item in value)
 
 
-def _list_attr(attributes: dict[str, Any], key: str) -> list[str]:
+def _is_string_list(value: object) -> TypeGuard[list[str]]:
+    return isinstance(value, list) and all(isinstance(item, str) for item in value)
+
+
+def _is_string_tuple(value: object) -> TypeGuard[tuple[str, ...]]:
+    return isinstance(value, tuple) and all(isinstance(item, str) for item in value)
+
+
+def _list_attr(attributes: Mapping[str, str | list[str]], key: str) -> list[str]:
     value = attributes.get(key, [])
     return value if isinstance(value, list) else []
 
 
-def _optional_unquoted(value: Any) -> str | None:
+def _optional_unquoted(value: object) -> str | None:
     if value is None:
         return None
     return unquote(str(value))
 
 
-def _optional_bool_attr(attributes: dict[str, Any], key: str) -> bool | None:
+def _optional_bool_attr(attributes: Mapping[str, str | list[str]], key: str) -> bool | None:
     value = attributes.get(key)
     if value is None:
         return None
@@ -532,7 +545,7 @@ def _optional_bool_attr(attributes: dict[str, Any], key: str) -> bool | None:
     return None
 
 
-def _token(value: Any) -> Token:
+def _token(value: object) -> Token:
     if not isinstance(value, Token):
         raise TypeError(f"Expected token, got {type(value).__name__}")
     return value

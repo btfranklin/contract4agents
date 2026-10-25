@@ -6,12 +6,16 @@ import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, cast
+from typing import Protocol, cast
 
-from pydantic import TypeAdapter
+from pydantic import BaseModel, TypeAdapter
 
 from contract4agents.ir import FrozenMap, SemanticId
 from contract4agents.materialization._strands import NativeStrandsAgentDescription, NativeStrandsToolDescription
+
+
+class ModelFactory(Protocol):
+    def __call__(self, *, model: str, options: Mapping[str, object]) -> object: ...
 
 
 @dataclass
@@ -29,7 +33,7 @@ class FakeStrandsTool:
     implementation: object | None = None
     child: object | None = None
     environment: object | None = None
-    input_type: type[object] | None = None
+    input_type: type[BaseModel] | None = None
 
 
 @dataclass
@@ -39,7 +43,7 @@ class FakeStrandsAgent:
     instructions: str
     model_identity: str
     model: object
-    output_type: type[object]
+    output_type: object
     tools: list[object]
     approval_allowed_tools: tuple[str, ...] | None
 
@@ -62,7 +66,7 @@ class FakeStrandsSDK:
         if factory is None:
             return FakeStrandsModel(model, dict(model_options))
         assert callable(factory)
-        return cast(Any, factory)(model=model, options=model_options)
+        return cast(ModelFactory, factory)(model=model, options=model_options)
 
     def create_agent(
         self,
@@ -72,7 +76,7 @@ class FakeStrandsSDK:
         instructions: str,
         model_identity: str,
         model: object,
-        output_type: type[object],
+        output_type: object,
         tools: tuple[object, ...],
         approval_allowed_tools: tuple[str, ...] | None,
     ) -> object:
@@ -93,8 +97,8 @@ class FakeStrandsSDK:
         native_name: str,
         description: str,
         implementation: object,
-        input_type: type[object] | None,
-        output_adapter: TypeAdapter[Any],
+        input_type: type[BaseModel] | None,
+        output_adapter: TypeAdapter[object],
     ) -> object:
         input_schema = _input_schema(input_type)
         output_schema = output_adapter.json_schema()
@@ -115,8 +119,8 @@ class FakeStrandsSDK:
         native_name: str,
         description: str,
         child: object,
-        input_type: type[object] | None,
-        output_adapter: TypeAdapter[Any],
+        input_type: type[BaseModel] | None,
+        output_adapter: TypeAdapter[object],
     ) -> object:
         input_schema = _input_schema(input_type)
         output_schema = output_adapter.json_schema()
@@ -138,8 +142,8 @@ class FakeStrandsSDK:
         native_name: str,
         description: str,
         child: object,
-        input_type: type[object] | None,
-        output_adapter: TypeAdapter[Any],
+        input_type: type[BaseModel] | None,
+        output_adapter: TypeAdapter[object],
         isolation_id: SemanticId,
         requested_dimensions: FrozenMap[str, str],
         declared_capabilities: tuple[str, ...],
@@ -185,7 +189,7 @@ class FakeStrandsSDK:
             tool.output_schema,
         )
 
-def _input_schema(input_type: type[object] | None) -> Mapping[str, object]:
+def _input_schema(input_type: type[BaseModel] | None) -> Mapping[str, object]:
     if input_type is None:
         return {
             "type": "object",
@@ -193,7 +197,7 @@ def _input_schema(input_type: type[object] | None) -> Mapping[str, object]:
             "required": [],
             "additionalProperties": False,
         }
-    return cast(dict[str, object], cast(Any, input_type).model_json_schema())
+    return input_type.model_json_schema()
 
 
 def _without_list_bounds(schema: Mapping[str, object]) -> dict[str, object]:

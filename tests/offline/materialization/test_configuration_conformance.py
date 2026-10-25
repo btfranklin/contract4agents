@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from typing import Any, cast
 
 import pytest
 
@@ -148,7 +147,7 @@ def test_configuration_evidence_validation_is_strict_and_deterministic() -> None
     with pytest.raises(ValueError, match="Invalid configuration conformance evidence JSON"):
         ConfigurationConformanceEvidence.from_json("not-json")
     with pytest.raises(ValueError, match="status is invalid"):
-        ConfigurationConformanceEvidence(agent, "agent.model", "model", "model", status=cast(Any, "bad"))
+        ConfigurationConformanceEvidence(agent, "agent.model", "model", "model", status="bad")  # type: ignore[arg-type]  # Invalid constructor input.
     with pytest.raises(ValueError, match="source is invalid"):
         ConfigurationConformanceEvidence(
             agent,
@@ -156,23 +155,23 @@ def test_configuration_evidence_validation_is_strict_and_deterministic() -> None
             "model",
             "model",
             status="passed",
-            observation_source=cast(Any, "cache"),
+            observation_source="cache",  # type: ignore[arg-type]  # Invalid constructor input.
         )
     with pytest.raises(ValueError, match="property path"):
         ConfigurationConformanceEvidence(agent, " agent.model", "model", "model", status="passed")
     with pytest.raises(TypeError, match="semantic ID"):
-        ConfigurationConformanceEvidence(cast(Any, "agent:Worker"), "agent.model", "model", "model")
+        ConfigurationConformanceEvidence("agent:Worker", "agent.model", "model", "model")  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="property path"):
-        ConfigurationConformanceEvidence(agent, cast(Any, 1), "model", "model")
+        ConfigurationConformanceEvidence(agent, 1, "model", "model")  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="required flag"):
-        ConfigurationConformanceEvidence(agent, "agent.model", "model", "model", required=cast(Any, 1))
+        ConfigurationConformanceEvidence(agent, "agent.model", "model", "model", required=1)  # type: ignore[arg-type]  # Invalid constructor input.
     with pytest.raises(TypeError, match="presence flags"):
         ConfigurationConformanceEvidence(
             agent,
             "agent.model",
             "model",
             "model",
-            planned_present=cast(Any, 1),
+            planned_present=1,  # type: ignore[arg-type]  # Invalid constructor input.
         )
     with pytest.raises(TypeError, match="redaction flags"):
         ConfigurationConformanceEvidence(
@@ -180,7 +179,7 @@ def test_configuration_evidence_validation_is_strict_and_deterministic() -> None
             "agent.model",
             "model",
             "model",
-            planned_redacted=cast(Any, 1),
+            planned_redacted=1,  # type: ignore[arg-type]  # Invalid constructor input.
         )
     with pytest.raises(ValueError, match="non-empty"):
         ConfigurationConformanceEvidence(agent, "agent.model", "model", "model", reason=" ")

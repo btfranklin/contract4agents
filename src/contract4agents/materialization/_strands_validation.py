@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
 from pydantic import BaseModel, TypeAdapter
 
@@ -23,7 +23,13 @@ from contract4agents.materialization._models import (
     SchemaConformanceEvidence,
 )
 from contract4agents.materialization._options import thaw_mapping
-from contract4agents.materialization._types import build_parameter_model, output_type_for, type_adapter_for
+from contract4agents.materialization._types import (
+    GeneratedType,
+    annotation_name,
+    build_parameter_model,
+    output_type_for,
+    type_adapter_for,
+)
 from contract4agents.planning import MaterializationPlan
 
 if TYPE_CHECKING:
@@ -39,7 +45,7 @@ def validate_strands_graph(
     grant_objects: Mapping[SemanticId, object],
     edge_objects: Mapping[SemanticId, object],
     input_types: FrozenMap[SemanticId, type[BaseModel] | None],
-    output_types: FrozenMap[str, type[object]],
+    output_types: FrozenMap[str, GeneratedType],
     agent_names: Mapping[SemanticId, str],
     capability_names: Mapping[SemanticId, str],
     edge_names: Mapping[SemanticId, str],
@@ -121,10 +127,7 @@ def validate_strands_graph(
         )
         expected_allowed: tuple[str, ...] | None = None
         if approval_required:
-            expected_output_type = cast(
-                type[object],
-                output_type_for(agent_plan.output_type, output_types),
-            )
+            expected_output_type = output_type_for(agent_plan.output_type, output_types)
             expected_allowed = tuple(
                 sorted(
                     {
@@ -135,7 +138,7 @@ def validate_strands_graph(
                         and grant.authorization != "approval_required"
                     }
                     | {edge_names[edge.id] for edge in ir.composition.values() if edge.source_agent_id == agent_id}
-                    | {expected_output_type.__name__}
+                    | {annotation_name(expected_output_type)}
                 )
             )
         if native_agent_description.approval_allowed_tools != expected_allowed:
@@ -242,7 +245,7 @@ def _validate_configuration(
     grant_objects: Mapping[SemanticId, object],
     edge_objects: Mapping[SemanticId, object],
     input_types: FrozenMap[SemanticId, type[BaseModel] | None],
-    output_types: FrozenMap[str, type[object]],
+    output_types: FrozenMap[str, GeneratedType],
     sdk: StrandsSDK,
     agent_names: Mapping[SemanticId, str],
     capability_names: Mapping[SemanticId, str],
@@ -352,8 +355,8 @@ def _validate_configuration(
             configuration_evidence(
                 agent_id,
                 "agent.output_type",
-                expected_output.__qualname__,
-                native.output_type.__qualname__,
+                annotation_name(expected_output),
+                annotation_name(native.output_type),
                 source=cast(ConfigurationObservationSource, native.output_observation_source),
             ),
             agent_id,
@@ -508,10 +511,10 @@ def _input_schema(input_type: type[BaseModel] | None) -> Mapping[str, object]:
             "required": [],
             "additionalProperties": False,
         }
-    return cast(dict[str, object], cast(Any, input_type).model_json_schema())
+    return input_type.model_json_schema()
 
 
-def _output_schema(adapter: TypeAdapter[Any]) -> Mapping[str, object]:
+def _output_schema(adapter: TypeAdapter[object]) -> Mapping[str, object]:
     return cast(dict[str, object], adapter.json_schema())
 
 

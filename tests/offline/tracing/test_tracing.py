@@ -635,7 +635,7 @@ def test_open_telemetry_export_preserves_identity_and_applies_audience_redaction
 
     assert spans == tuple(tracer.spans)
     assert len(spans) == 1
-    assert spans[0].end_time is not None
+    assert tracer.spans[0].end_time is not None
     name, attributes, timestamp = tracer.spans[0].events[0]
     assert name == "tool.started"
     assert timestamp is not None

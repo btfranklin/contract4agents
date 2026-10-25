@@ -5,9 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
-from pydantic import TypeAdapter
+from pydantic import BaseModel, TypeAdapter
 
 from contract4agents.ir import (
     AgentIR,
@@ -42,7 +41,7 @@ class FakeTool:
     implementation: object | None = None
     requires_approval: bool = False
     child: object | None = None
-    input_type: type[object] | None = None
+    input_type: type[BaseModel] | None = None
 
 
 @dataclass
@@ -51,8 +50,8 @@ class FakeAgent:
     native_name: str
     instructions: str
     model: str
-    input_type: type[object] | None
-    output_type: type[object]
+    input_type: type[BaseModel] | None
+    output_type: object
     output_mode: OutputMode
     tools: list[object] = field(default_factory=list)
 
@@ -75,8 +74,8 @@ class FakeGoogleADKSDK:
         model: str,
         model_options: Mapping[str, object],
         model_factory: object | None,
-        input_type: type[object] | None,
-        output_type: type[object],
+        input_type: type[BaseModel] | None,
+        output_type: object,
         output_mode: OutputMode,
         tools: tuple[object, ...],
     ) -> object:
@@ -99,8 +98,8 @@ class FakeGoogleADKSDK:
         native_name: str,
         description: str,
         implementation: object,
-        input_type: type[object] | None,
-        output_adapter: TypeAdapter[Any],
+        input_type: type[BaseModel] | None,
+        output_adapter: TypeAdapter[object],
         requires_approval: bool,
     ) -> object:
         del description
@@ -124,8 +123,8 @@ class FakeGoogleADKSDK:
         child_name: str,
         description: str,
         binding: BindingEntry,
-        input_type: type[object],
-        output_adapter: TypeAdapter[Any],
+        input_type: type[BaseModel],
+        output_adapter: TypeAdapter[object],
         requires_approval: bool,
     ) -> object:
         del child_name, description, binding
@@ -142,8 +141,8 @@ class FakeGoogleADKSDK:
         native_name: str,
         description: str,
         child: object,
-        input_type: type[object] | None,
-        output_adapter: TypeAdapter[Any],
+        input_type: type[BaseModel] | None,
+        output_adapter: TypeAdapter[object],
     ) -> object:
         del description
         input_schema = _input_schema(input_type)
@@ -165,8 +164,8 @@ class FakeGoogleADKSDK:
         native_name: str,
         description: str,
         child: object,
-        input_type: type[object] | None,
-        output_adapter: TypeAdapter[Any],
+        input_type: type[BaseModel] | None,
+        output_adapter: TypeAdapter[object],
         isolation_id: SemanticId,
         requested_dimensions: FrozenMap[str, str],
         declared_capabilities: tuple[str, ...],
@@ -218,10 +217,10 @@ class FakeGoogleADKSDK:
         )
 
 
-def _input_schema(input_type: type[object] | None) -> Mapping[str, object]:
+def _input_schema(input_type: type[BaseModel] | None) -> Mapping[str, object]:
     if input_type is None:
         return {"type": "object", "properties": {}, "additionalProperties": False}
-    return input_type.model_json_schema()  # type: ignore[attr-defined,no-any-return]
+    return input_type.model_json_schema()
 
 
 def _without_list_bounds(schema: Mapping[str, object]) -> dict[str, object]:

@@ -5,7 +5,6 @@ import json
 import subprocess
 import sys
 from pathlib import Path, PurePosixPath
-from typing import Any
 
 import pytest
 
@@ -33,6 +32,7 @@ from contract4agents.ir import (
     parse_type_ref,
     semantic_id,
 )
+from tests.support.python_types import generated_model
 
 ROOT = Path(__file__).resolve().parents[3]
 TYPESCRIPT_PROVENANCE_HARNESS = ROOT / "tests" / "typescript" / "read-generated-provenance.mjs"
@@ -115,18 +115,18 @@ def test_pydantic_generation_covers_portable_types_defaults_and_forward_refs() -
     assert "opened_at: Annotated[datetime, BeforeValidator(parse_portable_datetime)]" in source
     assert "for _model in (Address, Incident):" in source
 
-    namespace: dict[str, Any] = {"__name__": "generated_contract_models"}
+    namespace: dict[str, object] = {"__name__": "generated_contract_models"}
     exec(compile(source, "<generated>", "exec"), namespace)
-    incident_type = namespace["Incident"]
+    incident_type = generated_model(namespace, "Incident")
     value = incident_type(
         incident_id="inc-1",
         address={"city": "Phoenix"},
         labels={"severity": "high"},
         opened_at="2026-07-15T12:00:00Z",
     )
-    assert value.address.city == "Phoenix"
-    assert value.aliases == []
-    assert value.active is True
+    assert value.model_dump()["address"]["city"] == "Phoenix"
+    assert value.model_dump()["aliases"] == []
+    assert value.model_dump()["active"] is True
 
 
 def test_recursive_pydantic_models_rebuild_after_all_classes_exist() -> None:
@@ -135,16 +135,16 @@ def test_recursive_pydantic_models_rebuild_after_all_classes_exist() -> None:
         "Node",
         (
             TypeFieldIR("name", parse_type_ref("string")),
-            TypeFieldIR("children", parse_type_ref("list[Node]"), has_default=True, default=[]),
+            TypeFieldIR("children", parse_type_ref("list[Node]"), has_default=True, default=()),
         ),
     )
     source = generate_pydantic_models(CanonicalIR.create(types=(node,)))
-    namespace: dict[str, Any] = {"__name__": "generated_recursive_models"}
+    namespace: dict[str, object] = {"__name__": "generated_recursive_models"}
 
     exec(compile(source, "<generated>", "exec"), namespace)
 
-    value = namespace["Node"](name="root", children=[{"name": "child"}])
-    assert value.children[0].name == "child"
+    value = generated_model(namespace, "Node")(name="root", children=[{"name": "child"}])
+    assert value.model_dump()["children"][0]["name"] == "child"
 
 
 def test_nullable_field_without_explicit_default_is_optional_in_every_target() -> None:
@@ -157,11 +157,11 @@ def test_nullable_field_without_explicit_default_is_optional_in_every_target() -
     python = generate_pydantic_models(ir)
     typescript = generate_typescript_types(ir)
     zod = generate_zod_schemas(ir)
-    namespace: dict[str, Any] = {"__name__": "generated_nullable_models"}
+    namespace: dict[str, object] = {"__name__": "generated_nullable_models"}
 
     exec(compile(python, "<generated>", "exec"), namespace)
 
-    assert namespace["Record"]().note is None
+    assert generated_model(namespace, "Record")().model_dump()["note"] is None
     assert "note: str | None = None" in python
     assert "note?: string | null;" in typescript
     assert "note: z.string().nullable().optional().default(null)," in zod
@@ -206,7 +206,7 @@ def test_constrained_types_generate_runtime_validators() -> None:
     python = generate_pydantic_models(ir)
     typescript = generate_typescript_types(ir)
     zod = generate_zod_schemas(ir)
-    namespace: dict[str, Any] = {"__name__": "generated_bounded_models"}
+    namespace: dict[str, object] = {"__name__": "generated_bounded_models"}
     exec(compile(python, "<generated>", "exec"), namespace)
 
     assert "Annotated[int, Field(ge=1, le=5)]" in python
@@ -216,7 +216,7 @@ def test_constrained_types_generate_runtime_validators() -> None:
     assert "z.number().int().min(1).max(5)" in zod
     assert "z.number().min(0).max(1).nullable()" in zod
     with pytest.raises(ValueError):
-        namespace["Bounded"](text="", count=0, score=2)
+        generated_model(namespace, "Bounded")(text="", count=0, score=2)
 
 
 def test_enum_generation_is_native_and_validates_in_pydantic() -> None:
@@ -226,7 +226,7 @@ def test_enum_generation_is_native_and_validates_in_pydantic() -> None:
         "Result",
         (
             TypeFieldIR("status", parse_type_ref("Status")),
-            TypeFieldIR("history", parse_type_ref("list[Status]"), has_default=True, default=[]),
+            TypeFieldIR("history", parse_type_ref("list[Status]"), has_default=True, default=()),
         ),
     )
     ir = CanonicalIR.create(types=(result, status))
@@ -234,16 +234,16 @@ def test_enum_generation_is_native_and_validates_in_pydantic() -> None:
     python = generate_pydantic_models(ir)
     typescript = generate_typescript_types(ir)
     zod = generate_zod_schemas(ir)
-    namespace: dict[str, Any] = {"__name__": "generated_enum_models"}
+    namespace: dict[str, object] = {"__name__": "generated_enum_models"}
     exec(compile(python, "<generated>", "exec"), namespace)
 
     assert "from typing import Literal" in python
     assert "Status = Literal['accepted', 'follow_up', 'failed']" in python
     assert 'export type Status = "accepted" | "follow_up" | "failed";' in typescript
     assert 'StatusSchema: z.ZodType<Status> = z.enum(["accepted", "follow_up", "failed"]);' in zod
-    assert namespace["Result"](status="accepted").status == "accepted"
+    assert generated_model(namespace, "Result")(status="accepted").model_dump()["status"] == "accepted"
     with pytest.raises(ValueError):
-        namespace["Result"](status="unknown")
+        generated_model(namespace, "Result")(status="unknown")
 
 
 def test_codegen_rejects_missing_named_types_and_nonportable_identifiers() -> None:
@@ -322,7 +322,7 @@ def test_generated_provenance_is_runtime_readable_in_python_and_typescript(tmp_p
     }
 
 
-def test_write_and_check_freshness_only_touch_deterministic_generated_paths(tmp_path: Any) -> None:
+def test_write_and_check_freshness_only_touch_deterministic_generated_paths(tmp_path: Path) -> None:
     generated = generate_code(_portable_ir(), targets=("python", "typescript"))
     output_dir = tmp_path / "generated"
 
@@ -371,7 +371,7 @@ def test_write_and_check_freshness_only_touch_deterministic_generated_paths(tmp_
     assert unrelated.read_text() == "user-owned\n"
 
 
-def test_separate_targets_can_share_one_generated_source_root(tmp_path: Any) -> None:
+def test_separate_targets_can_share_one_generated_source_root(tmp_path: Path) -> None:
     ir = _portable_ir()
     output_dir = tmp_path / "generated"
     python = generate_code(ir, targets=("python",))
@@ -407,7 +407,7 @@ def _portable_ir(*, reverse: bool = False) -> CanonicalIR:
         (
             TypeFieldIR("incident_id", parse_type_ref("string")),
             TypeFieldIR("address", parse_type_ref("Address")),
-            TypeFieldIR("aliases", parse_type_ref("list[string]"), has_default=True, default=[]),
+            TypeFieldIR("aliases", parse_type_ref("list[string]"), has_default=True, default=()),
             TypeFieldIR("labels", parse_type_ref("map[string,string]")),
             TypeFieldIR("score", parse_type_ref("float?"), has_default=True, default=None),
             TypeFieldIR("active", parse_type_ref("boolean"), has_default=True, default=True),

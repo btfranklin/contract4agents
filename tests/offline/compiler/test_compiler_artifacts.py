@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import PurePosixPath
 from typing import cast
 
 import pytest
@@ -78,7 +78,7 @@ def test_compiler_builds_nested_schema_docs_instructions_and_stable_digests() ->
     assert "Do the safe thing." in artifacts.instructions["Worker"]
     assert "hidden" not in artifacts.instructions["Worker"]
     assert "trace.not_called(danger)" in artifacts.instructions["Worker"]
-    assert "None." in artifacts.docs[Path("agents/Worker.md")]
+    assert "None." in artifacts.docs[PurePosixPath("agents/Worker.md")]
     digests = artifact_digests(artifacts)
     assert all(value.startswith("sha256:") for value in digests.values())
     assert digests == artifact_digests(artifacts)

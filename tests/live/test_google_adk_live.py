@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import cast
 
 import pytest
 
@@ -31,7 +31,10 @@ async def test_google_adk_search_preserves_grounding_display_metadata(
     if not os.environ.get("GOOGLE_API_KEY"):
         pytest.skip("GOOGLE_API_KEY is not configured")
 
+    from google.adk.agents import BaseAgent
     from google.adk.apps import App
+    from google.adk.events import Event
+    from google.adk.plugins import BasePlugin
     from google.adk.runners import Runner
     from google.adk.sessions import InMemorySessionService
     from google.genai import types
@@ -52,8 +55,8 @@ async def test_google_adk_search_preserves_grounding_display_metadata(
     runner = Runner(
         app=App(
             name=app_name,
-            root_agent=system.agents["CurrentTruthScout"],
-            plugins=[router.plugin()],
+            root_agent=cast(BaseAgent, system.agents["CurrentTruthScout"]),
+            plugins=[cast(BasePlugin, router.plugin())],
         ),
         session_service=session_service,
     )
@@ -63,7 +66,7 @@ async def test_google_adk_search_preserves_grounding_display_metadata(
         f"{session_id}:attempt:1",
         1,
     )
-    events: list[Any] = []
+    events: list[Event] = []
     try:
         with trace_session:
             with trace_session.bind_attempt(
@@ -90,7 +93,7 @@ async def test_google_adk_search_preserves_grounding_display_metadata(
     finally:
         await runner.close()
 
-    grounding = [event.grounding_metadata for event in events if getattr(event, "grounding_metadata", None) is not None]
+    grounding = [event.grounding_metadata for event in events if event.grounding_metadata is not None]
     assert grounding
     assert any(metadata.web_search_queries for metadata in grounding)
     assert any(

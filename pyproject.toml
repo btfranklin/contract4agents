@@ -86,7 +86,7 @@ docs-check = {composite = ["docs:structure", "docs:project"]}
 "docs:project" = "python scripts/docs_check.py"
 package-check = "python scripts/check_package_artifacts.py"
 lint = "ruff check src tests examples scripts"
-typecheck = "mypy"
+typecheck = "python scripts/check_types.py"
 "validate:python" = {composite = ["lint", "typecheck", "docs-check", "test:offline"]}
 validate = {composite = ["validate:python", "test:editor"]}
 "smoke:cli" = "python scripts/smoke_cli.py"
@@ -113,7 +113,15 @@ python_version = "3.11"
 strict = true
 warn_unused_ignores = true
 warn_return_any = true
-files = ["src", "scripts"]
+files = ["src", "scripts", "tests"]
+disallow_any_explicit = true
+disallow_any_unimported = true
+
+# Runtime annotations and Pydantic field factories have no complete static type.
+# Keep this exception inside the private construction boundary.
+[[tool.mypy.overrides]]
+module = "contract4agents.materialization._annotations"
+disallow_any_explicit = false
 
 [dependency-groups]
 dev = [

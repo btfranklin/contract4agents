@@ -3,11 +3,12 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from types import SimpleNamespace
-from typing import Any, cast
+from typing import cast
 
 import pytest
-from pydantic import ValidationError, create_model
+from agents import Agent
+from agents.tool_context import ToolContext
+from pydantic import BaseModel, ValidationError, create_model
 
 from contract4agents import materialize
 from contract4agents.ir import (
@@ -65,8 +66,8 @@ effort = "high"
 
     result = materialize(tmp_path, target="openai", profile="test")
 
-    parent_settings = cast(Any, result.agents["Parent"]).model_settings
-    child_settings = cast(Any, result.agents["Child"]).model_settings
+    parent_settings = cast(Agent[object], result.agents["Parent"]).model_settings
+    child_settings = cast(Agent[object], result.agents["Child"]).model_settings
     assert isinstance(parent_settings.retry, ModelRetrySettings)
     assert parent_settings.retry.max_retries == 0
     assert isinstance(child_settings.retry, ModelRetrySettings)
@@ -93,11 +94,12 @@ def test_concrete_openai_sdk_recursively_thaws_pass_through_model_options() -> N
         tools=(),
     )
 
-    settings = cast(Any, agent).model_settings
+    settings = cast(Agent[object], agent).model_settings
     assert settings.extra_body == {"custom": {"flags": ["one", "two"]}}
     assert isinstance(settings.extra_body, dict)
     assert isinstance(settings.extra_body["custom"], dict)
     assert isinstance(settings.extra_body["custom"]["flags"], list)
+    assert settings.tool_choice is not None and not isinstance(settings.tool_choice, str)
     assert settings.tool_choice.server_label == "server"
     assert settings.tool_choice.name == "tool"
 
@@ -133,7 +135,7 @@ def test_openai_tool_uses_contract_schema_instead_of_callable_annotations(tmp_pa
     )
 
     result = materialize(tmp_path, target="openai", profile="test")
-    tool = cast(FunctionTool, cast(Any, result.agents["Child"]).tools[0])
+    tool = cast(FunctionTool, cast(Agent[object], result.agents["Child"]).tools[0])
     query_schema = cast(dict[str, object], tool.params_json_schema["properties"])["query"]
 
     assert query_schema == {"maxLength": 4000, "minLength": 1, "title": "Query", "type": "string"}
@@ -164,10 +166,16 @@ def test_openai_tool_uses_contract_schema_instead_of_callable_annotations(tmp_pa
         SchemaConformanceEvidence(semantic_id("agent", "Worker"), "", {}, {})
     with pytest.raises(TypeError, match="requires object schemas"):
         SchemaConformanceEvidence(semantic_id("agent", "Worker"), "agent_output", [], {})
-    validated = asyncio.run(tool.on_invoke_tool(SimpleNamespace(), '{"query":"record-1"}'))
-    assert validated.value == "record-1"
+    context = ToolContext[object](context=None, tool_name=tool.name, tool_call_id="call-1", tool_arguments="{}")
+
+    async def invoke(arguments: str) -> object:
+        return await tool.on_invoke_tool(context, arguments)
+
+    validated = asyncio.run(invoke('{"query":"record-1"}'))
+    assert isinstance(validated, BaseModel)
+    assert validated.model_dump()["value"] == "record-1"
     with pytest.raises(ValidationError):
-        asyncio.run(tool.on_invoke_tool(SimpleNamespace(), '{"query":""}'))
+        asyncio.run(invoke('{"query":""}'))
 
 
 @pytest.mark.parametrize("implementation_kind", ("sync", "async"))
@@ -178,9 +186,25 @@ async def test_openai_materialized_tool_accepts_application_pydantic_output_and_
 ) -> None:
     from collections.abc import AsyncIterator
 
-    from agents import FunctionTool, ModelResponse, RunConfig, Runner, Usage
-    from agents.models.interface import Model
-    from openai.types.responses import ResponseFunctionToolCall, ResponseOutputMessage, ResponseOutputText
+    from agents import (
+        AgentOutputSchemaBase,
+        FunctionTool,
+        Handoff,
+        ModelResponse,
+        ModelSettings,
+        RunConfig,
+        Runner,
+        Tool,
+        Usage,
+    )
+    from agents.items import TResponseInputItem, TResponseStreamEvent
+    from agents.models.interface import Model, ModelTracing
+    from openai.types.responses import (
+        ResponseFunctionToolCall,
+        ResponseOutputMessage,
+        ResponseOutputText,
+        ResponsePromptParam,
+    )
 
     write_project(tmp_path)
     contract_path = tmp_path / "system.contract"
@@ -208,16 +232,28 @@ def context():
     )
 
     system = materialize(tmp_path, target="openai", profile="test")
-    child = cast(Any, system.agents["Child"])
+    child = cast(Agent[object], system.agents["Child"])
     tool = cast(FunctionTool, child.tools[0])
 
     class ToolThenFinalModel(Model):
         def __init__(self) -> None:
-            self.inputs: list[object] = []
+            self.inputs: list[str | list[TResponseInputItem]] = []
 
-        async def get_response(self, *args: Any, **kwargs: Any) -> ModelResponse:
-            model_input = kwargs.get("input", args[1] if len(args) > 1 else None)
-            self.inputs.append(model_input)
+        async def get_response(  # type: ignore[explicit-any]  # SDK request aliases contain Any.
+            self,
+            system_instructions: str | None,
+            input: str | list[TResponseInputItem],
+            model_settings: ModelSettings,
+            tools: list[Tool],
+            output_schema: AgentOutputSchemaBase | None,
+            handoffs: list[Handoff[object]],
+            tracing: ModelTracing,
+            *,
+            previous_response_id: str | None,
+            conversation_id: str | None,
+            prompt: ResponsePromptParam | None,
+        ) -> ModelResponse:
+            self.inputs.append(input)
             if len(self.inputs) == 1:
                 return ModelResponse(
                     output=[
@@ -251,9 +287,8 @@ def context():
                 response_id=None,
             )
 
-        async def stream_response(self, *_args: Any, **_kwargs: Any) -> AsyncIterator[Any]:
-            if False:
-                yield None
+        def stream_response(self, *_args: object, **_kwargs: object) -> AsyncIterator[TResponseStreamEvent]:
+            raise NotImplementedError("This test uses non-streaming responses")
 
     scripted_model = ToolThenFinalModel()
     child.model = scripted_model
@@ -265,7 +300,8 @@ def context():
     )
 
     assert type(run.final_output) is system.generated_types["Result"]
-    assert run.final_output.value == "complete"
+    assert isinstance(run.final_output, BaseModel)
+    assert run.final_output.model_dump()["value"] == "complete"
     assert len(scripted_model.inputs) == 2
     second_turn = cast(list[dict[str, object]], scripted_model.inputs[1])
     tool_output = next(item for item in second_turn if item.get("type") == "function_call_output")
@@ -315,12 +351,13 @@ def context():
     )
 
     system = materialize(tmp_path, target="openai", profile="test")
-    tool = cast(FunctionTool, cast(Any, system.agents["Child"]).tools[0])
+    tool = cast(FunctionTool, cast(Agent[object], system.agents["Child"]).tools[0])
 
     with pytest.raises(ValidationError) as caught:
-        await tool.on_invoke_tool(SimpleNamespace(), '{"query":"record-1"}')
+        context = ToolContext[object](context=None, tool_name=tool.name, tool_call_id="call-1", tool_arguments="{}")
+        await tool.on_invoke_tool(context, '{"query":"record-1"}')
 
-    assert error_type in {cast(str, item["type"]) for item in caught.value.errors()}
+    assert error_type in {item["type"] for item in caught.value.errors()}
 
 
 def test_openai_hosted_tool_option_errors_are_structured() -> None:

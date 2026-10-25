@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 import pytest
+from pydantic import BaseModel
+from strands import Agent
+from strands.types.interrupt import InterruptResponseContent
 
 from contract4agents import materialize
 from contract4agents.ir import semantic_id
@@ -87,7 +90,7 @@ async def test_contract_first_incident_graph_runs_through_strands_bedrock(
 
     with session:
         with session.bind_attempt(attempt, agent=commander):
-            result = await cast(Any, commander).invoke_async(
+            result = await cast(Agent, commander).invoke_async(
                 prompt,
                 limits={"turns": 12},
             )
@@ -104,8 +107,8 @@ async def test_contract_first_incident_graph_runs_through_strands_bedrock(
                         native_tool=native_tool,
                         approved=False,
                     )
-                result = await cast(Any, commander).invoke_async(
-                    [
+                assert result.interrupts is not None
+                responses: list[InterruptResponseContent] = [
                         {
                             "interruptResponse": {
                                 "interruptId": interrupt.id,
@@ -113,13 +116,13 @@ async def test_contract_first_incident_graph_runs_through_strands_bedrock(
                             }
                         }
                         for interrupt in result.interrupts
-                    ],
-                    limits={"turns": 12},
-                )
+                    ]
+                result = await cast(Agent, commander).invoke_async(responses, limits={"turns": 12})
 
     output = system.validate_output_for_agent(commander, result.structured_output)
-    assert output.summary
-    assert output.evidence
+    assert isinstance(output, BaseModel)
+    assert output.model_dump()["summary"]
+    assert output.model_dump()["evidence"]
     snapshot = session.closed_snapshot
     validate_trace_conformance(system, snapshot.trace)
     validate_trace_closure(snapshot.trace, snapshot.closure)

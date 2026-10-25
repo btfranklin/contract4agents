@@ -8,7 +8,7 @@ import re
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal
 
 from contract4agents.diagnostics import Diagnostic
 from contract4agents.ir import CanonicalIR, CapabilityIR, ParameterIR, SemanticId
@@ -417,7 +417,7 @@ def _resolve_python_binding(
             )
         ]
 
-    parameters, signature_inspected = _inspect_parameters(cast(Callable[..., object], implementation))
+    parameters, signature_inspected = _inspect_parameters(implementation)
     diagnostics: list[Diagnostic] = []
     if isinstance(semantic, CapabilityIR) and signature_inspected:
         diagnostics.extend(_signature_diagnostics(entry_name, semantic.parameters, parameters))
@@ -437,8 +437,10 @@ def _resolve_python_binding(
 
 
 def _inspect_parameters(
-    implementation: Callable[..., object],
+    implementation: object,
 ) -> tuple[tuple[ResolvedParameterIdentity, ...], bool]:
+    if not callable(implementation):
+        return (), False
     try:
         signature = inspect.signature(implementation, follow_wrapped=False)
     except (TypeError, ValueError):

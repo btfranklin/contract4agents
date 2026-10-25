@@ -11,7 +11,7 @@ from contract4agents.cli import main
 from tests.support.agentcore_harness import write_project
 
 
-def test_harness_cli_writes_aws_cli_input_and_manifest(tmp_path):
+def test_harness_cli_writes_aws_cli_input_and_manifest(tmp_path: Path) -> None:
     root = write_project(tmp_path / "project")
     out = tmp_path / "generated"
     result = CliRunner().invoke(
@@ -22,7 +22,7 @@ def test_harness_cli_writes_aws_cli_input_and_manifest(tmp_path):
     assert json.loads((out / "manifest.json").read_text())["plan_digest"].startswith("sha256:")
 
 
-def test_harness_cli_rejects_bad_target_and_unsafe_destination(tmp_path):
+def test_harness_cli_rejects_bad_target_and_unsafe_destination(tmp_path: Path) -> None:
     root = write_project(tmp_path / "project")
     for target, out in (("missing", tmp_path / "generated"), ("agentcore_harness", root)):
         result = CliRunner().invoke(
@@ -32,7 +32,7 @@ def test_harness_cli_rejects_bad_target_and_unsafe_destination(tmp_path):
     assert not (root / "Analyst.harness.json").exists()
 
 
-def test_harness_research_example_runs_offline(tmp_path):
+def test_harness_research_example_runs_offline(tmp_path: Path) -> None:
     script = Path(__file__).resolve().parents[3] / "examples/harness-research/run_demo.py"
     result = subprocess.run([sys.executable, str(script)], cwd=tmp_path, capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stderr

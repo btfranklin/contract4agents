@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib
 import json
 import sys
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -634,9 +634,9 @@ def _canonical_ir() -> CanonicalIR:
 def _bindings(
     root: Path,
     *,
-    tools: dict[str, object | None] | None = None,
-    datasources: dict[str, object | None] | None = None,
-    external_context: dict[str, object | None] | None = None,
+    tools: Mapping[str, object | None] | None = None,
+    datasources: Mapping[str, object | None] | None = None,
+    external_context: Mapping[str, object | None] | None = None,
     profiles: dict[str, TargetProfile] | None = None,
 ) -> TargetBindings:
     return TargetBindings(
@@ -653,7 +653,7 @@ def _bindings(
     )
 
 
-def _entries(values: dict[str, object | None]) -> dict[str, BindingEntry]:
+def _entries(values: Mapping[str, object | None]) -> dict[str, BindingEntry]:
     return {
         name: BindingEntry({"provider": "native"} if locator is None else {"python": locator})
         for name, locator in values.items()

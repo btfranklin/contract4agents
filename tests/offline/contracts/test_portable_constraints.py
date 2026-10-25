@@ -3,10 +3,11 @@ from __future__ import annotations
 import builtins
 import json
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from types import ModuleType
+from typing import cast
 
 import pytest
 from jsonschema import Draft202012Validator, FormatChecker
@@ -20,6 +21,7 @@ from contract4agents.ir import (
     FrozenMap,
     ListTypeRef,
     ParameterIR,
+    SemanticId,
     TypeFieldIR,
     TypeIR,
     format_type_ref,
@@ -33,6 +35,7 @@ from contract4agents.materialization._types import (
     type_adapter_for,
 )
 from tests.support.portable_datetime import PORTABLE_DATETIME_CASES
+from tests.support.python_types import generated_model
 
 ROOT = Path(__file__).resolve().parents[3]
 ZOD_HARNESS = ROOT / "tests" / "typescript" / "execute-generated-zod.mjs"
@@ -97,7 +100,7 @@ def test_native_adapter_schema_readback_preserves_list_cardinality() -> None:
     bounded = Annotated[list[str], Field(min_length=1, max_length=2)]
     input_type = create_model("BoundedInput", items=(bounded, ...))
     output_type = create_model("BoundedOutput", items=(bounded, ...))
-    output_adapter = TypeAdapter(output_type)
+    output_adapter = TypeAdapter[object](output_type)
 
     openai = FakeOpenAISDK()
     openai_tool = openai.create_function_tool(
@@ -223,12 +226,15 @@ def test_google_adk_materialization_rejects_native_tool_that_drops_list_bound(tm
 
     base = _provider_ir()
     bounded = "list[string](min_items=1,max_items=2)"
+    base_answer = base.types[semantic_id("type", "Answer")]
+    base_lookup = base.types[semantic_id("type", "Lookup")]
+    assert isinstance(base_answer, TypeIR) and isinstance(base_lookup, TypeIR)
     answer = replace(
-        base.types[semantic_id("type", "Answer")],
+        base_answer,
         fields=(TypeFieldIR("summary", parse_type_ref(bounded)),),
     )
     lookup = replace(
-        base.types[semantic_id("type", "Lookup")],
+        base_lookup,
         fields=(TypeFieldIR("query", parse_type_ref(bounded)),),
     )
     tool = replace(
@@ -250,7 +256,10 @@ def test_google_adk_materialization_rejects_native_tool_that_drops_list_bound(tm
     target, plan = _target_and_plan(tmp_path, ir)
     output_types = build_pydantic_types(ir)
     lookup_id = semantic_id("tool", "records.lookup")
-    implementations = FrozenMap(((lookup_id, lambda query: {"summary": query}),))
+    def lookup_implementation(query: object) -> dict[str, object]:
+        return {"summary": query}
+
+    implementations: FrozenMap[SemanticId, object] = FrozenMap(((lookup_id, lookup_implementation),))
     context = ContextRuntime(ir, plan, implementations, output_types)
 
     with pytest.raises(MaterializationError) as caught:
@@ -451,10 +460,10 @@ def test_generated_and_materialized_python_types_enforce_portable_corpus() -> No
     ir = _corpus_ir()
     artifacts = build_artifacts(ir)
     generated_source = generate_pydantic_models(ir)
-    namespace: dict[str, Any] = {"__name__": "generated_portable_models"}
+    namespace: dict[str, object] = {"__name__": "generated_portable_models"}
     exec(compile(generated_source, "<generated>", "exec"), namespace)
-    generated_type = namespace["Record"]
-    materialized_type = build_pydantic_types(ir)["Record"]
+    generated_type = generated_model(namespace, "Record")
+    materialized_type = generated_model(build_pydantic_types(ir), "Record")
     checker = FormatChecker()
     checker.checks("date-time")(is_portable_datetime)
     validator = Draft202012Validator(artifacts.schemas["Record"], format_checker=checker)
@@ -466,10 +475,10 @@ def test_generated_and_materialized_python_types_enforce_portable_corpus() -> No
         assert schema_valid is expected, entry["name"]
         for model in (generated_type, materialized_type):
             if expected:
-                model(**value)
+                model.model_validate(value)
             else:
                 with pytest.raises(ValidationError):
-                    model(**value)
+                    model.model_validate(value)
 
 
 def test_recursive_types_have_matching_portable_runtime_behavior(tmp_path: Path) -> None:
@@ -479,7 +488,7 @@ def test_recursive_types_have_matching_portable_runtime_behavior(tmp_path: Path)
         (
             TypeFieldIR("name", parse_type_ref("string")),
             TypeFieldIR("next", parse_type_ref("Node?")),
-            TypeFieldIR("children", parse_type_ref("list[Node]"), has_default=True, default=[]),
+            TypeFieldIR("children", parse_type_ref("list[Node]"), has_default=True, default=()),
             TypeFieldIR("peer", parse_type_ref("Peer?")),
         ),
     )
@@ -510,10 +519,10 @@ def test_recursive_types_have_matching_portable_runtime_behavior(tmp_path: Path)
         },
     ]
     artifacts = build_artifacts(ir)
-    generated_namespace: dict[str, Any] = {"__name__": "generated_recursive_models"}
+    generated_namespace: dict[str, object] = {"__name__": "generated_recursive_models"}
     exec(compile(generate_pydantic_models(ir), "<generated-recursive>", "exec"), generated_namespace)
-    generated_type = generated_namespace["Node"]
-    materialized_type = build_pydantic_types(ir)["Node"]
+    generated_type = generated_model(generated_namespace, "Node")
+    materialized_type = generated_model(build_pydantic_types(ir), "Node")
     validator = Draft202012Validator(artifacts.schemas["Node"])
 
     for entry in corpus:
@@ -522,12 +531,13 @@ def test_recursive_types_have_matching_portable_runtime_behavior(tmp_path: Path)
         assert _schema_valid(validator, value) is expected, entry["name"]
         for model in (generated_type, materialized_type):
             if expected:
-                result = model(**value)
-                assert result.children[0].name == "child"
-                assert result.peer.node.name == "mutual"
+                validated = model.model_validate(value)
+                dumped = validated.model_dump()
+                assert dumped["children"][0]["name"] == "child"
+                assert dumped["peer"]["node"]["name"] == "mutual"
             else:
                 with pytest.raises(ValidationError):
-                    model(**value)
+                    model.model_validate(value)
 
     schema_path = tmp_path / "recursive-schemas.ts"
     corpus_path = tmp_path / "recursive-corpus.json"
@@ -589,18 +599,24 @@ def test_generated_python_is_self_contained_when_contract4agents_import_is_block
     assert "from contract4agents" not in source
     original_import = builtins.__import__
 
-    def blocked_import(name: str, *args: object, **kwargs: object) -> object:
+    def blocked_import(
+        name: str,
+        globals: Mapping[str, object] | None = None,
+        locals: Mapping[str, object] | None = None,
+        fromlist: Sequence[str] | None = (),
+        level: int = 0,
+    ) -> ModuleType:
         if name == "contract4agents" or name.startswith("contract4agents."):
             raise ModuleNotFoundError("contract4agents is blocked for this test")
-        return original_import(name, *args, **kwargs)
+        return original_import(name, globals, locals, fromlist, level)
 
     monkeypatch.setattr(builtins, "__import__", blocked_import)
-    namespace: dict[str, Any] = {"__name__": "generated_standalone_models"}
+    namespace: dict[str, object] = {"__name__": "generated_standalone_models"}
     exec(compile(source, "<generated-standalone>", "exec"), namespace)
 
-    record_type = namespace["Record"]
+    record_type = generated_model(namespace, "Record")
     value = record_type(when="2026-01-01T00:00:00Z")
-    assert value.when == datetime(2026, 1, 1, tzinfo=UTC)
+    assert value.model_dump()["when"] == datetime(2026, 1, 1, tzinfo=UTC)
     with pytest.raises(ValidationError):
         record_type(when="2026-01-01T00:00:00")
 
@@ -638,11 +654,11 @@ def test_python_contract_models_reject_non_finite_float_values(
     )
     ir = CanonicalIR.create(types=(record,))
     if model_source == "materialized":
-        model = build_pydantic_types(ir)["Measurement"]
+        model = generated_model(build_pydantic_types(ir), "Measurement")
     else:
-        namespace: dict[str, Any] = {}
+        namespace: dict[str, object] = {}
         exec(generate_pydantic_models(ir), namespace)
-        model = namespace["Measurement"]
+        model = generated_model(namespace, "Measurement")
 
     with pytest.raises(ValidationError, match="finite"):
         model(reading=value)

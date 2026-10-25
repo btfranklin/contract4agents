@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextvars import Token
 from importlib import import_module
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Self
 
 from contract4agents.tracing._closure import (
     TraceClosureEvidence,
@@ -18,7 +18,12 @@ from contract4agents.tracing._native_session import (
     NativeHookTraceSession,
 )
 from contract4agents.tracing._provider_evidence import (
+    EvidenceState,
+    ProviderOutcome,
+    ProviderOutcomeCategory,
     ProviderOutcomeEvidence,
+    ProviderOutcomePhase,
+    ProviderUsageCoverage,
     ProviderUsageEvidence,
 )
 from contract4agents.tracing._sinks import NormalizedTraceSink
@@ -171,7 +176,7 @@ class GoogleADKNormalizedTraceRouter(NativeHookTraceRouterCore):
             plugin: object,
             *,
             tool: object,
-            tool_args: dict[str, Any],
+            tool_args: dict[str, object],
             tool_context: object,
         ) -> None:
             del plugin
@@ -181,9 +186,9 @@ class GoogleADKNormalizedTraceRouter(NativeHookTraceRouterCore):
             plugin: object,
             *,
             tool: object,
-            tool_args: dict[str, Any],
+            tool_args: dict[str, object],
             tool_context: object,
-            result: dict[str, Any],
+            result: dict[str, object],
         ) -> None:
             del plugin
             bridge.after_tool(tool, tool_args, tool_context, result)
@@ -192,7 +197,7 @@ class GoogleADKNormalizedTraceRouter(NativeHookTraceRouterCore):
             plugin: object,
             *,
             tool: object,
-            tool_args: dict[str, Any],
+            tool_args: dict[str, object],
             tool_context: object,
             error: Exception,
         ) -> None:
@@ -261,7 +266,7 @@ class GoogleADKNormalizedTraceSession(NativeHookTraceSession):
         self._run_failed = False
         self._terminal_response_seen = False
         self._reported_response_keys: set[str] = set()
-        self._output_validation_token: Token[Any] | None = None
+        self._output_validation_token: Token[Callable[[str, bool], None] | None] | None = None
 
     def __enter__(self) -> Self:
         super().__enter__()
@@ -490,6 +495,10 @@ class GoogleADKNormalizedTraceSession(NativeHookTraceSession):
         http_status = _adk_status_code(response) or _adk_status_code(exception)
         explicit_refusal = _adk_refusal(response)
         interrupted = _adk_bool(response, "interrupted")
+        outcome: ProviderOutcome
+        category: ProviderOutcomeCategory
+        phase: ProviderOutcomePhase
+        state: EvidenceState
         if exception is not None:
             outcome = "failed"
             category, state = _adk_error_classification(exception)
@@ -525,10 +534,10 @@ class GoogleADKNormalizedTraceSession(NativeHookTraceSession):
                 attempt_id=self._require_attempt(None).attempt_id,
                 invocation_id=self._require_attempt(None).invocation_id,
                 attempt_number=self._require_attempt(None).number,
-                phase=phase,  # type: ignore[arg-type]
-                outcome=outcome,  # type: ignore[arg-type]
-                category=category,  # type: ignore[arg-type]
-                state=state,  # type: ignore[arg-type]
+                phase=phase,
+                outcome=outcome,
+                category=category,
+                state=state,
                 classifier_provenance="google-adk.llm-response-public-fields",
                 http_status=http_status,
                 provider_error_code=error_code,
@@ -679,7 +688,7 @@ class _GoogleADKPluginBridge:
     def before_tool(
         self,
         tool: object,
-        tool_args: dict[str, Any],
+        tool_args: dict[str, object],
         tool_context: object,
     ) -> None:
         del tool_args
@@ -695,9 +704,9 @@ class _GoogleADKPluginBridge:
     def after_tool(
         self,
         tool: object,
-        tool_args: dict[str, Any],
+        tool_args: dict[str, object],
         tool_context: object,
-        result: dict[str, Any],
+        result: dict[str, object],
     ) -> None:
         del tool_args, result
         session = self._session()
@@ -712,7 +721,7 @@ class _GoogleADKPluginBridge:
     def tool_error(
         self,
         tool: object,
-        tool_args: dict[str, Any],
+        tool_args: dict[str, object],
         tool_context: object,
         error: Exception,
     ) -> None:
@@ -799,7 +808,7 @@ def _adk_status_code(value: object | None) -> int | None:
     return None
 
 
-def _adk_error_classification(value: object) -> tuple[str, str]:
+def _adk_error_classification(value: object) -> tuple[ProviderOutcomeCategory, EvidenceState]:
     status = _adk_status_code(value)
     if status == 401:
         return "authentication", "inferred"
@@ -863,6 +872,7 @@ def _adk_usage_evidence(
     total = _adk_usage_value(
         usage, "total_token_count", "totalTokenCount", "total_tokens", "totalTokens"
     )
+    coverage: ProviderUsageCoverage
     if cached is not None and input_tokens is not None and cached > input_tokens:
         cached = None
     if input_tokens is not None and output_tokens is not None and total is not None:
@@ -879,7 +889,7 @@ def _adk_usage_evidence(
         coverage = "partial"
     return ProviderUsageEvidence(
         scope="model_call",
-        coverage=coverage,  # type: ignore[arg-type]
+        coverage=coverage,
         aggregation_identity=identity,
         aggregation_basis="one Google ADK LlmResponse callback",
         provenance="google-adk.LlmResponse.usage_metadata",

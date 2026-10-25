@@ -5,11 +5,13 @@ from __future__ import annotations
 import re
 from collections import defaultdict, deque
 from pathlib import Path
-from typing import Any, cast
 
 from contract4agents.visualization._types import (
     TruthView,
     VisualizationAgentDetail,
+    VisualizationCollaborator,
+    VisualizationContextSource,
+    VisualizationControlPresentation,
     VisualizationEvidenceStage,
     VisualizationFocus,
     VisualizationFocusNode,
@@ -23,6 +25,7 @@ from contract4agents.visualization._types import (
     VisualizationPresentation,
     VisualizationReviewNote,
     VisualizationSummary,
+    VisualizationTool,
     VisualizationTruth,
     VisualizationTruthMembership,
 )
@@ -245,44 +248,44 @@ def _focus_model(
         assurance,
         agent_node,
     )
-    for item in collaborators:
-        other_id = str(item["agent_id"])
+    for collaborator in collaborators:
+        other_id = str(collaborator["agent_id"])
         other_node = nodes[other_id]
         focus_nodes.setdefault(
             other_id,
             _focus_node(
                 other_id,
                 "agent",
-                str(item["name"]),
-                "Handoff agent" if item["mode"] == "handoff" else "Delegated agent",
+                str(collaborator["name"]),
+                "Handoff agent" if collaborator["mode"] == "handoff" else "Delegated agent",
                 None,
                 other_node,
             ),
         )
-        source, target = (agent_id, other_id) if item["direction"] == "outgoing" else (other_id, agent_id)
+        source, target = (agent_id, other_id) if collaborator["direction"] == "outgoing" else (other_id, agent_id)
         focus_relationships.append(
             {
-                "id": str(item["id"]),
+                "id": str(collaborator["id"]),
                 "source": source,
                 "target": target,
                 "kind": "composition",
-                "label": "hands off" if item["mode"] == "handoff" else "delegates",
-                "mode": str(item["mode"]),
-                "truth": cast(VisualizationTruthMembership, item["truth"]),
+                "label": "hands off" if collaborator["mode"] == "handoff" else "delegates",
+                "mode": str(collaborator["mode"]),
+                "truth": collaborator["truth"],
             }
         )
 
-    for item in tools:
-        capability_id = str(item["id"])
+    for tool in tools:
+        capability_id = str(tool["id"])
         capability_node = nodes[capability_id]
         focus_nodes.setdefault(
             capability_id,
             _focus_node(
                 capability_id,
-                str(item["kind"]),
-                str(item["name"]),
-                str(item["access_label"]),
-                "approval" if item["approval_sensitive"] else None,
+                str(tool["kind"]),
+                str(tool["name"]),
+                str(tool["access_label"]),
+                "approval" if tool["approval_sensitive"] else None,
                 capability_node,
             ),
         )
@@ -298,16 +301,16 @@ def _focus_model(
             }
         )
 
-    for item in contexts:
-        context_id = str(item["id"])
+    for context in contexts:
+        context_id = str(context["id"])
         context_node = nodes[context_id]
         focus_nodes.setdefault(
             context_id,
             _focus_node(
                 context_id,
                 "context",
-                str(item["name"]),
-                str(item["source_label"]),
+                str(context["name"]),
+                str(context["source_label"]),
                 None,
                 context_node,
             ),
@@ -323,7 +326,7 @@ def _focus_model(
                 "truth": _membership(context_node["truth"]),
             }
         )
-        source_id = item.get("source_id")
+        source_id = context.get("source_id")
         if isinstance(source_id, str) and source_id in nodes:
             source_node = nodes[source_id]
             focus_nodes.setdefault(
@@ -349,17 +352,17 @@ def _focus_model(
                 }
             )
 
-    for item in controls:
-        control_id = str(item["id"])
+    for control in controls:
+        control_id = str(control["id"])
         control_node = nodes[control_id]
         focus_nodes.setdefault(
             control_id,
             _focus_node(
                 control_id,
                 "control",
-                str(item["name"]),
-                str(item["summary"]),
-                str(item["status"]),
+                str(control["name"]),
+                str(control["summary"]),
+                str(control["status"]),
                 control_node,
             ),
         )
@@ -420,8 +423,8 @@ def _collaborators(
     agent_id: str,
     relationships: list[VisualizationOverviewRelationship],
     nodes: dict[str, VisualizationNode],
-) -> list[dict[str, Any]]:
-    result: list[dict[str, Any]] = []
+) -> list[VisualizationCollaborator]:
+    result: list[VisualizationCollaborator] = []
     for relationship in relationships:
         if relationship["source"] == agent_id:
             other_id = relationship["target"]
@@ -448,8 +451,8 @@ def _collaborators(
 def _tools(
     detail: VisualizationAgentDetail,
     nodes: dict[str, VisualizationNode],
-) -> list[dict[str, Any]]:
-    result: list[dict[str, Any]] = []
+) -> list[VisualizationTool]:
+    result: list[VisualizationTool] = []
     for grant in detail["grants"]:
         capability_id = str(grant["capability_id"])
         capability = nodes[capability_id]
@@ -481,13 +484,13 @@ def _contexts(
     detail: VisualizationAgentDetail,
     graph: VisualizationGraph,
     nodes: dict[str, VisualizationNode],
-) -> list[dict[str, Any]]:
+) -> list[VisualizationContextSource]:
     origins = {
         edge["source"]: edge["target"]
         for edge in graph["edges"]
         if edge["kind"] == "context_origin"
     }
-    result: list[dict[str, Any]] = []
+    result: list[VisualizationContextSource] = []
     for context in detail["contexts"]:
         context_id = str(context["id"])
         source_id = origins.get(context_id)
@@ -510,8 +513,10 @@ def _contexts(
     return sorted(result, key=lambda item: (item["name"], item["id"]))
 
 
-def _controls(detail: VisualizationAgentDetail, nodes: dict[str, VisualizationNode]) -> list[dict[str, Any]]:
-    result: list[dict[str, Any]] = []
+def _controls(
+    detail: VisualizationAgentDetail, nodes: dict[str, VisualizationNode],
+) -> list[VisualizationControlPresentation]:
+    result: list[VisualizationControlPresentation] = []
     for control in detail["controls"]:
         node = nodes[str(control["id"])]
         declared = node["truth"]["declared"]
@@ -545,7 +550,7 @@ def _controls(detail: VisualizationAgentDetail, nodes: dict[str, VisualizationNo
     return sorted(result, key=lambda item: (_control_priority(str(item["status"])), item["name"], item["id"]))
 
 
-def _agent_assurance(controls: list[dict[str, Any]]) -> str:
+def _agent_assurance(controls: list[VisualizationControlPresentation]) -> str:
     relevant = [item for item in controls if item["required"]] or controls
     statuses = {str(item["status"]) for item in relevant}
     for status in ("violated", "unsupported", "unverified"):

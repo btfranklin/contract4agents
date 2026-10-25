@@ -9,7 +9,7 @@ import pytest
 from click.testing import CliRunner
 
 import contract4agents.visualization as visualization
-from contract4agents.assurance import AssessorIdentity, ControlResult
+from contract4agents.assurance import AssessorIdentity, AssuranceStatus, ControlResult
 from contract4agents.cli import main
 from contract4agents.ir import (
     CanonicalIR,
@@ -58,7 +58,16 @@ def test_declared_graph_is_ir_native_and_represents_contract_semantics() -> None
     assert "quality:IncidentCommander:concise_operational_summary" in node_ids
     assert {"agent_grant", "grant_capability", "composition_source", "composition_target"} <= edge_kinds
     assert graph["edges"]
-    assert all(any(layer.get("present") is True for layer in edge["truth"].values()) for edge in graph["edges"])
+    assert all(
+        any(
+            layer.get("present") is True
+            for layer in (
+                edge["truth"]["declared"], edge["truth"]["planned"],
+                edge["truth"]["observed"], edge["truth"]["assured"],
+            )
+        )
+        for edge in graph["edges"]
+    )
     assert graph["summary"]["declared"] > 0
     assert graph["summary"]["planned"] == graph["summary"]["observed"] == 0
     assert graph["warnings"] == []
@@ -247,6 +256,7 @@ def test_presentation_prioritizes_control_results_and_evidence_gaps() -> None:
     plan = _plan(ir)
     trace, control_id = _trace(ir, plan)
     controls = [str(item.id) for item in ir.controls.values() if str(item.agent_id) == "agent:IncidentCommander"]
+    planned_statuses: tuple[AssuranceStatus, ...] = ("passed", "violated", "unverified")
     results = tuple(
         ControlResult(
             control_id=value,
@@ -256,7 +266,7 @@ def test_presentation_prioritizes_control_results_and_evidence_gaps() -> None:
             assessor=AssessorIdentity("test-assessor", "1"),
             evidence_event_ids=("event-1",) if value == str(control_id) else (),
         )
-        for value, status in zip(controls[:3], ("passed", "violated", "unverified"), strict=True)
+        for value, status in zip(controls[:3], planned_statuses, strict=True)
     )
 
     graph = build_visualization_graph(ir, plan=plan, trace=trace, control_results=results)

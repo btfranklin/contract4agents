@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 
@@ -8,9 +9,11 @@ import pytest
 from contract4agents.adapters.openai import openai_planner_capabilities
 from contract4agents.ir import (
     AgentIR,
+    Authorization,
     CanonicalIR,
     CapabilityIR,
     CompositionEdgeIR,
+    CompositionMode,
     ControlIR,
     ExternalContextIR,
     FrozenMap,
@@ -26,6 +29,10 @@ from contract4agents.ir import (
 )
 from contract4agents.planning import (
     PLAN_VERSION,
+    AdapterMappingResolver,
+    BindingKind,
+    BindingPlan,
+    BindingResolution,
     MappingSupport,
     PlannerCapabilities,
     PlanningError,
@@ -485,18 +492,24 @@ def test_openai_python_tool_approval_is_contextually_exact() -> None:
 def test_legacy_mapping_resolver_without_contextual_hooks_still_plans() -> None:
     base = openai_planner_capabilities()
 
+    candidate = base.mapping_resolver
+    assert candidate is not None
+    resolver: AdapterMappingResolver = candidate
+
     class LegacyResolver:
-        def resolve_binding(self, **kwargs):  # type: ignore[no-untyped-def]
-            return base.mapping_resolver.resolve_binding(**kwargs)  # type: ignore[union-attr]
+        def resolve_binding(self, *, kind: BindingKind, locator: Mapping[str, object]) -> BindingResolution:
+            return resolver.resolve_binding(kind=kind, locator=locator)
 
-        def grant_support(self, **kwargs):  # type: ignore[no-untyped-def]
-            return base.mapping_resolver.grant_support(**kwargs)  # type: ignore[union-attr]
+        def grant_support(
+            self, *, grant: GrantIR, binding: BindingPlan, named_environment: bool,
+        ) -> MappingSupport | None:
+            return resolver.grant_support(grant=grant, binding=binding, named_environment=named_environment)
 
-        def approval_support(self, **kwargs):  # type: ignore[no-untyped-def]
-            return base.mapping_resolver.approval_support(**kwargs)  # type: ignore[union-attr]
+        def approval_support(self, *, grant: GrantIR, binding: BindingPlan) -> MappingSupport | None:
+            return resolver.approval_support(grant=grant, binding=binding)
 
-        def composition_support(self, **kwargs):  # type: ignore[no-untyped-def]
-            return base.mapping_resolver.composition_support(**kwargs)  # type: ignore[union-attr]
+        def composition_support(self, *, edge: CompositionEdgeIR, declared: MappingSupport) -> MappingSupport | None:
+            return resolver.composition_support(edge=edge, declared=declared)
 
     capabilities = PlannerCapabilities.create(
         adapter=base.adapter,
@@ -645,7 +658,7 @@ def test_openai_planner_rejects_provider_hosted_datasource() -> None:
 )
 def test_openai_rejects_materializer_incompatible_isolation(
     grant_isolation: bool,
-    edge_mode: str,
+    edge_mode: CompositionMode,
     edge_isolation: bool,
     failed_id: object,
 ) -> None:
@@ -840,10 +853,10 @@ def _openai_hosted_bindings() -> TargetBindings:
 
 def _openai_ir(
     *,
-    authorization: str,
+    authorization: Authorization,
     execution: str = "host",
     grant_isolation: bool = False,
-    edge_mode: str = "delegate",
+    edge_mode: CompositionMode = "delegate",
     edge_isolation: bool = False,
 ) -> CanonicalIR:
     base = _sample_ir(execution=execution)

@@ -1,48 +1,48 @@
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime
-from typing import Any, cast
 
 import pytest
 from pydantic import BaseModel, ConfigDict, StrictStr, TypeAdapter, create_model
 
+from contract4agents._strict_json import json_array, json_object, json_string
 from contract4agents.materialization import AgentsSDK
 
 
-class ApplicationItem(BaseModel):
+class ApplicationItem(BaseModel):  # type: ignore[explicit-any]  # Pydantic constructor.
     model_config = ConfigDict(extra="forbid", strict=True)
 
     label: str
 
 
-class ApplicationEnvelope(BaseModel):
+class ApplicationEnvelope(BaseModel):  # type: ignore[explicit-any]  # Pydantic constructor.
     model_config = ConfigDict(extra="forbid", strict=True)
 
     items: list[ApplicationItem]
 
 
-class ContractItem(BaseModel):
+class ContractItem(BaseModel):  # type: ignore[explicit-any]  # Pydantic constructor.
     model_config = ConfigDict(extra="forbid", strict=True)
 
     label: StrictStr
 
 
-class ContractEnvelope(BaseModel):
+class ContractEnvelope(BaseModel):  # type: ignore[explicit-any]  # Pydantic constructor.
     model_config = ConfigDict(extra="forbid", strict=True)
 
     items: list[ContractItem]
 
 
-class ApplicationStatus(BaseModel):
+class ApplicationStatus(BaseModel):  # type: ignore[explicit-any]  # Pydantic constructor.
     model_config = ConfigDict(extra="forbid", strict=True)
 
     active: bool
     checked_at: datetime
 
 
-class ContractStatus(BaseModel):
+class ContractStatus(BaseModel):  # type: ignore[explicit-any]  # Pydantic constructor.
     model_config = ConfigDict(extra="forbid", strict=True)
 
     active: bool
@@ -58,20 +58,21 @@ INPUT_TYPE = create_model(
 
 def _openai_model_visible_case(
     output_shape: str,
-) -> tuple[object, TypeAdapter[Any], object]:
+) -> tuple[object, TypeAdapter[object], object]:
+    value: object
     if output_shape == "application_model":
         value = ApplicationEnvelope(items=[ApplicationItem(label="🍩")])
-        return value, TypeAdapter(ContractEnvelope), {"items": [{"label": "🍩"}]}
+        return value, TypeAdapter[object](ContractEnvelope), {"items": [{"label": "🍩"}]}
     if output_shape == "nested_mapping":
         value = {"items": [ApplicationItem(label="needle")]}
-        return value, TypeAdapter(ContractEnvelope), {"items": [{"label": "needle"}]}
+        return value, TypeAdapter[object](ContractEnvelope), {"items": [{"label": "needle"}]}
     value = ApplicationStatus(
         active=True,
         checked_at=datetime(2026, 1, 1, tzinfo=UTC),
     )
     return (
         value,
-        TypeAdapter(ContractStatus),
+        TypeAdapter[object](ContractStatus),
         {"active": True, "checked_at": "2026-01-01T00:00:00Z"},
     )
 
@@ -87,48 +88,69 @@ async def test_openai_runner_sends_validated_tool_results_to_the_model_as_json(
     asynchronous: bool,
 ) -> None:
     from agents import Agent, FunctionTool, ModelResponse, RunConfig, Runner, Usage
-    from agents.models.interface import Model
+    from agents.agent_output import AgentOutputSchemaBase
+    from agents.handoffs import Handoff
+    from agents.items import TResponseInputItem, TResponseStreamEvent
+    from agents.model_settings import ModelSettings
+    from agents.models.interface import Model, ModelTracing
+    from agents.tool import Tool
     from openai.types.responses import ResponseFunctionToolCall, ResponseOutputMessage, ResponseOutputText
+    from openai.types.responses.response_prompt_param import ResponsePromptParam
 
     host_value, output_adapter, expected = _openai_model_visible_case(output_shape)
     if asynchronous:
 
-        async def implementation(query: str) -> object:
+        async def asynchronous_implementation(query: str) -> object:
             del query
             return host_value
+
+        implementation: Callable[[str], object] = asynchronous_implementation
 
     else:
 
-        def implementation(query: str) -> object:
+        def synchronous_implementation(query: str) -> object:
             del query
             return host_value
 
-    tool = cast(
-        FunctionTool,
-        AgentsSDK().create_function_tool(
-            name="records.lookup",
-            description="Look up records.",
-            implementation=implementation,
-            input_type=INPUT_TYPE,
-            output_adapter=output_adapter,
-            requires_approval=False,
-        ),
+        implementation = synchronous_implementation
+
+    tool = AgentsSDK().create_function_tool(
+        name="records.lookup",
+        description="Look up records.",
+        implementation=implementation,
+        input_type=INPUT_TYPE,
+        output_adapter=output_adapter,
+        requires_approval=False,
     )
+    assert isinstance(tool, FunctionTool)
+    tool_name = tool.name
 
     class ToolThenFinalModel(Model):
         def __init__(self) -> None:
             self.inputs: list[object] = []
 
-        async def get_response(self, *args: Any, **kwargs: Any) -> ModelResponse:
-            model_input = kwargs.get("input", args[1] if len(args) > 1 else None)
-            self.inputs.append(model_input)
+        async def get_response(  # type: ignore[explicit-any]  # SDK aliases contain dynamic payload fields.
+            self,
+            system_instructions: str | None,
+            input: str | list[TResponseInputItem],
+            model_settings: ModelSettings,
+            tools: list[Tool],
+            output_schema: AgentOutputSchemaBase | None,
+            handoffs: list[Handoff],
+            tracing: ModelTracing,
+            *,
+            previous_response_id: str | None,
+            conversation_id: str | None,
+            prompt: ResponsePromptParam | None,
+        ) -> ModelResponse:
+            self.inputs.append(input)
             if len(self.inputs) == 1:
                 return ModelResponse(
                     output=[
                         ResponseFunctionToolCall(
                             arguments='{"query":"needle"}',
                             call_id="call-1",
-                            name=tool.name,
+                            name=tool_name,
                             type="function_call",
                         )
                     ],
@@ -155,9 +177,22 @@ async def test_openai_runner_sends_validated_tool_results_to_the_model_as_json(
                 response_id=None,
             )
 
-        async def stream_response(self, *_args: Any, **_kwargs: Any) -> AsyncIterator[Any]:
-            if False:
-                yield None
+        async def stream_response(  # type: ignore[explicit-any]  # SDK aliases contain dynamic payload fields.
+            self,
+            system_instructions: str | None,
+            input: str | list[TResponseInputItem],
+            model_settings: ModelSettings,
+            tools: list[Tool],
+            output_schema: AgentOutputSchemaBase | None,
+            handoffs: list[Handoff],
+            tracing: ModelTracing,
+            *,
+            previous_response_id: str | None,
+            conversation_id: str | None,
+            prompt: ResponsePromptParam | None,
+        ) -> AsyncIterator[TResponseStreamEvent]:
+            raise NotImplementedError("This fixture uses non-streamed model calls")
+            yield
 
     model = ToolThenFinalModel()
     agent = Agent(
@@ -175,6 +210,9 @@ async def test_openai_runner_sends_validated_tool_results_to_the_model_as_json(
     )
 
     assert result.final_output == "done"
-    second_turn = cast(list[dict[str, object]], model.inputs[1])
+    second_turn = [
+        json_object("model input item", item)
+        for item in json_array("second model turn", model.inputs[1])
+    ]
     tool_output = next(item for item in second_turn if item.get("type") == "function_call_output")
-    assert json.loads(cast(str, tool_output["output"])) == expected
+    assert json.loads(json_string("tool output", tool_output["output"])) == expected

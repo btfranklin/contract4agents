@@ -12,7 +12,7 @@ import math
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, TypeVar
 
 from contract4agents.ir import SemanticId
 
@@ -36,10 +36,12 @@ ProviderOutcomeCategory = Literal[
 ProviderUsageScope = Literal["response", "model_call", "attempt", "run"]
 ProviderUsageCoverage = Literal["complete", "partial", "unavailable", "unverified"]
 
-_STATES = frozenset({"observed", "inferred", "unavailable", "unverified"})
-_PHASES = frozenset({"transport", "request", "response", "structured_output", "cancellation"})
-_OUTCOMES = frozenset({"succeeded", "failed", "refused", "cancelled", "unknown"})
-_CATEGORIES = frozenset(
+_STATES: frozenset[EvidenceState] = frozenset({"observed", "inferred", "unavailable", "unverified"})
+_PHASES: frozenset[ProviderOutcomePhase] = frozenset(
+    {"transport", "request", "response", "structured_output", "cancellation"}
+)
+_OUTCOMES: frozenset[ProviderOutcome] = frozenset({"succeeded", "failed", "refused", "cancelled", "unknown"})
+_CATEGORIES: frozenset[ProviderOutcomeCategory] = frozenset(
     {
         "transport",
         "rate_limit",
@@ -53,8 +55,8 @@ _CATEGORIES = frozenset(
         "unknown",
     }
 )
-_SCOPES = frozenset({"response", "model_call", "attempt", "run"})
-_COVERAGE = frozenset({"complete", "partial", "unavailable", "unverified"})
+_SCOPES: frozenset[ProviderUsageScope] = frozenset({"response", "model_call", "attempt", "run"})
+_COVERAGE: frozenset[ProviderUsageCoverage] = frozenset({"complete", "partial", "unavailable", "unverified"})
 _SAFE_CODE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 
 
@@ -184,7 +186,23 @@ class ProviderOutcomeEvidence:
             "response_received",
         }
         _keys(payload, required, optional, "provider outcome")
-        return cls(**payload)  # type: ignore[arg-type]
+        return cls(
+            agent_id=_semantic_agent(payload["agent_id"]),
+            attempt_id=_string("attempt_id", payload["attempt_id"]),
+            phase=_enum_value("phase", payload["phase"], _PHASES),
+            outcome=_enum_value("outcome", payload["outcome"], _OUTCOMES),
+            category=_enum_value("category", payload["category"], _CATEGORIES),
+            state=_enum_value("state", payload["state"], _STATES),
+            classifier_provenance=_string("classifier_provenance", payload["classifier_provenance"]),
+            invocation_id=_optional_string("invocation_id", payload.get("invocation_id")),
+            attempt_number=_optional_integer("attempt_number", payload.get("attempt_number")),
+            http_status=_optional_integer("http_status", payload.get("http_status")),
+            provider_error_code=_optional_string("provider_error_code", payload.get("provider_error_code")),
+            request_id=_optional_string("request_id", payload.get("request_id")),
+            response_id=_optional_string("response_id", payload.get("response_id")),
+            retry_after_seconds=_optional_number("retry_after_seconds", payload.get("retry_after_seconds")),
+            response_received=_optional_boolean("response_received", payload.get("response_received")),
+        )
 
 
 @dataclass(frozen=True)
@@ -306,7 +324,23 @@ class ProviderUsageEvidence:
             "total_tokens",
         }
         _keys(payload, required, optional, "provider usage")
-        return cls(**payload)  # type: ignore[arg-type]
+        agent_id = payload.get("agent_id")
+        return cls(
+            scope=_enum_value("scope", payload["scope"], _SCOPES),
+            coverage=_enum_value("coverage", payload["coverage"], _COVERAGE),
+            aggregation_identity=_string("aggregation_identity", payload["aggregation_identity"]),
+            aggregation_basis=_string("aggregation_basis", payload["aggregation_basis"]),
+            provenance=_string("provenance", payload["provenance"]),
+            request_count=_optional_integer("request_count", payload.get("request_count")),
+            input_tokens=_optional_integer("input_tokens", payload.get("input_tokens")),
+            cached_input_tokens=_optional_integer("cached_input_tokens", payload.get("cached_input_tokens")),
+            output_tokens=_optional_integer("output_tokens", payload.get("output_tokens")),
+            reasoning_tokens=_optional_integer("reasoning_tokens", payload.get("reasoning_tokens")),
+            total_tokens=_optional_integer("total_tokens", payload.get("total_tokens")),
+            agent_id=None if agent_id is None else _semantic_agent(agent_id),
+            attempt_id=_optional_string("attempt_id", payload.get("attempt_id")),
+            invocation_id=_optional_string("invocation_id", payload.get("invocation_id")),
+        )
 
 
 def provider_outcome_event_data(evidence: ProviderOutcomeEvidence) -> dict[str, object]:
@@ -319,6 +353,55 @@ def provider_usage_event_data(evidence: ProviderUsageEvidence) -> dict[str, obje
     """Return the only normalized payload accepted for a usage report."""
 
     return {"evidence": evidence.to_dict()}
+
+
+EnumValue = TypeVar("EnumValue", bound=str)
+
+
+def _enum_value(name: str, value: object, choices: frozenset[EnumValue]) -> EnumValue:
+    if not isinstance(value, str):
+        raise TypeError(f"{name} must be a string")
+    for choice in choices:
+        if value == choice:
+            return choice
+    raise ValueError(f"Unsupported {name} `{value}`")
+
+
+def _string(name: str, value: object) -> str:
+    _text(name, value)
+    assert isinstance(value, str)
+    return value
+
+
+def _optional_string(name: str, value: object) -> str | None:
+    return None if value is None else _string(name, value)
+
+
+def _semantic_agent(value: object) -> SemanticId:
+    result = value if isinstance(value, SemanticId) else SemanticId.parse(_string("agent_id", value))
+    return result.require_kind("agent")
+
+
+def _optional_integer(name: str, value: object) -> int | None:
+    if value is None:
+        return None
+    _nonnegative_int(name, value)
+    assert isinstance(value, int)
+    return value
+
+
+def _optional_number(name: str, value: object) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise TypeError(f"{name} must be numeric")
+    return value
+
+
+def _optional_boolean(name: str, value: object) -> bool | None:
+    if value is not None and not isinstance(value, bool):
+        raise TypeError(f"{name} must be a boolean")
+    return value
 
 
 def _text(name: str, value: object) -> None:

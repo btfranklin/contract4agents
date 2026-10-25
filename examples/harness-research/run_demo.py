@@ -7,9 +7,12 @@ import json
 import uuid
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, cast
+from typing import TypedDict, cast
+
+from pydantic import BaseModel
 
 from contract4agents import materialize
+from contract4agents._strict_json import json_array, json_object, json_string
 from contract4agents.adapters.agentcore_harness import (
     AgentCoreHarnessMaterializationProvider,
     HarnessAgent,
@@ -30,6 +33,22 @@ from contract4agents.tracing import (
 ROOT = Path(__file__).parent
 
 
+class _DeploymentReference(TypedDict):
+    harness_arn: str
+    endpoint_name: str
+
+
+def _deployment_references(value: object) -> dict[str, _DeploymentReference]:
+    references: dict[str, _DeploymentReference] = {}
+    for name, item in json_object("deployments", value).items():
+        reference = json_object("deployment", item)
+        references[name] = {
+            "harness_arn": json_string("harness_arn", reference["harness_arn"]),
+            "endpoint_name": json_string("endpoint_name", reference["endpoint_name"]),
+        }
+    return references
+
+
 class SyntheticAWS:
     """Script the AWS transport for the offline example; no model is called."""
 
@@ -41,19 +60,19 @@ class SyntheticAWS:
     def arn(name: str) -> str:
         return f"arn:aws:bedrock-agentcore:us-west-2:123456789012:harness/{name}-abcdefghij"
 
-    def get_harness_endpoint(self, **kwargs: Any) -> dict[str, object]:
+    def get_harness_endpoint(self, *, harnessId: str, endpointName: str) -> dict[str, object]:
         return {
             "endpoint": {
-                "harnessId": kwargs["harnessId"],
-                "endpointName": kwargs["endpointName"],
+                "harnessId": harnessId,
+                "endpointName": endpointName,
                 "status": "READY",
                 "liveVersion": "1",
                 "targetVersion": "1",
             }
         }
 
-    def get_harness(self, **kwargs: Any) -> dict[str, object]:
-        name = kwargs["harnessId"].removesuffix("-abcdefghij")
+    def get_harness(self, *, harnessId: str, harnessVersion: str) -> dict[str, object]:
+        name = harnessId.removesuffix("-abcdefghij")
         return {
             "harness": {
                 **self.configuration.agents[name].request_payload(),
@@ -63,12 +82,16 @@ class SyntheticAWS:
             }
         }
 
-    def invoke_harness(self, **kwargs: Any) -> dict[str, object]:
-        name = self.names[kwargs["harnessArn"]]
-        content = kwargs["messages"][0]["content"][0]
+    def invoke_harness(
+        self, *, harnessArn: str, messages: list[dict[str, object]], **_kwargs: object,
+    ) -> dict[str, object]:
+        name = self.names[harnessArn]
+        content = json_object("content", json_array("content", messages[0]["content"])[0])
         start: dict[str, object] = {}
         if "toolResult" in content:
-            delta: dict[str, object] = {"text": json.dumps(content["toolResult"]["content"][0]["json"])}
+            tool_result = json_object("toolResult", content["toolResult"])
+            result_content = json_object("tool result content", json_array("content", tool_result["content"])[0])
+            delta: dict[str, object] = {"text": json.dumps(result_content["json"])}
             reason = "end_turn"
         else:
             tool = next(iter(self.configuration.agents[name].tools))
@@ -102,9 +125,9 @@ def run_demo(
     *,
     offline: bool,
     bindings: Path | None = None,
-    deployment_map: Mapping[str, Mapping[str, str]] | None = None,
+    deployment_map: Mapping[str, _DeploymentReference] | None = None,
     output: Path = Path(".contract/harness-demo"),
-) -> object:
+) -> BaseModel:
     """Run only synthetic data, with a maximum of two continuations per agent."""
 
     configuration = generate_harness_configuration(ROOT, target="harness", profile="test", bindings=bindings)
@@ -113,7 +136,7 @@ def run_demo(
         raise ValueError("Live execution requires an explicit deployment map")
     deployments = {}
     for name in configuration.agents:
-        reference = (
+        reference: _DeploymentReference = (
             {"harness_arn": SyntheticAWS.arn(name), "endpoint_name": "stable"}
             if offline
             else (deployment_map or {})[name]
@@ -139,7 +162,9 @@ def run_demo(
             tool = child.configuration.tools[child_result.pending.tool_name]
             # This is the application's explicit dispatch to the approved local tool.
             implementation = system.graph.implementations[tool.semantic_id]
-            value = cast(Any, implementation)(**child.tool_arguments(child_result.pending, context=child_scope))
+            if not callable(implementation):
+                raise TypeError("The bound tool implementation must be callable")
+            value = implementation(**child.tool_arguments(child_result.pending, context=child_scope))
             child_result = child.resume(child_result.pending, value, context=child_scope)
         if isinstance(child_result, HarnessCompleted):
             result = parent.resume(result.pending, child_result.value, context=context)
@@ -149,7 +174,10 @@ def run_demo(
     write_trace_jsonl(output / "trace.jsonl", NormalizedTrace(tuple(sink.events)))
     if not isinstance(result, HarnessCompleted):
         raise RuntimeError(f"Synthetic demonstration did not complete: {result.status}")
-    return system.validate_output_for_agent(parent, result.value)
+    validated = system.validate_output_for_agent(parent, result.value)
+    if not isinstance(validated, BaseModel):
+        raise TypeError("The research report must be a record")
+    return validated
 
 
 def main() -> None:
@@ -160,9 +188,11 @@ def main() -> None:
     parser.add_argument("--bindings", type=Path)
     parser.add_argument("--deployment-map", type=Path)
     args = parser.parse_args()
-    deployment_map = json.loads(args.deployment_map.read_text()) if args.deployment_map else None
+    deployment_map = (
+        _deployment_references(json.loads(args.deployment_map.read_text())) if args.deployment_map else None
+    )
     result = run_demo(offline=not args.live, bindings=args.bindings, deployment_map=deployment_map)
-    print(cast(Any, result).model_dump_json(indent=2))
+    print(result.model_dump_json(indent=2))
 
 
 if __name__ == "__main__":

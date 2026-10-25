@@ -25,6 +25,11 @@ from contract4agents.tracing import _strands as strands_tracing
 ROOT = Path(__file__).resolve().parents[3]
 
 
+class _HTTPError(Exception):
+    def __init__(self, status_code: int) -> None:
+        self.status_code = status_code
+
+
 def test_session_provider_reports_bind_attempt_identity_and_close_channels() -> None:
     project = ROOT / "examples" / "incident-command"
     compile_project(project)
@@ -165,10 +170,10 @@ def test_provider_extraction_helpers_use_structured_fields_only() -> None:
         ).coverage
         == "partial"
     )
-    assert openai_tracing._classify_openai_exception(SimpleNamespace(status_code=401))[1] == "authentication"
-    assert openai_tracing._classify_openai_exception(SimpleNamespace(status_code=403))[1] == "authorization"
-    assert openai_tracing._classify_openai_exception(SimpleNamespace(status_code=429))[1] == "rate_limit"
-    assert openai_tracing._classify_openai_exception(SimpleNamespace(status_code=500))[1] == "provider_error"
+    assert openai_tracing._classify_openai_exception(_HTTPError(401))[1] == "authentication"
+    assert openai_tracing._classify_openai_exception(_HTTPError(403))[1] == "authorization"
+    assert openai_tracing._classify_openai_exception(_HTTPError(429))[1] == "rate_limit"
+    assert openai_tracing._classify_openai_exception(_HTTPError(500))[1] == "provider_error"
     assert openai_tracing._classify_openai_exception(asyncio.CancelledError())[3] == "unverified"
     from agents.exceptions import MCPToolCancellationError, ModelRefusalError, ModelTimeoutError
 

@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, TypedDict
+from typing import Literal, TypedDict
+
+from contract4agents.ir import CanonicalJsonValue
 
 TruthView = Literal["declared", "planned", "observed", "assured"]
 
 
 class VisualizationTruth(TypedDict):
-    declared: dict[str, Any]
-    planned: dict[str, Any]
-    observed: dict[str, Any]
-    assured: dict[str, Any]
+    declared: dict[str, CanonicalJsonValue]
+    planned: dict[str, CanonicalJsonValue]
+    observed: dict[str, CanonicalJsonValue]
+    assured: dict[str, CanonicalJsonValue]
 
 
 class VisualizationNode(TypedDict):
@@ -30,24 +32,86 @@ class VisualizationEdge(TypedDict):
     truth: VisualizationTruth
 
 
+class VisualizationGuidance(TypedDict):
+    text: str
+    audience: list[str]
+
+
+class VisualizationInput(TypedDict):
+    name: str
+    type: str
+    required: bool
+
+
+class VisualizationGrant(TypedDict):
+    id: str
+    capability_id: str
+    availability: str
+    authorization: str | None
+    execution: str | None
+
+
+class VisualizationContext(TypedDict):
+    id: str
+    name: str
+    origin: str
+    type: str
+    input_mappings: dict[str, str]
+
+
+class VisualizationComposition(TypedDict):
+    id: str
+    name: str
+    direction: str
+    mode: str
+    other_agent_id: str
+
+
+class VisualizationControl(TypedDict):
+    id: str
+    name: str
+    severity: str
+    assessment: str
+    assurance: dict[str, CanonicalJsonValue]
+
+
+class VisualizationQuality(TypedDict):
+    id: str
+    name: str
+    rubric: str
+
+
+class VisualizationOperationalControl(TypedDict):
+    id: str
+    name: str
+    severity: str
+    requirement: str
+
+
+class VisualizationEval(TypedDict):
+    id: str
+    name: str
+    expectations: list[str]
+
+
 class VisualizationAgentDetail(TypedDict):
     id: str
     name: str
     signature: str
     goal: str
     description: str
-    guidance: list[dict[str, Any]]
-    inputs: list[dict[str, Any]]
+    guidance: list[VisualizationGuidance]
+    inputs: list[VisualizationInput]
     output_type: str
-    grants: list[dict[str, Any]]
-    contexts: list[dict[str, Any]]
-    composition: list[dict[str, Any]]
-    controls: list[dict[str, Any]]
-    qualities: list[dict[str, Any]]
-    operational_controls: list[dict[str, Any]]
-    evals: list[dict[str, Any]]
-    planned: dict[str, Any]
-    observed: dict[str, Any]
+    grants: list[VisualizationGrant]
+    contexts: list[VisualizationContext]
+    composition: list[VisualizationComposition]
+    controls: list[VisualizationControl]
+    qualities: list[VisualizationQuality]
+    operational_controls: list[VisualizationOperationalControl]
+    evals: list[VisualizationEval]
+    planned: dict[str, CanonicalJsonValue]
+    observed: dict[str, CanonicalJsonValue]
 
 
 class VisualizationSummary(TypedDict):
@@ -137,6 +201,93 @@ class VisualizationReviewNote(TypedDict):
     action: str
 
 
+class VisualizationCollaborator(TypedDict):
+    id: str
+    agent_id: str
+    name: str
+    direction: str
+    mode: str
+    description: str
+    truth: VisualizationTruthMembership
+
+
+class VisualizationTool(TypedDict):
+    id: str
+    grant_id: str
+    name: str
+    source_name: str
+    kind: str
+    availability: str
+    authorization: str | None
+    execution: str | None
+    access_label: str
+    approval_sensitive: bool
+    planned: dict[str, CanonicalJsonValue]
+    implementation: dict[str, CanonicalJsonValue]
+    observed: dict[str, CanonicalJsonValue]
+    truth: VisualizationTruthMembership
+
+
+class VisualizationContextSource(TypedDict):
+    id: str
+    name: str
+    source_name: str
+    source_id: str | None
+    source_label: str
+    origin: str
+    type: str
+    input_mappings: dict[str, str]
+    planned: dict[str, CanonicalJsonValue]
+    observed: dict[str, CanonicalJsonValue]
+
+
+class VisualizationControlPresentation(TypedDict):
+    id: str
+    name: str
+    source_name: str
+    status: str
+    status_label: str
+    summary: str
+    severity: str
+    required: bool
+    assessment: CanonicalJsonValue
+    requirement: CanonicalJsonValue
+    expected_evidence: CanonicalJsonValue
+    planned: dict[str, CanonicalJsonValue]
+    assurance: dict[str, CanonicalJsonValue]
+    truth: VisualizationTruthMembership
+
+
+class VisualizationTechnical(TypedDict):
+    semantic_id: str
+    source_name: str
+    signature: str
+    inputs: list[VisualizationInput]
+    output_type: str
+    goal: str
+    description: str
+    guidance: list[VisualizationGuidance]
+    planned: dict[str, CanonicalJsonValue]
+    observed: dict[str, CanonicalJsonValue]
+    tools: list[VisualizationTool]
+    contexts: list[VisualizationContextSource]
+    controls: list[VisualizationControlPresentation]
+
+
+class VisualizationSystem(TypedDict):
+    name: str
+    summary: str
+    agent_count: int
+    composition_count: int
+    semantic_entity_count: int
+    semantic_relationship_count: int
+    coordinator_id: str | None
+    coordinator_name: str | None
+    contract_digest: str
+    plan_digest: str | None
+    project_root: str | None
+
+
 class VisualizationFocus(TypedDict):
     agent_id: str
     name: str
@@ -146,17 +297,17 @@ class VisualizationFocus(TypedDict):
     nodes: list[VisualizationFocusNode]
     relationships: list[VisualizationFocusRelationship]
     coverage: VisualizationSummary
-    tools: list[dict[str, Any]]
-    contexts: list[dict[str, Any]]
-    collaborators: list[dict[str, Any]]
-    controls: list[dict[str, Any]]
-    technical: dict[str, Any]
+    tools: list[VisualizationTool]
+    contexts: list[VisualizationContextSource]
+    collaborators: list[VisualizationCollaborator]
+    controls: list[VisualizationControlPresentation]
+    technical: VisualizationTechnical
     wide_layout: VisualizationLayout
     compact_layout: VisualizationLayout
 
 
 class VisualizationPresentation(TypedDict):
-    system: dict[str, Any]
+    system: VisualizationSystem
     stages: list[VisualizationEvidenceStage]
     overview_agents: list[VisualizationOverviewAgent]
     overview_relationships: list[VisualizationOverviewRelationship]

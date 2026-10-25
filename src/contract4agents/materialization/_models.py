@@ -7,7 +7,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, Protocol, cast, runtime_checkable
+from typing import Literal, Protocol, cast, runtime_checkable
 
 from pydantic import BaseModel, ValidationError
 
@@ -16,7 +16,7 @@ from contract4agents.ir import CanonicalIR, FrozenJsonValue, FrozenMap, Semantic
 from contract4agents.materialization._context import ContextRuntime, ResolvedContextValue
 from contract4agents.materialization._errors import MaterializationError, MaterializationIssue
 from contract4agents.materialization._tracing import MaterializationTraceSink
-from contract4agents.materialization._types import output_type_for, type_adapter_for
+from contract4agents.materialization._types import GeneratedType, output_type_for, type_adapter_for
 from contract4agents.planning import MaterializationPlan, PlannedSystem, PlannerCapabilities
 from contract4agents.runtime import EnvironmentEnforcementEvidence, EnvironmentProvider
 from contract4agents.target_bindings import TargetBinding
@@ -415,7 +415,7 @@ class NativeAgentGraph:
 
     agents: FrozenMap[SemanticId, object]
     input_types: FrozenMap[SemanticId, type[BaseModel] | None]
-    output_types: FrozenMap[str, type[object]]
+    output_types: FrozenMap[str, GeneratedType]
     implementations: FrozenMap[SemanticId, object]
     grant_objects: FrozenMap[SemanticId, object]
     composition_objects: FrozenMap[SemanticId, object]
@@ -530,7 +530,7 @@ class MaterializedSystem(PlannedSystem):
                 )
             return None
         try:
-            return cast(BaseModel, cast(Any, input_type).model_validate(value))
+            return input_type.model_validate(value)
         except ValidationError as exc:
             validation_summary = _safe_validation_summary(exc)
         raise MaterializationError(
@@ -555,19 +555,13 @@ class MaterializedSystem(PlannedSystem):
         validated = self.validate_input_for_agent(agent, value)
         if validated is None:
             return "{}"
-        return cast(str, cast(Any, validated).model_dump_json())
+        return validated.model_dump_json()
 
-    def output_type_for_agent(self, agent: object) -> type[object]:
+    def output_type_for_agent(self, agent: object) -> object:
         """Return the generated output type for one native agent."""
 
         identifier, _, _ = self._details_for_agent(agent)
-        return cast(
-            type[object],
-            output_type_for(
-                self.plan.agents[identifier].output_type,
-                self.graph.output_types,
-            ),
-        )
+        return output_type_for(self.plan.agents[identifier].output_type, self.graph.output_types)
 
     def validate_output_for_agent(self, agent: object, value: object) -> object:
         """Validate one native agent output against its contract type."""
@@ -578,7 +572,7 @@ class MaterializedSystem(PlannedSystem):
             self.graph.output_types,
         )
         try:
-            return cast(object, adapter.validate_python(value))
+            return adapter.validate_python(value)
         except ValidationError as exc:
             validation_summary = _safe_validation_summary(exc)
         raise MaterializationError(
@@ -594,7 +588,7 @@ class MaterializedSystem(PlannedSystem):
         )
 
     @property
-    def generated_types(self) -> FrozenMap[str, type[object]]:
+    def generated_types(self) -> FrozenMap[str, GeneratedType]:
         """Return generated contract types that exclude application domain validators."""
 
         return self.graph.output_types
@@ -637,7 +631,7 @@ class MaterializationProvider(Protocol):
         plan: MaterializationPlan,
         implementations: FrozenMap[SemanticId, object],
         input_types: FrozenMap[SemanticId, type[BaseModel] | None],
-        output_types: FrozenMap[str, type[object]],
+        output_types: FrozenMap[str, GeneratedType],
         context_runtime: ContextRuntime,
         environment: EnvironmentProvider | None,
         materialization_trace_sink: MaterializationTraceSink,
