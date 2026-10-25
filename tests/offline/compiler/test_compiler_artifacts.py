@@ -73,6 +73,8 @@ def test_compiler_builds_nested_schema_docs_instructions_and_stable_digests() ->
     schema = artifacts.schemas["Result"]
     assert schema["$defs"]["Detail"]["properties"]["at"] == {"type": "string", "format": "date-time"}  # type: ignore[index]
     assert schema["properties"]["score"]["anyOf"][-1] == {"type": "null"}  # type: ignore[index]
+    detail_schema = {key: value for key, value in artifacts.schemas["Detail"].items() if key not in {"$schema", "$id"}}
+    assert schema["$defs"]["Detail"] == detail_schema  # type: ignore[index]
     assert "Do the safe thing." in artifacts.instructions["Worker"]
     assert "hidden" not in artifacts.instructions["Worker"]
     assert "trace.not_called(danger)" in artifacts.instructions["Worker"]

@@ -21,6 +21,20 @@ test("configured Python is authoritative and expands the workspace folder", asyn
   assert.equal(probes.length, 1);
 });
 
+test("a failed configured interpreter does not fall back to another interpreter", async () => {
+  const workspace = path.resolve("example-workspace");
+  const probes = [];
+
+  await assert.rejects(
+    resolvePython([workspace], "/custom/python", workspace, async (candidate) => {
+      probes.push(candidate.command);
+      return {ok: false, detail: "not importable"};
+    }),
+    /configured setting.*not importable/,
+  );
+  assert.deepEqual(probes, ["/custom/python"]);
+});
+
 test("workspace virtual environments precede system interpreters", () => {
   const workspace = path.resolve("example-workspace");
   const candidates = pythonCandidates([workspace], "");

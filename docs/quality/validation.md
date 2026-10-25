@@ -29,7 +29,7 @@ The composite runs:
 - `pdm run lint`: Ruff over source, tests, and examples.
 - `pdm run typecheck`: strict mypy over `src`.
 - `pdm run docs-check`: offline Perfect Doc structure and link checks, then
-  repository documentation consistency.
+  the repository license and inline document paths in `docs/index.md`.
 - `pdm run test:offline`: deterministic tests grouped by behavior family.
 - `pdm run test:editor`: VS Code extension tests.
 

@@ -4,7 +4,7 @@ import path from "node:path";
 export interface PythonCandidate {
   command: string;
   args: readonly string[];
-  source: string;
+  source: "configured" | "workspace" | "system";
 }
 
 export interface PythonProbeResult {
@@ -30,11 +30,11 @@ export async function resolvePython(
 
   for (const candidate of candidates) {
     const result = await probe(candidate, cwd);
-    attempts.push(`${displayCommand(candidate)} (${candidate.source}) — ${result.detail}`);
+    attempts.push(`${displayCommand(candidate)} (${sourceLabel(candidate.source)}) — ${result.detail}`);
     if (result.ok) {
       return {candidate, attempts};
     }
-    if (candidate.source === "configured setting") {
+    if (candidate.source === "configured") {
       break;
     }
   }
@@ -56,7 +56,7 @@ export function pythonCandidates(
     candidates.push({
       command: expandWorkspaceFolder(configuredPath.trim(), workspaceFolders[0]),
       args: [],
-      source: "configured setting",
+      source: "configured",
     });
   } else {
     for (const folder of workspaceFolders) {
@@ -64,21 +64,21 @@ export function pythonCandidates(
         {
           command: path.join(folder, ".venv", "bin", "python"),
           args: [],
-          source: "workspace .venv",
+          source: "workspace",
         },
         {
           command: path.join(folder, ".venv", "Scripts", "python.exe"),
           args: [],
-          source: "workspace .venv",
+          source: "workspace",
         },
       );
     }
     if (process.platform === "win32") {
-      candidates.push({command: "py", args: ["-3"], source: "system PATH"});
+      candidates.push({command: "py", args: ["-3"], source: "system"});
     }
     candidates.push(
-      {command: "python3", args: [], source: "system PATH"},
-      {command: "python", args: [], source: "system PATH"},
+      {command: "python3", args: [], source: "system"},
+      {command: "python", args: [], source: "system"},
     );
   }
   return deduplicate(candidates);
@@ -86,6 +86,15 @@ export function pythonCandidates(
 
 export function displayCommand(candidate: PythonCandidate): string {
   return [candidate.command, ...candidate.args].join(" ");
+}
+
+function sourceLabel(source: PythonCandidate["source"]): string {
+  const labels = {
+    configured: "configured setting",
+    workspace: "workspace .venv",
+    system: "system PATH",
+  };
+  return labels[source];
 }
 
 async function probePython(candidate: PythonCandidate, cwd: string): Promise<PythonProbeResult> {
@@ -113,7 +122,7 @@ async function probePython(candidate: PythonCandidate, cwd: string): Promise<Pyt
     child.on("exit", (code) => {
       clearTimeout(timer);
       if (code === 0) {
-        resolve({ok: true, detail: `ready (${candidate.source})`});
+        resolve({ok: true, detail: `ready (${sourceLabel(candidate.source)})`});
         return;
       }
       resolve({ok: false, detail: stderr.trim() || `exited with code ${code ?? "unknown"}`});

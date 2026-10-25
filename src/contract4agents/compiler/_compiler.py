@@ -21,6 +21,7 @@ from contract4agents.ir import (
     NullableTypeRef,
     PrimitiveTypeRef,
     TypeDeclarationIR,
+    TypeIR,
     TypeRef,
     build_canonical_ir,
     contract_digest,
@@ -107,26 +108,12 @@ def _schema_for_type(type_def: TypeDeclarationIR, ir: CanonicalIR) -> dict[str, 
             "type": "string",
             "enum": list(type_def.values),
         }
-    required: list[str] = []
-    properties: dict[str, object] = {}
     referenced: set[str] = set()
-    for item in type_def.fields:
-        field_schema = _schema_for_ref(item.type_ref, referenced)
-        if item.has_default:
-            field_schema["default"] = _plain_json(item.default)
-        elif not isinstance(item.type_ref, NullableTypeRef):
-            required.append(item.name)
-        properties[item.name] = field_schema
-    schema: dict[str, object] = {
+    schema = _record_schema(type_def, referenced)
+    schema.update({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": f"urn:contract4agents:type:{type_def.name}",
-        "title": type_def.name,
-        "type": "object",
-        "properties": properties,
-        "additionalProperties": False,
-    }
-    if required:
-        schema["required"] = required
+    })
     if referenced:
         definitions: dict[str, object] = {}
         pending = sorted(referenced)
@@ -145,26 +132,30 @@ def _schema_for_type(type_def: TypeDeclarationIR, ir: CanonicalIR) -> dict[str, 
                 }
                 continue
             nested_refs: set[str] = set()
-            nested_properties: dict[str, object] = {}
-            nested_required: list[str] = []
-            for field in target.fields:
-                field_schema = _schema_for_ref(field.type_ref, nested_refs)
-                if field.has_default:
-                    field_schema["default"] = _plain_json(field.default)
-                elif not isinstance(field.type_ref, NullableTypeRef):
-                    nested_required.append(field.name)
-                nested_properties[field.name] = field_schema
-            definition: dict[str, object] = {
-                "title": target.name,
-                "type": "object",
-                "properties": nested_properties,
-                "additionalProperties": False,
-            }
-            if nested_required:
-                definition["required"] = nested_required
-            definitions[name] = definition
+            definitions[name] = _record_schema(target, nested_refs)
             pending.extend(sorted(nested_refs - definitions.keys()))
         schema["$defs"] = {name: definitions[name] for name in sorted(definitions)}
+    return schema
+
+
+def _record_schema(type_def: TypeIR, referenced: set[str]) -> dict[str, object]:
+    properties: dict[str, object] = {}
+    required: list[str] = []
+    for field in type_def.fields:
+        field_schema = _schema_for_ref(field.type_ref, referenced)
+        if field.has_default:
+            field_schema["default"] = _plain_json(field.default)
+        elif not isinstance(field.type_ref, NullableTypeRef):
+            required.append(field.name)
+        properties[field.name] = field_schema
+    schema: dict[str, object] = {
+        "title": type_def.name,
+        "type": "object",
+        "properties": properties,
+        "additionalProperties": False,
+    }
+    if required:
+        schema["required"] = required
     return schema
 
 

@@ -4,7 +4,9 @@ import json
 import tomllib
 from pathlib import Path
 
-from scripts.docs_check import REQUIRED_DOCS, check_docs
+import pytest
+
+from scripts.docs_check import check_docs
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -70,72 +72,52 @@ def test_generated_typescript_runtime_is_root_owned() -> None:
         assert "npm ci --prefix editors/vscode" not in source
 
 
-def test_docs_check_reports_missing_doc(tmp_path: Path) -> None:
-    diagnostics = check_docs(tmp_path)
-
-    assert diagnostics
-    assert diagnostics[0].code == "DOC001"
-
-
 def _positions(source: str, required: tuple[str, ...]) -> list[int]:
     positions = [source.find(item) for item in required]
     assert all(position >= 0 for position in positions)
     return positions
 
 
-def test_docs_check_validates_docs_index_backtick_paths(tmp_path: Path) -> None:
-    for relative in REQUIRED_DOCS:
-        path = tmp_path / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("# ok\n")
-    (tmp_path / "docs" / "index.md").write_text("- `missing/doc.md`\n")
+@pytest.fixture(autouse=True)
+def project_license(tmp_path: Path) -> None:
+    (tmp_path / "LICENSE").write_text("Test license\n")
 
-    diagnostics = check_docs(tmp_path)
 
-    assert [(diagnostic.code, diagnostic.message) for diagnostic in diagnostics] == [
-        ("DOC001", "Missing required doc `docs/missing/doc.md`")
+def test_docs_check_requires_license(tmp_path: Path) -> None:
+    (tmp_path / "LICENSE").unlink()
+
+    assert [(item.code, item.message) for item in check_docs(tmp_path)] == [
+        ("DOC001", "Missing required doc `LICENSE`")
     ]
 
 
-def test_docs_check_supports_anchor_line_and_angle_markdown_links(tmp_path: Path) -> None:
-    for relative in REQUIRED_DOCS:
-        path = tmp_path / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("# ok\n")
-    for relative in ["docs/reference/cli.md", "docs/reference/trace-schema.md"]:
-        path = tmp_path / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("# ok\n")
-    (tmp_path / "docs" / "index.md").write_text(
-        "- `reference/cli.md#assess-root-trace-trace-jsonl`\n- [Trace](<reference/trace-schema.md:12>)\n"
-    )
-    (tmp_path / "README.md").write_text("[CLI](<docs/reference/cli.md#assess-root-trace-trace-jsonl>)\n")
+@pytest.mark.parametrize("target", ["reference/cli.md", "reference/cli.md#usage", "README.md", "../README.md"])
+def test_docs_index_accepts_existing_backtick_paths(tmp_path: Path, target: str) -> None:
+    (tmp_path / "docs" / "reference").mkdir(parents=True)
+    (tmp_path / "docs" / "reference" / "cli.md").write_text("# CLI\n")
+    (tmp_path / "README.md").write_text("# Project\n")
+    (tmp_path / "docs" / "index.md").write_text(f"- `{target}`\n")
 
     assert check_docs(tmp_path) == []
 
 
-def test_docs_check_uses_docs_index_as_required_map(tmp_path: Path) -> None:
-    for relative in REQUIRED_DOCS:
-        path = tmp_path / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("# ok\n")
-    (tmp_path / "docs" / "index.md").write_text("- `quality/validation.md`\n")
+def test_docs_index_reports_missing_backtick_path(tmp_path: Path) -> None:
+    (tmp_path / "docs").mkdir()
+    index = tmp_path / "docs" / "index.md"
+    index.write_text("- `quality/validation.md`\n- `quality/validation.md`\n")
 
     diagnostics = check_docs(tmp_path)
 
-    assert [(diagnostic.code, diagnostic.message) for diagnostic in diagnostics] == [
-        ("DOC001", "Missing required doc `docs/quality/validation.md`")
+    assert [(item.code, item.message) for item in diagnostics] == [
+        ("DOC003", f"Broken docs index path `quality/validation.md` in {index}")
     ]
 
 
-def test_docs_check_ignores_dependency_and_build_directories(tmp_path: Path) -> None:
-    for relative in REQUIRED_DOCS:
-        path = tmp_path / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("# ok\n")
-    for directory in ["node_modules", "dist", ".contract"]:
-        path = tmp_path / directory / "README.md"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("[broken](missing.md)\n")
+def test_docs_index_rejects_backtick_paths_outside_project(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    (root / "docs").mkdir(parents=True)
+    (root / "LICENSE").write_text("Test license\n")
+    (tmp_path / "outside.md").write_text("# Outside\n")
+    (root / "docs" / "index.md").write_text("- `../../outside.md`\n")
 
-    assert check_docs(tmp_path) == []
+    assert [item.code for item in check_docs(root)] == ["DOC003"]
