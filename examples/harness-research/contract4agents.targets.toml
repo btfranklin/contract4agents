@@ -1,0 +1,16 @@
+schema_version = "1"
+
+[targets.harness]
+adapter = "agentcore_harness"
+
+[targets.harness.tools."sources.lookup"]
+python = "harness_sources:lookup"
+
+[targets.harness.profiles.test]
+default_model = "us.anthropic.claude-sonnet-4-6"
+
+[targets.harness.profiles.test.options]
+execution_role_arn = "arn:aws:iam::123456789012:role/SyntheticHarnessRole"
+max_iterations = 4
+max_tokens = 1024
+timeout_seconds = 60

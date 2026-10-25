@@ -11,15 +11,21 @@ _UNSAFE = re.compile(r"[^A-Za-z0-9_]+")
 _MAX_NAME_LENGTH = 64
 
 
-def native_name(kind: str, identifier: SemanticId, display_name: str | None = None) -> str:
-    """Return a stable identifier accepted by Strands and Google ADK."""
+def native_name(
+    kind: str,
+    identifier: SemanticId,
+    display_name: str | None = None,
+    *,
+    max_length: int = _MAX_NAME_LENGTH,
+) -> str:
+    """Return a stable SDK name within the requested length."""
 
     safe_kind = _slug(kind) or "item"
     safe_name = _slug(display_name or "_".join(identifier.parts)) or "item"
     digest = hashlib.sha256(f"{kind}:{identifier}".encode()).hexdigest()[:8]
     prefix = f"c4a_{safe_kind}_"
     suffix = f"_{digest}"
-    available = _MAX_NAME_LENGTH - len(prefix) - len(suffix)
+    available = max_length - len(prefix) - len(suffix)
     if available < 1:
         raise ValueError(f"Native name kind `{kind}` is too long")
     return f"{prefix}{safe_name[:available]}{suffix}"

@@ -68,6 +68,20 @@ their Zod schemas. Run `generate` only for targets the application consumes,
 commonly into a dedicated checked-in generated directory. Generated files
 remain machine-owned and must not be edited.
 
+## `harness-config [ROOT]`
+
+Generate reviewed AWS CLI `create-harness` input files without AWS access.
+
+```bash
+contract4agents harness-config agent_contracts --target harness --profile test \
+  --out .contract/harness
+```
+
+`--target` and `--profile` are required. `--bindings PATH` selects a complete
+binding file. `--out PATH` defaults to `.contract/harness`. The directory
+contains one request per agent and an identity manifest. See the
+[Harness target reference](agentcore-harness-adapter.md).
+
 ## `plan [ROOT]`
 
 Resolve a target/profile plan without constructing native agents or calling

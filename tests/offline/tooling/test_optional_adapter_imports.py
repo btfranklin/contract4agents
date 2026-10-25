@@ -19,6 +19,10 @@ def test_core_planning_is_lazy_and_missing_adapter_extras_are_actionable() -> No
                     or fullname.startswith("google.adk.")
                     or fullname == "google.genai"
                     or fullname.startswith("google.genai.")
+                    or fullname == "boto3"
+                    or fullname.startswith("boto3.")
+                    or fullname == "botocore"
+                    or fullname.startswith("botocore.")
                 ):
                     raise ModuleNotFoundError(fullname)
                 return None
@@ -32,10 +36,18 @@ def test_core_planning_is_lazy_and_missing_adapter_extras_are_actionable() -> No
         from contract4agents.materialization._google_adk import ADKSDK
         from contract4agents.materialization._strands import StrandsAgentsSDK
 
-        for adapter in ("strands", "google_adk"):
+        for adapter in ("strands", "google_adk", "agentcore_harness"):
             registration = get_adapter_registration(adapter)
             assert registration is not None
             assert registration.planner_capabilities().adapter == adapter
+
+        from contract4agents.materialization._harness_deployment import aws_client
+        try:
+            aws_client("bedrock-agentcore")
+        except ImportError as exc:
+            assert "contract4agents[agentcore-harness]" in str(exc)
+        else:
+            raise AssertionError("missing AWS extra did not fail")
 
         try:
             StrandsAgentsSDK().create_model(

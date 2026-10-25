@@ -1,0 +1,7 @@
+agent EvidenceAnalyst(request: ResearchRequest) -> ResearchResult:
+    use sources.lookup:
+        availability = enabled
+        authorization = preapproved
+        execution = host
+    goal = "Answer the question from the source record and cite its evidence ID."
+    guidance = ["Use sources.lookup. State uncertainty when the source does not answer the question."]

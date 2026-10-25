@@ -5,7 +5,8 @@
 Contract4Agents is a free, open-source toolkit for defining structured agents
 in external specifications and turning those specifications into usable agent
 components. It includes a typed contract language, a compiler, code generators,
-and adapters for OpenAI Agents SDK, Strands Agents, and Google ADK.
+and adapters for OpenAI Agents SDK, Strands Agents, Google ADK, and Amazon
+Bedrock AgentCore Harness.
 
 Define each agent in its own `.agent.contract` file. Keep its inputs, output,
 grants, context, `goal`, and `guidance` in that file. Put shared types and
@@ -201,6 +202,7 @@ File generation and runtime construction serve different needs:
 | `generate --target python` | Python types with Pydantic validation | Application code needs to import the contract types |
 | `generate --target typescript` | TypeScript interfaces and Zod schemas | TypeScript code needs the same data definitions |
 | `materialize()` | Native Python SDK agents, tools, and supported composition | You want to run the defined agents through a supported framework |
+| `harness-config` | Reviewed AWS CLI input files and configuration digests | You want to deploy a contract-defined managed Harness agent |
 
 `materialize()` compiles the contract internally; it does not require a prior
 `compile` command. It checks the objects it constructs against the target plan.
@@ -217,9 +219,15 @@ generation commands.
 | OpenAI Agents SDK | Agents, function tools, delegations, and handoffs | [OpenAI target](docs/reference/openai-adapter.md) |
 | Strands Agents | Agents, typed tools, and agents used as tools | [Strands target](docs/reference/strands-adapter.md) |
 | Google ADK | Agents, tools, and typed agent sub-branches | [Google ADK target](docs/reference/google-adk-adapter.md) |
+| AgentCore Harness | Derived configuration and typed handles for verified deployed agents | [Harness target](docs/reference/agentcore-harness-adapter.md) |
 
 Install the corresponding extra: `contract4agents[openai]`,
-`contract4agents[strands]`, or `contract4agents[google-adk]`.
+`contract4agents[strands]`, `contract4agents[google-adk]`, or
+`contract4agents[agentcore-harness]`.
+
+The [Harness Research example](examples/harness-research/README.md) runs with
+synthetic transport offline. Its live route requires explicit deployment and
+verification. The application owns approvals, tool execution, and continuation.
 
 Targets have different capabilities. Planning reports those differences and
 rejects required mappings that would lose declared behavior. For example,

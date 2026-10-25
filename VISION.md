@@ -147,6 +147,10 @@ Contract4Agents materializes ordinary objects from the chosen framework. The
 OpenAI target, for example, returns normal Agents SDK agents, generated output
 types, tools, approval hooks, delegations, and handoffs.
 
+A managed target can return typed client handles for verified deployed agents.
+Its deployment configuration is derived from the same reviewed contract and
+plan. Deployment remains an external operation.
+
 The host still owns real tool implementations, credentials, approval decisions,
 persistence, deterministic workflow, deployment, and external services.
 Contract4Agents owns portable agent configuration and verifies the native graph

@@ -251,6 +251,31 @@ It lets host-owned ADK `App`, `Runner`, and session service execute the Market
 Research Google Search agent, then asserts grounding, Search suggestion, and
 `renderedContent` evidence. A skip is not live evidence.
 
+## Live AgentCore Harness Check
+
+The Harness check is opt-in and uses only the synthetic Harness Research
+fixture. It requires an explicit binding file and a deployment map for the
+already deployed example agents:
+
+```bash
+CONTRACT4AGENTS_RUN_HARNESS_LIVE=1 \
+CONTRACT4AGENTS_HARNESS_LIVE_BINDINGS=/path/to/harness.targets.toml \
+CONTRACT4AGENTS_HARNESS_LIVE_DEPLOYMENTS=/path/to/harness-deployments.json \
+pdm run test:harness-live
+```
+
+The [example guide](../../examples/harness-research/README.md) describes the map
+and deployment step. Use disposable resources in one AWS region. The test reads
+both agent configurations, then invokes only the evidence analyst and one
+source-tool continuation. It permits at most two Harness requests, each with at
+most four iterations, 1024 output tokens per iteration, and a 60-second limit.
+It disables SDK retries. AWS model and session charges apply.
+
+The test creates no Harness resources or endpoints. It stops its new synthetic
+runtime session in `finally`; its caller needs `StopRuntimeSession` permission.
+The deployment system owns removal of disposable resources and IAM policies.
+A skip or an offline schema test is not evidence of live AWS support.
+
 ## Documentation
 
 ```bash

@@ -18,7 +18,7 @@ from contract4agents.tracing import (
 
 
 def test_builtin_adapter_registry_keeps_planning_and_default_provider_versions_aligned() -> None:
-    for adapter in ("openai", "strands", "google_adk"):
+    for adapter in ("openai", "strands", "google_adk", "agentcore_harness"):
         registration = get_adapter_registration(adapter)
         assert registration is not None
         provider = registration.provider_factory()

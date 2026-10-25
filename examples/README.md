@@ -104,6 +104,11 @@ It demonstrates:
 
 ## Reusing the Pattern
 
+[Harness Research](harness-research/README.md) shows the managed Harness route
+with synthetic sources, one typed delegation, explicit deployment verification,
+and application-owned continuation. Its offline demonstration uses scripted
+AWS transport rather than replay files or a live model.
+
 Copy semantic declarations, not provider wiring. For a new project:
 
 1. define types and shared capabilities;

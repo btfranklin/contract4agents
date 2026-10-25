@@ -1,0 +1,5 @@
+composition analyze from ResearchCoordinator to EvidenceAnalyst:
+    mode = delegate
+    description = "Ask the evidence analyst to check the source."
+    history = none
+    map request = input.request

@@ -19,7 +19,10 @@ have similar code.
 | Provider tests | `tests/offline/materialization/test_<provider>_materialization.py` | Test provider-specific graph construction and SDK behavior. |
 | Reusable test support | `tests/support/<provider>.py` | Hold fake SDK boundaries and provider project builders. |
 
-`<provider>` is `openai`, `strands`, or `google_adk` for the built-in targets.
+`<provider>` is `openai`, `strands`, `google_adk`, or `agentcore_harness` for the
+built-in targets. Harness uses separate configuration, deployment, invocation,
+and validation modules under `materialization/`. Its materializer binds verified
+remote handles and performs no AWS resource writes.
 
 ## Required Sequence
 

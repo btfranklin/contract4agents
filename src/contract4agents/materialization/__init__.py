@@ -1,5 +1,6 @@
 """Contract-first framework-native materialization."""
 
+from contract4agents.materialization._agentcore_harness import AgentCoreHarnessMaterializationProvider
 from contract4agents.materialization._context import (
     ContextResolutionError,
     ContextRuntime,
@@ -46,6 +47,7 @@ from contract4agents.materialization._tracing import (
 )
 
 __all__ = [
+    "AgentCoreHarnessMaterializationProvider",
     "ADKSDK",
     "AgentsSDK",
     "ContextResolutionError",

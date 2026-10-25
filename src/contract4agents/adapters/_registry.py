@@ -95,7 +95,25 @@ def _google_adk_registration() -> AdapterRegistration:
     )
 
 
+def _agentcore_harness_registration() -> AdapterRegistration:
+    from contract4agents.adapters._agentcore_harness import (
+        agentcore_harness_planner_capabilities,
+        agentcore_harness_target_binding_validator,
+        agentcore_harness_target_profile_validator,
+    )
+    from contract4agents.materialization._agentcore_harness import AgentCoreHarnessMaterializationProvider
+
+    return AdapterRegistration(
+        adapter="agentcore_harness",
+        planner_capabilities=agentcore_harness_planner_capabilities,
+        provider_factory=AgentCoreHarnessMaterializationProvider,
+        binding_validator=agentcore_harness_target_binding_validator,
+        profile_validator=agentcore_harness_target_profile_validator,
+    )
+
+
 _REGISTRATION_FACTORIES: dict[str, Callable[[], AdapterRegistration]] = {
+    "agentcore_harness": _agentcore_harness_registration,
     "google_adk": _google_adk_registration,
     "openai": _openai_registration,
     "strands": _strands_registration,

@@ -1,0 +1,3 @@
+tool sources.lookup(request: ResearchRequest) -> ResearchResult:
+    description = "Read the synthetic source record for the request."
+    side_effect = false

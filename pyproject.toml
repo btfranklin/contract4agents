@@ -59,6 +59,9 @@ openai = [
 strands = [
     "strands-agents>=1.54.0",
 ]
+agentcore-harness = [
+    "boto3>=1.43.118",
+]
 
 [tool.pdm]
 distribution = true
@@ -76,6 +79,7 @@ test = "pytest"
 "test:openai-live" = "pytest -m live tests/live/test_openai_live.py"
 "test:strands-live" = "pytest -m live tests/live/test_strands_live.py"
 "test:google-adk-live" = "pytest -m live tests/live/test_google_adk_live.py"
+"test:harness-live" = "pytest -m live tests/live/test_agentcore_harness_live.py"
 "test:editor" = "npm --prefix editors/vscode test"
 docs-check = {composite = ["docs:structure", "docs:project"]}
 "docs:structure" = "perfect-doc check . --offline --no-banner"

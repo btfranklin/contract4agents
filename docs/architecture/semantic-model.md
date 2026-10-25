@@ -864,6 +864,18 @@ check joins a semantic ID and schema boundary to the declared and materialized
 schemas. A required mismatch or unverified observation blocks materialization.
 The resulting graph validation evidence is a required assurance input.
 
+### Managed target boundary
+
+A managed target can return typed client handles for explicitly selected
+deployed agents. Configuration generation stays offline. An explicit read-only
+verification step compares the deployed configuration with the contract and
+plan. Materialization requires that evidence and makes no resource writes.
+Mutable endpoints remain deployment-system obligations after verification.
+Client validation and available stream evidence do not prove remote
+immutability, complete instrumentation, or external business effects. The
+[AgentCore Harness target](../reference/agentcore-harness-adapter.md) defines the
+first supported managed route.
+
 ### Bound Python host-callable boundary
 
 Python host tools, datasources, and external-context providers use one private
@@ -1050,6 +1062,7 @@ The installed CLI contains:
 check
 compile
 generate
+harness-config
 plan
 eval
   replay

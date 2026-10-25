@@ -1,5 +1,10 @@
 """Target adapter capability descriptors."""
 
+from contract4agents.adapters._agentcore_harness import (
+    agentcore_harness_planner_capabilities,
+    agentcore_harness_target_binding_validator,
+    agentcore_harness_target_profile_validator,
+)
 from contract4agents.adapters._google_adk import (
     google_adk_planner_capabilities,
     google_adk_target_binding_validator,
@@ -18,6 +23,9 @@ from contract4agents.adapters._strands import (
 )
 
 __all__ = [
+    "agentcore_harness_planner_capabilities",
+    "agentcore_harness_target_binding_validator",
+    "agentcore_harness_target_profile_validator",
     "contract_tool_name",
     "google_adk_planner_capabilities",
     "google_adk_target_binding_validator",

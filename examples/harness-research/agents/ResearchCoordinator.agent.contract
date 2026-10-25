@@ -1,0 +1,3 @@
+agent ResearchCoordinator(request: ResearchRequest) -> ResearchResult:
+    goal = "Ask the evidence analyst to answer the question and return its cited result."
+    guidance = ["Delegate the complete request. Keep the analyst's evidence IDs."]

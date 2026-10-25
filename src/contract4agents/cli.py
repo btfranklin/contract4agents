@@ -211,6 +211,32 @@ def _adapter_binding_validator(adapter: str) -> AdapterBindingValidator | None:
     return registration.binding_validator if registration is not None else None
 
 
+@main.command("harness-config")
+@click.argument("root", type=click.Path(path_type=Path), default=".", required=False)
+@click.option("--target", required=True, help="AgentCore Harness target name.")
+@click.option("--profile", required=True, help="Complete target profile name.")
+@click.option("--bindings", type=click.Path(path_type=Path), default=None)
+@click.option("--out", type=click.Path(path_type=Path), default=".contract/harness")
+def harness_config_cmd(root: Path, target: str, profile: str, bindings: Path | None, out: Path) -> None:
+    """Write reviewed AWS CLI input files without AWS access."""
+
+    from contract4agents.adapters.agentcore_harness import generate_harness_configuration
+
+    try:
+        configuration = generate_harness_configuration(root, target=target, profile=profile, bindings=bindings)
+        destination = validate_output_dir(root.resolve(), out, artifact_label="Harness configuration")
+        configuration.write(destination)
+        click.echo(f"Contract4Agents Harness configuration written to {destination}")
+    except ContractError as exc:
+        _print_contract_error(exc)
+    except (PlanningError, MaterializationError) as exc:
+        for issue in exc.issues:
+            click.echo(issue.format(), err=True)
+        raise click.ClickException("Contract4Agents Harness planning failed") from exc
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
 def _adapter_profile_validator(adapter: str) -> AdapterProfileValidator | None:
     registration = get_adapter_registration(adapter)
     return registration.profile_validator if registration is not None else None

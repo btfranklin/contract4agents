@@ -49,6 +49,8 @@ These guides cover optional assessment and application-specific design:
   interventions, typed tools, and delegation.
 - [Google ADK Target](reference/google-adk-adapter.md): native ADK agents,
   confirmation, typed tools, delegation, and Google Search.
+- [AgentCore Harness Target](reference/agentcore-harness-adapter.md): managed
+  configuration, deployment verification, and typed client invocation.
 - [CLI](reference/cli.md): public commands and their side effects.
 - [Run Specs](reference/run-specs.md): verification of host-owned deterministic
   workflow.
@@ -72,6 +74,7 @@ These guides cover optional assessment and application-specific design:
 - [Incident Command](../examples/incident-command/README.md)
 - [Multi-Lens Research](../examples/multi-lens-research/README.md)
 - [Market Research Brief](../examples/market-research-brief/README.md)
+- [Harness Research](../examples/harness-research/README.md)
 - [Demo Team Design Notes](examples/demo-agent-teams.md)
 
 ## Project and Contributor References

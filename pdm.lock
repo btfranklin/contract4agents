@@ -2,10 +2,10 @@
 # It is not intended for manual editing.
 
 [metadata]
-groups = ["default", "dev", "google-adk", "openai", "strands"]
+groups = ["default", "agentcore-harness", "dev", "google-adk", "openai", "strands"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.1"
-content_hash = "sha256:386ed122e552adf77857d3d6cc55e64532f8368d2484fe437d047ca7a9f563d9"
+content_hash = "sha256:52c9087dfec79e86078c99c6070b2b66640df980f4822e36601505d79440be91"
 
 [[metadata.targets]]
 requires_python = ">=3.11"
@@ -300,34 +300,34 @@ files = [
 
 [[package]]
 name = "boto3"
-version = "1.43.82"
+version = "1.43.118"
 requires_python = ">=3.10"
-summary = "The AWS SDK for Python"
-groups = ["strands"]
+summary = "The AWS SDK for Python (Boto3)"
+groups = ["agentcore-harness", "strands"]
 dependencies = [
-    "botocore<1.44.0,>=1.43.82",
+    "botocore<1.44.0,>=1.43.118",
     "jmespath<2.0.0,>=0.7.1",
     "s3transfer<0.20.0,>=0.19.0",
 ]
 files = [
-    {file = "boto3-1.43.82-py3-none-any.whl", hash = "sha256:65319e8bba6e30f74a6e2727a5688725222da2ab71c6069bc484ce5bfd101c73"},
-    {file = "boto3-1.43.82.tar.gz", hash = "sha256:bc5a7824568c117110bac8fe7ccfac63f0a946f253953d42e73a8c1fb65162e0"},
+    {file = "boto3-1.43.118-py3-none-any.whl", hash = "sha256:ab8f3d2c622ef039338b4f228d97ea55f1abd573d84bb9b9a5ee8cb6780c0ccd"},
+    {file = "boto3-1.43.118.tar.gz", hash = "sha256:c0620f799e0f0c222ba42c337b65cdbcd3da38a3121187f634d8926cbbb28a9c"},
 ]
 
 [[package]]
 name = "botocore"
-version = "1.43.82"
+version = "1.43.118"
 requires_python = ">=3.10"
 summary = "Low-level, data-driven core of boto 3."
-groups = ["strands"]
+groups = ["agentcore-harness", "strands"]
 dependencies = [
     "jmespath<2.0.0,>=0.7.1",
     "python-dateutil<3.0.0,>=2.1",
     "urllib3!=2.2.0,<3,>=1.25.4",
 ]
 files = [
-    {file = "botocore-1.43.82-py3-none-any.whl", hash = "sha256:97b3e89061decc91e7745d726dae595cbe2053894611c49ea91d6fdcb2ecc36b"},
-    {file = "botocore-1.43.82.tar.gz", hash = "sha256:347573c0bab52e29c923e28128764fcc50f469ed98dc5460220026cd3672ac0c"},
+    {file = "botocore-1.43.118-py3-none-any.whl", hash = "sha256:a45d7ae570674161e4a3542d8c68633bf7503f92d1de781ef7361b79488eda6f"},
+    {file = "botocore-1.43.118.tar.gz", hash = "sha256:7f3f9d88cc9e847587690f82a42e3c3c292c3026c92c1e60d68a9310018e003f"},
 ]
 
 [[package]]
@@ -1413,7 +1413,7 @@ name = "jmespath"
 version = "1.1.0"
 requires_python = ">=3.9"
 summary = "JSON Matching Expressions"
-groups = ["strands"]
+groups = ["agentcore-harness", "strands"]
 files = [
     {file = "jmespath-1.1.0-py3-none-any.whl", hash = "sha256:a5663118de4908c91729bea0acadca56526eb2698e83de10cd116ae0f4e97c64"},
     {file = "jmespath-1.1.0.tar.gz", hash = "sha256:472c87d80f36026ae83c6ddd0f1d05d4e510134ed462851fd5f754c8c3cbb88d"},
@@ -2379,7 +2379,7 @@ name = "python-dateutil"
 version = "2.9.0.post0"
 requires_python = "!=3.0.*,!=3.1.*,!=3.2.*,>=2.7"
 summary = "Extensions to the standard Python datetime module"
-groups = ["strands"]
+groups = ["agentcore-harness", "strands"]
 dependencies = [
     "six>=1.5",
 ]
@@ -2682,7 +2682,7 @@ name = "s3transfer"
 version = "0.19.2"
 requires_python = ">=3.10"
 summary = "An Amazon S3 Transfer Manager"
-groups = ["strands"]
+groups = ["agentcore-harness", "strands"]
 dependencies = [
     "botocore<2.0a.0,>=1.37.4",
 ]
@@ -2696,7 +2696,7 @@ name = "six"
 version = "1.17.0"
 requires_python = "!=3.0.*,!=3.1.*,!=3.2.*,>=2.7"
 summary = "Python 2 and 3 compatibility utilities"
-groups = ["strands"]
+groups = ["agentcore-harness", "strands"]
 files = [
     {file = "six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274"},
     {file = "six-1.17.0.tar.gz", hash = "sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81"},
@@ -2862,7 +2862,7 @@ name = "urllib3"
 version = "2.7.0"
 requires_python = ">=3.10"
 summary = "HTTP library with thread-safe connection pooling, file post, and more."
-groups = ["google-adk", "openai", "strands"]
+groups = ["agentcore-harness", "google-adk", "openai", "strands"]
 files = [
     {file = "urllib3-2.7.0-py3-none-any.whl", hash = "sha256:9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897"},
     {file = "urllib3-2.7.0.tar.gz", hash = "sha256:231e0ec3b63ceb14667c67be60f2f2c40a518cb38b03af60abc813da26505f4c"},

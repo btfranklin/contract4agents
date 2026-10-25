@@ -1,0 +1,6 @@
+type ResearchRequest:
+    question: string
+
+type ResearchResult:
+    answer: string
+    evidence_ids: list[string]
