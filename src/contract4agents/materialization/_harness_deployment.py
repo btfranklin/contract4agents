@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -87,7 +88,37 @@ def aws_client(service: str, *, region: str | None = None) -> object:
         Config = importlib.import_module("botocore.config").Config
     except ImportError as exc:
         raise ImportError("Install contract4agents[agentcore-harness] to use AWS clients") from exc
-    return boto3.client(service, region_name=region, config=Config(retries={"total_max_attempts": 1}))
+    client = boto3.client(service, region_name=region, config=Config(retries={"total_max_attempts": 1}))
+    if service == "bedrock-agentcore-control":
+        client.meta.events.register(
+            "before-parse.bedrock-agentcore-control.GetHarness", _normalize_none_truncation
+        )
+    return client
+
+
+def _normalize_none_truncation(response_dict: dict[str, object], **_kwargs: object) -> None:
+    """Remove the service's empty optional union only when truncation is disabled."""
+
+    if response_dict.get("status_code") != 200:
+        return
+    body = response_dict.get("body")
+    if not isinstance(body, (bytes, str)):
+        return
+    try:
+        response = json_object("Harness response", json.loads(body))
+        harness = json_object("Harness", response["harness"])
+        truncation = json_object("Harness truncation", harness["truncation"])
+    except (KeyError, TypeError, ValueError):
+        return
+    if truncation.get("strategy") != "none" or truncation.get("config") != {}:
+        return
+    response_dict["body"] = json.dumps({
+        **response,
+        "harness": {
+            **harness,
+            "truncation": {key: value for key, value in truncation.items() if key != "config"},
+        },
+    }).encode("utf-8")
 
 
 @dataclass(frozen=True)
