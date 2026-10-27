@@ -69,7 +69,7 @@ from contract4agents.ir._model import (
     TypeIR,
 )
 from contract4agents.ir._type_refs import TypeRef, parse_type_ref
-from contract4agents.parser._values import unquote
+from contract4agents.parser._values import unquote, unquote_json_string
 from contract4agents.run_specs import (
     normalize_derived_value_type,
     parse_run_spec_derived_value_declaration,
@@ -234,7 +234,7 @@ def _agent_ir(project: ContractProject, item: AgentDef) -> AgentIR:
         name=item.name,
         parameters=tuple(_parameter_ir(project, field) for field in item.parameters),
         output_type=_type_ref(item.return_type),
-        goal=unquote(_text(goal)),
+        goal=unquote_json_string(str(goal)),
         description=unquote(_text(description)),
         guidance=tuple(GuidanceIR(text) for text in _list(guidance)),
         grant_ids=tuple(semantic_id("grant", item.name, grant.capability) for grant in item.grants),

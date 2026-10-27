@@ -208,6 +208,11 @@ metadata. Output conformance is derived automatically from the return type;
 behavioral invariants belong in controls or quality rubrics. Run-spec assertions
 remain available for host-owned workflow verification.
 
+Double-quoted `goal` values use JSON string escaping. Use `\n` for a line
+break, `\uXXXX` for a Unicode code point, and `\\` for a literal backslash.
+Invalid JSON escapes fail when the compiler builds the canonical contract.
+Single-quoted and unquoted goal values retain their literal text behavior.
+
 ## Composition
 
 Composition is a named top-level edge:

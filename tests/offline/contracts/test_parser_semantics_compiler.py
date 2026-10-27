@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -130,6 +131,55 @@ def test_build_artifacts_accepts_canonical_ir_only() -> None:
 
     assert "IncidentCommander" in artifacts.instructions
     assert "summary.md" in {str(path) for path in artifacts.docs}
+
+
+def test_json_quoted_agent_goal_decodes_before_compilation(tmp_path: Path) -> None:
+    goal = "Use Markdown.\nKeep this word: café — “ready”. Literal slash sequence: \\n"
+    encoded_goal = json.dumps(goal)
+    source = tmp_path / "agent.contract"
+    source.write_text(
+        f'type Result:\n    value: string\n\nagent Worker() -> Result:\n    goal = {encoded_goal}\n',
+        encoding="utf-8",
+    )
+
+    artifacts = compile_project(tmp_path, tmp_path / "build")
+
+    assert artifacts.ir.agents[semantic_id("agent", "Worker")].goal == goal
+    assert artifacts.instructions["Worker"].startswith(f"# Worker\n\n{goal}\n\n")
+
+
+@pytest.mark.parametrize(
+    ("source_goal", "expected"),
+    [
+        ('"Keep\\n as written"', "Keep\n as written"),
+        ("'Keep\\n as written'", "Keep\\n as written"),
+        ("Keep\\n as written", "Keep\\n as written"),
+    ],
+)
+def test_agent_goal_preserves_supported_legacy_forms(
+    tmp_path: Path,
+    source_goal: str,
+    expected: str,
+) -> None:
+    (tmp_path / "agent.contract").write_text(
+        f'type Result:\n    value: string\n\nagent Worker() -> Result:\n    goal = {source_goal}\n',
+        encoding="utf-8",
+    )
+
+    artifacts = compile_project(tmp_path, tmp_path / "build")
+
+    assert artifacts.ir.agents[semantic_id("agent", "Worker")].goal == expected
+
+
+def test_malformed_json_escape_in_double_quoted_agent_goal_fails(tmp_path: Path) -> None:
+    (tmp_path / "agent.contract").write_text(
+        'type Result:\n    value: string\n\nagent Worker() -> Result:\n    goal = "Keep\\q as written"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(json.JSONDecodeError) as caught:
+        compile_project(tmp_path, tmp_path / "build")
+    assert caught.value.msg == "Invalid \\escape"
 
 
 def test_run_spec_ir_retains_derived_values_and_checks_agent_output_signature(tmp_path: Path) -> None:
