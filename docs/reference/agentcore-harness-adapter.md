@@ -90,9 +90,16 @@ makes no AWS calls and changes no resources.
 
 Verification is an observation. Invocation selects an endpoint name, which can
 change after verification. The deployment system must keep the endpoint stable
-while a binding is used. Reverify after deployment changes. Verification does
+while a binding is used. A ready endpoint needs a concrete live version. Its
+optional target version must match when supplied. Reverify after deployment changes. Verification does
 not prove IAM policy or external effects. Injected SDK clients must preserve
 the documented retry boundary.
+
+AWS can return an empty optional truncation configuration when the strategy is
+`none`. Adapter-created control clients remove that empty field before SDK
+parsing. The effective strategy and all other configuration fields stay intact.
+An empty configuration for an active truncation strategy still fails parsing.
+Injected control clients must handle this service response themselves.
 
 ## Typed Invocation and Continuation
 

@@ -182,12 +182,19 @@ def test_adapter_created_aws_clients_disable_sdk_retries(monkeypatch: pytest.Mon
     assert cast(_RetryConfiguration, calls[0][1]["config"]).retries == {"total_max_attempts": 1}
 
 
+@pytest.mark.parametrize("include_target", [True, False])
 def test_deployment_verification_checks_readback_and_endpoint_stability(
-    tmp_path: Path,
+    tmp_path: Path, include_target: bool,
 ) -> None:
     root = write_project(tmp_path / "project")
     configuration = _configuration(root)
     control = FakeHarnessControlClient(configuration)
+    if not include_target:
+        endpoint: dict[str, object] = {
+            "harnessId": control.harness_id, "endpointName": control.endpoint_name,
+            "liveVersion": "1", "status": "READY",
+        }
+        control.endpoint_responses.extend([endpoint, endpoint])
     deployment = verify_harness_deployment(
         configuration,
         "Analyst",
@@ -208,6 +215,17 @@ def test_deployment_verification_checks_readback_and_endpoint_stability(
     ):
         with pytest.raises(ValueError, match="does not match"):
             changed.validate(configuration, "Analyst")
+
+
+def test_ready_endpoint_with_a_different_target_version_is_refused(tmp_path: Path) -> None:
+    configuration = _configuration(write_project(tmp_path / "project"))
+    control = FakeHarnessControlClient(configuration)
+    control.endpoint_mutation["targetVersion"] = "2"
+    with pytest.raises(ValueError, match="not stable and ready"):
+        verify_harness_deployment(
+            configuration, "Analyst", harness_arn=control.harness_arn,
+            endpoint_name=control.endpoint_name, client=control,
+        )
 
 
 def test_fake_runtime_client_returns_scripted_complete_streams() -> None:
