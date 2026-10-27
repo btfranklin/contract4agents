@@ -90,7 +90,8 @@ makes no AWS calls and changes no resources.
 
 Verification is an observation. Invocation selects an endpoint name, which can
 change after verification. The deployment system must keep the endpoint stable
-while a binding is used. Reverify after deployment changes. Verification does
+while a binding is used. A ready endpoint needs a concrete live version. Its
+optional target version must match when supplied. Reverify after deployment changes. Verification does
 not prove IAM policy or external effects. Injected SDK clients must preserve
 the documented retry boundary.
 

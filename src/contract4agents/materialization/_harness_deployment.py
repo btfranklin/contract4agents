@@ -226,7 +226,7 @@ def _check_endpoint(endpoint: Mapping[str, object], harness_id: str, name: str) 
         endpoint.get("status") != "READY"
         or endpoint.get("harnessId") != harness_id
         or endpoint.get("endpointName") != name
-        or endpoint.get("liveVersion") != endpoint.get("targetVersion")
+        or ("targetVersion" in endpoint and endpoint["targetVersion"] != endpoint.get("liveVersion"))
         or not re.fullmatch(r"[1-9][0-9]{0,4}", str(endpoint.get("liveVersion", "")))
     ):
         raise ValueError("Harness endpoint is not stable and ready")
