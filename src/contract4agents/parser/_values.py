@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 
 def coerce_name_list(value: str | list[str]) -> list[str]:
     if isinstance(value, list):
@@ -67,3 +69,15 @@ def unquote(value: str) -> str:
     if len(stripped) >= 2 and stripped[0] == stripped[-1] and stripped[0] in {"'", '"'}:
         return stripped[1:-1]
     return stripped
+
+
+def unquote_json_string(value: str) -> str:
+    """Decode a double-quoted JSON string; leave other scalar forms unchanged."""
+
+    stripped = value.strip()
+    if len(stripped) >= 2 and stripped[0] == stripped[-1] == '"':
+        decoded = json.loads(stripped)
+        if not isinstance(decoded, str):
+            raise ValueError("A double-quoted agent goal must be a JSON string")
+        return decoded
+    return unquote(stripped)

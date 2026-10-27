@@ -52,6 +52,20 @@ def test_cli_check_keeps_projects_without_target_bindings_provider_neutral(tmp_p
     assert "Contract4Agents check passed" in result.output
 
 
+def test_cli_check_reports_malformed_json_goal_with_source_location(tmp_path: Path) -> None:
+    (tmp_path / "agent.contract").write_text(
+        'type Reply:\n    text: string\n\nagent Responder() -> Reply:\n    goal = "Keep\\q as written"\n',
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(main, ["check", str(tmp_path)])
+
+    assert result.exit_code != 0
+    assert "agent.contract:5:5 ERROR SEM072" in result.output
+    assert "invalid JSON string: Invalid \\escape" in result.output
+    assert "Traceback" not in result.output
+
+
 def test_cli_check_rejects_a_missing_project_root(tmp_path: Path) -> None:
     result = CliRunner().invoke(main, ["check", str(tmp_path / "missing")])
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from contract4agents.ast import AgentDef
 from contract4agents.diagnostics import Diagnostic
 from contract4agents.language_spec import AGENT_ATTRIBUTES, AGENT_LIST_ATTRIBUTES, AGENT_TEXT_ATTRIBUTES
@@ -41,6 +43,27 @@ def _check_agent_attributes(agent: AgentDef) -> list[Diagnostic]:
                 )
             )
             continue
+        if key == "goal" and isinstance(value, str) and value.strip().startswith('"'):
+            try:
+                decoded = json.loads(value.strip())
+            except json.JSONDecodeError as exc:
+                diagnostics.append(
+                    Diagnostic(
+                        "SEM072",
+                        f"Agent goal on `{agent.name}` has an invalid JSON string: {exc.msg}",
+                        span=span,
+                        hint=f"JSON string error at character {exc.pos}.",
+                    )
+                )
+            else:
+                if not isinstance(decoded, str):
+                    diagnostics.append(
+                        Diagnostic(
+                            "SEM072",
+                            f"Agent goal on `{agent.name}` must be a JSON string",
+                            span=span,
+                        )
+                    )
         if key in AGENT_TEXT_ATTRIBUTES and not isinstance(value, str):
             diagnostics.append(
                 Diagnostic(
