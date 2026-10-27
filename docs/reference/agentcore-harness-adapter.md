@@ -49,8 +49,8 @@ module-level code.
 
 Tool bindings accept `python` and an optional exact `tool_name`. Generated
 names are stable when `tool_name` is omitted. Wildcards, built-in names, and
-name collisions are rejected. Each agent needs one to 64 inline tools,
-including its outgoing delegations.
+name collisions are rejected. An agent can use up to 64 inline tools,
+including its outgoing delegations. An agent can also run without tools.
 
 Profiles accept `execution_role_arn`, `harness_name`, `max_iterations`,
 `max_tokens`, `timeout_seconds`, `temperature`, and `top_p`. The only accepted
