@@ -90,10 +90,20 @@ def aws_client(service: str, *, region: str | None = None) -> object:
         raise ImportError("Install contract4agents[agentcore-harness] to use AWS clients") from exc
     client = boto3.client(service, region_name=region, config=Config(retries={"total_max_attempts": 1}))
     if service == "bedrock-agentcore-control":
-        client.meta.events.register(
-            "before-parse.bedrock-agentcore-control.GetHarness", _normalize_none_truncation
-        )
+        _prepare_control_client(client)
     return client
+
+
+def _prepare_control_client(client: object) -> None:
+    try:
+        BaseClient = importlib.import_module("botocore.client").BaseClient
+    except ImportError:
+        return
+    if isinstance(client, BaseClient):
+        client.meta.events.register(
+            "before-parse.bedrock-agentcore-control.GetHarness", _normalize_none_truncation,
+            unique_id="contract4agents.none-truncation-readback",
+        )
 
 
 def _normalize_none_truncation(response_dict: dict[str, object], **_kwargs: object) -> None:
@@ -184,6 +194,7 @@ def verify_harness_deployment(
     if match is None or not _ENDPOINT.fullmatch(endpoint_name):
         raise ValueError("Invalid Harness ARN or endpoint name")
     control = client or cast(HarnessControlClient, aws_client("bedrock-agentcore-control", region=match[2]))
+    _prepare_control_client(control)
     harness_id = match[4]
     first = json_object(
         "Harness endpoint", control.get_harness_endpoint(harnessId=harness_id, endpointName=endpoint_name)["endpoint"]
