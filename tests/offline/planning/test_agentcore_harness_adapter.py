@@ -175,7 +175,7 @@ def test_planning_maps_approval_and_output_validation_to_host_obligations(
     assert plan.adapter.name == "agentcore_harness"
 
 
-def test_zero_tool_agent_fails_direct_planning_and_profile_validation(tmp_path: Path) -> None:
+def test_zero_tool_agent_is_a_valid_profile_and_plan(tmp_path: Path) -> None:
     ir = _ir(with_tool=False)
     bindings = _bindings(ir, profile_options={"execution_role_arn": _ROLE_ARN})
     diagnostics = agentcore_harness_target_profile_validator(
@@ -184,17 +184,15 @@ def test_zero_tool_agent_fails_direct_planning_and_profile_validation(tmp_path: 
         bindings.targets["agentcore_harness"],
         tmp_path,
     )
-    assert any("no enabled tool" in item.message for item in diagnostics)
-
-    with pytest.raises(PlanningError) as caught:
-        plan_materialization(
-            ir,
-            bindings,
-            target="agentcore_harness",
-            profile="test",
-            capabilities=agentcore_harness_planner_capabilities(),
-        )
-    assert any("required control" in issue.message for issue in caught.value.issues)
+    assert diagnostics == ()
+    plan = plan_materialization(
+        ir,
+        bindings,
+        target="agentcore_harness",
+        profile="test",
+        capabilities=agentcore_harness_planner_capabilities(),
+    )
+    assert plan.adapter.name == "agentcore_harness"
 
 
 @pytest.mark.parametrize(

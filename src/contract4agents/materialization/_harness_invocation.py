@@ -336,21 +336,36 @@ class HarnessAgent:
                 ),
             )
             settings = HarnessInvocationSettings.from_configuration(self.configuration.request)
-            response = client.invoke_harness(
-                harnessArn=self.deployment.harness_arn,
-                qualifier=self.deployment.endpoint_name,
-                runtimeSessionId=context.session_id,
-                runtimeUserId=context.principal_id,
-                actorId=context.principal_id,
-                messages=messages,
-                model=settings.model,
-                systemPrompt=settings.system_prompt,
-                tools=settings.tools,
-                allowedTools=settings.allowed_tools,
-                maxIterations=settings.max_iterations,
-                maxTokens=settings.max_tokens,
-                timeoutSeconds=settings.timeout_seconds,
-            )
+            if settings.tools is not None and settings.allowed_tools is not None:
+                response = client.invoke_harness(
+                    harnessArn=self.deployment.harness_arn,
+                    qualifier=self.deployment.endpoint_name,
+                    runtimeSessionId=context.session_id,
+                    runtimeUserId=context.principal_id,
+                    actorId=context.principal_id,
+                    messages=messages,
+                    model=settings.model,
+                    systemPrompt=settings.system_prompt,
+                    maxIterations=settings.max_iterations,
+                    maxTokens=settings.max_tokens,
+                    timeoutSeconds=settings.timeout_seconds,
+                    tools=settings.tools,
+                    allowedTools=settings.allowed_tools,
+                )
+            else:
+                response = client.invoke_harness(
+                    harnessArn=self.deployment.harness_arn,
+                    qualifier=self.deployment.endpoint_name,
+                    runtimeSessionId=context.session_id,
+                    runtimeUserId=context.principal_id,
+                    actorId=context.principal_id,
+                    messages=messages,
+                    model=settings.model,
+                    systemPrompt=settings.system_prompt,
+                    maxIterations=settings.max_iterations,
+                    maxTokens=settings.max_tokens,
+                    timeoutSeconds=settings.timeout_seconds,
+                )
             response_received = True
             metadata = json_object("Harness response metadata", response.get("ResponseMetadata", {}))
             observed_request_id = metadata.get("RequestId")

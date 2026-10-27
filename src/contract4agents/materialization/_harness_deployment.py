@@ -33,8 +33,8 @@ class HarnessInvocationSettings:
 
     model: Mapping[str, object]
     system_prompt: list[HarnessPromptBlock]
-    tools: list[Mapping[str, object]]
-    allowed_tools: list[str]
+    tools: list[Mapping[str, object]] | None
+    allowed_tools: list[str] | None
     max_iterations: int
     max_tokens: int
     timeout_seconds: int
@@ -51,14 +51,25 @@ class HarnessInvocationSettings:
             if type(value) is not int or value <= 0:
                 raise TypeError(f"Harness `{key}` must be a positive integer")
             limits.append(value)
+        has_tools = "tools" in request
+        has_allowed_tools = "allowedTools" in request
+        if has_tools != has_allowed_tools:
+            raise ValueError("Harness configuration must include both `tools` and `allowedTools`, or neither")
+        tools = (
+            [json_object("Harness inline tool", value) for value in json_array("Harness tools", thaw(request["tools"]))]
+            if has_tools
+            else None
+        )
+        allowed_tools = (
+            list(json_strings("Harness allowed tools", thaw(request["allowedTools"]))) if has_allowed_tools else None
+        )
+        if tools is not None and (not tools or not allowed_tools):
+            raise ValueError("Harness tool configuration cannot be empty")
         return cls(
             model=json_object("Harness model", thaw(request["model"])),
             system_prompt=prompts,
-            tools=[
-                json_object("Harness inline tool", value)
-                for value in json_array("Harness tools", thaw(request["tools"]))
-            ],
-            allowed_tools=list(json_strings("Harness allowed tools", thaw(request["allowedTools"]))),
+            tools=tools,
+            allowed_tools=allowed_tools,
             max_iterations=limits[0], max_tokens=limits[1], timeout_seconds=limits[2],
         )
 
@@ -71,11 +82,21 @@ class HarnessControlClient(Protocol):
 
 class HarnessRuntimeClient(Protocol):
     def invoke_harness(
-        self, *, harnessArn: str, qualifier: str, runtimeSessionId: str,
-        runtimeUserId: str, actorId: str, messages: list[dict[str, object]],
-        model: Mapping[str, object], systemPrompt: list[HarnessPromptBlock],
-        tools: list[Mapping[str, object]], allowedTools: list[str],
-        maxIterations: int, maxTokens: int, timeoutSeconds: int,
+        self,
+        *,
+        harnessArn: str,
+        qualifier: str,
+        runtimeSessionId: str,
+        runtimeUserId: str,
+        actorId: str,
+        messages: list[dict[str, object]],
+        model: Mapping[str, object],
+        systemPrompt: list[HarnessPromptBlock],
+        maxIterations: int,
+        maxTokens: int,
+        timeoutSeconds: int,
+        tools: list[Mapping[str, object]] | None = None,
+        allowedTools: list[str] | None = None,
     ) -> Mapping[str, object]: ...
 
 
@@ -213,6 +234,9 @@ def _check_configuration(planned: Mapping[str, object], observed: Mapping[str, o
         if key == "tags":
             continue
         if key not in observed or content_digest(expected) != content_digest(observed[key]):
+            raise ValueError(f"Harness configuration mismatch for `{key}`")
+    for key in ("tools", "allowedTools"):
+        if key not in planned and key in observed and thaw(observed[key]) not in (None, []):
             raise ValueError(f"Harness configuration mismatch for `{key}`")
     for key in ("skills", "hooks", "environmentVariables", "environmentArtifact", "authorizerConfiguration"):
         if thaw(observed.get(key)) not in (None, [], {}):

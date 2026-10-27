@@ -161,14 +161,14 @@ class AgentCoreHarnessMappingResolver:
         tool_bindings: tuple[BindingPlan, ...],
         declared: MappingSupport,
     ) -> MappingSupport | None:
-        del tool_bindings, declared
+        del has_tools, tool_bindings, declared
         if control.assessment != "adapter":
             return None
         if control.derived_from != control.agent_id:
             if control.derived_from is not None and control.derived_from.kind == "grant":
                 return None
             return MappingSupport("unsupported", None)
-        if agent is None or not has_tools:
+        if agent is None:
             return MappingSupport("unsupported", None)
         return MappingSupport(
             "host_enforced",
@@ -316,15 +316,7 @@ def agentcore_harness_target_profile_validator(
                     for expression in edge.input_mappings.values()
                 )
             )
-            if not enabled_tool_ids and not delegate_edges:
-                diagnostics.append(
-                    Diagnostic(
-                        "TGT111",
-                        f"AgentCore Harness agent `{agent.name}` has no enabled tool",
-                        hint="Add an enabled Python tool or a delegate with no history.",
-                    )
-                )
-            elif len(enabled_tool_ids) + len(delegate_edges) > _MAX_INLINE_TOOLS:
+            if len(enabled_tool_ids) + len(delegate_edges) > _MAX_INLINE_TOOLS:
                 diagnostics.append(
                     Diagnostic(
                         "TGT111",

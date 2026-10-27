@@ -138,6 +138,59 @@ def test_generated_types_and_actual_aws_invocation_shape_are_preserved(tmp_path:
     assert all("deployment" in e.provenance for e in trace.events)
 
 
+def test_readiness_contract_invokes_without_tools_or_allowed_tools(tmp_path: Path) -> None:
+    import shutil
+
+    root = tmp_path / "readiness"
+    root.mkdir()
+    fixture = Path(__file__).parents[2] / "fixtures/readiness-tool-free/system.contract"
+    shutil.copyfile(fixture, root / "system.contract")
+    (root / "contract4agents.targets.toml").write_text(
+        '''\
+schema_version = "1"
+
+[targets.agentcore_harness]
+adapter = "agentcore_harness"
+
+[targets.agentcore_harness.profiles.test]
+default_model = "synthetic-bedrock-model"
+
+[targets.agentcore_harness.profiles.test.options]
+execution_role_arn = "arn:aws:iam::123456789012:role/TestAgentRole"
+'''
+    )
+    configuration = generate_harness_configuration(root, target="agentcore_harness", profile="test")
+    control = FakeHarnessControlClient(configuration, "ReadinessAssessor")
+    deployment = verify_harness_deployment(
+        configuration,
+        "ReadinessAssessor",
+        harness_arn=control.harness_arn,
+        endpoint_name=control.endpoint_name,
+        client=control,
+    )
+    output: dict[str, object] = {"findings": [], "must_haves": [], "readiness_actions": []}
+    client = FakeHarnessRuntimeClient([success_stream(json.dumps(output))])
+    result = materialize(
+        root,
+        target="agentcore_harness",
+        profile="test",
+        provider=AgentCoreHarnessMaterializationProvider(
+            deployments={"ReadinessAssessor": deployment},
+            client=client,
+        ),
+    )
+    handle = agent_for(result, "ReadinessAssessor")
+    invocation = handle.invoke(
+        {"request": {"assessment_request_json": "{}"}},
+        context=context(session_id="00000000-0000-0000-0000-000000000009"),
+    )
+    assert isinstance(invocation, HarnessCompleted)
+    assert "tools" not in client.requests[0]
+    assert "allowedTools" not in client.requests[0]
+    request_shape = get_session().get_service_model("bedrock-agentcore").operation_model("InvokeHarness").input_shape
+    validate_parameters(client.requests[0], request_shape)
+
+
 def test_harness_schema_evidence_is_accepted_by_assurance_without_inventing_missing_evidence(tmp_path: Path) -> None:
     from contract4agents.assurance import assemble_assurance_bundle
     from contract4agents.ir import semantic_id

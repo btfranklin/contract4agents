@@ -135,6 +135,41 @@ def test_generated_request_matches_installed_aws_create_harness_shape(tmp_path: 
     assert not errors.has_errors(), errors.generate_report()
 
 
+def test_readiness_contract_uses_optional_tool_free_harness_fields(tmp_path: Path) -> None:
+    import shutil
+
+    root = tmp_path / "readiness"
+    root.mkdir()
+    fixture = Path(__file__).parents[2] / "fixtures/readiness-tool-free/system.contract"
+    shutil.copyfile(fixture, root / "system.contract")
+    (root / "contract4agents.targets.toml").write_text(
+        '''\
+schema_version = "1"
+
+[targets.agentcore_harness]
+adapter = "agentcore_harness"
+
+[targets.agentcore_harness.profiles.test]
+default_model = "synthetic-bedrock-model"
+
+[targets.agentcore_harness.profiles.test.options]
+execution_role_arn = "arn:aws:iam::123456789012:role/TestAgentRole"
+'''
+    )
+    configuration = _configuration(root)
+    request = configuration.agents["ReadinessAssessor"].request_payload()
+    service = get_session().get_service_model("bedrock-agentcore-control")
+    errors = ParamValidator().validate(
+        request,
+        service.operation_model("CreateHarness").input_shape,
+    )
+
+    assert not errors.has_errors(), errors.generate_report()
+    assert "tools" not in request
+    assert "allowedTools" not in request
+    assert not configuration.agents["ReadinessAssessor"].tools
+
+
 def test_computed_runtime_identity_is_retained_but_mounts_and_custom_network_are_rejected(tmp_path: Path) -> None:
     configuration = _configuration(write_project(tmp_path / "project"))
     control = FakeHarnessControlClient(configuration)

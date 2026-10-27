@@ -185,8 +185,8 @@ def build_harness_configuration(
                     input_mappings=edge.input_mappings,
                 ),
             )
-        if not tools or len(tools) > 64:
-            raise ValueError("Harness requires between one and 64 explicit inline tools")
+        if len(tools) > 64:
+            raise ValueError("Harness supports no more than 64 explicit inline tools")
         options = plan.agents[agent_id].model_options
         harness_name = options.get("harness_name", native_name("agent", agent_id, max_length=40))
         if not isinstance(harness_name, str) or harness_name in harness_names:
@@ -207,8 +207,6 @@ def build_harness_configuration(
             "executionRoleArn": options["execution_role_arn"],
             "model": {"bedrockModelConfig": model},
             "systemPrompt": [{"text": instructions}],
-            "tools": [tool.definition() for tool in tools.values()],
-            "allowedTools": list(tools),
             "memory": {"disabled": {}},
             "truncation": {"strategy": "none"},
             "maxIterations": options.get("max_iterations", 10),
@@ -216,6 +214,9 @@ def build_harness_configuration(
             "timeoutSeconds": options.get("timeout_seconds", 120),
             "tags": {"contract4agents:contract": plan.contract_digest, "contract4agents:plan": plan.plan_digest},
         }
+        if tools:
+            request["tools"] = [tool.definition() for tool in tools.values()]
+            request["allowedTools"] = list(tools)
         agents[agent.name] = HarnessAgentConfiguration(
             agent_id,
             frozen_object(request),
