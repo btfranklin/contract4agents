@@ -149,6 +149,81 @@ def test_profile_validator_checks_role_options_and_unsupported_settings(tmp_path
     assert any("execution_role_arn" in item.message for item in diagnostics)
 
 
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), ["not", "an", "object"]])
+def test_additional_model_request_fields_requires_finite_json_object(tmp_path: Path, value: object) -> None:
+    ir = _ir(with_tool=True)
+    bindings = _bindings(
+        ir,
+        profile_options={"execution_role_arn": _ROLE_ARN, "additional_model_request_fields": value},
+    )
+    diagnostics = agentcore_harness_target_profile_validator(
+        ir, "agentcore_harness", bindings.targets["agentcore_harness"], tmp_path
+    )
+    assert any(
+        item.code == "TGT113" and "additional_model_request_fields" in item.message
+        for item in diagnostics
+    )
+
+
+def test_output_mode_reports_diagnostic_for_unhashable_value(tmp_path: Path) -> None:
+    ir = _ir(with_tool=True)
+    bindings = _bindings(
+        ir,
+        profile_options={"execution_role_arn": _ROLE_ARN, "output_mode": ["tool"]},
+    )
+    diagnostics = agentcore_harness_target_profile_validator(
+        ir, "agentcore_harness", bindings.targets["agentcore_harness"], tmp_path
+    )
+    assert any(item.code == "TGT113" and "output_mode" in item.message for item in diagnostics)
+
+
+def test_result_tool_name_collision_is_rejected(tmp_path: Path) -> None:
+    ir = _ir(with_tool=True)
+    result_name = native_name("result", semantic_id("agent", "Researcher"))
+    bindings = _bindings(
+        ir,
+        profile_options={"execution_role_arn": _ROLE_ARN, "output_mode": "tool"},
+        tool_name=result_name,
+    )
+    diagnostics = agentcore_harness_target_profile_validator(
+        ir, "agentcore_harness", bindings.targets["agentcore_harness"], tmp_path
+    )
+    assert any("collides" in item.message and result_name in item.message for item in diagnostics)
+
+
+@pytest.mark.parametrize(("application_tools", "over_limit"), [(63, False), (64, True)])
+def test_result_tool_counts_toward_inline_tool_limit(
+    tmp_path: Path, application_tools: int, over_limit: bool
+) -> None:
+    ir = _ir(with_tool=True)
+    base_capability = next(iter(ir.capabilities.values()))
+    base_grant = next(iter(ir.grants.values()))
+    agent = next(iter(ir.agents.values()))
+    capabilities = []
+    grants = []
+    for index in range(application_tools - 1):
+        capability_name = f"records.extra_{index}"
+        capability_id = semantic_id("tool", capability_name)
+        grant_id = semantic_id("grant", "Researcher", f"extra_{index}")
+        capabilities.append(replace(base_capability, id=capability_id, name=capability_name))
+        grants.append(replace(base_grant, id=grant_id, capability_id=capability_id))
+    new_agent = replace(agent, grant_ids=(*agent.grant_ids, *(grant.id for grant in grants)))
+    ir = replace(
+        ir,
+        capabilities=FrozenMap((*ir.capabilities.items(), *((item.id, item) for item in capabilities))),
+        grants=FrozenMap((*ir.grants.items(), *((item.id, item) for item in grants))),
+        agents=FrozenMap(((new_agent.id, new_agent),)),
+    )
+    bindings = _bindings(
+        ir,
+        profile_options={"execution_role_arn": _ROLE_ARN, "output_mode": "tool"},
+    )
+    diagnostics = agentcore_harness_target_profile_validator(
+        ir, "agentcore_harness", bindings.targets["agentcore_harness"], tmp_path
+    )
+    assert any("more than 64 enabled tools" in item.message for item in diagnostics) is over_limit
+
+
 def test_planning_maps_approval_and_output_validation_to_host_obligations(
     tmp_path: Path,
 ) -> None:

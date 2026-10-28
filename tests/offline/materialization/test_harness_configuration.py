@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Protocol, cast
 
 import boto3  # type: ignore[import-untyped]
+import jsonschema
 import pytest
 from botocore.session import get_session  # type: ignore[import-untyped]
 from botocore.validate import ParamValidator  # type: ignore[import-untyped]
@@ -19,13 +20,15 @@ from contract4agents.adapters.agentcore_harness import (
     generate_harness_configuration,
 )
 from contract4agents.compiler import artifact_digests, compile_project
-from contract4agents.ir import semantic_id
+from contract4agents.ir import FrozenMap, semantic_id
 from contract4agents.materialization._harness_configuration import (
     frozen_object,
     thaw,
 )
 from contract4agents.materialization._harness_deployment import verify_harness_deployment
+from contract4agents.materialization._harness_invocation import HarnessAgent
 from contract4agents.materialization._harness_stream import HarnessStream
+from contract4agents.materialization._harness_validation import validate_harness_graph
 from contract4agents.planning import PlannedSystem, plan_materialization
 from contract4agents.target_bindings import load_target_bindings
 from tests.support.agentcore_harness import (
@@ -60,6 +63,8 @@ def test_configuration_is_deterministic_and_writes_no_aws_resources(
     request = json_object("request", thaw(agent.request))
 
     assert first.agents["Analyst"].configuration_digest == second.agents["Analyst"].configuration_digest
+    assert agent.output_mode == "host_validation"
+    assert agent.result_tool_name is None
     assert request["allowedTools"] == [f"@*/{name}" for name in agent.tools]
     assert request["memory"] == {"disabled": {}}
     assert request["truncation"] == {"strategy": "none"}
@@ -75,6 +80,150 @@ def test_configuration_is_deterministic_and_writes_no_aws_resources(
     manifest = json.loads((destination / "manifest.json").read_text())
     assert manifest["agents"]["Analyst"]["configuration_digest"] == agent.configuration_digest
     assert (destination / "Analyst.harness.json").is_file()
+
+
+def test_tool_output_mode_adds_private_typed_result_tool_and_generic_model_fields(tmp_path: Path) -> None:
+    root = write_project(tmp_path / "project")
+    target = root / "contract4agents.targets.toml"
+    target.write_text(
+        target.read_text()
+        + '\noutput_mode = "tool"\n'
+        + 'additional_model_request_fields = { reasoning = { effort = "high" } }\n'
+    )
+    agent = _configuration(root).agents["Analyst"]
+    request = agent.request_payload()
+    result_name = agent.result_tool_name
+    assert agent.output_mode == "tool" and result_name is not None
+    definitions = json_array("tools", request["tools"])
+    result_definition = next(item for item in definitions if json_object("tool", item)["name"] == result_name)
+    config = json_object("config", json_object("result", result_definition)["config"])
+    inline = json_object("inlineFunction", config["inlineFunction"])
+    schema = json_object("input schema", inline["inputSchema"])
+    assert schema["required"] == ["value"]
+    assert schema["additionalProperties"] is False
+    properties = json_object("properties", schema["properties"])
+    assert "value" in properties
+    assert result_name not in agent.tools
+    bedrock = json_object("bedrockModelConfig", json_object("model", request["model"])["bedrockModelConfig"])
+    assert bedrock["additionalParams"] == {"additionalModelRequestFields": {"reasoning": {"effort": "high"}}}
+    allowed = json_array("allowedTools", request["allowedTools"])
+    assert allowed[-1] == f"@*/{result_name}"
+
+
+def test_result_tool_schema_keeps_nested_definitions_at_the_envelope_root(tmp_path: Path) -> None:
+    root = write_project(tmp_path / "project")
+    source = root / "system.contract"
+    source.write_text(source.read_text().replace(
+        'type Result:\n    answer: string\n    evidence_ids: list[string]',
+        'enum CitationKind:\n    "paper"\n    "report"\n\n'
+        'type Citation:\n    identifier: string\n    kind: CitationKind\n\n'
+        'type Result:\n    answer: string\n    citations: list[Citation]',
+    ))
+    target = root / "contract4agents.targets.toml"
+    target.write_text(target.read_text() + '\noutput_mode = "tool"\n')
+    agent = _configuration(root).agents["Analyst"]
+    definition = next(
+        item for item in json_array("tools", agent.request_payload()["tools"])
+        if json_object("tool", item)["name"] == agent.result_tool_name
+    )
+    config = json_object("config", json_object("tool", definition)["config"])
+    inline = json_object("inlineFunction", config["inlineFunction"])
+    schema = json_object("schema", inline["inputSchema"])
+    assert "$defs" in schema
+    jsonschema.validate(
+        {"value": {"answer": "answer", "citations": [{"identifier": "source-1", "kind": "paper"}]}},
+        schema,
+    )
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(
+            {"value": {"answer": "answer", "citations": [{"identifier": "source-1", "kind": "invalid"}]}},
+            schema,
+        )
+
+
+def test_harness_output_mode_conformance_compares_the_materialized_value(tmp_path: Path) -> None:
+    root = write_project(tmp_path / "project")
+    target = root / "contract4agents.targets.toml"
+    target.write_text(target.read_text() + '\noutput_mode = "tool"\n')
+    configuration = _configuration(root)
+    control = FakeHarnessControlClient(configuration)
+    deployment = verify_harness_deployment(
+        configuration,
+        "Analyst",
+        harness_arn=control.harness_arn,
+        endpoint_name=control.endpoint_name,
+        client=control,
+    )
+    configured = configuration.agents["Analyst"]
+    mismatched = replace(configured, output_mode="host_validation")
+    handle = HarnessAgent(mismatched, deployment, FakeHarnessRuntimeClient())
+
+    evidence = validate_harness_graph(configuration, {configured.agent_id: handle})
+
+    mode_fact = next(item for item in evidence.configuration_conformance if item.property_path == "agent.output_mode")
+    assert not mode_fact.matches
+    assert not evidence.complete
+
+
+def test_low_level_builder_rejects_result_tool_name_collision(tmp_path: Path) -> None:
+    root = write_project(tmp_path / "project")
+    target = root / "contract4agents.targets.toml"
+    target.write_text(target.read_text() + '\noutput_mode = "tool"\n')
+    artifacts = compile_project(root)
+    loaded = load_target_bindings(root, required=True)
+    assert loaded.bindings is not None
+    plan = plan_materialization(
+        artifacts.ir,
+        loaded.bindings,
+        target="agentcore_harness",
+        profile="test",
+        capabilities=agentcore_harness_planner_capabilities(),
+        artifact_digests=artifact_digests(artifacts),
+    )
+    application_binding = next(iter(plan.bindings.values()))
+    collision_name = native_name("result", semantic_id("agent", "Analyst"))
+    locator = dict(application_binding.locator)
+    locator["tool_name"] = collision_name
+    changed_binding = replace(
+        application_binding,
+        locator=frozen_object(locator),
+    )
+    changed_bindings = FrozenMap(
+        (key, changed_binding if key == application_binding.id else binding)
+        for key, binding in plan.bindings.items()
+    )
+    unsafe_plan = replace(plan, bindings=changed_bindings)
+
+    with pytest.raises(ValueError, match="result tool name collides"):
+        build_harness_configuration(PlannedSystem(artifacts, unsafe_plan))
+
+
+def test_low_level_builder_rejects_invalid_output_mode(tmp_path: Path) -> None:
+    root = write_project(tmp_path / "project")
+    artifacts = compile_project(root)
+    loaded = load_target_bindings(root, required=True)
+    assert loaded.bindings is not None
+    plan = plan_materialization(
+        artifacts.ir,
+        loaded.bindings,
+        target="agentcore_harness",
+        profile="test",
+        capabilities=agentcore_harness_planner_capabilities(),
+        artifact_digests=artifact_digests(artifacts),
+    )
+    agent_id, agent_plan = next(iter(plan.agents.items()))
+    thawed_options = thaw(agent_plan.model_options)
+    assert isinstance(thawed_options, dict)
+    model_options = dict(thawed_options)
+    model_options["output_mode"] = ["tool"]
+    changed_agent = replace(
+        agent_plan,
+        model_options=frozen_object(model_options),
+    )
+    unsafe_plan = replace(plan, agents=FrozenMap(((agent_id, changed_agent),)))
+
+    with pytest.raises(ValueError, match="output_mode"):
+        build_harness_configuration(PlannedSystem(artifacts, unsafe_plan))
 
 
 def test_delegate_configuration_uses_one_declared_inline_function(tmp_path: Path) -> None:

@@ -15,6 +15,9 @@ def write_project(
     approval: bool = False,
     delegate: bool = False,
     request_fields: str = "",
+    include_tool: bool = True,
+    result_declaration: str | None = None,
+    output_type: str = "Result",
 ) -> Path:
     """Write one small project for offline Harness tests."""
 
@@ -31,25 +34,34 @@ composition analyze from Parent to Analyst:
     history = none
     map request = input.request
 """ if delegate else ""
+    tool_declaration = (
+        'tool records.lookup(request: Request) -> Result:\n'
+        '    description = "Look up evidence for a request."\n'
+        '    side_effect = false\n'
+        if include_tool else ""
+    )
+    grant_declaration = (
+        "    use records.lookup:\n"
+        "        availability = enabled\n"
+        f"        authorization = {authorization}\n"
+        "        execution = host\n"
+        if include_tool else ""
+    )
+    output_declaration = result_declaration or (
+        "type Result:\n    answer: string\n    evidence_ids: list[string]"
+    )
     (tmp_path / "system.contract").write_text(
         f'''\
 type Request:
     question: string
 {request_fields}
 
-type Result:
-    answer: string
-    evidence_ids: list[string]
+{output_declaration}
 
-tool records.lookup(request: Request) -> Result:
-    description = "Look up evidence for a request."
-    side_effect = false
+{tool_declaration}
 
-agent Analyst(request: Request) -> Result:
-    use records.lookup:
-        availability = enabled
-        authorization = {authorization}
-        execution = host
+agent Analyst(request: Request) -> {output_type}:
+{grant_declaration}
     goal = "Answer the request with evidence."
 
 {parent}'''
@@ -58,15 +70,19 @@ agent Analyst(request: Request) -> Result:
         "def lookup(request):\n"
         "    return {\"answer\": request[\"question\"], \"evidence_ids\": []}\n"
     )
+    tool_binding = (
+        '[targets.agentcore_harness.tools."records.lookup"]\n'
+        'python = "app_harness:lookup"\n'
+        if include_tool else ""
+    )
     (tmp_path / "contract4agents.targets.toml").write_text(
-        '''\
+        f'''\
 schema_version = "1"
 
 [targets.agentcore_harness]
 adapter = "agentcore_harness"
 
-[targets.agentcore_harness.tools."records.lookup"]
-python = "app_harness:lookup"
+{tool_binding}
 
 [targets.agentcore_harness.profiles.test]
 default_model = "synthetic-bedrock-model"

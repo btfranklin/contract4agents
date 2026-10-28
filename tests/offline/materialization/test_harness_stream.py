@@ -150,6 +150,8 @@ def test_multiple_complete_tool_calls_return_only_the_first_call() -> None:
 
     assert stream.failure is None
     assert (stream.tool_name, stream.tool_use_id, stream.arguments) == ("first", "call-1", {"x": 1})
+    assert stream.tool_use_count == 2
+    assert stream.tool_use_names == ("first", "second")
 
 
 def test_duplicate_tool_use_ids_fail_closed() -> None:

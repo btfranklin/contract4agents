@@ -82,6 +82,8 @@ class HarnessStream:
     failure: str | None = None
     text: str = ""
     tool_name: str | None = None
+    tool_use_names: tuple[str, ...] = ()
+    tool_use_count: int = 0
     tool_use_id: str | None = None
     arguments: object = None
     usage: list[Mapping[str, int]] = field(default_factory=list)
@@ -311,6 +313,8 @@ class HarnessStream:
             result.failure = "incomplete_stream"
         result.text = "".join(block.text for block in blocks.values() if block.kind == "text")
         calls = [block for _, block in sorted(blocks.items()) if block.kind == "tool"]
+        result.tool_use_names = tuple(call.name for call in calls)
+        result.tool_use_count = len(calls)
         if result.stop_reason == "tool_use":
             if result.failure is not None:
                 pass
