@@ -16,6 +16,7 @@ from contract4agents.ir import (
     CompositionEdgeIR,
     ControlIR,
     GrantIR,
+    freeze_json,
 )
 from contract4agents.planning import (
     AgentPlan,
@@ -43,6 +44,7 @@ _PROFILE_OPTIONS = frozenset(
         "temperature",
         "top_p",
         "output_mode",
+        "additional_model_request_fields",
     }
 )
 _RESERVED_TOOL_NAMES = frozenset({"shell", "file_operations"})
@@ -168,15 +170,15 @@ class AgentCoreHarnessMappingResolver:
             if control.derived_from is not None and control.derived_from.kind == "grant":
                 return None
             return MappingSupport("unsupported", None)
-        if agent is None or not has_tools:
+        if agent is None or (not has_tools and agent.model_options.get("output_mode") != "tool"):
             return MappingSupport("unsupported", None)
         return MappingSupport(
             "host_enforced",
             "host.client_output_validator",
             expected_event_types=("output.accepted", "output.schema_failed"),
             host_obligation=(
-                "The application must validate final Harness text as the declared JSON "
-                "output type. Harness output mode does not enforce the schema."
+                "The application must validate final Harness text or result-tool value "
+                "as the declared output type."
             ),
         )
 
@@ -316,7 +318,9 @@ def agentcore_harness_target_profile_validator(
                     for expression in edge.input_mappings.values()
                 )
             )
-            if not enabled_tool_ids and not delegate_edges:
+            output_mode = options.get("output_mode", "host_validation")
+            result_tool_count = 1 if output_mode == "tool" else 0
+            if not enabled_tool_ids and not delegate_edges and not result_tool_count:
                 diagnostics.append(
                     Diagnostic(
                         "TGT111",
@@ -324,7 +328,7 @@ def agentcore_harness_target_profile_validator(
                         hint="Add an enabled Python tool or a delegate with no history.",
                     )
                 )
-            elif len(enabled_tool_ids) + len(delegate_edges) > _MAX_INLINE_TOOLS:
+            elif len(enabled_tool_ids) + len(delegate_edges) + result_tool_count > _MAX_INLINE_TOOLS:
                 diagnostics.append(
                     Diagnostic(
                         "TGT111",
@@ -337,6 +341,7 @@ def agentcore_harness_target_profile_validator(
                     target,
                     agent,
                     delegate_edges,
+                    include_result_tool=output_mode == "tool",
                 )
             )
 
@@ -394,7 +399,10 @@ def agentcore_harness_planner_capabilities() -> PlannerCapabilities:
                 "host_enforced",
                 "host.client_output_validator",
                 expected_event_types=("output.accepted", "output.schema_failed"),
-                host_obligation=("Validate final Harness text against the declared output type in the application."),
+                host_obligation=(
+                    "Validate final Harness text or result-tool value against the declared "
+                    "output type in the application."
+                ),
             ),
             "runtime": MappingSupport("exact", "contract4agents.runtime_assessor"),
             "host_attested": MappingSupport(
@@ -429,8 +437,19 @@ def _validate_options(
     if api_format is not None and api_format != "converse_stream":
         diagnostics.append(Diagnostic("TGT113", f"`{path}.api_format` must be `converse_stream`"))
     output_mode = options.get("output_mode")
-    if output_mode is not None and output_mode != "host_validation":
-        diagnostics.append(Diagnostic("TGT113", f"`{path}.output_mode` must be `host_validation`"))
+    if output_mode is not None and (not isinstance(output_mode, str) or output_mode not in ("host_validation", "tool")):
+        diagnostics.append(Diagnostic("TGT113", f"`{path}.output_mode` must be `host_validation` or `tool`"))
+    if "additional_model_request_fields" in options:
+        try:
+            if not isinstance(freeze_json(options["additional_model_request_fields"]), Mapping):
+                raise ValueError("object required")
+        except (TypeError, ValueError):
+            diagnostics.append(
+                Diagnostic(
+                    "TGT113",
+                    f"`{path}.additional_model_request_fields` must be a finite JSON object",
+                )
+            )
     role_arn = options.get("execution_role_arn")
     if role_arn is not None and not _is_valid_role_arn(role_arn):
         diagnostics.append(Diagnostic("TGT113", f"`{path}.execution_role_arn` must be a valid IAM role ARN"))
@@ -473,6 +492,8 @@ def _validate_agent_tool_names(
     target: TargetBinding,
     agent: AgentIR,
     delegate_edges: tuple[CompositionEdgeIR, ...],
+    *,
+    include_result_tool: bool = False,
 ) -> tuple[Diagnostic, ...]:
     names: dict[str, str] = {}
     diagnostics: list[Diagnostic] = []
@@ -494,6 +515,8 @@ def _validate_agent_tool_names(
             names,
             diagnostics,
         )
+    if include_result_tool:
+        _record_name(native_name("result", agent.id), "result tool", names, diagnostics)
     return tuple(diagnostics)
 
 

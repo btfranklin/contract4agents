@@ -19,8 +19,8 @@ writes, permissions, promotion, rollback, and endpoint stability.
 | Deployment artifact | AWS CLI `create-harness --cli-input-json` request files and an identity manifest |
 | Instructions | Derived from the contract and generated final-output schema |
 | Typed input | Strict generated model before invocation |
-| Typed return | Host-enforced JSON and type validation; invalid output fails explicitly |
-| Native constrained generation | Unverified; this route makes no constrained generation claim |
+| Typed return | Host-enforced JSON and type validation by default; optional native result tool with strict envelope validation |
+| Native constrained generation | Unverified; the result tool does not claim schema constrained generation |
 | Python tools | Inline functions, strict arguments and results, explicit tool allowlist |
 | Approval | Application decision bound to the complete pending call and context |
 | Delegation | Fixed declared child, `history = none`, exact typed input mappings |
@@ -29,7 +29,7 @@ writes, permissions, promotion, rollback, and endpoint stability.
 | Explicit isolation profiles | Unsupported |
 | Declared context and datasources | Unsupported; use typed input and inline tools |
 | MCP, Gateway, Browser, Code Interpreter | Unsupported in this route |
-| Zero enabled tools | Unsupported until a supported deny-all mapping is established |
+| Zero enabled tools | Supported only with `output_mode = "tool"`, which supplies one private result tool |
 | Skills and lifecycle hooks | Unsupported; deployment verification rejects them |
 | Invocation overrides | Nonempty overrides rejected; select a new reviewed profile |
 | Retries and fallback | Application-owned; adapter-created SDK clients disable retries |
@@ -55,14 +55,21 @@ including its outgoing delegations.
 Generated allowlists use `@*/<exact tool name>` selectors for inline functions.
 Plain names select built-in tools and can hide an inline function from the model.
 The selector retains the exact declared tool name; it does not allow other tools.
-The host validates each tool result, then sends its canonical JSON as text.
+The host validates each application tool result, then sends its canonical JSON as text.
 The client checks the service's user tool-result echo and reads the following
 assistant response. An echo alone is not a completed agent result.
 
+In `output_mode = "tool"`, the generated private result tool asks for the
+complete typed value inside its `value` field. The client completes only when
+the final stream contains that exact tool and a valid `{ "value": ... }`
+envelope. The result tool has no application implementation, grant, or effect.
+Text output is invalid in this mode.
+
 Profiles accept `execution_role_arn`, `harness_name`, `max_iterations`,
-`max_tokens`, `timeout_seconds`, `temperature`, and `top_p`. The only accepted
-`api_format` is `converse_stream`; the only accepted `output_mode` is
-`host_validation`. Defaults are 10 iterations, 4096 tokens per iteration, and
+`max_tokens`, `timeout_seconds`, `temperature`, `top_p`, and the finite JSON
+object `additional_model_request_fields`. This object maps to Converse
+`additionalModelRequestFields`. The only accepted `api_format` is
+`converse_stream`; `output_mode` accepts `host_validation` or `tool`. Defaults are 10 iterations, 4096 tokens per iteration, and
 120 seconds. The token setting applies to both the Harness and its model's
 output limit. These settings do not prove a total business budget or host
 deadline. Store credential references rather than secret values.

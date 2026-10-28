@@ -381,9 +381,21 @@ class HarnessAgent:
         if stream.failure:
             result: HarnessResult = HarnessFailed(stream.failure, request_id, stream.stop_reason, True)
         elif stream.stop_reason == "tool_use":
-            result = self._interrupt(stream, context, source_input, trace, request_id)
+            if (
+                self.configuration.output_mode == "tool"
+                and self.configuration.result_tool_name in stream.tool_use_names
+            ):
+                if stream.tool_use_count != 1 or stream.tool_name != self.configuration.result_tool_name:
+                    trace.emit("output.schema_failed", request_id=request_id)
+                    result = HarnessFailed("invalid_output", request_id, stream.stop_reason, True)
+                else:
+                    result = self._complete_tool_output(stream, trace, request_id)
+            else:
+                result = self._interrupt(stream, context, source_input, trace, request_id)
         elif stream.stop_reason == "end_turn":
             try:
+                if self.configuration.output_mode == "tool":
+                    raise ValueError("Tool output mode requires the configured result tool")
                 decode_json(stream.text)
                 value = self.configuration.output_adapter.validate_json(stream.text, strict=True)
                 result = HarnessCompleted(value, request_id)
@@ -402,6 +414,22 @@ class HarnessAgent:
             result = HarnessFailed(reason, request_id, stream.stop_reason, True)
         self._finish(trace, result, context, request_id)
         return result
+
+    def _complete_tool_output(
+        self, stream: HarnessStream, trace: HarnessTraceEmitter, request_id: str | None
+    ) -> HarnessResult:
+        try:
+            if stream.text:
+                raise ValueError("Result tool response also contained text")
+            if not isinstance(stream.arguments, Mapping) or set(stream.arguments) != {"value"}:
+                raise ValueError("Invalid result envelope")
+            value = self.configuration.output_adapter.validate_json(
+                canonical_json(stream.arguments["value"]), strict=True
+            )
+        except (ValueError, ValidationError):
+            trace.emit("output.schema_failed", request_id=request_id)
+            return HarnessFailed("invalid_output", request_id, stream.stop_reason, True)
+        return HarnessCompleted(value, request_id)
 
     def _interrupt(
         self,

@@ -71,11 +71,17 @@ class HarnessTool:
         return self.input_type.model_json_schema()
 
     def definition(self) -> dict[str, object]:
-        return {
-            "type": "inline_function",
-            "name": self.name,
-            "config": {"inlineFunction": {"description": self.description, "inputSchema": self.input_schema}},
-        }
+        return _inline_function_definition(self.name, self.description, self.input_schema)
+
+
+def _inline_function_definition(
+    name: str, description: str, input_schema: Mapping[str, object]
+) -> dict[str, object]:
+    return {
+        "type": "inline_function",
+        "name": name,
+        "config": {"inlineFunction": {"description": description, "inputSchema": dict(input_schema)}},
+    }
 
 
 @dataclass(frozen=True)
@@ -87,6 +93,8 @@ class HarnessAgentConfiguration:
     input_type: type[BaseModel] | None
     output_adapter: TypeAdapter[object]
     tools: FrozenMap[str, HarnessTool]
+    output_mode: str = "host_validation"
+    result_tool_name: str | None = None
 
     @property
     def configuration_digest(self) -> str:
@@ -144,7 +152,7 @@ def build_harness_configuration(
         raise ValueError("Harness does not yet support declared context or isolation profiles")
     output_types = output_types if output_types is not None else build_pydantic_types(ir)
     input_types = input_types if input_types is not None else build_agent_input_types(ir, output_types)
-    template = (Path(__file__).parents[1] / "adapters/prompts/agentcore_harness/structured_output.md").read_text()
+    prompt_root = Path(__file__).parents[1] / "adapters/prompts/agentcore_harness"
     agents: dict[str, HarnessAgentConfiguration] = {}
     harness_names: set[str] = set()
     for agent_id, agent in ir.agents.items():
@@ -185,9 +193,33 @@ def build_harness_configuration(
                     input_mappings=edge.input_mappings,
                 ),
             )
-        if not tools or len(tools) > 64:
-            raise ValueError("Harness requires between one and 64 explicit inline tools")
         options = plan.agents[agent_id].model_options
+        output_mode_value = options.get("output_mode", "host_validation")
+        if output_mode_value not in ("host_validation", "tool"):
+            raise ValueError("Harness output_mode must be host_validation or tool")
+        output_mode = output_mode_value
+        if (not tools and output_mode != "tool") or len(tools) + (1 if output_mode == "tool" else 0) > 64:
+            raise ValueError("Harness requires between one and 64 inline tools")
+        result_tool_name = native_name("result", agent_id) if output_mode == "tool" else None
+        result_tool_definition: dict[str, object] | None = None
+        output_adapter = type_adapter_for(agent.output_type, output_types)
+        if result_tool_name is not None:
+            if result_tool_name in tools or result_tool_name in {"shell", "file_operations"}:
+                raise ValueError("Harness result tool name collides with an application or built-in tool")
+            schema = output_adapter.json_schema()
+            definitions = schema.pop("$defs", {})
+            envelope = {
+                "type": "object",
+                "properties": {"value": schema},
+                "required": ["value"],
+                "additionalProperties": False,
+                **({"$defs": definitions} if definitions else {}),
+            }
+            result_tool_definition = _inline_function_definition(
+                result_tool_name,
+                "Return the complete typed result.",
+                envelope,
+            )
         harness_name = options.get("harness_name", native_name("agent", agent_id, max_length=40))
         if not isinstance(harness_name, str) or harness_name in harness_names:
             raise ValueError("Harness names must be unique strings")
@@ -201,19 +233,32 @@ def build_harness_configuration(
         for key, aws_key in (("temperature", "temperature"), ("top_p", "topP")):
             if key in options:
                 model[aws_key] = options[key]
-        output_adapter = type_adapter_for(agent.output_type, output_types)
-        instructions = (
-            system.artifacts.instructions[agent.name]
-            + "\n\n"
-            + template.replace("{{output_schema}}", canonical_json(output_adapter.json_schema()))
-        )
+        extra_fields = options.get("additional_model_request_fields")
+        if extra_fields is not None:
+            model["additionalParams"] = {"additionalModelRequestFields": thaw(extra_fields)}
+        if output_mode == "tool":
+            template = (prompt_root / "tool_output.md").read_text()
+            instructions = (
+                system.artifacts.instructions[agent.name]
+                + "\n\n"
+                + template.replace("{{result_tool_name}}", result_tool_name or "")
+            )
+        else:
+            template = (prompt_root / "structured_output.md").read_text()
+            instructions = (
+                system.artifacts.instructions[agent.name]
+                + "\n\n"
+                + template.replace("{{output_schema}}", canonical_json(output_adapter.json_schema()))
+            )
         request: dict[str, object] = {
             "harnessName": harness_name,
             "executionRoleArn": options["execution_role_arn"],
             "model": {"bedrockModelConfig": model},
             "systemPrompt": [{"text": instructions}],
-            "tools": [tool.definition() for tool in tools.values()],
-            "allowedTools": [f"@*/{name}" for name in tools],
+            "tools": [tool.definition() for tool in tools.values()]
+            + ([result_tool_definition] if result_tool_definition is not None else []),
+            "allowedTools": [f"@*/{name}" for name in tools]
+            + ([f"@*/{result_tool_name}"] if result_tool_name is not None else []),
             "memory": {"disabled": {}},
             "truncation": {"strategy": "none"},
             "maxIterations": options.get("max_iterations", 10),
@@ -227,6 +272,8 @@ def build_harness_configuration(
             input_types[agent_id],
             output_adapter,
             FrozenMap(tools),
+            output_mode,
+            result_tool_name,
         )
     return HarnessConfiguration(system, FrozenMap(agents))
 

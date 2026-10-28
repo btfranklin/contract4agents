@@ -45,7 +45,13 @@ def validate_harness_graph(
                 "generated_wrapper",
                 False,
             ),
-            ("agent.output_mode", "host_validation", "host_validation", "adapter_boundary", True),
+            (
+                "agent.output_mode",
+                configured.output_mode,
+                handle.configuration.output_mode,
+                "adapter_boundary",
+                True,
+            ),
             ("agent.tools", configured.request["tools"], observed["tools"], "native_readback", False),
             ("agent.handoffs", [], [], "adapter_boundary", True),
         ):

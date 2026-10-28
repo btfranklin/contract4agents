@@ -5,15 +5,16 @@ from collections.abc import Iterator, Mapping
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TypedDict, Unpack
+from typing import TypedDict, Unpack, cast
 
 import pytest
 from botocore.session import get_session  # type: ignore[import-untyped]
 from botocore.validate import validate_parameters  # type: ignore[import-untyped]
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from contract4agents import materialize
 from contract4agents._strict_json import json_array, json_object
+from contract4agents.adapters._native_names import native_name
 from contract4agents.adapters.agentcore_harness import (
     AgentCoreHarnessMaterializationProvider,
     HarnessAgent,
@@ -26,6 +27,7 @@ from contract4agents.adapters.agentcore_harness import (
     generate_harness_configuration,
     verify_harness_deployment,
 )
+from contract4agents.ir import semantic_id
 from contract4agents.materialization import MaterializationError, MaterializedSystem
 from contract4agents.materialization._harness_configuration import frozen_object
 from contract4agents.materialization._harness_models import HarnessResult
@@ -87,8 +89,19 @@ def failure(result: HarnessResult) -> HarnessFailed:
 def system(
     tmp_path: Path, *, approval: bool = False, delegate: bool = False,
     streams: list[list[dict[str, object]]] | None = None, request_fields: str = "",
+    include_tool: bool = True, output_mode: str | None = None,
+    result_declaration: str | None = None,
+    output_type: str = "Result",
 ) -> tuple[MaterializedSystem, FakeHarnessRuntimeClient, RecordingNormalizedTraceSink]:
-    root = write_project(tmp_path, approval=approval, delegate=delegate, request_fields=request_fields)
+    root = write_project(
+        tmp_path, approval=approval, delegate=delegate, request_fields=request_fields,
+        include_tool=include_tool,
+        result_declaration=result_declaration,
+        output_type=output_type,
+    )
+    if output_mode is not None:
+        target = root / "contract4agents.targets.toml"
+        target.write_text(target.read_text() + f'\noutput_mode = "{output_mode}"\n')
     configuration = generate_harness_configuration(root, target="agentcore_harness", profile="test")
     deployments = {}
     for index, name in enumerate(configuration.agents):
@@ -136,6 +149,158 @@ def test_generated_types_and_actual_aws_invocation_shape_are_preserved(tmp_path:
     assert {e.event_type for e in trace.events} >= {"output.accepted", "provider.outcome.reported"}
     assert all(e.context.plan_digest == result.plan.plan_digest for e in trace.events)
     assert all("deployment" in e.provenance for e in trace.events)
+
+
+def test_native_result_tool_completes_only_a_valid_value_envelope(tmp_path: Path) -> None:
+    root = write_project(tmp_path)
+    target = root / "contract4agents.targets.toml"
+    target.write_text(target.read_text() + '\noutput_mode = "tool"\n')
+    configuration = generate_harness_configuration(root, target="agentcore_harness", profile="test")
+    controls = FakeHarnessControlClient(configuration)
+    deployment = verify_harness_deployment(
+        configuration,
+        "Analyst",
+        harness_arn=controls.harness_arn,
+        endpoint_name=controls.endpoint_name,
+        client=controls,
+    )
+    result_name = configuration.agents["Analyst"].result_tool_name or ""
+    client = FakeHarnessRuntimeClient([tool_stream(result_name, {"value": OUTPUT})])
+    handle = HarnessAgent(configuration.agents["Analyst"], deployment, client)
+    output = handle.invoke(INPUT, context=context())
+    assert isinstance(output, HarnessCompleted)
+    assert output.value.answer == OUTPUT["answer"]  # type: ignore[attr-defined]
+
+    malformed = FakeHarnessRuntimeClient(
+        [tool_stream(result_name, {"value": OUTPUT, "extra": True})]
+    )
+    failed = HarnessAgent(configuration.agents["Analyst"], deployment, malformed).invoke(INPUT, context=context())
+    assert isinstance(failed, HarnessFailed) and failed.reason == "invalid_output"
+
+
+def test_tool_output_mode_refuses_a_result_mixed_with_another_call(tmp_path: Path) -> None:
+    result_name = native_name("result", semantic_id("agent", "Analyst"))
+    events = tool_stream(result_name, {"value": OUTPUT})
+    events[-1:-1] = [
+        {
+            "contentBlockStart": {
+                "contentBlockIndex": 1,
+                "start": {"toolUse": {"name": "records_lookup", "toolUseId": "call-2"}},
+            }
+        },
+        {
+            "contentBlockDelta": {
+                "contentBlockIndex": 1,
+                "delta": {"toolUse": {"input": json.dumps({"request": INPUT["request"]})}},
+            }
+        },
+        {"contentBlockStop": {"contentBlockIndex": 1}},
+    ]
+    result, _, _ = system(tmp_path, streams=[events], output_mode="tool")
+
+    outcome = agent_for(result, "Analyst").invoke(INPUT, context=context())
+
+    assert isinstance(outcome, HarnessFailed)
+    assert outcome.reason == "invalid_output"
+
+
+def test_native_result_tool_completes_nested_structural_enum_value(tmp_path: Path) -> None:
+    result_name = native_name("result", semantic_id("agent", "Analyst"))
+    value = {
+        "answer": "synthetic answer",
+        "citations": [{"identifier": "source-1", "kind": "paper"}],
+    }
+    nested_result = (
+        'enum CitationKind:\n    "paper"\n    "report"\n\n'
+        "type Citation:\n    identifier: string\n    kind: CitationKind\n\n"
+        "type Result:\n    answer: string\n    citations: list[Citation]"
+    )
+    result, _, _ = system(
+        tmp_path,
+        streams=[tool_stream(result_name, {"value": value})],
+        output_mode="tool",
+        result_declaration=nested_result,
+    )
+    completed = agent_for(result, "Analyst").invoke(INPUT, context=context())
+    assert isinstance(completed, HarnessCompleted)
+    assert completed.value.model_dump(mode="json") == value  # type: ignore[attr-defined]
+
+
+def test_native_result_tool_completes_scalar_timezone_aware_datetime(tmp_path: Path) -> None:
+    result_name = native_name("result", semantic_id("agent", "Analyst"))
+    timestamp = "2026-10-28T12:34:56Z"
+    result, _, _ = system(
+        tmp_path,
+        streams=[tool_stream(result_name, {"value": timestamp})],
+        output_mode="tool",
+        output_type="datetime",
+    )
+
+    completed = agent_for(result, "Analyst").invoke(INPUT, context=context())
+
+    assert isinstance(completed, HarnessCompleted)
+    assert isinstance(completed.value, datetime)
+    assert completed.value.isoformat() == "2026-10-28T12:34:56+00:00"
+
+
+def test_native_result_tool_completes_nested_timezone_aware_datetime(tmp_path: Path) -> None:
+    result_name = native_name("result", semantic_id("agent", "Analyst"))
+    value = {"metadata": {"created_at": "2026-10-28T12:34:56+02:00"}}
+    result, _, _ = system(
+        tmp_path,
+        streams=[tool_stream(result_name, {"value": value})],
+        output_mode="tool",
+        result_declaration="type Metadata:\n    created_at: datetime\n\ntype Result:\n    metadata: Metadata",
+    )
+
+    completed = agent_for(result, "Analyst").invoke(INPUT, context=context())
+
+    assert isinstance(completed, HarnessCompleted)
+    assert cast(BaseModel, completed.value).model_dump(mode="json") == value
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "not-a-date",
+        42,
+    ],
+)
+def test_native_result_tool_rejects_invalid_datetime_values(tmp_path: Path, value: object) -> None:
+    result_name = native_name("result", semantic_id("agent", "Analyst"))
+    result, _, _ = system(
+        tmp_path,
+        streams=[tool_stream(result_name, {"value": value})],
+        output_mode="tool",
+        output_type="datetime",
+    )
+
+    outcome = agent_for(result, "Analyst").invoke(INPUT, context=context())
+
+    assert isinstance(outcome, HarnessFailed)
+    assert outcome.reason == "invalid_output"
+
+
+def test_result_tool_supports_zero_application_tools_and_records_output_mode(tmp_path: Path) -> None:
+    result_name = native_name("result", semantic_id("agent", "Analyst"))
+    result, _, _ = system(
+        tmp_path,
+        streams=[tool_stream(result_name, {"value": OUTPUT})],
+        include_tool=False,
+        output_mode="tool",
+    )
+    handle = agent_for(result, "Analyst")
+    assert tuple(handle.configuration.tools) == ()
+    assert handle.configuration.result_tool_name == result_name
+    completed = handle.invoke(INPUT, context=context())
+    assert isinstance(completed, HarnessCompleted)
+    fact = next(
+        item for item in result.validation.configuration_conformance
+        if item.property_path == "agent.output_mode"
+    )
+    assert fact.planned_value == "tool"
+    assert fact.observed_value == "tool"
+    assert fact.status == "passed"
 
 
 def test_harness_schema_evidence_is_accepted_by_assurance_without_inventing_missing_evidence(tmp_path: Path) -> None:
