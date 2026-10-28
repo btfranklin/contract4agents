@@ -419,8 +419,6 @@ class HarnessAgent:
         self, stream: HarnessStream, trace: HarnessTraceEmitter, request_id: str | None
     ) -> HarnessResult:
         try:
-            if stream.text:
-                raise ValueError("Result tool response also contained text")
             if not isinstance(stream.arguments, Mapping) or set(stream.arguments) != {"value"}:
                 raise ValueError("Invalid result envelope")
             value = self.configuration.output_adapter.validate_json(

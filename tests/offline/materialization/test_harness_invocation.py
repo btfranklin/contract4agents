@@ -178,6 +178,31 @@ def test_native_result_tool_completes_only_a_valid_value_envelope(tmp_path: Path
     assert isinstance(failed, HarnessFailed) and failed.reason == "invalid_output"
 
 
+@pytest.mark.parametrize("before_tool", [True, False])
+@pytest.mark.parametrize("valid", [True, False])
+def test_result_tool_validates_arguments_independently_of_commentary(
+    tmp_path: Path, before_tool: bool, valid: bool,
+) -> None:
+    result_name = native_name("result", semantic_id("agent", "Analyst"))
+    value = OUTPUT if valid else {"answer": 7, "evidence_ids": []}
+    events = tool_stream(result_name, {"value": value})
+    position = 1 if before_tool else len(events) - 1
+    events[position:position] = [
+        {"contentBlockDelta": {"contentBlockIndex": 1, "delta": {"text": "The result is ready."}}},
+        {"contentBlockStop": {"contentBlockIndex": 1}},
+    ]
+    result, _, sink = system(tmp_path, streams=[events], output_mode="tool")
+
+    outcome = agent_for(result, "Analyst").invoke(INPUT, context=context())
+
+    if valid:
+        assert isinstance(outcome, HarnessCompleted)
+        assert outcome.value.answer == OUTPUT["answer"]  # type: ignore[attr-defined]
+    else:
+        assert isinstance(outcome, HarnessFailed) and outcome.reason == "invalid_output"
+    assert "The result is ready." not in json.dumps([event.to_dict() for event in sink.events])
+
+
 def test_tool_output_mode_refuses_a_result_mixed_with_another_call(tmp_path: Path) -> None:
     result_name = native_name("result", semantic_id("agent", "Analyst"))
     events = tool_stream(result_name, {"value": OUTPUT})
