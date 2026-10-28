@@ -63,7 +63,8 @@ In `output_mode = "tool"`, the generated private result tool asks for the
 complete typed value inside its `value` field. The client completes only when
 the final stream contains that exact tool and a valid `{ "value": ... }`
 envelope. The result tool has no application implementation, grant, or effect.
-Text output is invalid in this mode.
+Assistant commentary can accompany the result call. It is not part of the typed
+value. Text without the result call is invalid in this mode.
 
 Profiles accept `execution_role_arn`, `harness_name`, `max_iterations`,
 `max_tokens`, `timeout_seconds`, `temperature`, `top_p`, and the finite JSON
