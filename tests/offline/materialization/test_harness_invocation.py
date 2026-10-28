@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -130,7 +130,7 @@ def test_generated_types_and_actual_aws_invocation_shape_are_preserved(tmp_path:
     assert result.validate_output_for_agent(handle, output.value) is output.value
     request_shape = get_session().get_service_model("bedrock-agentcore").operation_model("InvokeHarness").input_shape
     validate_parameters(client.requests[0], request_shape)
-    assert client.requests[0]["allowedTools"] == list(handle.configuration.tools)
+    assert client.requests[0]["allowedTools"] == [f"@*/{name}" for name in handle.configuration.tools]
     trace = NormalizedTrace(tuple(sink.events))
     assert "synthetic question" not in json.dumps([event.to_dict() for event in trace.events])
     assert {e.event_type for e in trace.events} >= {"output.accepted", "provider.outcome.reported"}
@@ -222,6 +222,34 @@ def test_transport_failure_is_explicit_and_does_not_retry(tmp_path: Path) -> Non
     assert "output.accepted" not in {event.event_type for event in sink.events}
 
 
+@pytest.mark.parametrize("metadata", [[], {"RequestId": 42}])
+def test_invalid_response_metadata_closes_the_acquired_stream(tmp_path: Path, metadata: object) -> None:
+    result, _, _ = system(tmp_path)
+    original = agent_for(result, "Analyst")
+
+    class ClosingStream:
+        closed = False
+
+        def __iter__(self) -> Iterator[dict[str, object]]:
+            return iter(success_stream())
+
+        def close(self) -> None:
+            self.closed = True
+
+    events = ClosingStream()
+
+    class InvalidMetadata:
+        def invoke_harness(self, **kwargs: object) -> Mapping[str, object]:
+            return {"stream": events, "ResponseMetadata": metadata}
+
+    handle = HarnessAgent(original.configuration, original.deployment, InvalidMetadata())
+    output = handle.invoke(INPUT, context=context())
+
+    assert isinstance(output, HarnessFailed) and output.reason == "transport_failure"
+    assert output.response_received
+    assert events.closed
+
+
 @pytest.mark.parametrize(
     ("error_code", "expected"),
     [
@@ -309,7 +337,8 @@ def test_exact_approval_result_and_recovery_binding(tmp_path: Path) -> None:
     assert isinstance(output, HarnessCompleted)
     submitted = json_object("toolResult", request_content(client, -1)["toolResult"])
     assert submitted["toolUseId"] == pending.tool_use_id
-    assert json_object("tool content", json_array("content", submitted["content"])[0])["json"] == OUTPUT
+    text = json_object("tool content", json_array("content", submitted["content"])[0])["text"]
+    assert isinstance(text, str) and json.loads(text) == OUTPUT
     with pytest.raises(ValueError, match="already"):
         recovered.resume(pending, OUTPUT, context=context(), approval=approval)
     with pytest.raises(ValueError, match="already"):

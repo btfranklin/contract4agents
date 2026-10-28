@@ -91,7 +91,10 @@ class SyntheticAWS:
         if "toolResult" in content:
             tool_result = json_object("toolResult", content["toolResult"])
             result_content = json_object("tool result content", json_array("content", tool_result["content"])[0])
-            delta: dict[str, object] = {"text": json.dumps(result_content["json"])}
+            text = result_content["text"]
+            if not isinstance(text, str):
+                raise TypeError("Tool result text must be a string")
+            delta: dict[str, object] = {"text": text}
             reason = "end_turn"
         else:
             tool = next(iter(self.configuration.agents[name].tools))
