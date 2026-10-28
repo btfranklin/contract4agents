@@ -187,7 +187,7 @@ class HarnessAgent:
                         {
                             "toolResult": {
                                 "toolUseId": pending.tool_use_id,
-                                "content": [{"json": serialized}],
+                                "content": [{"text": canonical_json(serialized)}],
                                 "status": "error" if denied else "success",
                             }
                         }
@@ -352,15 +352,15 @@ class HarnessAgent:
                 timeoutSeconds=settings.timeout_seconds,
             )
             response_received = True
-            metadata = json_object("Harness response metadata", response.get("ResponseMetadata", {}))
-            observed_request_id = metadata.get("RequestId")
-            if observed_request_id is not None and not isinstance(observed_request_id, str):
-                raise TypeError("Harness request ID must be a string")
-            request_id = observed_request_id
             events = response["stream"]
-            if not isinstance(events, Iterable) or isinstance(events, str | bytes | Mapping):
-                raise TypeError("Harness response stream must be an event iterable")
             try:
+                metadata = json_object("Harness response metadata", response.get("ResponseMetadata", {}))
+                observed_request_id = metadata.get("RequestId")
+                if observed_request_id is not None and not isinstance(observed_request_id, str):
+                    raise TypeError("Harness request ID must be a string")
+                request_id = observed_request_id
+                if not isinstance(events, Iterable) or isinstance(events, str | bytes | Mapping):
+                    raise TypeError("Harness response stream must be an event iterable")
                 stream = HarnessStream.read(events)
             finally:
                 close = getattr(events, "close", None)

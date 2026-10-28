@@ -213,7 +213,7 @@ def build_harness_configuration(
             "model": {"bedrockModelConfig": model},
             "systemPrompt": [{"text": instructions}],
             "tools": [tool.definition() for tool in tools.values()],
-            "allowedTools": list(tools),
+            "allowedTools": [f"@*/{name}" for name in tools],
             "memory": {"disabled": {}},
             "truncation": {"strategy": "none"},
             "maxIterations": options.get("max_iterations", 10),

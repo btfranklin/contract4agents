@@ -52,6 +52,13 @@ names are stable when `tool_name` is omitted. Wildcards, built-in names, and
 name collisions are rejected. Each agent needs one to 64 inline tools,
 including its outgoing delegations.
 
+Generated allowlists use `@*/<exact tool name>` selectors for inline functions.
+Plain names select built-in tools and can hide an inline function from the model.
+The selector retains the exact declared tool name; it does not allow other tools.
+The host validates each tool result, then sends its canonical JSON as text.
+The client checks the service's user tool-result echo and reads the following
+assistant response. An echo alone is not a completed agent result.
+
 Profiles accept `execution_role_arn`, `harness_name`, `max_iterations`,
 `max_tokens`, `timeout_seconds`, `temperature`, and `top_p`. The only accepted
 `api_format` is `converse_stream`; the only accepted `output_mode` is

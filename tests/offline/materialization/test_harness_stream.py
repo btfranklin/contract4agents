@@ -57,6 +57,52 @@ def test_only_the_last_complete_message_supplies_output_text() -> None:
     assert stream.text == "final message"
 
 
+def _tool_result_echo() -> list[dict[str, object]]:
+    return [
+        {"messageStart": {"role": "user"}},
+        {
+            "contentBlockStart": {
+                "contentBlockIndex": 0,
+                "start": {"toolResult": {"toolUseId": "call-9", "status": "success"}},
+            }
+        },
+        {
+            "contentBlockDelta": {
+                "contentBlockIndex": 0,
+                "delta": {"toolResult": [{"text": '{"answer":"source data"}'}]},
+            }
+        },
+        {"contentBlockStop": {"contentBlockIndex": 0}},
+        {"messageStop": {"stopReason": "tool_result"}},
+    ]
+
+
+def test_tool_result_echo_is_not_the_assistant_output() -> None:
+    stream = HarnessStream.read([*_tool_result_echo(), *_text_message("final message")])
+
+    assert stream.failure is None
+    assert stream.text == "final message"
+    assert stream.stop_reason == "end_turn"
+    assert stream.tool_name is None
+
+
+def test_tool_result_echo_alone_is_not_a_complete_response() -> None:
+    stream = HarnessStream.read(_tool_result_echo())
+
+    assert stream.failure == "incomplete_stream"
+    assert stream.text == ""
+
+
+@pytest.mark.parametrize("content", [[], [{}], [{"text": 3}], [{"text": "data", "unknown": True}]])
+def test_malformed_tool_result_echo_fails_before_assistant_output(content: object) -> None:
+    events = _tool_result_echo()
+    events[2] = {"contentBlockDelta": {"contentBlockIndex": 0, "delta": {"toolResult": content}}}
+
+    stream = HarnessStream.read([*events, *_text_message("final message")])
+
+    assert stream.failure == "invalid_stream"
+
+
 def test_tool_input_fragments_are_not_available_until_complete_tool_stop() -> None:
     partial = _tool_start("lookup", "call-9") + [
         {"contentBlockDelta": {"contentBlockIndex": 0, "delta": {"toolUse": {"input": '{"x":'}}}},

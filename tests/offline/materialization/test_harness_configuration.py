@@ -60,7 +60,7 @@ def test_configuration_is_deterministic_and_writes_no_aws_resources(
     request = json_object("request", thaw(agent.request))
 
     assert first.agents["Analyst"].configuration_digest == second.agents["Analyst"].configuration_digest
-    assert request["allowedTools"] == list(agent.tools)
+    assert request["allowedTools"] == [f"@*/{name}" for name in agent.tools]
     assert request["memory"] == {"disabled": {}}
     assert request["truncation"] == {"strategy": "none"}
     model = json_object("model", request["model"])
@@ -84,7 +84,7 @@ def test_delegate_configuration_uses_one_declared_inline_function(tmp_path: Path
     expected_name = native_name("delegate", semantic_id("edge", "analyze"))
 
     assert tuple(parent.tools) == (expected_name,)
-    assert parent.request_payload()["allowedTools"] == [expected_name]
+    assert parent.request_payload()["allowedTools"] == [f"@*/{expected_name}"]
     assert json_object("tool", json_array("tools", parent.request_payload()["tools"])[0])["type"] == "inline_function"
 
 

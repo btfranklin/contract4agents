@@ -92,6 +92,7 @@ class HarnessStream:
         blocks: dict[int, _Block] = {}
         started = False
         stopped = False
+        role = "assistant"
         byte_count = 0
         usage_digests: set[str] = set()
         block: _Block | None
@@ -113,8 +114,13 @@ class HarnessStream:
             if name in {"internalServerException", "runtimeClientError", "validationException"}:
                 result.failure = "provider_error"
             elif name == "messageStart":
-                if set(payload) != {"role"} or (started and not stopped) or payload.get("role") != "assistant":
+                if (
+                    set(payload) != {"role"}
+                    or (started and not stopped)
+                    or payload.get("role") not in ("assistant", "user")
+                ):
                     result.failure = "invalid_stream"
+                role = str(payload.get("role"))
                 started, stopped = True, False
                 blocks = {}
                 result.stop_reason = None
@@ -139,7 +145,7 @@ class HarnessStream:
                         result.failure = "invalid_stream"
                         continue
                     tool = start.get("toolUse")
-                    if tool is not None and "toolUse" in start:
+                    if tool is not None and "toolUse" in start and role == "assistant":
                         if (
                             not _is_object(tool)
                             or not isinstance(tool.get("name"), str)
@@ -154,6 +160,18 @@ class HarnessStream:
                         tool_name, tool_id = tool["name"], tool["toolUseId"]
                         assert isinstance(tool_name, str) and isinstance(tool_id, str)
                         blocks[index] = _Block("tool", name=tool_name, tool_use_id=tool_id)
+                    elif "toolResult" in start and role == "user":
+                        echo = start["toolResult"]
+                        if (
+                            not _is_object(echo)
+                            or set(echo) - {"toolUseId", "status"}
+                            or not isinstance(echo.get("toolUseId"), str)
+                            or _TOOL_IDENTIFIER.fullmatch(str(echo["toolUseId"])) is None
+                            or echo.get("status") not in (None, "success", "error")
+                        ):
+                            result.failure = "invalid_stream"
+                            continue
+                        blocks[index] = _Block("result")
                     else:
                         result.failure = "unsupported_stream_event"
                 elif name == "contentBlockDelta":
@@ -163,7 +181,12 @@ class HarnessStream:
                         continue
                     if "text" in delta:
                         block = blocks.setdefault(index, _Block("text"))
-                        if block.stopped or block.kind != "text" or not isinstance(delta["text"], str):
+                        if (
+                            role != "assistant"
+                            or block.stopped
+                            or block.kind != "text"
+                            or not isinstance(delta["text"], str)
+                        ):
                             result.failure = "invalid_stream"
                         else:
                             text = delta["text"]
@@ -184,7 +207,8 @@ class HarnessStream:
                     elif "reasoningContent" in delta:
                         reasoning = delta["reasoningContent"]
                         if (
-                            not _is_object(reasoning)
+                            role != "assistant"
+                            or not _is_object(reasoning)
                             or set(reasoning)
                             - {
                                 "text",
@@ -198,6 +222,22 @@ class HarnessStream:
                             result.failure = "invalid_stream"
                         else:
                             blocks.setdefault(index, _Block("reasoning"))
+                    elif "toolResult" in delta:
+                        block = blocks.get(index)
+                        contents = delta["toolResult"]
+                        if (
+                            role != "user"
+                            or block is None
+                            or block.stopped
+                            or block.kind != "result"
+                            or not isinstance(contents, list)
+                            or not contents
+                            or any(
+                                not _is_object(item) or set(item) != {"text"} or not isinstance(item["text"], str)
+                                for item in contents
+                            )
+                        ):
+                            result.failure = "invalid_stream"
                     else:
                         result.failure = "unsupported_stream_event"
                 else:
@@ -215,6 +255,14 @@ class HarnessStream:
                     result.failure = "invalid_stream"
                 elif not started or stopped or any(not block.stopped for block in blocks.values()):
                     result.failure = "incomplete_stream"
+                elif role == "user" and (
+                    payload["stopReason"] != "tool_result"
+                    or not blocks
+                    or any(block.kind != "result" for block in blocks.values())
+                ):
+                    result.failure = "invalid_stream"
+                elif role == "assistant" and payload["stopReason"] == "tool_result":
+                    result.failure = "invalid_stream"
                 stopped = True
                 reason = payload.get("stopReason")
                 result.stop_reason = reason if isinstance(reason, str) else None
@@ -259,7 +307,7 @@ class HarnessStream:
                     result.failure = "invalid_stream"
             else:
                 result.failure = "unsupported_stream_event"
-        if (not started or not stopped or result.stop_reason is None) and result.failure is None:
+        if (not started or not stopped or result.stop_reason is None or role != "assistant") and result.failure is None:
             result.failure = "incomplete_stream"
         result.text = "".join(block.text for block in blocks.values() if block.kind == "text")
         calls = [block for _, block in sorted(blocks.items()) if block.kind == "tool"]
