@@ -56,7 +56,8 @@ Profiles accept `execution_role_arn`, `harness_name`, `max_iterations`,
 `max_tokens`, `timeout_seconds`, `temperature`, and `top_p`. The only accepted
 `api_format` is `converse_stream`; the only accepted `output_mode` is
 `host_validation`. Defaults are 10 iterations, 4096 tokens per iteration, and
-120 seconds. These settings do not prove a total business budget or host
+120 seconds. The token setting applies to both the Harness and its model's
+output limit. These settings do not prove a total business budget or host
 deadline. Store credential references rather than secret values.
 
 ```bash

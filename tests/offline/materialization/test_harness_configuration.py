@@ -65,6 +65,7 @@ def test_configuration_is_deterministic_and_writes_no_aws_resources(
     assert request["truncation"] == {"strategy": "none"}
     model = json_object("model", request["model"])
     assert json_object("bedrock config", model["bedrockModelConfig"])["apiFormat"] == "converse_stream"
+    assert json_object("bedrock config", model["bedrockModelConfig"])["maxTokens"] == 4096
     assert request["maxIterations"] == 10
     assert request["maxTokens"] == 4096
     assert request["timeoutSeconds"] == 120
@@ -85,6 +86,20 @@ def test_delegate_configuration_uses_one_declared_inline_function(tmp_path: Path
     assert tuple(parent.tools) == (expected_name,)
     assert parent.request_payload()["allowedTools"] == [expected_name]
     assert json_object("tool", json_array("tools", parent.request_payload()["tools"])[0])["type"] == "inline_function"
+
+
+@pytest.mark.parametrize("max_tokens", [512, 8192])
+def test_configured_token_limit_reaches_model_and_harness(tmp_path: Path, max_tokens: int) -> None:
+    root = write_project(tmp_path / "project")
+    bindings = root / "contract4agents.targets.toml"
+    bindings.write_text(bindings.read_text() + f"\nmax_tokens = {max_tokens}\n")
+
+    request = _configuration(root).agents["Analyst"].request_payload()
+    model = json_object("model", request["model"])
+    bedrock = json_object("bedrock config", model["bedrockModelConfig"])
+
+    assert bedrock["maxTokens"] == max_tokens
+    assert request["maxTokens"] == max_tokens
 
 
 def test_long_agent_names_have_stable_distinct_harness_names(tmp_path: Path) -> None:
