@@ -192,7 +192,12 @@ def build_harness_configuration(
         if not isinstance(harness_name, str) or harness_name in harness_names:
             raise ValueError("Harness names must be unique strings")
         harness_names.add(harness_name)
-        model: dict[str, object] = {"modelId": plan.agents[agent_id].model, "apiFormat": "converse_stream"}
+        max_tokens = options.get("max_tokens", 4096)
+        model: dict[str, object] = {
+            "modelId": plan.agents[agent_id].model,
+            "apiFormat": "converse_stream",
+            "maxTokens": max_tokens,
+        }
         for key, aws_key in (("temperature", "temperature"), ("top_p", "topP")):
             if key in options:
                 model[aws_key] = options[key]
@@ -212,7 +217,7 @@ def build_harness_configuration(
             "memory": {"disabled": {}},
             "truncation": {"strategy": "none"},
             "maxIterations": options.get("max_iterations", 10),
-            "maxTokens": options.get("max_tokens", 4096),
+            "maxTokens": max_tokens,
             "timeoutSeconds": options.get("timeout_seconds", 120),
             "tags": {"contract4agents:contract": plan.contract_digest, "contract4agents:plan": plan.plan_digest},
         }
