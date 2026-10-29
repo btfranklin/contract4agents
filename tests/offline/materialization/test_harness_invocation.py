@@ -5,8 +5,9 @@ from collections.abc import Iterator, Mapping
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TypedDict, Unpack, cast
+from typing import Protocol, TypedDict, Unpack, cast
 
+import boto3  # type: ignore[import-untyped]
 import pytest
 from botocore.session import get_session  # type: ignore[import-untyped]
 from botocore.validate import validate_parameters  # type: ignore[import-untyped]
@@ -31,7 +32,7 @@ from contract4agents.ir import semantic_id
 from contract4agents.materialization import MaterializationError, MaterializedSystem
 from contract4agents.materialization._harness_configuration import frozen_object
 from contract4agents.materialization._harness_models import HarnessResult
-from contract4agents.tracing import NormalizedTrace, RecordingNormalizedTraceSink, TraceAttempt
+from contract4agents.tracing import NormalizedTrace, RecordingNormalizedTraceSink, TraceAttempt, TraceEvent
 from tests.support.agentcore_harness import (
     FakeHarnessControlClient,
     FakeHarnessRuntimeClient,
@@ -42,6 +43,11 @@ from tests.support.agentcore_harness import (
 
 INPUT = {"request": {"question": "synthetic question"}}
 OUTPUT = {"answer": "synthetic answer", "evidence_ids": ["source-1"]}
+
+
+class _TransportConfiguration(Protocol):
+    read_timeout: int
+    retries: dict[str, object]
 
 
 class _ContextChanges(TypedDict, total=False):
@@ -90,6 +96,7 @@ def system(
     tmp_path: Path, *, approval: bool = False, delegate: bool = False,
     streams: list[list[dict[str, object]]] | None = None, request_fields: str = "",
     include_tool: bool = True, output_mode: str | None = None,
+    timeout_seconds: int | None = None,
     result_declaration: str | None = None,
     output_type: str = "Result",
 ) -> tuple[MaterializedSystem, FakeHarnessRuntimeClient, RecordingNormalizedTraceSink]:
@@ -102,6 +109,9 @@ def system(
     if output_mode is not None:
         target = root / "contract4agents.targets.toml"
         target.write_text(target.read_text() + f'\noutput_mode = "{output_mode}"\n')
+    if timeout_seconds is not None:
+        target = root / "contract4agents.targets.toml"
+        target.write_text(target.read_text() + f'\ntimeout_seconds = {timeout_seconds}\n')
     configuration = generate_harness_configuration(root, target="agentcore_harness", profile="test")
     deployments = {}
     for index, name in enumerate(configuration.agents):
@@ -149,6 +159,213 @@ def test_generated_types_and_actual_aws_invocation_shape_are_preserved(tmp_path:
     assert {e.event_type for e in trace.events} >= {"output.accepted", "provider.outcome.reported"}
     assert all(e.context.plan_digest == result.plan.plan_digest for e in trace.events)
     assert all("deployment" in e.provenance for e in trace.events)
+
+
+@pytest.mark.parametrize("final_text", ['{"answer":"ready","evidence_ids":["source-1"]}',
+                                       '{"answer":"x","evidence_ids":[]}',
+                                       'The answer is {"answer":"ready","evidence_ids":[]}'])
+def test_schema_output_preserves_tool_continuation_and_strict_final_validation(
+    tmp_path: Path, final_text: str,
+) -> None:
+    result, client, sink = system(
+        tmp_path, output_mode="schema",
+        streams=[
+            tool_stream(native_name("tool", semantic_id("tool", "records.lookup")), INPUT),
+            success_stream(final_text),
+        ],
+        result_declaration='type Result:\n    answer: string(min_length=2)\n    evidence_ids: list[string]',
+    )
+    handle = agent_for(result, "Analyst")
+    scope = context()
+    interrupted = handle.invoke(INPUT, context=scope)
+    assert isinstance(interrupted, HarnessInterrupted)
+    completed = handle.resume(interrupted.pending, OUTPUT, context=scope)
+    if final_text.startswith('{"answer":"ready"'):
+        assert isinstance(completed, HarnessCompleted)
+        assert result.validate_output_for_agent(handle, completed.value) is completed.value
+        assert sum(event.event_type == "output.accepted" for event in sink.events) == 1
+    else:
+        assert failure(completed).reason == "invalid_output"
+        assert not any(event.event_type == "output.accepted" for event in sink.events)
+    assert len(client.requests) == 2
+    for request in client.requests:
+        model = json_object("model", request["model"])
+        bedrock = json_object("bedrock", model["bedrockModelConfig"])
+        assert "outputConfig" in json_object("additional parameters", bedrock["additionalParams"])
+        assert request["allowedTools"] == [f"@*/{name}" for name in handle.configuration.tools]
+    assert client.requests[0]["model"] == client.requests[1]["model"]
+
+
+def test_default_runtime_transport_uses_the_configured_timeout_without_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, client, _ = system(
+        tmp_path, output_mode="schema", timeout_seconds=180, streams=[success_stream(json.dumps(OUTPUT))],
+    )
+    handle = replace(agent_for(result, "Analyst"), client=None)
+    configurations: list[_TransportConfiguration] = []
+
+    def create_client(service: str, *, region_name: str, config: object) -> FakeHarnessRuntimeClient:
+        assert service == "bedrock-agentcore" and region_name == "us-west-2"
+        configurations.append(cast(_TransportConfiguration, config))
+        return client
+
+    monkeypatch.setattr(boto3, "client", create_client)
+    assert isinstance(handle.invoke(INPUT, context=context()), HarnessCompleted)
+    assert len(configurations) == 1
+    assert configurations[0].read_timeout == 180
+    assert configurations[0].retries == {"total_max_attempts": 1}
+    assert client.requests[0]["timeoutSeconds"] == 180
+
+
+def _adjacent_calls(
+    second_name: str | None = None, second_arguments: Mapping[str, object] | None = None,
+) -> list[dict[str, object]]:
+    name = native_name("tool", semantic_id("tool", "records.lookup"))
+    first = tool_stream(name, INPUT, "call-first")
+    second = tool_stream(second_name or name, second_arguments or INPUT, "call-second")
+    following: list[dict[str, object]] = []
+    for event in second[1:-1]:
+        key, payload = next(iter(event.items()))
+        following.append({key: {**json_object("block", payload), "contentBlockIndex": 1}})
+    return first[:-1] + following + first[-1:]
+
+
+@pytest.mark.parametrize("recover", [False, True])
+@pytest.mark.parametrize("approval_required", [False, True])
+def test_adjacent_calls_collect_each_host_result_and_submit_one_ordered_batch(
+    tmp_path: Path, recover: bool, approval_required: bool,
+) -> None:
+    result, client, sink = system(
+        tmp_path, approval=approval_required,
+        streams=[_adjacent_calls(), success_stream(json.dumps(OUTPUT))],
+    )
+    handle = agent_for(result, "Analyst")
+    scope = context()
+    first = pending_call(handle.invoke(INPUT, context=scope))
+    assert first.tool_use_id == "call-first" and first.batch is not None
+    decision = HarnessApproval(first.call_digest, True, "approval:first") if approval_required else None
+    if decision is not None:
+        handle.record_approval(first, decision, context=scope)
+    second = pending_call(handle.resume(first, OUTPUT, context=scope, approval=decision))
+    assert second.tool_use_id == "call-second" and len(client.requests) == 1
+    assert not any(event.event_type == "output.accepted" for event in sink.events)
+    assert handle.tool_arguments(second, context=scope) == INPUT
+    if recover:
+        second = HarnessPendingCall.from_dict(second.to_dict())
+        handle = HarnessAgent(handle.configuration, handle.deployment, client, sink)
+        handle.restore_pending(second, context=scope)
+        with pytest.raises(ValueError, match="already been submitted"):
+            handle.restore_pending(first, context=scope)
+    decision = HarnessApproval(second.call_digest, True, "approval:second") if approval_required else None
+    if decision is not None:
+        with pytest.raises(ValueError, match="explicit application approval"):
+            handle.resume(second, OUTPUT, context=scope)
+        handle.record_approval(second, decision, context=scope)
+    completed = handle.resume(second, OUTPUT, context=scope, approval=decision)
+    assert isinstance(completed, HarnessCompleted) and len(client.requests) == 2
+    message = json_object("message", json_array("messages", client.requests[1]["messages"])[0])
+    responses = [json_object("result", item)["toolResult"] for item in json_array("content", message["content"])]
+    assert [json_object("tool result", item)["toolUseId"] for item in responses] == ["call-first", "call-second"]
+    for item in responses:
+        content = json_array("content", json_object("result", item)["content"])
+        assert json.loads(str(json_object("text", content[0])["text"])) == OUTPUT
+    assert sum(event.event_type == "agent.started" for event in sink.events) == 2
+    assert sum(event.event_type == "tool.requested" for event in sink.events) == 2
+    assert sum(event.event_type == "output.accepted" for event in sink.events) == 1
+    with pytest.raises(ValueError, match="already submitted"):
+        handle.resume(second, OUTPUT, context=scope, approval=decision)
+
+
+@pytest.mark.parametrize("later_name,later_arguments,reason", [
+    ("ungranted", INPUT, "ungranted_tool"),
+    (None, {"request": {"question": 9}}, "invalid_tool_input"),
+])
+def test_invalid_later_call_rejects_the_whole_handoff_before_host_execution(
+    tmp_path: Path, later_name: str | None, later_arguments: Mapping[str, object], reason: str,
+) -> None:
+    result, client, sink = system(tmp_path, streams=[_adjacent_calls(later_name, later_arguments)])
+    rejected = agent_for(result, "Analyst").invoke(INPUT, context=context())
+    assert failure(rejected).reason == reason
+    assert len(client.requests) == 1
+    assert not any(event.event_type in {"tool.requested", "approval.requested"} for event in sink.events)
+
+
+def test_batch_recovery_rejects_tampered_prior_result_before_any_request(tmp_path: Path) -> None:
+    result, client, _ = system(tmp_path, streams=[_adjacent_calls()])
+    handle = agent_for(result, "Analyst")
+    scope = context()
+    first = pending_call(handle.invoke(INPUT, context=scope))
+    second = pending_call(handle.resume(first, OUTPUT, context=scope))
+    raw = json.loads(json.dumps(second.to_dict()))
+    raw["batch"]["results"][0]["response"]["content"][0]["text"] = '{"answer":7}'
+    restored = HarnessPendingCall.from_dict(raw)
+    fresh = HarnessAgent(handle.configuration, handle.deployment, client)
+    with pytest.raises(ValidationError):
+        fresh.restore_pending(restored, context=scope)
+    assert len(client.requests) == 1
+
+
+def test_batch_recovery_preserves_denial_and_requires_the_next_approval(tmp_path: Path) -> None:
+    result, client, _ = system(
+        tmp_path, approval=True, streams=[_adjacent_calls(), success_stream(json.dumps(OUTPUT))],
+    )
+    handle = agent_for(result, "Analyst")
+    scope = context()
+    first = pending_call(handle.invoke(INPUT, context=scope))
+    denied = HarnessApproval(first.call_digest, False, "approval:denied")
+    handle.record_approval(first, denied, context=scope)
+    second = pending_call(handle.resume(first, context=scope, approval=denied))
+    assert len(client.requests) == 1
+    fresh = HarnessAgent(handle.configuration, handle.deployment, client)
+    fresh.restore_pending(HarnessPendingCall.from_dict(second.to_dict()), context=scope)
+    with pytest.raises(ValueError, match="explicit application approval"):
+        fresh.resume(second, OUTPUT, context=scope)
+    approved = HarnessApproval(second.call_digest, True, "approval:next")
+    fresh.record_approval(second, approved, context=scope)
+    assert isinstance(fresh.resume(second, OUTPUT, context=scope, approval=approved), HarnessCompleted)
+    message = json_object("message", json_array("messages", client.requests[1]["messages"])[0])
+    responses = [json_object("result", item)["toolResult"] for item in json_array("content", message["content"])]
+    assert [json_object("result", item)["status"] for item in responses] == ["error", "success"]
+
+
+def test_batch_recovery_rejects_changed_historical_approval(tmp_path: Path) -> None:
+    result, client, _ = system(tmp_path, approval=True, streams=[_adjacent_calls()])
+    handle = agent_for(result, "Analyst")
+    scope = context()
+    first = pending_call(handle.invoke(INPUT, context=scope))
+    approved = HarnessApproval(first.call_digest, True, "approval:prior")
+    handle.record_approval(first, approved, context=scope)
+    second = pending_call(handle.resume(first, OUTPUT, context=scope, approval=approved))
+    raw = json.loads(json.dumps(second.to_dict()))
+    raw["batch"]["results"][0]["approval"]["call_digest"] = "sha256:" + "0" * 64
+    fresh = HarnessAgent(handle.configuration, handle.deployment, client)
+    with pytest.raises(ValueError, match="Buffered approval"):
+        fresh.restore_pending(HarnessPendingCall.from_dict(raw), context=scope)
+    assert len(client.requests) == 1
+
+
+def test_buffered_handoff_remains_reserved_during_trace_delivery(tmp_path: Path) -> None:
+    result, client, _ = system(tmp_path, streams=[_adjacent_calls()])
+    original = agent_for(result, "Analyst")
+    scope = context()
+    attempts: list[bool] = []
+
+    class RecoverySink(RecordingNormalizedTraceSink):
+        def emit(self, event: TraceEvent) -> None:
+            super().emit(event)
+            if event.event_type == "tool.result_submitted" and event.data.get("submission_phase") == "buffered":
+                with pytest.raises(ValueError, match="Another pending call"):
+                    handle.restore_pending(conflicting, context=scope)
+                attempts.append(True)
+
+    handle = HarnessAgent(original.configuration, original.deployment, client, RecoverySink())
+    first = pending_call(handle.invoke(INPUT, context=scope))
+    conflicting = replace(first, batch=None, tool_use_id="other-call", event_id="other-event")
+    second = pending_call(handle.resume(first, OUTPUT, context=scope))
+    assert attempts == [True] and second.tool_use_id == "call-second"
+    assert handle.tool_arguments(second, context=scope) == INPUT
+    assert len(client.requests) == 1
 
 
 def test_native_result_tool_completes_only_a_valid_value_envelope(tmp_path: Path) -> None:

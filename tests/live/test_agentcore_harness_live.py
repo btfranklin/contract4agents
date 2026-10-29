@@ -49,10 +49,6 @@ def test_synthetic_harness_tool_continuation() -> None:
             assert isinstance(value, int) and value <= limit
         deployments[name] = verify_harness_deployment(configuration, name, client=control, **references[name])
     selected = deployments["EvidenceAnalyst"]
-    deployed = control.get_harness(
-        harnessId=selected.harness_arn.rsplit("/", 1)[1], harnessVersion=selected.harness_version
-    )["harness"]
-    runtime_arn = deployed["environment"]["agentCoreRuntimeEnvironment"]["agentRuntimeArn"]
     system = materialize(
         EXAMPLE,
         target="harness",
@@ -86,4 +82,8 @@ def test_synthetic_harness_tool_continuation() -> None:
     finally:
         # This is application cleanup of the new synthetic session only.
         # Existing Harness resources and endpoints remain deployment-owned.
-        runtime.stop_runtime_session(agentRuntimeArn=runtime_arn, runtimeSessionId=scope.session_id)
+        runtime.stop_runtime_session(
+            agentRuntimeArn=selected.harness_arn,
+            qualifier=selected.endpoint_name,
+            runtimeSessionId=scope.session_id,
+        )

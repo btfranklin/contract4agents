@@ -19,8 +19,8 @@ writes, permissions, promotion, rollback, and endpoint stability.
 | Deployment artifact | AWS CLI `create-harness --cli-input-json` request files and an identity manifest |
 | Instructions | Derived from the contract and generated final-output schema |
 | Typed input | Strict generated model before invocation |
-| Typed return | Host-enforced JSON and type validation by default; optional native result tool with strict envelope validation |
-| Native constrained generation | Unverified; the result tool does not claim schema constrained generation |
+| Typed return | Strict JSON and type validation; explicit schema generation or result-tool output modes |
+| Native constrained generation | `output_mode = "schema"` derives Bedrock `outputConfig.textFormat`; requires a supported model |
 | Python tools | Inline functions, strict arguments and results, explicit tool allowlist |
 | Approval | Application decision bound to the complete pending call and context |
 | Delegation | Fixed declared child, `history = none`, exact typed input mappings |
@@ -66,13 +66,42 @@ envelope. The result tool has no application implementation, grant, or effect.
 Assistant commentary can accompany the result call. It is not part of the typed
 value. Text without the result call is invalid in this mode.
 
+In `output_mode = "schema"`, the contract return type generates Bedrock's
+`outputConfig.textFormat` under `bedrockModelConfig.additionalParams`.
+This constrains final JSON generation while ordinary inline tools remain
+available. It does not add a private result tool. The final response must end
+normally and pass the full strict contract validator. Refusals, token limits,
+incomplete output, invalid values, and surrounding prose remain failures.
+
+Bedrock supports only a subset of JSON Schema. The generated provider schema
+retains object fields, required fields, enums, internal references, supported
+formats, and supported array minimums. It omits numeric bounds, string-length
+bounds, and array maximums. An array minimum greater than one becomes one for
+generation. The complete original schema remains in the instructions and in
+the strict host validator. This changes only generation constraints; it does
+not change contract types or the accepted output values.
+
+Generation rejects open objects, recursive schemas, and schemas that exceed Bedrock's limits of
+12 optional properties or 16 union properties. It does not make fields
+required or change their types to meet those limits. A model that does not
+support native structured output fails; there is no automatic mode fallback.
+The plan reports host-enforced output because native generation cannot enforce
+every contract bound. Deployment readback includes the exact provider schema.
+
+The existing `tool` and `host_validation` modes remain explicit options for
+models without native schema generation. A schema on an inline result tool
+does not by itself prove provider-constrained decoding.
+See the [Bedrock structured output limits](https://docs.aws.amazon.com/bedrock/latest/userguide/structured-output.html)
+before you select a model and output mode.
+
 Profiles accept `execution_role_arn`, `harness_name`, `max_iterations`,
 `max_tokens`, `timeout_seconds`, `temperature`, `top_p`, and the finite JSON
 object `additional_model_request_fields`. This object maps to Converse
 `additionalModelRequestFields`. The only accepted `api_format` is
-`converse_stream`; `output_mode` accepts `host_validation` or `tool`. Defaults are 10 iterations, 4096 tokens per iteration, and
-120 seconds. The token setting applies to both the Harness and its model's
-output limit. These settings do not prove a total business budget or host
+`converse_stream`; `output_mode` accepts `host_validation`, `tool`, or `schema`.
+Defaults are 10 iterations, 4096 tokens, and 120 seconds. The token setting
+applies to the Harness invocation limit and the model output limit for each
+iteration. These settings do not prove a total business budget or host
 deadline. Store credential references rather than secret values.
 
 ```bash
@@ -117,6 +146,10 @@ parsing. The effective strategy and all other configuration fields stay intact.
 An empty configuration for an active truncation strategy still fails parsing.
 This applies to library-created clients and caller-supplied SDK clients.
 Caller-supplied clients retain their transport and retry settings.
+Adapter-created invocation clients use the configured `timeout_seconds` as
+their socket read timeout. This avoids an unrelated 60-second SDK default
+during native schema compilation. A socket read timeout is not a total run
+deadline. Set enough time for the selected model and its first schema request.
 
 ## Typed Invocation and Continuation
 
@@ -139,9 +172,17 @@ validation errors raise before the affected AWS call. There is no automatic
 retry, JSON repair, or model fallback.
 
 No tool executes from a fragment. A pending call requires complete blocks and
-the final `tool_use` stop reason. For adjacent inline calls, submit only the
-first pending result and wait for the next handoff. Early content for later
-calls does not authorize execution.
+the final `tool_use` stop reason. The client validates every adjacent inline
+call before it exposes the first pending call. Each `resume()` accepts one
+host result. If more adjacent calls remain, it returns the next pending call
+locally. After the last result, it sends all results together in their original
+order. The application still decides approval and executes each tool. The
+client does not execute application tools or make a hidden model request.
+
+Trace data marks a collected result with `submission_phase = "buffered"`
+while the batch is incomplete, then `"dispatch_requested"` before a provider
+request. This does not claim that the provider received the results. A local
+handoff does not add provider usage or claim a new AWS request.
 
 Use `agent.tool_arguments(...)` to obtain validated Python arguments. The
 application decides approval and calls `agent.record_approval(pending, decision,
@@ -157,11 +198,14 @@ Continuation validates the result and uses the original tool-use ID and
 session. A submitted result does not prove the external action occurred.
 
 Persist `pending.to_dict()` only in authenticated application storage. It
-contains customer input and arguments. Recover with
+contains customer input, arguments, and any buffered batch results and approvals.
+Recover with
 `HarnessPendingCall.from_dict(...)` and explicit `agent.restore_pending(...)`.
 Supply any persisted approval to `restore_pending(..., approval=decision)`
 and retain its original trace evidence. Restoration does not invent a new
-approval event. The host can correlate actual tool events with the approval by
+approval event. Batch recovery checks the original calls, buffered result
+types, and recorded approval bindings. Single-call state keeps its existing
+representation. The host can correlate actual tool events with the approval by
 using `pending.call_digest` as `provider.span_id` and the same trace attempt.
 The application must prevent stale state, unauthorized restoration, and replay
 across processes. The handle prevents duplicate submission within its process.

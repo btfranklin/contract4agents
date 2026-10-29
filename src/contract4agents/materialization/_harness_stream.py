@@ -9,7 +9,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import TypeGuard
 
-from contract4agents.materialization._harness_configuration import content_digest
+from contract4agents.ir import FrozenJsonValue, FrozenMap
+from contract4agents.materialization._harness_configuration import content_digest, frozen_object, thaw
 
 _STOP_REASONS = frozenset(
     {
@@ -74,6 +75,15 @@ class _Block:
     stopped: bool = False
 
 
+@dataclass(frozen=True)
+class HarnessStreamToolCall:
+    """A complete tool call from the final assistant message."""
+
+    tool_name: str
+    tool_use_id: str
+    arguments: FrozenMap[str, FrozenJsonValue]
+
+
 @dataclass
 class HarnessStream:
     """Final response state; fragments are never executable tool calls."""
@@ -86,6 +96,7 @@ class HarnessStream:
     tool_use_count: int = 0
     tool_use_id: str | None = None
     arguments: object = None
+    tool_calls: tuple[HarnessStreamToolCall, ...] = ()
     usage: list[Mapping[str, int]] = field(default_factory=list)
 
     @classmethod
@@ -323,14 +334,20 @@ class HarnessStream:
             elif len({call.tool_use_id for call in calls}) != len(calls):
                 result.failure = "invalid_stream"
             else:
-                first = calls[0]
                 try:
-                    arguments = decode_json(first.text or "{}")
+                    complete_calls = tuple(
+                        HarnessStreamToolCall(
+                            call.name, call.tool_use_id, frozen_object(decode_json(call.text or "{}")),
+                        )
+                        for call in calls
+                    )
                 except ValueError:
                     result.failure = "invalid_tool_input"
                 else:
-                    result.tool_name, result.tool_use_id = first.name, first.tool_use_id
-                    result.arguments = arguments
+                    result.tool_calls = complete_calls
+                    first = complete_calls[0]
+                    result.tool_name, result.tool_use_id = first.tool_name, first.tool_use_id
+                    result.arguments = thaw(first.arguments)
         elif result.stop_reason == "end_turn" and calls:
             result.failure = "invalid_stream"
         return result

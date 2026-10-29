@@ -172,6 +172,17 @@ class AgentCoreHarnessMappingResolver:
             return MappingSupport("unsupported", None)
         if agent is None or (not has_tools and agent.model_options.get("output_mode") != "tool"):
             return MappingSupport("unsupported", None)
+        if agent.model_options.get("output_mode") == "schema":
+            return MappingSupport(
+                "host_enforced",
+                "bedrock.converse.json_schema_and_host_validation",
+                expected_event_types=("output.accepted", "output.schema_failed"),
+                host_obligation=(
+                    "Use a model that supports Bedrock structured output. Native generation "
+                    "constrains the supported schema subset; the client validates all contract "
+                    "bounds and requires a complete final response."
+                ),
+            )
         return MappingSupport(
             "host_enforced",
             "host.client_output_validator",
@@ -437,8 +448,10 @@ def _validate_options(
     if api_format is not None and api_format != "converse_stream":
         diagnostics.append(Diagnostic("TGT113", f"`{path}.api_format` must be `converse_stream`"))
     output_mode = options.get("output_mode")
-    if output_mode is not None and (not isinstance(output_mode, str) or output_mode not in ("host_validation", "tool")):
-        diagnostics.append(Diagnostic("TGT113", f"`{path}.output_mode` must be `host_validation` or `tool`"))
+    if output_mode is not None and (
+        not isinstance(output_mode, str) or output_mode not in ("host_validation", "tool", "schema")
+    ):
+        diagnostics.append(Diagnostic("TGT113", f"`{path}.output_mode` must be `host_validation`, `tool`, or `schema`"))
     if "additional_model_request_fields" in options:
         try:
             if not isinstance(freeze_json(options["additional_model_request_fields"]), Mapping):

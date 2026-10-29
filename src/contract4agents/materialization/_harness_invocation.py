@@ -5,19 +5,21 @@ from __future__ import annotations
 import threading
 import uuid
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import cast
 
 from pydantic import ValidationError
 
-from contract4agents._strict_json import json_object
+from contract4agents._strict_json import json_array, json_object, json_string
 from contract4agents.ir import FrozenJsonValue, FrozenMap
+from contract4agents.materialization._harness_batch import HarnessBatchCall, HarnessBatchResult, HarnessPendingBatch
 from contract4agents.materialization._harness_configuration import (
     HarnessAgentConfiguration,
     HarnessTool,
     canonical_json,
     content_digest,
     frozen_object,
+    thaw,
 )
 from contract4agents.materialization._harness_deployment import (
     HarnessDeployment,
@@ -97,11 +99,21 @@ class HarnessAgent:
 
         self._validate_pending_identity(pending, context)
         self._tool_input(self.configuration.tools[pending.tool_name], pending.arguments, pending.source_input)
+        batch = self._validate_pending_batch(pending, context)
         if approval is not None and approval.call_digest != pending.call_digest:
             raise ValueError("Restored approval does not identify this pending call")
         with self._state_lock:
             if pending.call_digest in self._consumed:
                 raise ValueError("This pending call has already been submitted")
+            if any(
+                other.context.session_id == context.session_id and other != pending
+                for other in self._pending.values()
+            ):
+                raise ValueError("Another pending call already owns this session")
+            if batch is not None:
+                self._consumed.update(
+                    batch.prior_pending(pending, index).call_digest for index in range(len(batch.results))
+                )
             self._pending[pending.call_digest] = pending
             self._sessions.add(context.session_id)
             if approval is not None:
@@ -168,30 +180,41 @@ class HarnessAgent:
             # Domain validation and proof of the external effect remain host duties.
             validated = tool.output_adapter.validate_python(normalize_structural_value(value), strict=True)
             serialized = tool.output_adapter.dump_python(validated, mode="json")
+        response = frozen_object({
+            "toolUseId": pending.tool_use_id,
+            "content": [{"text": canonical_json(serialized)}],
+            "status": "error" if denied else "success",
+        })
+        batch = HarnessPendingBatch.from_dict(pending.batch) if pending.batch is not None else None
+        results = (() if batch is None else batch.results) + (HarnessBatchResult(response, approval),)
+        buffered = batch is not None and len(results) < len(batch.calls)
+        following = (
+            HarnessPendingBatch(batch.calls, results).pending(pending) if buffered and batch is not None else None
+        )
         with self._state_lock:
             self._require_pending(pending, context)
             self._pending.pop(pending.call_digest)
             self._consumed.add(pending.call_digest)
             self._approvals.pop(pending.call_digest, None)
+            if following is not None:
+                self._pending[following.call_digest] = following
         trace.emit(
             "composition.completed" if tool.child_agent_id else "tool.result_submitted",
             semantic=semantic,
-            data={"call_digest": pending.call_digest, "denied": denied, "external_effect_verified": False},
+            data={
+                "call_digest": pending.call_digest, "denied": denied,
+                "external_effect_verified": False,
+                "submission_phase": "buffered" if buffered else "dispatch_requested",
+            },
             span_id=pending.call_digest,
         )
+        if following is not None:
+            return self._emit_pending(following, trace, request_id=None)
         return self._request(
             [
                 {
                     "role": "user",
-                    "content": [
-                        {
-                            "toolResult": {
-                                "toolUseId": pending.tool_use_id,
-                                "content": [{"text": canonical_json(serialized)}],
-                                "status": "error" if denied else "success",
-                            }
-                        }
-                    ],
+                    "content": [{"toolResult": thaw(item.response)} for item in results],
                 }
             ],
             context=context,
@@ -257,6 +280,42 @@ class HarnessAgent:
             if self._pending.get(pending.call_digest) != pending or pending.call_digest in self._consumed:
                 raise ValueError("Pending call is unknown, changed, or already submitted")
         return self.configuration.tools[pending.tool_name]
+
+    def _validate_pending_batch(
+        self, pending: HarnessPendingCall, context: HarnessRunContext,
+    ) -> HarnessPendingBatch | None:
+        if pending.batch is None:
+            return None
+        batch = HarnessPendingBatch.from_dict(pending.batch)
+        if batch.pending(pending) != pending:
+            raise ValueError("Pending call does not match its batch position")
+        for call in batch.calls:
+            candidate = replace(
+                pending, tool_name=call.tool_name, tool_use_id=call.tool_use_id,
+                arguments=call.arguments, event_id=call.event_id, batch=None,
+            )
+            self._validate_pending_identity(candidate, context)
+            self._tool_input(self.configuration.tools[call.tool_name], call.arguments, pending.source_input)
+        for index, result in enumerate(batch.results):
+            prior = batch.prior_pending(pending, index)
+            tool = self.configuration.tools[prior.tool_name]
+            approval = result.approval
+            if tool.approval_required and approval is None:
+                raise ValueError("Buffered result is missing its application approval")
+            if approval is not None and approval.call_digest != prior.call_digest:
+                raise ValueError("Buffered approval does not identify its exact pending call")
+            response = json_object("Buffered tool result", thaw(result.response))
+            content = json_object("Buffered tool content", json_array("Buffered content", response["content"])[0])
+            text = json_string("Buffered result text", content["text"])
+            value = decode_json(text)
+            if response["status"] == "error":
+                if approval is None or approval.approved or value != {"error": "application_approval_denied"}:
+                    raise ValueError("Buffered denial does not match its application decision")
+            else:
+                if approval is not None and not approval.approved:
+                    raise ValueError("Buffered successful result has a denied approval")
+                tool.output_adapter.validate_json(text, strict=True)
+        return batch
 
     def _tool_input(
         self,
@@ -328,14 +387,15 @@ class HarnessAgent:
         response_key = str(uuid.uuid4())
         response_received = False
         try:
+            settings = HarnessInvocationSettings.from_configuration(self.configuration.request)
             client = self.client or cast(
                 HarnessRuntimeClient,
                 aws_client(
                     "bedrock-agentcore",
                     region=self.deployment.harness_arn.split(":")[3],
+                    read_timeout=settings.timeout_seconds,
                 ),
             )
-            settings = HarnessInvocationSettings.from_configuration(self.configuration.request)
             response = client.invoke_harness(
                 harnessArn=self.deployment.harness_arn,
                 qualifier=self.deployment.endpoint_name,
@@ -437,13 +497,15 @@ class HarnessAgent:
         trace: HarnessTraceEmitter,
         request_id: str | None,
     ) -> HarnessResult:
-        tool = self.configuration.tools.get(stream.tool_name or "")
-        if tool is None:
-            return HarnessFailed("ungranted_tool", request_id, stream.stop_reason, True)
-        try:
-            self._tool_input(tool, stream.arguments, source_input)
-        except (ValueError, ValidationError):
-            return HarnessFailed("invalid_tool_input", request_id, stream.stop_reason, True)
+        for call in stream.tool_calls:
+            tool = self.configuration.tools.get(call.tool_name)
+            if tool is None:
+                return HarnessFailed("ungranted_tool", request_id, stream.stop_reason, True)
+            try:
+                self._tool_input(tool, call.arguments, source_input)
+            except (ValueError, ValidationError):
+                return HarnessFailed("invalid_tool_input", request_id, stream.stop_reason, True)
+        tool = self.configuration.tools[stream.tool_name or ""]
         event_id = f"agentcore_harness:{uuid.uuid4()}"
         pending = HarnessPendingCall(
             str(self.configuration.agent_id),
@@ -458,14 +520,31 @@ class HarnessAgent:
             context,
             event_id,
         )
+        if len(stream.tool_calls) > 1:
+            batch = HarnessPendingBatch(tuple(
+                HarnessBatchCall(call.tool_name, call.tool_use_id, call.arguments, f"agentcore_harness:{uuid.uuid4()}")
+                for call in stream.tool_calls
+            ))
+            pending = batch.pending(pending)
+        return self._register_pending(pending, trace, request_id)
+
+    def _register_pending(
+        self, pending: HarnessPendingCall, trace: HarnessTraceEmitter, request_id: str | None,
+    ) -> HarnessInterrupted:
         with self._state_lock:
             self._pending[pending.call_digest] = pending
+        return self._emit_pending(pending, trace, request_id)
+
+    def _emit_pending(
+        self, pending: HarnessPendingCall, trace: HarnessTraceEmitter, request_id: str | None,
+    ) -> HarnessInterrupted:
+        tool = self.configuration.tools[pending.tool_name]
         trace.emit(
             "composition.started" if tool.child_agent_id else "tool.requested",
             semantic=self._tool_semantic(tool),
             data={"call_digest": pending.call_digest, "arguments_digest": content_digest(pending.arguments)},
             request_id=request_id,
-            event_id=event_id,
+            event_id=pending.event_id,
             span_id=pending.call_digest,
         )
         if tool.approval_required:

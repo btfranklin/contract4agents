@@ -80,7 +80,7 @@ class HarnessRuntimeClient(Protocol):
     ) -> Mapping[str, object]: ...
 
 
-def aws_client(service: str, *, region: str | None = None) -> object:
+def aws_client(service: str, *, region: str | None = None, read_timeout: int | None = None) -> object:
     """Create a client with no SDK retries and no resource writes."""
 
     try:
@@ -88,7 +88,10 @@ def aws_client(service: str, *, region: str | None = None) -> object:
         Config = importlib.import_module("botocore.config").Config
     except ImportError as exc:
         raise ImportError("Install contract4agents[agentcore-harness] to use AWS clients") from exc
-    client = boto3.client(service, region_name=region, config=Config(retries={"total_max_attempts": 1}))
+    config = Config(retries={"total_max_attempts": 1})
+    if read_timeout is not None:
+        config = config.merge(Config(read_timeout=read_timeout))
+    client = boto3.client(service, region_name=region, config=config)
     if service == "bedrock-agentcore-control":
         _prepare_control_client(client)
     return client
