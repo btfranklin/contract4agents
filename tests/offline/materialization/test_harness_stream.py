@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import FrozenInstanceError
+
 import pytest
 from botocore.session import get_session  # type: ignore[import-untyped]
 from botocore.validate import ParamValidator  # type: ignore[import-untyped]
 
+from contract4agents.materialization._harness_configuration import thaw
 from contract4agents.materialization._harness_stream import HarnessStream
 from tests.support.agentcore_harness import success_stream, tool_stream
 
@@ -113,6 +117,7 @@ def test_tool_input_fragments_are_not_available_until_complete_tool_stop() -> No
     assert stream.failure == "incomplete_stream"
     assert stream.tool_name is None
     assert stream.arguments is None
+    assert stream.tool_calls == ()
 
 
 def test_complete_tool_use_combines_fragments_and_returns_one_call() -> None:
@@ -131,7 +136,7 @@ def test_complete_tool_use_combines_fragments_and_returns_one_call() -> None:
     assert stream.arguments == {"query": "records"}
 
 
-def test_multiple_complete_tool_calls_return_only_the_first_call() -> None:
+def _adjacent_tool_calls(second_input: str = '{"x":2}') -> list[dict[str, object]]:
     events = _tool_start("first", "call-1") + [
         {"contentBlockDelta": {"contentBlockIndex": 0, "delta": {"toolUse": {"input": '{"x":1}'}}}},
         {"contentBlockStop": {"contentBlockIndex": 0}},
@@ -141,17 +146,59 @@ def test_multiple_complete_tool_calls_return_only_the_first_call() -> None:
                 "start": {"toolUse": {"name": "second", "toolUseId": "call-2"}},
             }
         },
-        {"contentBlockDelta": {"contentBlockIndex": 1, "delta": {"toolUse": {"input": '{"x":2}'}}}},
+        {"contentBlockDelta": {"contentBlockIndex": 1, "delta": {"toolUse": {"input": second_input}}}},
         {"contentBlockStop": {"contentBlockIndex": 1}},
         {"messageStop": {"stopReason": "tool_use"}},
     ]
+    return events
 
-    stream = HarnessStream.read(events)
+
+def test_multiple_complete_tool_calls_are_retained_in_content_order() -> None:
+    stream = HarnessStream.read(_adjacent_tool_calls())
 
     assert stream.failure is None
     assert (stream.tool_name, stream.tool_use_id, stream.arguments) == ("first", "call-1", {"x": 1})
     assert stream.tool_use_count == 2
     assert stream.tool_use_names == ("first", "second")
+    assert [(call.tool_name, call.tool_use_id, thaw(call.arguments)) for call in stream.tool_calls] == [
+        ("first", "call-1", {"x": 1}),
+        ("second", "call-2", {"x": 2}),
+    ]
+    with pytest.raises(FrozenInstanceError):
+        stream.tool_calls[0].tool_name = "changed"  # type: ignore[misc]  # Frozen calls reject mutation.
+
+
+@pytest.mark.parametrize("second_input", ['{"x":', '{"x":1,"x":2}', '{"x":NaN}', "[]", "null"])
+def test_invalid_later_tool_call_prevents_all_calls_from_being_available(second_input: str) -> None:
+    stream = HarnessStream.read(_adjacent_tool_calls(second_input))
+
+    assert stream.failure == "invalid_tool_input"
+    assert stream.tool_calls == ()
+    assert stream.tool_name is None
+    assert stream.arguments is None
+
+
+@pytest.mark.parametrize("missing_events", [1, 2])
+def test_complete_first_call_does_not_expose_a_later_fragment_before_boundary(missing_events: int) -> None:
+    stream = HarnessStream.read(_adjacent_tool_calls()[:-missing_events])
+
+    assert stream.failure == "incomplete_stream"
+    assert stream.tool_calls == ()
+    assert stream.tool_name is None
+    assert stream.arguments is None
+
+
+def test_complete_tool_call_arguments_are_deeply_immutable() -> None:
+    stream = HarnessStream.read(_adjacent_tool_calls('{"items":[{"x":2}]}'))
+
+    assert stream.failure is None
+    items = stream.tool_calls[1].arguments["items"]
+    assert isinstance(items, tuple)
+    nested = items[0]
+    assert isinstance(nested, Mapping)
+    assert dict(nested) == {"x": 2}
+    with pytest.raises(TypeError):
+        nested["x"] = 3  # type: ignore[index]  # Frozen JSON rejects mutation.
 
 
 def test_duplicate_tool_use_ids_fail_closed() -> None:
@@ -174,6 +221,7 @@ def test_duplicate_tool_use_ids_fail_closed() -> None:
     assert stream.failure == "invalid_stream"
     assert stream.tool_name is None
     assert stream.arguments is None
+    assert stream.tool_calls == ()
 
 
 def test_hook_stopped_is_a_complete_non_tool_stop_reason() -> None:

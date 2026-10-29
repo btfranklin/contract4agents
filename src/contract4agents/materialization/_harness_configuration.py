@@ -13,6 +13,7 @@ from pydantic import BaseModel, TypeAdapter
 
 from contract4agents.adapters._native_names import native_name
 from contract4agents.ir import FrozenJsonValue, FrozenMap, SemanticId, freeze_json
+from contract4agents.materialization._harness_schema import bedrock_output_schema
 from contract4agents.materialization._types import (
     GeneratedType,
     build_agent_input_types,
@@ -195,8 +196,8 @@ def build_harness_configuration(
             )
         options = plan.agents[agent_id].model_options
         output_mode_value = options.get("output_mode", "host_validation")
-        if output_mode_value not in ("host_validation", "tool"):
-            raise ValueError("Harness output_mode must be host_validation or tool")
+        if output_mode_value not in ("host_validation", "tool", "schema"):
+            raise ValueError("Harness output_mode must be host_validation, tool, or schema")
         output_mode = output_mode_value
         if (not tools and output_mode != "tool") or len(tools) + (1 if output_mode == "tool" else 0) > 64:
             raise ValueError("Harness requires between one and 64 inline tools")
@@ -236,6 +237,21 @@ def build_harness_configuration(
         extra_fields = options.get("additional_model_request_fields")
         if extra_fields is not None:
             model["additionalParams"] = {"additionalModelRequestFields": thaw(extra_fields)}
+        if output_mode == "schema":
+            additional: dict[str, object] = {
+                "outputConfig": {
+                    "textFormat": {
+                        "type": "json_schema",
+                        "structure": {"jsonSchema": {
+                            "name": native_name("output", agent_id),
+                            "schema": canonical_json(bedrock_output_schema(output_adapter.json_schema())),
+                        }},
+                    },
+                },
+            }
+            if extra_fields is not None:
+                additional["additionalModelRequestFields"] = thaw(extra_fields)
+            model["additionalParams"] = additional
         if output_mode == "tool":
             template = (prompt_root / "tool_output.md").read_text()
             instructions = (

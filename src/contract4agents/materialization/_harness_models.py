@@ -86,17 +86,20 @@ class HarnessPendingCall:
     deployment: FrozenMap[str, FrozenJsonValue]
     context: HarnessRunContext
     event_id: str
+    batch: FrozenMap[str, FrozenJsonValue] | None = None
 
     def __post_init__(self) -> None:
         for name in ("arguments", "source_input", "deployment"):
             object.__setattr__(self, name, frozen_object(getattr(self, name)))
+        if self.batch is not None:
+            object.__setattr__(self, "batch", frozen_object(self.batch))
 
     @property
     def call_digest(self) -> str:
         return content_digest(self.to_dict())
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        result: dict[str, object] = {
             "agent_id": self.agent_id,
             "tool_name": self.tool_name,
             "tool_use_id": self.tool_use_id,
@@ -109,11 +112,14 @@ class HarnessPendingCall:
             "context": self.context.to_dict(),
             "event_id": self.event_id,
         }
+        if self.batch is not None:
+            result["batch"] = thaw(self.batch)
+        return result
 
     @classmethod
     def from_dict(cls, value: object) -> HarnessPendingCall:
         raw = json_object("Harness state", thaw(frozen_object(value)))
-        if set(raw) != {
+        if set(raw) - {"batch"} != {
             "agent_id",
             "tool_name",
             "tool_use_id",
@@ -139,6 +145,7 @@ class HarnessPendingCall:
             deployment=frozen_object(raw["deployment"]),
             context=HarnessRunContext.from_dict(raw["context"]),
             event_id=json_string("event_id", raw["event_id"]),
+            batch=frozen_object(raw["batch"]) if "batch" in raw else None,
         )
 
 
