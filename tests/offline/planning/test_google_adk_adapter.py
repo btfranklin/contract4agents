@@ -137,7 +137,7 @@ def test_google_search_binding_requires_the_one_supported_locator_shape(
     assert [item.code for item in diagnostics] == ["TGT111"]
 
 
-def test_google_adk_output_support_depends_on_model_tools_and_factory(
+def test_google_adk_output_support_defers_tool_capabilities_to_the_sdk(
     tmp_path: Path,
 ) -> None:
     python_binding = BindingEntry({"python": "app:search"})
@@ -170,10 +170,12 @@ def test_google_adk_output_support_depends_on_model_tools_and_factory(
     control_id = semantic_id("control", "Researcher", "output_conformance")
     assert no_tools_plan.controls[control_id].outcome == "exact"
     assert gemini_two_plan.controls[control_id].outcome == "emulated"
-    assert gemini_three_plan.controls[control_id].outcome == "exact"
+    assert gemini_three_plan.controls[control_id].outcome == "emulated"
+    for plan in (no_tools_plan, gemini_two_plan, gemini_three_plan):
+        assert plan.controls[control_id].mechanism == "google_adk.llm_agent.output_schema"
 
 
-def test_google_adk_factory_forces_emulated_output_and_allows_non_gemini(
+def test_google_adk_factory_output_uses_sdk_schema_and_allows_non_gemini(
     tmp_path: Path,
 ) -> None:
     ir = _plain_ir(with_tool=False)
@@ -210,6 +212,7 @@ def test_google_adk_factory_forces_emulated_output_and_allows_non_gemini(
 
     control_id = semantic_id("control", "Researcher", "output_conformance")
     assert plan.controls[control_id].outcome == "emulated"
+    assert plan.controls[control_id].mechanism == "google_adk.llm_agent.output_schema"
 
 
 def test_google_adk_profile_requires_gemini_without_factory(tmp_path: Path) -> None:

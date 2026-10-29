@@ -564,6 +564,10 @@ class GoogleADKNormalizedTraceSession(NativeHookTraceSession):
         phase: str,
         error: bool,
     ) -> None:
+        from contract4agents.materialization._google_adk import _is_adk_output_tool
+
+        if _is_adk_output_tool(native_tool):
+            return
         kind, semantic = self._native_tool_semantic(
             native_tool,
             native_agent=getattr(tool_context, "agent_name", None),
