@@ -11,6 +11,7 @@ from contract4agents.ir import (
     CapabilityIR,
     CompositionEdgeIR,
     ControlIR,
+    EnumIR,
     GrantIR,
     ListTypeRef,
     NamedTypeRef,
@@ -144,17 +145,8 @@ class GoogleADKMappingResolver:
             or agent is None
         ):
             return None
-        has_google_search = any(
-            binding.locator.get("provider") == "google_adk"
-            and binding.locator.get("tool") == "google_search"
-            for binding in tool_bindings
-        )
         uses_factory = "model_factory" in agent.model_options
-        if (
-            not uses_factory
-            and not has_google_search
-            and (not has_tools or agent.model.startswith("gemini-3"))
-        ):
+        if not uses_factory and not has_tools:
             return MappingSupport(
                 "exact",
                 "google_adk.llm_agent.output_schema",
@@ -162,9 +154,18 @@ class GoogleADKMappingResolver:
             )
         return MappingSupport(
             "emulated",
-            "google_adk.terminal_output_schema_validation",
+            "google_adk.llm_agent.output_schema",
             expected_event_types=("output.accepted", "output.schema_failed"),
         )
+
+    def output_type_support(self, *, output_type: TypeIR | EnumIR) -> MappingSupport | None:
+        if isinstance(output_type, EnumIR):
+            return MappingSupport(
+                "emulated",
+                "google_adk.terminal_output_schema_validation",
+                expected_event_types=("output.accepted", "output.schema_failed"),
+            )
+        return None
 
 
 _MAPPING_RESOLVER = GoogleADKMappingResolver()
@@ -302,7 +303,7 @@ def google_adk_planner_capabilities() -> PlannerCapabilities:
         controls={
             "adapter": MappingSupport(
                 "emulated",
-                "google_adk.terminal_output_schema_validation",
+                "google_adk.llm_agent.output_schema",
                 expected_event_types=("output.accepted", "output.schema_failed"),
             ),
             "runtime": MappingSupport(

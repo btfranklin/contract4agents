@@ -78,13 +78,35 @@ Credentials remain environment-owned and are never serialized into the plan.
 | --- | --- |
 | Python tool, datasource, or external context | `exact` |
 | Tool approval | `exact`, through `ToolContext.request_confirmation` |
-| Native Gemini output with no tools | `exact`, through `output_schema` |
-| Native `gemini-3*` output with ordinary tools | `exact`, through `output_schema` |
-| Output with other tool/model combinations | `emulated`, with JSON instruction plus fail-closed terminal validation |
+| Structural Gemini output with no tools | `exact`, through `output_schema` |
+| Structural output with tools or a custom model | Conservatively `emulated` at planning; ADK selects native schema output or its result tool from model capabilities |
+| Named enum output | `emulated`, through JSON instructions and strict terminal validation |
 | `delegate` with `history = none` | `emulated`, through a typed `run_node` sub-branch |
 | Delegate `summary` or `full` history | `unsupported` |
 | Any handoff mode | `unsupported` |
 | Tool isolation or remote/TypeScript/MCP locator | `unsupported` |
+
+Every agent with a structural return type receives that type as `output_schema`.
+ADK uses the model's reported capabilities to choose native schema generation
+or its private `set_model_response` tool. A model name alone does not establish
+support for schemas combined with tools. Planning does not construct custom
+models, so its `emulated` outcome allows either SDK mechanism without claiming
+provider-enforced generation.
+
+Both paths retain strict contract validation. Native terminal text is validated
+as JSON. A successful SDK result-tool value is validated before it becomes the
+final response. ADK can request a corrected result-tool call after an invalid
+candidate; this is SDK output correction, not a Contract4Agents application
+retry policy. SDK output tools are not application capabilities and do not need
+contract grants. Trace capture records accepted output without treating the
+SDK result tool as an undeclared application tool.
+
+ADK's result tool requires an object schema. Named enum returns use a JSON
+instruction and strict terminal validation to preserve their scalar value.
+They do not use the SDK result tool.
+
+This change alters planning mechanisms and configuration evidence. Regenerate
+plans and related evidence after an upgrade.
 
 Delegate tools validate the declared input and output types and run a
 single-turn child with no inherited contents. Model-supplied delegate values
@@ -158,9 +180,10 @@ invents them.
 Google requires production applications to display Search suggestions,
 `renderedContent`, and citations when supplied. The trace plugin preserves
 grounding-presence evidence, but rendering those provider artifacts remains a
-host UI obligation. An agent granted native Search uses emulated terminal
-output validation even when its parent model could otherwise use native output
-schema enforcement.
+host UI obligation. An outer agent with a structural return type receives
+`output_schema`; ADK chooses
+its output mechanism from the outer model's capabilities. The search child and
+its grounding metadata remain separate from the outer agent's typed answer.
 
 ## Materialize, Run, and Trace
 

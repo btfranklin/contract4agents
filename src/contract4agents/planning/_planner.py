@@ -10,6 +10,7 @@ from contract4agents.ir import (
     CapabilityIR,
     FrozenMap,
     IsolationProfileIR,
+    NamedTypeRef,
     SemanticId,
     contract_digest,
 )
@@ -630,6 +631,18 @@ def _resolve_controls(
                 )
                 if contextual is not None:
                     support = contextual
+            output_type_resolver = getattr(capabilities.mapping_resolver, "output_type_support", None)
+            agent = agents.get(control.agent_id)
+            if (
+                output_type_resolver is not None
+                and control.assessment == "adapter"
+                and control.derived_from == control.agent_id
+                and agent is not None
+                and isinstance(agent.output_type, NamedTypeRef)
+            ):
+                typed_support = output_type_resolver(output_type=ir.types[agent.output_type.type_id])
+                if typed_support is not None:
+                    support = typed_support
         if control.required:
             _require_mapping(support.outcome, control_id, "required control", issues)
         _consume_support(support, control_id, obligations, event_types)

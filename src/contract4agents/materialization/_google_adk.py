@@ -68,6 +68,25 @@ class _ADKResponseShape(Protocol):
     def get_function_calls(self) -> Sequence[object]: ...
 
 
+class _ADKOutputActionsShape(Protocol):
+    set_model_response: object | None
+
+
+class _ADKOutputContextShape(Protocol):
+    actions: _ADKOutputActionsShape
+
+
+class _ResultToolValidator(Protocol):
+    def __call__(
+        self,
+        *,
+        tool: object,
+        args: dict[str, object],
+        tool_context: object,
+        tool_response: dict[str, object],
+    ) -> None: ...
+
+
 _ToolInvoker = Callable[[dict[str, object], object], Awaitable[object]]
 _OutputValidationObserver = Callable[[str, bool], None]
 _OUTPUT_VALIDATION_OBSERVER: ContextVar[_OutputValidationObserver | None] = ContextVar(
@@ -77,7 +96,7 @@ _OUTPUT_VALIDATION_OBSERVER: ContextVar[_OutputValidationObserver | None] = Cont
 
 
 class GoogleADKOutputValidationError(ValueError):
-    """An emulated ADK terminal output failed its contract schema."""
+    """An ADK terminal output failed its contract schema."""
 
 
 @dataclass(frozen=True)
@@ -283,10 +302,7 @@ class ADKSDK:
                 ) from exc
         native_instructions = instructions
         if output_mode == "emulated":
-            native_instructions = _with_structured_output_instruction(
-                instructions,
-                output_type,
-            )
+            native_instructions = _with_structured_output_instruction(instructions, output_type)
         terminal_validator = _terminal_output_validator(
             semantic_name,
             output_type,
@@ -302,6 +318,7 @@ class ADKSDK:
                 output_schema=output_type if output_mode == "native" else None,
                 tools=list(tools),
                 after_model_callback=terminal_validator,
+                after_tool_callback=_result_tool_validator(semantic_name, output_type),
                 disallow_transfer_to_parent=True,
                 disallow_transfer_to_peers=True,
             )
@@ -611,10 +628,7 @@ class ADKSDK:
         output_type = metadata.output_type
         if isinstance(native_output_schema, type):
             output_type = native_output_schema
-        if native_output_schema is None:
-            output_mode: OutputMode = "emulated"
-        else:
-            output_mode = "native"
+        output_mode: OutputMode = "native" if native_output_schema is not None else "emulated"
         model_identity = metadata.model
         source = metadata.model_observation_source
         model_observed = False
@@ -770,7 +784,7 @@ class GoogleADKMaterializationProvider:
                 base_tools[agent_id].append(native_tool)
 
             agent_plan = plan.agents[agent_id]
-            output_mode = _output_mode(ir, plan, agent_id)
+            agent_output_type = output_type_for(agent.output_type, output_types)
             agents[agent_id] = self.sdk.create_agent(
                 semantic_name=agent.name,
                 native_name=names.assign("agent", agent.id, agent.name),
@@ -780,8 +794,8 @@ class GoogleADKMaterializationProvider:
                 model_options=agent_plan.model_options,
                 model_factory=(implementations.get(agent_id) if "model_factory" in agent_plan.model_options else None),
                 input_type=input_types[agent_id],
-                output_type=output_type_for(agent.output_type, output_types),
-                output_mode=output_mode,
+                output_type=agent_output_type,
+                output_mode=_output_mode(agent_output_type),
                 tools=tuple(base_tools[agent_id]),
             )
 
@@ -1031,6 +1045,50 @@ def _terminal_output_validator(
             observer(semantic_name, True)
 
     return validate_terminal_output
+
+
+def _is_adk_output_tool(tool: object) -> bool:
+    from google.adk.tools.set_model_response_tool import SetModelResponseTool
+
+    return isinstance(tool, SetModelResponseTool)
+
+
+def _result_tool_validator(
+    semantic_name: str,
+    output_type: object,
+) -> _ResultToolValidator:
+    adapter = TypeAdapter[object](output_type)
+
+    def validate_result_tool(
+        *,
+        tool: object,
+        args: dict[str, object],
+        tool_context: object,
+        tool_response: dict[str, object],
+    ) -> None:
+        del args, tool_response
+        if not _is_adk_output_tool(tool):
+            return
+        actions = cast(_ADKOutputContextShape, tool_context).actions
+        value = actions.set_model_response
+        if value is None:
+            return  # ADK rejected this candidate and can request a corrected call.
+        try:
+            validated = adapter.validate_python(value)
+            actions.set_model_response = adapter.dump_python(validated, mode="json")
+        except Exception as exc:  # noqa: BLE001 - SDK output must satisfy the contract.
+            observer = _OUTPUT_VALIDATION_OBSERVER.get()
+            if observer is not None:
+                observer(semantic_name, False)
+            raise GoogleADKOutputValidationError(
+                f"Google ADK result tool output for `{semantic_name}` failed "
+                f"contract schema validation ({type(exc).__name__})"
+            ) from exc
+        observer = _OUTPUT_VALIDATION_OBSERVER.get()
+        if observer is not None:
+            observer(semantic_name, True)
+
+    return validate_result_tool
 
 
 def _set_output_validation_observer(

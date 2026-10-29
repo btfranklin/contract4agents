@@ -41,22 +41,14 @@ if TYPE_CHECKING:
 OutputMode = Literal["native", "emulated"]
 
 
+def _output_mode(output_type: object) -> OutputMode:
+    return "native" if isinstance(output_type, type) and issubclass(output_type, BaseModel) else "emulated"
+
+
 def _input_schema(input_type: type[BaseModel] | None) -> Mapping[str, object]:
     if input_type is None:
         return {"type": "object", "properties": {}, "additionalProperties": False}
     return input_type.model_json_schema()
-
-
-def _with_structured_output_instruction(
-    instructions: str,
-    output_type: object,
-) -> str:
-    schema = TypeAdapter[object](output_type).json_schema()
-    rendered = _load_prompt("structured_output.md").replace(
-        "{{OUTPUT_SCHEMA}}",
-        json.dumps(schema, ensure_ascii=False, separators=(",", ":"), sort_keys=True),
-    )
-    return f"{instructions.rstrip()}\n\n{rendered.strip()}\n"
 
 
 def _load_prompt(name: str) -> str:
@@ -64,31 +56,13 @@ def _load_prompt(name: str) -> str:
     return resource.read_text(encoding="utf-8")
 
 
-def _output_mode(
-    ir: CanonicalIR,
-    plan: MaterializationPlan,
-    agent_id: SemanticId,
-) -> OutputMode:
-    control = next(
-        (
-            control
-            for control in ir.controls.values()
-            if control.agent_id == agent_id and control.assessment == "adapter" and control.derived_from == agent_id
-        ),
-        None,
+def _with_structured_output_instruction(instructions: str, output_type: object) -> str:
+    schema = TypeAdapter[object](output_type).json_schema()
+    rendered = _load_prompt("structured_output.md").replace(
+        "{{OUTPUT_SCHEMA}}",
+        json.dumps(schema, ensure_ascii=False, separators=(",", ":"), sort_keys=True),
     )
-    if control is None:
-        raise MaterializationError(
-            (
-                MaterializationIssue(
-                    "MAT334",
-                    "Agent output conformance control is missing",
-                    agent_id,
-                ),
-            )
-        )
-    mapping = plan.controls[control.id]
-    return "native" if mapping.outcome == "exact" else "emulated"
+    return f"{instructions.rstrip()}\n\n{rendered.strip()}\n"
 
 
 def validate_google_adk_graph(
@@ -116,15 +90,12 @@ def validate_google_adk_graph(
                     agent_id,
                 )
             )
-        expected_instructions = {artifacts.instructions[agent_plan.name]}
-        if _output_mode(ir, plan, agent_id) == "emulated":
-            expected_instructions.add(
-                _with_structured_output_instruction(
-                    artifacts.instructions[agent_plan.name],
-                    output_type_for(agent_plan.output_type, output_types),
-                )
-            )
-        if native.instructions not in expected_instructions:
+        expected_output = output_type_for(agent_plan.output_type, output_types)
+        expected_mode = _output_mode(expected_output)
+        expected_instructions = artifacts.instructions[agent_plan.name]
+        if expected_mode == "emulated":
+            expected_instructions = _with_structured_output_instruction(expected_instructions, expected_output)
+        if native.instructions != expected_instructions:
             issues.append(
                 MaterializationIssue(
                     "MAT422",
@@ -156,7 +127,6 @@ def validate_google_adk_graph(
                     agent_id,
                 )
             )
-        expected_output = output_type_for(agent_plan.output_type, output_types)
         if native.output_type is not expected_output:
             issues.append(
                 MaterializationIssue(
@@ -165,7 +135,6 @@ def validate_google_adk_graph(
                     agent_id,
                 )
             )
-        expected_mode = _output_mode(ir, plan, agent_id)
         if native.output_mode != expected_mode:
             issues.append(
                 MaterializationIssue(
@@ -425,7 +394,9 @@ def _validate_configuration(
             agent_id,
         )
         add(
-            configuration_evidence(agent_id, "agent.output_mode", _output_mode(ir, plan, agent_id), native.output_mode),
+            configuration_evidence(
+                agent_id, "agent.output_mode", _output_mode(expected_output), native.output_mode,
+            ),
             agent_id,
         )
         add(configuration_evidence(agent_id, "agent.tools", sorted(expected_tools), sorted(actual_tools)), agent_id)

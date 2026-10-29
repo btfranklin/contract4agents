@@ -86,7 +86,7 @@ def test_google_adk_provider_builds_and_validates_typed_graph(
     assert parent.input_type is graph.input_types[parent_id]
     assert child.input_type is graph.input_types[child_id]
     assert parent.native_name == native_name("agent", parent_id, "Parent")
-    assert parent.output_mode == "emulated"
+    assert parent.output_mode == "native"
     assert child.output_mode == "native"
     assert len(parent.tools) == 2
     assert isinstance(parent.tools[0], FakeTool)
@@ -229,7 +229,7 @@ def test_concrete_adk_agent_uses_factory_once_without_reapplying_options() -> No
         model_factory=factory,
         input_type=None,
         output_type=output_type,
-        output_mode="emulated",
+        output_mode="native",
         tools=(),
     )
 
@@ -241,12 +241,11 @@ def test_concrete_adk_agent_uses_factory_once_without_reapplying_options() -> No
     ]
     assert isinstance(agent, LlmAgent)
     assert isinstance(agent.model, FakeModel)
-    assert agent.output_schema is None
+    assert agent.output_schema is output_type
     assert agent.generate_content_config is not None
     assert agent.generate_content_config.temperature is None
     assert isinstance(agent.instruction, str)
-    assert "Return only one JSON value" in agent.instruction
-    assert '"summary"' in agent.instruction
+    assert agent.instruction == "Produce an answer."
     callback = cast(Callable[[object, LlmResponse], LlmResponse | None], agent.canonical_after_model_callbacks[0])
     valid = LlmResponse(
         content=types.Content(
@@ -292,7 +291,7 @@ def test_concrete_adk_agent_wraps_factory_failures(
             model_factory=factory,
             input_type=None,
             output_type=output_type,
-            output_mode="emulated",
+            output_mode="native",
             tools=(),
         )
 
