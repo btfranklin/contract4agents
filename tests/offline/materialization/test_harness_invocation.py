@@ -773,7 +773,7 @@ def _failure_event(caplog: pytest.LogCaptureFixture) -> dict[str, object]:
         ("ServiceUnavailableException", 503, "service_unavailable"),
         ("ModelNotReadyException", 429, "model_not_ready"),
         ("ThrottlingException", 429, "rate_limited"),
-        ("ServiceQuotaExceededException", 402, "rate_limited"),
+        ("ServiceQuotaExceededException", 402, "quota_exceeded"),
         ("InternalServerException", 500, "service_unavailable"),
         ("InternalServerException", 200, "transport_failure"),
         ("RuntimeClientError", 500, "transport_failure"),
@@ -810,7 +810,7 @@ def test_structured_service_failures_use_only_allowlisted_codes(
     ]
     expected_category = (
         "rate_limit" if expected == "rate_limited"
-        else "provider_error" if expected in {"service_unavailable", "model_not_ready"}
+        else "provider_error" if expected in {"service_unavailable", "model_not_ready", "quota_exceeded"}
         else "transport"
     )
     assert evidence[0]["category"] == expected_category

@@ -649,6 +649,7 @@ class HarnessAgent:
                 "rate_limited": "rate_limit",
                 "service_unavailable": "provider_error",
                 "model_not_ready": "provider_error",
+                "quota_exceeded": "provider_error",
                 "provider_error": "provider_error",
             }
             category = categories.get(result.reason, "unknown")
@@ -722,8 +723,10 @@ def _transport_reason(error: Exception) -> str:
         error
     ).__name__ in {"NoCredentialsError", "PartialCredentialsError", "CredentialRetrievalError"}:
         return "authentication_failure"
-    if code in {"ThrottlingException", "TooManyRequestsException", "ServiceQuotaExceededException"}:
+    if code in {"ThrottlingException", "TooManyRequestsException"}:
         return "rate_limited"
+    if code == "ServiceQuotaExceededException":
+        return "quota_exceeded"
     if code == "ServiceUnavailableException":
         return "service_unavailable"
     if code == "ModelNotReadyException":

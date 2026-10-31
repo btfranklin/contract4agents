@@ -174,10 +174,10 @@ Failures distinguish refusal, timeout, token or iteration limits, transport,
 authentication, authorization, rate limits, invalid output, invalid tool input,
 service unavailability, model not ready, ungranted tools, and incomplete
 execution. Exact AWS error codes identify service availability and rate-limit
-failures. Other codes, including `RuntimeClientError`, remain transport
-failures. Input, identity, approval, and result validation errors raise before
-the affected AWS call. There is no automatic retry, JSON repair, or model
-fallback.
+failures. `ServiceQuotaExceededException` has the separate `quota_exceeded`
+reason. Other codes, including `RuntimeClientError`, remain transport failures.
+Input, identity, approval, and result validation errors raise before the
+affected AWS call. There is no automatic retry, JSON repair, or model fallback.
 
 Caught failures during request setup, dispatch, response validation, stream
 reading, or stream close also emit one JSON event through Python logging at `ERROR`
