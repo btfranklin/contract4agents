@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import threading
 import uuid
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
-from typing import cast
+from typing import Literal, cast
 
 from pydantic import ValidationError
 
@@ -47,6 +49,53 @@ from contract4agents.tracing import (
 )
 from contract4agents.tracing._agentcore_harness import HarnessTraceEmitter
 from contract4agents.tracing._provider_evidence import ProviderOutcome, ProviderOutcomeCategory, ProviderOutcomePhase
+
+LOGGER = logging.getLogger(__name__)
+_FailurePhase = Literal["setup", "request", "response_validation", "stream_read", "stream_close"]
+_FAILURE_CLASSES = frozenset({
+    "EventStreamError", "ClientError", "TimeoutError", "ReadTimeoutError", "ConnectTimeoutError",
+    "ConnectionError", "EndpointConnectionError", "ConnectionClosedError", "ProxyConnectionError", "SSLError",
+    "HTTPClientError", "ResponseStreamingError", "IncompleteReadError", "ProtocolError", "ResponseParserError",
+    "ParserError", "DuplicateHeader", "InvalidHeadersLength", "InvalidPayloadLength", "ChecksumMismatch",
+    "NoInitialResponseError", "NoCredentialsError", "PartialCredentialsError", "CredentialRetrievalError",
+    "ValueError", "TypeError", "KeyError",
+})
+_AWS_ERROR_CODES = frozenset({
+    "ServiceQuotaExceededException", "AccessDeniedException", "RuntimeClientError", "ValidationException",
+    "ResourceNotFoundException", "ThrottlingException", "InternalServerException",
+    "internalServerException", "validationException", "runtimeClientError",
+    "AccessDenied", "ExpiredTokenException", "UnrecognizedClientException", "InvalidSignatureException",
+    "TooManyRequestsException",
+})
+
+
+def _diagnostic_uuid(value: str | None) -> str | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = uuid.UUID(value)
+    except ValueError:
+        return None
+    return value if str(parsed) == value else None
+
+
+def _log_request_failure(
+    error: Exception, phase: _FailurePhase, context: HarnessRunContext, request_id: str | None,
+) -> None:
+    response = getattr(error, "response", None)
+    details = response.get("Error") if isinstance(response, Mapping) else None
+    code = details.get("Code") if isinstance(details, Mapping) else None
+    error_class = type(error).__name__
+    LOGGER.error("%s", json.dumps({
+        "event": "agentcore_harness_request_failure",
+        "phase": phase,
+        "exception_class": error_class if error_class in _FAILURE_CLASSES else "other",
+        "aws_error_code": code if isinstance(code, str) and code in _AWS_ERROR_CODES else
+        None if code is None else "other",
+        "request_id": _diagnostic_uuid(request_id),
+        "run_id": _diagnostic_uuid(context.run_id),
+        "invocation_id": _diagnostic_uuid(context.attempt.invocation_id),
+    }, ensure_ascii=True, separators=(",", ":")))
 
 
 @dataclass(frozen=True)
@@ -386,6 +435,7 @@ class HarnessAgent:
         request_id: str | None = None
         response_key = str(uuid.uuid4())
         response_received = False
+        phase: _FailurePhase = "setup"
         try:
             settings = HarnessInvocationSettings.from_configuration(self.configuration.request)
             client = self.client or cast(
@@ -396,6 +446,7 @@ class HarnessAgent:
                     read_timeout=settings.timeout_seconds,
                 ),
             )
+            phase = "request"
             response = client.invoke_harness(
                 harnessArn=self.deployment.harness_arn,
                 qualifier=self.deployment.endpoint_name,
@@ -412,6 +463,7 @@ class HarnessAgent:
                 timeoutSeconds=settings.timeout_seconds,
             )
             response_received = True
+            phase = "response_validation"
             events = response["stream"]
             try:
                 metadata = json_object("Harness response metadata", response.get("ResponseMetadata", {}))
@@ -421,15 +473,20 @@ class HarnessAgent:
                 request_id = observed_request_id
                 if not isinstance(events, Iterable) or isinstance(events, str | bytes | Mapping):
                     raise TypeError("Harness response stream must be an event iterable")
+                phase = "stream_read"
                 stream = HarnessStream.read(events)
             finally:
+                prior_phase = phase
+                phase = "stream_close"
                 close = getattr(events, "close", None)
                 if callable(close):
                     close()
+                phase = prior_phase
         except ImportError:
             raise
         except Exception as exc:
             # Provider exceptions can contain customer content and credentials.
+            _log_request_failure(exc, phase, context, request_id)
             failed = HarnessFailed(
                 _transport_reason(exc),
                 request_id,
