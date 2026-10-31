@@ -87,8 +87,9 @@ required or change their types to meet those limits in the normal mode. If the
 existing `additional_model_request_fields.text.format.strict` value is `true`,
 the provider projection lists every property as required at every object level.
 An optional field is supported only when its default is `null` and its type
-accepts `null`; the provider then generates the explicit `null` value. Strict
-generation fails when it cannot preserve an optional field's default behavior.
+accepts `null`. An explicit `null` represents omission; any other value must
+meet the original type. Strict generation fails when it cannot preserve an
+optional field's default behavior.
 This changes generation constraints only. The original output adapter and its
 validation remain unchanged. A model that does not support native structured
 output fails; there is no automatic mode fallback. The plan reports
