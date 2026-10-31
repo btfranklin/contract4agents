@@ -675,14 +675,18 @@ def test_aws_failure_classification_retains_only_available_response_facts(
     caplog.set_level(logging.ERROR, logger=harness_invocation.__name__)
     result, _, sink = system(tmp_path)
     original = agent_for(result, "Analyst")
+    request_id = "123e4567-e89b-12d3-a456-426614174000"
 
     class Rejected:
         def invoke_harness(self, **kwargs: object) -> Mapping[str, object]:
-            raise ClientError({"Error": {"Code": error_code, "Message": "secret provider text"}}, "InvokeHarness")
+            raise ClientError({
+                "Error": {"Code": error_code, "Message": "secret provider text"},
+                "ResponseMetadata": {"RequestId": request_id},
+            }, "InvokeHarness")
 
     handle = HarnessAgent(original.configuration, original.deployment, Rejected(), sink)
     output = handle.invoke(INPUT, context=context())
-    assert isinstance(output, HarnessFailed) and output.reason == expected
+    assert output == HarnessFailed(expected, None, None, True)
     facts = [
         json_object("evidence", e.data["evidence"])
         for e in sink.events if e.event_type == "provider.outcome.reported"
@@ -692,6 +696,7 @@ def test_aws_failure_classification_retains_only_available_response_facts(
     event = _failure_event(caplog)
     assert event["phase"] == "request" and event["exception_class"] == "ClientError"
     assert event["aws_error_code"] == error_code
+    assert event["request_id"] == request_id
     assert "secret provider text" not in caplog.text
 
 
@@ -877,6 +882,61 @@ def test_unknown_exception_class_and_aws_code_do_not_leak_content(
     }
     assert "private-unknown-marker" not in caplog.text and "credential=" not in caplog.text
     assert "synthetic question" not in caplog.text and len(client.requests) == 1
+
+
+@pytest.mark.parametrize(
+    ("response", "response_received"),
+    [(None, False), ([], False), ("private-response-marker", False),
+     ({"ResponseMetadata": []}, True), ({"ResponseMetadata": "private-metadata-marker"}, True),
+     ({"ResponseMetadata": {"RequestId": 42}}, True),
+     ({"ResponseMetadata": {"RequestId": ["private-id-marker"]}}, True),
+     ({"ResponseMetadata": {"RequestId": "private-id-marker\n"}}, True),
+     ({"ResponseMetadata": {"RequestId": "123E4567-E89B-12D3-A456-426614174000"}}, True)],
+)
+def test_malformed_aws_error_request_metadata_is_omitted_without_changing_result(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, response: object, response_received: bool,
+) -> None:
+    caplog.set_level(logging.ERROR, logger=harness_invocation.__name__)
+
+    class InvalidResponse(Exception):
+        def __init__(self) -> None:
+            self.response = response
+            super().__init__("private-exception-marker")
+
+    result, _, _ = system(tmp_path)
+    original = agent_for(result, "Analyst")
+    client = _DiagnosticClient({}, InvalidResponse())
+    output = HarnessAgent(original.configuration, original.deployment, client).invoke(INPUT, context=context())
+
+    assert output == HarnessFailed("transport_failure", None, None, response_received)
+    event = _failure_event(caplog)
+    assert event["request_id"] is None
+    assert "private-" not in caplog.text and len(client.requests) == 1
+
+
+@pytest.mark.parametrize("local_request_id", ["123e4567-e89b-12d3-a456-426614174000", "unsafe-local-id"])
+def test_diagnostic_request_id_prefers_safe_local_id_then_safe_error_metadata(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, local_request_id: str,
+) -> None:
+    from botocore.exceptions import ClientError
+
+    caplog.set_level(logging.ERROR, logger=harness_invocation.__name__)
+    fallback_id = "123e4567-e89b-12d3-a456-426614174001"
+    error = ClientError({
+        "Error": {"Code": "runtimeClientError", "Message": "private-provider-marker"},
+        "ResponseMetadata": {"RequestId": fallback_id},
+    }, "InvokeHarness")
+    events = _DiagnosticStream([], read_error=error)
+    client = _DiagnosticClient({"stream": events, "ResponseMetadata": {"RequestId": local_request_id}})
+    result, _, _ = system(tmp_path)
+    original = agent_for(result, "Analyst")
+    output = HarnessAgent(original.configuration, original.deployment, client).invoke(INPUT, context=context())
+
+    assert output == HarnessFailed("transport_failure", local_request_id, None, True)
+    event = _failure_event(caplog)
+    assert event["request_id"] == (fallback_id if local_request_id == "unsafe-local-id" else local_request_id)
+    assert "private-provider-marker" not in caplog.text and "unsafe-local-id" not in caplog.text
+    assert events.close_count == 1 and len(client.requests) == 1
 
 
 def test_client_setup_failure_is_logged_without_a_request_or_retry(

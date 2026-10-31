@@ -69,7 +69,7 @@ _AWS_ERROR_CODES = frozenset({
 })
 
 
-def _diagnostic_uuid(value: str | None) -> str | None:
+def _diagnostic_uuid(value: object) -> str | None:
     if not isinstance(value, str):
         return None
     try:
@@ -85,6 +85,8 @@ def _log_request_failure(
     response = getattr(error, "response", None)
     details = response.get("Error") if isinstance(response, Mapping) else None
     code = details.get("Code") if isinstance(details, Mapping) else None
+    metadata = response.get("ResponseMetadata") if isinstance(response, Mapping) else None
+    error_request_id = metadata.get("RequestId") if isinstance(metadata, Mapping) else None
     error_class = type(error).__name__
     LOGGER.error("%s", json.dumps({
         "event": "agentcore_harness_request_failure",
@@ -92,7 +94,7 @@ def _log_request_failure(
         "exception_class": error_class if error_class in _FAILURE_CLASSES else "other",
         "aws_error_code": code if isinstance(code, str) and code in _AWS_ERROR_CODES else
         None if code is None else "other",
-        "request_id": _diagnostic_uuid(request_id),
+        "request_id": _diagnostic_uuid(request_id) or _diagnostic_uuid(error_request_id),
         "run_id": _diagnostic_uuid(context.run_id),
         "invocation_id": _diagnostic_uuid(context.attempt.invocation_id),
     }, ensure_ascii=True, separators=(",", ":")))

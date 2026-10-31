@@ -177,8 +177,9 @@ level. The logger is `contract4agents.materialization._harness_invocation`;
 the event identifier is `agentcore_harness_request_failure`. The event contains
 the failure phase, an allowlisted exception class and AWS error code, and
 canonical UUID request, run, and invocation IDs when available. Unknown classes
-and codes become `other`; absent codes and unsafe IDs become `null`. It omits
-exception messages, tracebacks, requests, responses, prompts, tool data, and
+and codes become `other`; absent codes and unsafe IDs become `null`. Request
+correlation prefers a safe response ID, then a safe ID from AWS exception metadata.
+The event omits exception messages, tracebacks, requests, responses, prompts, tool data, and
 model output. Applications own logging configuration. This diagnostic does not
 change `HarnessFailed`, normalized traces, retries, or execution behavior.
 
