@@ -86,12 +86,14 @@ Generation rejects open objects, recursive schemas, and schemas that exceed Bedr
 required or change their types to meet those limits in the normal mode. If the
 existing `additional_model_request_fields.text.format.strict` value is `true`,
 the provider projection lists every property as required at every object level.
-Nullable fields keep their null type, so a missing optional value is generated
-as `null`. This changes generation constraints only. The original output
-adapter and its validation remain unchanged. A model that does not support
-native structured output fails; there is no automatic mode fallback. The plan
-reports host-enforced output because native generation cannot enforce every
-contract bound. Deployment readback includes the exact provider schema.
+An optional field is supported only when its default is `null` and its type
+accepts `null`; the provider then generates the explicit `null` value. Strict
+generation fails when it cannot preserve an optional field's default behavior.
+This changes generation constraints only. The original output adapter and its
+validation remain unchanged. A model that does not support native structured
+output fails; there is no automatic mode fallback. The plan reports
+host-enforced output because native generation cannot enforce every contract
+bound. Deployment readback includes the exact provider schema.
 
 The existing `tool` and `host_validation` modes remain explicit options for
 models without native schema generation. A schema on an inline result tool
