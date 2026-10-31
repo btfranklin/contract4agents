@@ -99,6 +99,38 @@ def test_schema_output_rejects_recursive_contracts_before_deployment(tmp_path: P
         generate_harness_configuration(root, target="agentcore_harness", profile="test")
 
 
+def test_strict_request_projects_all_fields_but_keeps_host_validation_and_nullable_types(tmp_path: Path) -> None:
+    root = write_project(tmp_path, result_declaration="type Result:\n    answer: string\n    note: string?")
+    target = root / "contract4agents.targets.toml"
+    target.write_text(
+        target.read_text()
+        + '\noutput_mode = "schema"\n'
+        + 'additional_model_request_fields = { text = { format = { strict = true } } }\n'
+    )
+
+    agent = generate_harness_configuration(root, target="agentcore_harness", profile="test").agents["Analyst"]
+    request = agent.request_payload()
+    model = json_object("model", request["model"])
+    bedrock = json_object("Bedrock model", model["bedrockModelConfig"])
+    additional = json_object("additional parameters", bedrock["additionalParams"])
+    native_fields = json_object("model request fields", additional["additionalModelRequestFields"])
+    assert json_object("text request", native_fields["text"])["format"] == {"strict": True}
+    output_config = json_object("output config", additional["outputConfig"])
+    text_format = json_object("text format", output_config["textFormat"])
+    structure = json_object("structure", text_format["structure"])
+    encoded = json_object("schema", structure["jsonSchema"])
+    provider_schema = json.loads(str(encoded["schema"]))
+    assert provider_schema["required"] == ["answer", "note"]
+    note = json_object("note schema", provider_schema["properties"]["note"])
+    assert note["anyOf"] == [{"type": "string"}, {"type": "null"}]
+    host_value = agent.output_adapter.validate_python({"answer": "ready"}, strict=True)
+    assert json_object("host output", agent.output_adapter.dump_python(host_value)) == {
+        "answer": "ready", "note": None,
+    }
+    with pytest.raises(ValidationError):
+        agent.output_adapter.validate_python({"answer": 4, "note": None}, strict=True)
+
+
 def test_schema_output_keeps_repeated_nonrecursive_references() -> None:
     schema: dict[str, object] = {
         "$defs": {"Item": {"type": "string", "enum": ["ready", "unknown"]}},
@@ -107,3 +139,82 @@ def test_schema_output_keeps_repeated_nonrecursive_references() -> None:
         "required": ["left", "right"],
     }
     assert bedrock_output_schema(schema) == schema
+
+
+def test_strict_schema_projection_requires_fields_without_changing_nullability_or_defaults() -> None:
+    schema: dict[str, object] = {
+        "$defs": {
+            "Item": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "note": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None},
+                },
+                "required": ["name"],
+                "additionalProperties": False,
+            },
+        },
+        "type": "object",
+        "properties": {
+            "item": {"$ref": "#/$defs/Item"},
+            "items": {"type": "array", "items": {
+                "type": "object", "properties": {"code": {"type": "string"}},
+                "additionalProperties": False,
+            }},
+            "choice": {"anyOf": [
+                {"type": "object", "properties": {"left": {"type": "string"}}, "additionalProperties": False},
+                {"type": "object", "properties": {"right": {"type": "integer"}}, "additionalProperties": False},
+            ]},
+        },
+        "required": ["item"],
+        "additionalProperties": False,
+    }
+    original = copy.deepcopy(schema)
+    assert bedrock_output_schema(schema) == original
+
+    projected = bedrock_output_schema(schema, strict=True)
+
+    assert projected["required"] == ["item", "items", "choice"]
+    item = json_object("item definition", json_object("$defs", projected["$defs"])["Item"])
+    assert item["required"] == ["name", "note"]
+    original_defs = json_object("original definitions", schema["$defs"])
+    original_item = json_object("original item", original_defs["Item"])
+    original_properties = json_object("original properties", original_item["properties"])
+    item_properties = json_object("item properties", item["properties"])
+    assert json_object("note schema", item_properties["note"]) == original_properties["note"]
+    items = json_object("items schema", json_object("properties", projected["properties"])["items"])
+    assert json_object("array item", items["items"])["required"] == ["code"]
+    choice = json_object("choice schema", json_object("properties", projected["properties"])["choice"])
+    assert [
+        json_object("choice branch", branch)["required"]
+        for branch in json_array("choice branches", choice["anyOf"])
+    ] == [["left"], ["right"]]
+    assert schema == original
+
+
+def test_strict_schema_projection_rejects_open_objects_and_non_object_roots() -> None:
+    with pytest.raises(ValueError, match="closed objects"):
+        bedrock_output_schema({
+            "type": "object", "properties": {"value": {"type": "object", "properties": {}}},
+            "additionalProperties": False,
+        }, strict=True)
+    with pytest.raises(ValueError, match="object at the root"):
+        bedrock_output_schema({"type": "string"}, strict=True)
+    with pytest.raises(ValueError, match="does not support oneOf"):
+        bedrock_output_schema({
+            "type": "object", "properties": {"value": {"oneOf": [{"type": "string"}]}},
+            "additionalProperties": False,
+        }, strict=True)
+
+
+def test_strict_schema_projection_closes_object_in_type_union() -> None:
+    projected = bedrock_output_schema({
+        "type": "object", "properties": {
+            "value": {
+                "type": ["object", "null"], "properties": {"name": {"type": "string"}},
+                "additionalProperties": False,
+            },
+        }, "additionalProperties": False,
+    }, strict=True)
+    value = json_object("value schema", json_object("properties", projected["properties"])["value"])
+    assert value["required"] == ["name"]

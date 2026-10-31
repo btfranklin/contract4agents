@@ -12,30 +12,45 @@ _HOST_BOUNDS = frozenset({
 })
 
 
-def bedrock_output_schema(schema: Mapping[str, object]) -> dict[str, object]:
-    """Keep native constraints; the original schema remains the host boundary."""
+def bedrock_output_schema(schema: Mapping[str, object], *, strict: bool = False) -> dict[str, object]:
+    """Project generation constraints; the original schema remains the host boundary."""
 
     _validate_references(schema)
     optional_properties = 0
     union_properties = 0
 
+    if strict and schema.get("type") != "object":
+        raise ValueError("Bedrock strict schema output requires an object at the root")
+
     def project(source: Mapping[str, object]) -> dict[str, object]:
         nonlocal optional_properties, union_properties
         result: dict[str, object] = {}
-        if source.get("type") == "object" and source.get("additionalProperties") is not False:
+        schema_type = source.get("type")
+        has_object_type = schema_type == "object" or (
+            strict and isinstance(schema_type, list) and "object" in schema_type
+        )
+        if has_object_type and source.get("additionalProperties") is not False:
             raise ValueError("Bedrock schema output requires closed objects")
         properties = source.get("properties")
         if isinstance(properties, Mapping):
             required = json_array("required properties", source.get("required", []))
-            optional_properties += len(set(properties) - set(required))
+            if strict:
+                required = [*required, *(name for name in properties if name not in required)]
+                result["required"] = required
+            else:
+                optional_properties += len(set(properties) - set(required))
             union_properties += sum(
                 1 for child in properties.values()
                 if isinstance(child, Mapping) and ("anyOf" in child or isinstance(child.get("type"), list))
             )
         for key, value in source.items():
+            if strict and key == "oneOf":
+                raise ValueError("Bedrock strict schema output does not support oneOf")
             if key in _HOST_BOUNDS:
                 continue
-            if key == "minItems":
+            if strict and key == "required" and isinstance(properties, Mapping):
+                result[key] = list(properties)
+            elif key == "minItems":
                 result[key] = 0 if value == 0 else 1
             elif key in {"properties", "$defs"}:
                 result[key] = {

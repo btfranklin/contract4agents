@@ -62,7 +62,8 @@ _FAILURE_CLASSES = frozenset({
 })
 _AWS_ERROR_CODES = frozenset({
     "ServiceQuotaExceededException", "AccessDeniedException", "RuntimeClientError", "ValidationException",
-    "ResourceNotFoundException", "ThrottlingException", "InternalServerException",
+    "ResourceNotFoundException", "ThrottlingException", "ServiceUnavailableException", "ModelNotReadyException",
+    "InternalServerException",
     "internalServerException", "validationException", "runtimeClientError",
     "AccessDenied", "ExpiredTokenException", "UnrecognizedClientException", "InvalidSignatureException",
     "TooManyRequestsException",
@@ -646,6 +647,8 @@ class HarnessAgent:
                 "authentication_failure": "authentication",
                 "authorization_failure": "authorization",
                 "rate_limited": "rate_limit",
+                "service_unavailable": "provider_error",
+                "model_not_ready": "provider_error",
                 "provider_error": "provider_error",
             }
             category = categories.get(result.reason, "unknown")
@@ -709,13 +712,22 @@ def _transport_reason(error: Exception) -> str:
     if isinstance(error, TimeoutError) or type(error).__name__ in {"ReadTimeoutError", "ConnectTimeoutError"}:
         return "timeout"
     response = getattr(error, "response", None)
-    code = response.get("Error", {}).get("Code") if isinstance(response, Mapping) else None
+    details = response.get("Error") if isinstance(response, Mapping) else None
+    code = details.get("Code") if isinstance(details, Mapping) else None
+    metadata = response.get("ResponseMetadata") if isinstance(response, Mapping) else None
+    status = metadata.get("HTTPStatusCode") if isinstance(metadata, Mapping) else None
     if code in {"AccessDeniedException", "AccessDenied"}:
         return "authorization_failure"
     if code in {"ExpiredTokenException", "UnrecognizedClientException", "InvalidSignatureException"} or type(
         error
     ).__name__ in {"NoCredentialsError", "PartialCredentialsError", "CredentialRetrievalError"}:
         return "authentication_failure"
-    if code in {"ThrottlingException", "TooManyRequestsException"}:
+    if code in {"ThrottlingException", "TooManyRequestsException", "ServiceQuotaExceededException"}:
         return "rate_limited"
+    if code == "ServiceUnavailableException":
+        return "service_unavailable"
+    if code == "ModelNotReadyException":
+        return "model_not_ready"
+    if code in {"InternalServerException", "internalServerException"} and status == 500:
+        return "service_unavailable"
     return "transport_failure"

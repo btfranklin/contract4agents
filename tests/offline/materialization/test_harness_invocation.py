@@ -767,6 +767,60 @@ def _failure_event(caplog: pytest.LogCaptureFixture) -> dict[str, object]:
     return dict(event)
 
 
+@pytest.mark.parametrize(
+    ("code", "status", "expected"),
+    [
+        ("ServiceUnavailableException", 503, "service_unavailable"),
+        ("ModelNotReadyException", 429, "model_not_ready"),
+        ("ThrottlingException", 429, "rate_limited"),
+        ("ServiceQuotaExceededException", 402, "rate_limited"),
+        ("InternalServerException", 500, "service_unavailable"),
+        ("InternalServerException", 200, "transport_failure"),
+        ("RuntimeClientError", 500, "transport_failure"),
+        ("private-provider-code", 503, "transport_failure"),
+    ],
+)
+def test_structured_service_failures_use_only_allowlisted_codes(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    code: str,
+    status: int,
+    expected: str,
+) -> None:
+    from botocore.exceptions import ClientError
+
+    caplog.set_level(logging.ERROR, logger=harness_invocation.__name__)
+    result, _, sink = system(tmp_path)
+    original = agent_for(result, "Analyst")
+    request_id = "123e4567-e89b-12d3-a456-426614174000"
+    response: dict[str, object] = {
+        "Error": {"Code": code, "Message": "private-provider-message"},
+        "ResponseMetadata": {"RequestId": request_id, "HTTPStatusCode": status},
+    }
+    client = _DiagnosticClient({}, ClientError(response, "InvokeHarness"))
+    handle = HarnessAgent(original.configuration, original.deployment, client, sink)
+
+    output = handle.invoke(INPUT, context=context())
+
+    assert output == HarnessFailed(expected, None, None, True)
+    assert len(client.requests) == 1
+    evidence = [
+        json_object("evidence", event.data["evidence"])
+        for event in sink.events if event.event_type == "provider.outcome.reported"
+    ]
+    expected_category = (
+        "rate_limit" if expected == "rate_limited"
+        else "provider_error" if expected in {"service_unavailable", "model_not_ready"}
+        else "transport"
+    )
+    assert evidence[0]["category"] == expected_category
+    event = _failure_event(caplog)
+    assert event["aws_error_code"] == ("other" if code == "private-provider-code" else code)
+    assert event["request_id"] == request_id
+    assert "private-provider-message" not in caplog.text
+    assert "private-provider-code" not in caplog.text
+
+
 @pytest.mark.parametrize("code", ["internalServerException", "validationException", "runtimeClientError"])
 def test_modeled_aws_stream_errors_have_content_free_diagnostics(
     tmp_path: Path, caplog: pytest.LogCaptureFixture, code: str,
