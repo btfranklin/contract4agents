@@ -83,10 +83,18 @@ not change contract types or the accepted output values.
 
 Generation rejects open objects, recursive schemas, and schemas that exceed Bedrock's limits of
 12 optional properties or 16 union properties. It does not make fields
-required or change their types to meet those limits. A model that does not
-support native structured output fails; there is no automatic mode fallback.
-The plan reports host-enforced output because native generation cannot enforce
-every contract bound. Deployment readback includes the exact provider schema.
+required or change their types to meet those limits in the normal mode. If the
+existing `additional_model_request_fields.text.format.strict` value is `true`,
+the provider projection lists every property as required at every object level.
+An optional field is supported only when its default is `null` and its type
+accepts `null`. An explicit `null` represents omission; any other value must
+meet the original type. Strict generation fails when it cannot preserve an
+optional field's default behavior.
+This changes generation constraints only. The original output adapter and its
+validation remain unchanged. A model that does not support native structured
+output fails; there is no automatic mode fallback. The plan reports
+host-enforced output because native generation cannot enforce every contract
+bound. Deployment readback includes the exact provider schema.
 
 The existing `tool` and `host_validation` modes remain explicit options for
 models without native schema generation. A schema on an inline result tool
@@ -167,9 +175,12 @@ a new call. A new Python handle does not establish a fresh AWS session.
 
 Failures distinguish refusal, timeout, token or iteration limits, transport,
 authentication, authorization, rate limits, invalid output, invalid tool input,
-ungranted tools, and incomplete execution. Input, identity, approval, and result
-validation errors raise before the affected AWS call. There is no automatic
-retry, JSON repair, or model fallback.
+service unavailability, model not ready, ungranted tools, and incomplete
+execution. Exact AWS error codes identify service availability and rate-limit
+failures. `ServiceQuotaExceededException` has the separate `quota_exceeded`
+reason. Other codes, including `RuntimeClientError`, remain transport failures.
+Input, identity, approval, and result validation errors raise before the
+affected AWS call. There is no automatic retry, JSON repair, or model fallback.
 
 Caught failures during request setup, dispatch, response validation, stream
 reading, or stream close also emit one JSON event through Python logging at `ERROR`

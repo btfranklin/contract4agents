@@ -238,13 +238,22 @@ def build_harness_configuration(
         if extra_fields is not None:
             model["additionalParams"] = {"additionalModelRequestFields": thaw(extra_fields)}
         if output_mode == "schema":
+            strict_schema_output = False
+            if isinstance(extra_fields, Mapping):
+                text_fields = extra_fields.get("text")
+                if isinstance(text_fields, Mapping):
+                    format_fields = text_fields.get("format")
+                    if isinstance(format_fields, Mapping):
+                        strict_schema_output = format_fields.get("strict") is True
             additional: dict[str, object] = {
                 "outputConfig": {
                     "textFormat": {
                         "type": "json_schema",
                         "structure": {"jsonSchema": {
                             "name": native_name("output", agent_id),
-                            "schema": canonical_json(bedrock_output_schema(output_adapter.json_schema())),
+                            "schema": canonical_json(bedrock_output_schema(
+                                output_adapter.json_schema(), strict=strict_schema_output,
+                            )),
                         }},
                     },
                 },
