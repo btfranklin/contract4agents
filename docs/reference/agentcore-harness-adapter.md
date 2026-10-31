@@ -171,6 +171,18 @@ ungranted tools, and incomplete execution. Input, identity, approval, and result
 validation errors raise before the affected AWS call. There is no automatic
 retry, JSON repair, or model fallback.
 
+Caught failures during request setup, dispatch, response validation, stream
+reading, or stream close also emit one JSON event through Python logging at `ERROR`
+level. The logger is `contract4agents.materialization._harness_invocation`;
+the event identifier is `agentcore_harness_request_failure`. The event contains
+the failure phase, an allowlisted exception class and AWS error code, and
+canonical UUID request, run, and invocation IDs when available. Unknown classes
+and codes become `other`; absent codes and unsafe IDs become `null`. Request
+correlation prefers a safe response ID, then a safe ID from AWS exception metadata.
+The event omits exception messages, tracebacks, requests, responses, prompts, tool data, and
+model output. Applications own logging configuration. This diagnostic does not
+change `HarnessFailed`, normalized traces, retries, or execution behavior.
+
 No tool executes from a fragment. A pending call requires complete blocks and
 the final `tool_use` stop reason. The client validates every adjacent inline
 call before it exposes the first pending call. Each `resume()` accepts one

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Iterator, Mapping
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -30,6 +31,7 @@ from contract4agents.adapters.agentcore_harness import (
 )
 from contract4agents.ir import semantic_id
 from contract4agents.materialization import MaterializationError, MaterializedSystem
+from contract4agents.materialization import _harness_invocation as harness_invocation
 from contract4agents.materialization._harness_configuration import frozen_object
 from contract4agents.materialization._harness_models import HarnessResult
 from contract4agents.tracing import NormalizedTrace, RecordingNormalizedTraceSink, TraceAttempt, TraceEvent
@@ -666,29 +668,42 @@ def test_invalid_response_metadata_closes_the_acquired_stream(tmp_path: Path, me
     ],
 )
 def test_aws_failure_classification_retains_only_available_response_facts(
-    tmp_path: Path, error_code: str, expected: str,
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, error_code: str, expected: str,
 ) -> None:
     from botocore.exceptions import ClientError  # type: ignore[import-untyped]
 
+    caplog.set_level(logging.ERROR, logger=harness_invocation.__name__)
     result, _, sink = system(tmp_path)
     original = agent_for(result, "Analyst")
+    request_id = "123e4567-e89b-12d3-a456-426614174000"
 
     class Rejected:
         def invoke_harness(self, **kwargs: object) -> Mapping[str, object]:
-            raise ClientError({"Error": {"Code": error_code, "Message": "secret provider text"}}, "InvokeHarness")
+            raise ClientError({
+                "Error": {"Code": error_code, "Message": "secret provider text"},
+                "ResponseMetadata": {"RequestId": request_id},
+            }, "InvokeHarness")
 
     handle = HarnessAgent(original.configuration, original.deployment, Rejected(), sink)
     output = handle.invoke(INPUT, context=context())
-    assert isinstance(output, HarnessFailed) and output.reason == expected
+    assert output == HarnessFailed(expected, None, None, True)
     facts = [
         json_object("evidence", e.data["evidence"])
         for e in sink.events if e.event_type == "provider.outcome.reported"
     ]
     assert facts[0]["response_received"] is True
     assert "secret provider text" not in json.dumps([e.to_dict() for e in sink.events])
+    event = _failure_event(caplog)
+    assert event["phase"] == "request" and event["exception_class"] == "ClientError"
+    assert event["aws_error_code"] == error_code
+    assert event["request_id"] == request_id
+    assert "secret provider text" not in caplog.text
 
 
-def test_timeout_before_response_does_not_claim_a_provider_response(tmp_path: Path) -> None:
+def test_timeout_before_response_does_not_claim_a_provider_response(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.ERROR, logger=harness_invocation.__name__)
     result, _, sink = system(tmp_path)
     original = agent_for(result, "Analyst")
 
@@ -705,6 +720,275 @@ def test_timeout_before_response_does_not_claim_a_provider_response(tmp_path: Pa
     ]
     assert facts[0]["response_received"] is False
     assert facts[0]["phase"] == "transport"
+    event = _failure_event(caplog)
+    assert event["phase"] == "request" and event["exception_class"] == "TimeoutError"
+
+
+class _DiagnosticStream:
+    def __init__(
+        self, events: list[dict[str, object]], *, read_error: Exception | None = None,
+        close_error: Exception | None = None,
+    ) -> None:
+        self.events = events
+        self.read_error = read_error
+        self.close_error = close_error
+        self.close_count = 0
+
+    def __iter__(self) -> Iterator[dict[str, object]]:
+        yield from self.events
+        if self.read_error is not None:
+            raise self.read_error
+
+    def close(self) -> None:
+        self.close_count += 1
+        if self.close_error is not None:
+            raise self.close_error
+
+
+class _DiagnosticClient:
+    def __init__(self, response: Mapping[str, object], error: Exception | None = None) -> None:
+        self.response = response
+        self.error = error
+        self.requests: list[dict[str, object]] = []
+
+    def invoke_harness(self, **kwargs: object) -> Mapping[str, object]:
+        self.requests.append(kwargs)
+        if self.error is not None:
+            raise self.error
+        return self.response
+
+
+def _failure_event(caplog: pytest.LogCaptureFixture) -> dict[str, object]:
+    records = [record for record in caplog.records if record.name == harness_invocation.__name__]
+    assert len(records) == 1
+    assert records[0].exc_info is None and records[0].stack_info is None
+    event = json_object("event", json.loads(records[0].getMessage()))
+    assert event["event"] == "agentcore_harness_request_failure"
+    return dict(event)
+
+
+@pytest.mark.parametrize("code", ["internalServerException", "validationException", "runtimeClientError"])
+def test_modeled_aws_stream_errors_have_content_free_diagnostics(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, code: str,
+) -> None:
+    from botocore.eventstream import EventStream, EventStreamMessage  # type: ignore[import-untyped]
+    from botocore.parsers import EventStreamJSONParser  # type: ignore[import-untyped]
+
+    caplog.set_level(logging.ERROR, logger=harness_invocation.__name__)
+    shape = get_session().get_service_model("bedrock-agentcore").operation_model("InvokeHarness").output_shape
+    stream = EventStream(None, shape.members["stream"], EventStreamJSONParser(), "InvokeHarness")
+    message = EventStreamMessage(None, {":message-type": "exception", ":exception-type": code},
+                                 b'{"message":"private-provider-marker","reason":"synthetic"}', None)
+
+    class ModeledStream(_DiagnosticStream):
+        def __iter__(self) -> Iterator[dict[str, object]]:
+            yield dict(json_object("event", stream._parse_event(message)))
+
+    events = ModeledStream([])
+    request_id = "123e4567-e89b-12d3-a456-426614174000"
+    client = _DiagnosticClient({"stream": events, "ResponseMetadata": {"RequestId": request_id}})
+    result, _, sink = system(tmp_path)
+    original = agent_for(result, "Analyst")
+    handle = HarnessAgent(original.configuration, original.deployment, client, sink)
+    scope = context(run_id=request_id, attempt=TraceAttempt(request_id, "attempt-1", 1))
+    output = handle.invoke(INPUT, context=scope)
+
+    assert output == HarnessFailed("transport_failure", request_id, None, True)
+    assert _failure_event(caplog) == {
+        "event": "agentcore_harness_request_failure", "phase": "stream_read",
+        "exception_class": "EventStreamError", "aws_error_code": code,
+        "request_id": request_id, "run_id": request_id, "invocation_id": request_id,
+    }
+    assert events.close_count == 1 and len(client.requests) == 1
+    assert "private-provider-marker" not in caplog.text
+    assert "synthetic question" not in caplog.text
+    assert "output.accepted" not in {event.event_type for event in sink.events}
+
+
+@pytest.mark.parametrize(
+    ("trigger", "phase", "error_class"),
+    [("read", "stream_read", "ValueError"), ("size", "stream_read", "ValueError"),
+     ("close", "stream_close", "ValueError"), ("read_and_close", "stream_close", "TypeError"),
+     ("metadata", "response_validation", "TypeError")],
+)
+def test_failure_phase_preserves_read_error_after_close_and_reports_close_errors(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, trigger: str, phase: str, error_class: str,
+) -> None:
+    caplog.set_level(logging.ERROR, logger=harness_invocation.__name__)
+    events = _DiagnosticStream(
+        success_stream(),
+        read_error=ValueError("private-read-marker") if trigger in {"read", "read_and_close"} else None,
+        close_error=TypeError("private-close-marker") if trigger == "read_and_close" else
+        ValueError("private-close-marker") if trigger == "close" else None,
+    )
+    if trigger == "size":
+        events.events = [{"contentBlockDelta": {"contentBlockIndex": 0, "delta": {"text": "x" * (8 * 1024 * 1024)}}}]
+    metadata: object = {"RequestId": 42} if trigger == "metadata" else {}
+    client = _DiagnosticClient({"stream": events, "ResponseMetadata": metadata})
+    result, _, _ = system(tmp_path)
+    original = agent_for(result, "Analyst")
+    output = HarnessAgent(original.configuration, original.deployment, client).invoke(INPUT, context=context())
+
+    assert output == HarnessFailed("transport_failure", None, None, True)
+    event = _failure_event(caplog)
+    assert event["phase"] == phase and event["exception_class"] == error_class
+    assert event["aws_error_code"] is None
+    assert events.close_count == 1 and len(client.requests) == 1
+    assert "private-read-marker" not in caplog.text and "private-close-marker" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("identity", "expected"),
+    [("123e4567-e89b-12d3-a456-426614174000", "123e4567-e89b-12d3-a456-426614174000"),
+     ("123E4567-E89B-12D3-A456-426614174000", None),
+     ("{123e4567-e89b-12d3-a456-426614174000}", None),
+     ("urn:uuid:123e4567-e89b-12d3-a456-426614174000", None),
+     ("123e4567e89b12d3a456426614174000", None), ("private-identity-marker", None)],
+)
+def test_failure_diagnostics_only_log_canonical_uuid_correlations(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, identity: str, expected: str | None,
+) -> None:
+    caplog.set_level(logging.ERROR, logger=harness_invocation.__name__)
+    events = _DiagnosticStream([], read_error=ValueError("private-error-marker"))
+    client = _DiagnosticClient({"stream": events, "ResponseMetadata": {"RequestId": identity}})
+    result, _, _ = system(tmp_path)
+    original = agent_for(result, "Analyst")
+    scope = context(run_id=identity, attempt=TraceAttempt(identity, "attempt-1", 1))
+    output = HarnessAgent(original.configuration, original.deployment, client).invoke(INPUT, context=scope)
+
+    assert output == HarnessFailed("transport_failure", identity, None, True)
+    event = _failure_event(caplog)
+    assert [event[key] for key in ("request_id", "run_id", "invocation_id")] == [expected] * 3
+    assert "private-identity-marker" not in caplog.text
+    assert events.close_count == 1 and len(client.requests) == 1
+
+
+def test_unknown_exception_class_and_aws_code_do_not_leak_content(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.ERROR, logger=harness_invocation.__name__)
+    secret = "private-unknown-marker\ncredential=not-a-real-secret"
+    error_type = type(secret, (Exception,), {"response": {"Error": {"Code": secret, "Message": secret}}})
+    client = _DiagnosticClient({}, error_type(secret))
+    result, _, sink = system(tmp_path)
+    original = agent_for(result, "Analyst")
+    output = HarnessAgent(original.configuration, original.deployment, client, sink).invoke(INPUT, context=context())
+
+    assert output == HarnessFailed("transport_failure", None, None, True)
+    assert _failure_event(caplog) == {
+        "event": "agentcore_harness_request_failure", "phase": "request",
+        "exception_class": "other", "aws_error_code": "other",
+        "request_id": None, "run_id": None, "invocation_id": None,
+    }
+    assert "private-unknown-marker" not in caplog.text and "credential=" not in caplog.text
+    assert "synthetic question" not in caplog.text and len(client.requests) == 1
+
+
+@pytest.mark.parametrize(
+    ("response", "response_received"),
+    [(None, False), ([], False), ("private-response-marker", False),
+     ({"ResponseMetadata": []}, True), ({"ResponseMetadata": "private-metadata-marker"}, True),
+     ({"ResponseMetadata": {"RequestId": 42}}, True),
+     ({"ResponseMetadata": {"RequestId": ["private-id-marker"]}}, True),
+     ({"ResponseMetadata": {"RequestId": "private-id-marker\n"}}, True),
+     ({"ResponseMetadata": {"RequestId": "123E4567-E89B-12D3-A456-426614174000"}}, True)],
+)
+def test_malformed_aws_error_request_metadata_is_omitted_without_changing_result(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, response: object, response_received: bool,
+) -> None:
+    caplog.set_level(logging.ERROR, logger=harness_invocation.__name__)
+
+    class InvalidResponse(Exception):
+        def __init__(self) -> None:
+            self.response = response
+            super().__init__("private-exception-marker")
+
+    result, _, _ = system(tmp_path)
+    original = agent_for(result, "Analyst")
+    client = _DiagnosticClient({}, InvalidResponse())
+    output = HarnessAgent(original.configuration, original.deployment, client).invoke(INPUT, context=context())
+
+    assert output == HarnessFailed("transport_failure", None, None, response_received)
+    event = _failure_event(caplog)
+    assert event["request_id"] is None
+    assert "private-" not in caplog.text and len(client.requests) == 1
+
+
+@pytest.mark.parametrize("local_request_id", ["123e4567-e89b-12d3-a456-426614174000", "unsafe-local-id"])
+def test_diagnostic_request_id_prefers_safe_local_id_then_safe_error_metadata(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, local_request_id: str,
+) -> None:
+    from botocore.exceptions import ClientError
+
+    caplog.set_level(logging.ERROR, logger=harness_invocation.__name__)
+    fallback_id = "123e4567-e89b-12d3-a456-426614174001"
+    error = ClientError({
+        "Error": {"Code": "runtimeClientError", "Message": "private-provider-marker"},
+        "ResponseMetadata": {"RequestId": fallback_id},
+    }, "InvokeHarness")
+    events = _DiagnosticStream([], read_error=error)
+    client = _DiagnosticClient({"stream": events, "ResponseMetadata": {"RequestId": local_request_id}})
+    result, _, _ = system(tmp_path)
+    original = agent_for(result, "Analyst")
+    output = HarnessAgent(original.configuration, original.deployment, client).invoke(INPUT, context=context())
+
+    assert output == HarnessFailed("transport_failure", local_request_id, None, True)
+    event = _failure_event(caplog)
+    assert event["request_id"] == (fallback_id if local_request_id == "unsafe-local-id" else local_request_id)
+    assert "private-provider-marker" not in caplog.text and "unsafe-local-id" not in caplog.text
+    assert events.close_count == 1 and len(client.requests) == 1
+
+
+def test_client_setup_failure_is_logged_without_a_request_or_retry(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    caplog.set_level(logging.ERROR, logger=harness_invocation.__name__)
+    result, client, _ = system(tmp_path)
+
+    def unavailable(service: str, *, region: str, read_timeout: int) -> object:
+        raise ConnectionError("private-setup-marker")
+
+    monkeypatch.setattr(harness_invocation, "aws_client", unavailable)
+    handle = replace(agent_for(result, "Analyst"), client=None)
+    assert handle.invoke(INPUT, context=context()) == HarnessFailed("transport_failure", None, None, False)
+    event = _failure_event(caplog)
+    assert event["phase"] == "setup" and event["exception_class"] == "ConnectionError"
+    assert client.requests == [] and "private-setup-marker" not in caplog.text
+
+
+def test_import_failure_still_propagates_and_closes_once_without_a_failure_result(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.ERROR, logger=harness_invocation.__name__)
+    events = _DiagnosticStream([], read_error=ImportError("private-import-marker"))
+    client = _DiagnosticClient({"stream": events})
+    result, _, _ = system(tmp_path)
+    original = agent_for(result, "Analyst")
+    handle = HarnessAgent(original.configuration, original.deployment, client)
+
+    with pytest.raises(ImportError):
+        handle.invoke(INPUT, context=context())
+    assert events.close_count == 1 and len(client.requests) == 1
+    assert caplog.records == []
+
+
+@pytest.mark.parametrize("text", [json.dumps(OUTPUT), "invalid-output-marker"])
+def test_completed_stream_does_not_emit_an_exception_diagnostic(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, text: str,
+) -> None:
+    caplog.set_level(logging.ERROR, logger=harness_invocation.__name__)
+    events = _DiagnosticStream(success_stream(text))
+    client = _DiagnosticClient({"stream": events})
+    result, _, _ = system(tmp_path)
+    original = agent_for(result, "Analyst")
+    output = HarnessAgent(original.configuration, original.deployment, client).invoke(INPUT, context=context())
+
+    if text == json.dumps(OUTPUT):
+        assert isinstance(output, HarnessCompleted)
+    else:
+        assert output == HarnessFailed("invalid_output", None, "end_turn", True)
+    assert events.close_count == 1 and len(client.requests) == 1
+    assert caplog.records == []
 
 
 def test_exact_approval_result_and_recovery_binding(tmp_path: Path) -> None:
