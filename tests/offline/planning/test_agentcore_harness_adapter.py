@@ -7,6 +7,7 @@ import pytest
 
 from contract4agents.adapters._agentcore_harness import (
     AgentCoreHarnessMappingResolver,
+    HarnessApiFormat,
     agentcore_harness_planner_capabilities,
     agentcore_harness_target_binding_validator,
     agentcore_harness_target_profile_validator,
@@ -128,6 +129,14 @@ def test_profile_validator_checks_role_options_and_unsupported_settings(tmp_path
         == ()
     )
 
+    chat = _bindings(
+        ir,
+        profile_options={"execution_role_arn": _ROLE_ARN, "api_format": HarnessApiFormat.CHAT_COMPLETIONS},
+    )
+    assert agentcore_harness_target_profile_validator(
+        ir, "agentcore_harness", chat.targets["agentcore_harness"], tmp_path
+    ) == ()
+
     invalid = _bindings(
         ir,
         profile_options={
@@ -147,6 +156,35 @@ def test_profile_validator_checks_role_options_and_unsupported_settings(tmp_path
     assert {item.code for item in diagnostics} >= {"TGT003", "TGT113"}
     assert any("raw_instructions" in item.message for item in diagnostics)
     assert any("execution_role_arn" in item.message for item in diagnostics)
+
+
+@pytest.mark.parametrize("value", [None, True, 7, ["chat_completions"], "responses"])
+def test_api_format_rejects_wrong_types_and_unknown_values(tmp_path: Path, value: object) -> None:
+    ir = _ir(with_tool=True)
+    bindings = _bindings(
+        ir,
+        profile_options={"execution_role_arn": _ROLE_ARN, "api_format": value},
+    )
+    diagnostics = agentcore_harness_target_profile_validator(
+        ir, "agentcore_harness", bindings.targets["agentcore_harness"], tmp_path
+    )
+    assert any(item.code == "TGT113" and "api_format" in item.message for item in diagnostics)
+
+
+def test_chat_completion_extra_fields_reject_native_control_collisions(tmp_path: Path) -> None:
+    ir = _ir(with_tool=True)
+    bindings = _bindings(
+        ir,
+        profile_options={
+            "execution_role_arn": _ROLE_ARN,
+            "api_format": "chat_completions",
+            "additional_model_request_fields": {"reasoning_effort": "medium", "tools": []},
+        },
+    )
+    diagnostics = agentcore_harness_target_profile_validator(
+        ir, "agentcore_harness", bindings.targets["agentcore_harness"], tmp_path
+    )
+    assert any("reserved Chat Completions fields: tools" in item.message for item in diagnostics)
 
 
 @pytest.mark.parametrize("value", [float("nan"), float("inf"), ["not", "an", "object"]])

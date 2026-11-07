@@ -14,6 +14,7 @@ from botocore.validate import ParamValidator  # type: ignore[import-untyped]
 from contract4agents._strict_json import json_array, json_object
 from contract4agents.adapters._native_names import native_name
 from contract4agents.adapters.agentcore_harness import (
+    HarnessApiFormat,
     HarnessConfiguration,
     agentcore_harness_planner_capabilities,
     build_harness_configuration,
@@ -80,6 +81,47 @@ def test_configuration_is_deterministic_and_writes_no_aws_resources(
     manifest = json.loads((destination / "manifest.json").read_text())
     assert manifest["agents"]["Analyst"]["configuration_digest"] == agent.configuration_digest
     assert (destination / "Analyst.harness.json").is_file()
+
+
+@pytest.mark.parametrize("api_format", list(HarnessApiFormat))
+def test_supported_api_formats_materialize_and_default_converse_request_is_unchanged(
+    tmp_path: Path, api_format: HarnessApiFormat,
+) -> None:
+    root = write_project(tmp_path / "project")
+    default = _configuration(root).agents["Analyst"]
+    target = root / "contract4agents.targets.toml"
+    target.write_text(target.read_text() + f'\napi_format = "{api_format.value}"\n')
+    selected = _configuration(root).agents["Analyst"]
+    if api_format == HarnessApiFormat.CONVERSE_STREAM:
+        selected_request = selected.request_payload()
+        default_request = default.request_payload()
+        assert selected_request["model"] == default_request["model"]
+        selected_request.pop("tags")
+        default_request.pop("tags")
+        assert selected_request == default_request
+    else:
+        assert selected.configuration_digest != default.configuration_digest
+        model = json_object("model", selected.request_payload()["model"])
+        bedrock = json_object("Bedrock model", model["bedrockModelConfig"])
+        assert bedrock["apiFormat"] == "chat_completions"
+    shape = get_session().get_service_model("bedrock-agentcore-control").operation_model("CreateHarness").input_shape
+    errors = ParamValidator().validate(selected.request_payload(), shape)
+    assert not errors.has_errors(), errors.generate_report()
+
+
+def test_chat_completion_extra_model_fields_are_direct_additional_params(tmp_path: Path) -> None:
+    root = write_project(tmp_path / "project")
+    target = root / "contract4agents.targets.toml"
+    target.write_text(
+        target.read_text()
+        + '\napi_format = "chat_completions"\n'
+        + 'additional_model_request_fields = { reasoning_effort = "medium" }\n'
+    )
+    bedrock = json_object(
+        "Bedrock model",
+        json_object("model", _configuration(root).agents["Analyst"].request_payload()["model"])["bedrockModelConfig"],
+    )
+    assert bedrock["additionalParams"] == {"reasoning_effort": "medium"}
 
 
 def test_tool_output_mode_adds_private_typed_result_tool_and_generic_model_fields(tmp_path: Path) -> None:

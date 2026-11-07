@@ -68,6 +68,30 @@ def test_schema_output_uses_top_level_bedrock_configuration_and_keeps_strict_con
         )
 
 
+def test_chat_completions_schema_output_uses_strict_response_format(tmp_path: Path) -> None:
+    root = write_project(tmp_path, result_declaration="type Result:\n    answer: string\n    source_ids: list[string]")
+    target = root / "contract4agents.targets.toml"
+    target.write_text(target.read_text() + '\napi_format = "chat_completions"\noutput_mode = "schema"\n')
+    agent = generate_harness_configuration(root, target="agentcore_harness", profile="test").agents["Analyst"]
+    bedrock = json_object("Bedrock model", json_object("model", agent.request_payload()["model"])["bedrockModelConfig"])
+    params = json_object("additional params", bedrock["additionalParams"])
+    response_format = json_object("response format", params["response_format"])
+    json_schema = json_object("json schema", response_format["json_schema"])
+    assert bedrock["apiFormat"] == "chat_completions"
+    assert response_format["type"] == "json_schema"
+    assert json_schema["name"]
+    assert json_schema["strict"] is True
+    output_schema = json_object("output schema", json_schema["schema"])
+    assert output_schema["type"] == "object"
+    assert "outputConfig" not in params
+    create_shape = (
+        get_session().get_service_model("bedrock-agentcore-control")
+        .operation_model("CreateHarness")
+        .input_shape
+    )
+    validate_parameters(agent.request_payload(), create_shape)
+
+
 @pytest.mark.parametrize(("optional", "nullable", "error"), [(13, False, "optional"), (17, True, "union")])
 def test_schema_output_rejects_provider_quotas_without_changing_required_fields(
     optional: int, nullable: bool, error: str,

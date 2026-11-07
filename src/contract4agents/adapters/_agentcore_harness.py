@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Mapping
+from enum import StrEnum
 from pathlib import Path
 
 from contract4agents.adapters._native_names import native_name
@@ -49,6 +50,42 @@ _PROFILE_OPTIONS = frozenset(
 )
 _RESERVED_TOOL_NAMES = frozenset({"shell", "file_operations"})
 _MAX_INLINE_TOOLS = 64
+
+
+class HarnessApiFormat(StrEnum):
+    """Native model API formats supported by the Harness target."""
+
+    CONVERSE_STREAM = "converse_stream"
+    CHAT_COMPLETIONS = "chat_completions"
+
+
+def parse_harness_api_format(value: object) -> HarnessApiFormat:
+    """Parse one supported native Harness API format."""
+
+    if not isinstance(value, str):
+        accepted = ", ".join(f"`{item.value}`" for item in HarnessApiFormat)
+        raise ValueError(f"must be one of {accepted}")
+    try:
+        return HarnessApiFormat(value)
+    except (TypeError, ValueError) as exc:
+        accepted = ", ".join(f"`{item.value}`" for item in HarnessApiFormat)
+        raise ValueError(f"must be one of {accepted}") from exc
+
+
+_CHAT_COMPLETION_RESERVED_FIELDS = frozenset(
+    {
+        "model",
+        "messages",
+        "max_tokens",
+        "max_completion_tokens",
+        "temperature",
+        "top_p",
+        "response_format",
+        "stream",
+        "tools",
+        "tool_choice",
+    }
+)
 
 
 class AgentCoreHarnessMappingResolver:
@@ -444,9 +481,11 @@ def _validate_options(
                 hint="Remove unsupported Harness options.",
             )
         )
-    api_format = options.get("api_format")
-    if api_format is not None and api_format != "converse_stream":
-        diagnostics.append(Diagnostic("TGT113", f"`{path}.api_format` must be `converse_stream`"))
+    if "api_format" in options:
+        try:
+            parse_harness_api_format(options["api_format"])
+        except ValueError as exc:
+            diagnostics.append(Diagnostic("TGT113", f"`{path}.api_format` {exc}"))
     output_mode = options.get("output_mode")
     if output_mode is not None and (
         not isinstance(output_mode, str) or output_mode not in ("host_validation", "tool", "schema")
@@ -454,13 +493,23 @@ def _validate_options(
         diagnostics.append(Diagnostic("TGT113", f"`{path}.output_mode` must be `host_validation`, `tool`, or `schema`"))
     if "additional_model_request_fields" in options:
         try:
-            if not isinstance(freeze_json(options["additional_model_request_fields"]), Mapping):
+            extra_fields = freeze_json(options["additional_model_request_fields"])
+            if not isinstance(extra_fields, Mapping):
                 raise ValueError("object required")
+            if options.get("api_format") == HarnessApiFormat.CHAT_COMPLETIONS:
+                collisions = sorted(set(extra_fields) & _CHAT_COMPLETION_RESERVED_FIELDS)
+                if collisions:
+                    diagnostics.append(Diagnostic(
+                        "TGT113",
+                        f"`{path}.additional_model_request_fields` cannot set reserved Chat Completions fields: "
+                        f"{', '.join(collisions)}",
+                    ))
         except (TypeError, ValueError):
             diagnostics.append(
                 Diagnostic(
                     "TGT113",
-                    f"`{path}.additional_model_request_fields` must be a finite JSON object",
+                    f"`{path}.additional_model_request_fields` must be a finite JSON object "
+                    "without reserved Chat Completions fields",
                 )
             )
     role_arn = options.get("execution_role_arn")
