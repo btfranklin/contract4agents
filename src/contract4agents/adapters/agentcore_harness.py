@@ -2,6 +2,7 @@
 
 from contract4agents.adapters._agentcore_harness import (
     AgentCoreHarnessMappingResolver,
+    HarnessApiFormat,
     agentcore_harness_planner_capabilities,
     agentcore_harness_target_binding_validator,
     agentcore_harness_target_profile_validator,
@@ -33,6 +34,7 @@ __all__ = [
     "AgentCoreHarnessMappingResolver",
     "AgentCoreHarnessMaterializationProvider",
     "HarnessAgent",
+    "HarnessApiFormat",
     "HarnessApproval",
     "HarnessCompleted",
     "HarnessConfiguration",

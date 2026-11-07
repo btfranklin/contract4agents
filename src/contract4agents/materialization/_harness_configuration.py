@@ -11,6 +11,11 @@ from typing import cast
 
 from pydantic import BaseModel, TypeAdapter
 
+from contract4agents.adapters._agentcore_harness import (
+    _CHAT_COMPLETION_RESERVED_FIELDS,
+    HarnessApiFormat,
+    parse_harness_api_format,
+)
 from contract4agents.adapters._native_names import native_name
 from contract4agents.ir import FrozenJsonValue, FrozenMap, SemanticId, freeze_json
 from contract4agents.materialization._harness_schema import bedrock_output_schema
@@ -226,9 +231,10 @@ def build_harness_configuration(
             raise ValueError("Harness names must be unique strings")
         harness_names.add(harness_name)
         max_tokens = options.get("max_tokens", 4096)
+        api_format = parse_harness_api_format(options.get("api_format", HarnessApiFormat.CONVERSE_STREAM))
         model: dict[str, object] = {
             "modelId": plan.agents[agent_id].model,
-            "apiFormat": "converse_stream",
+            "apiFormat": api_format.value,
             "maxTokens": max_tokens,
         }
         for key, aws_key in (("temperature", "temperature"), ("top_p", "topP")):
@@ -236,8 +242,20 @@ def build_harness_configuration(
                 model[aws_key] = options[key]
         extra_fields = options.get("additional_model_request_fields")
         if extra_fields is not None:
-            model["additionalParams"] = {"additionalModelRequestFields": thaw(extra_fields)}
+            if api_format == HarnessApiFormat.CHAT_COMPLETIONS:
+                if not isinstance(extra_fields, Mapping):
+                    raise ValueError("Harness additional_model_request_fields must be a JSON object")
+                collisions = sorted(set(extra_fields) & _CHAT_COMPLETION_RESERVED_FIELDS)
+                if collisions:
+                    raise ValueError(
+                        "Harness additional_model_request_fields cannot set reserved Chat Completions "
+                        f"fields: {', '.join(collisions)}"
+                    )
+                model["additionalParams"] = thaw(extra_fields)
+            else:
+                model["additionalParams"] = {"additionalModelRequestFields": thaw(extra_fields)}
         if output_mode == "schema":
+            additional: dict[str, object]
             strict_schema_output = False
             if isinstance(extra_fields, Mapping):
                 text_fields = extra_fields.get("text")
@@ -245,21 +263,37 @@ def build_harness_configuration(
                     format_fields = text_fields.get("format")
                     if isinstance(format_fields, Mapping):
                         strict_schema_output = format_fields.get("strict") is True
-            additional: dict[str, object] = {
-                "outputConfig": {
-                    "textFormat": {
-                        "type": "json_schema",
-                        "structure": {"jsonSchema": {
-                            "name": native_name("output", agent_id),
-                            "schema": canonical_json(bedrock_output_schema(
-                                output_adapter.json_schema(), strict=strict_schema_output,
-                            )),
-                        }},
+            if api_format == HarnessApiFormat.CHAT_COMPLETIONS:
+                thawed_extra = thaw(extra_fields) if extra_fields is not None else {}
+                if not isinstance(thawed_extra, dict):
+                    raise ValueError("Harness additional_model_request_fields must be a JSON object")
+                additional = thawed_extra
+                if "response_format" in additional:
+                    raise ValueError("Harness schema output reserves the Chat Completions response_format field")
+                additional["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": native_name("output", agent_id),
+                        "schema": bedrock_output_schema(output_adapter.json_schema(), strict=True),
+                        "strict": True,
                     },
-                },
-            }
-            if extra_fields is not None:
-                additional["additionalModelRequestFields"] = thaw(extra_fields)
+                }
+            else:
+                additional = {
+                    "outputConfig": {
+                        "textFormat": {
+                            "type": "json_schema",
+                            "structure": {"jsonSchema": {
+                                "name": native_name("output", agent_id),
+                                "schema": canonical_json(bedrock_output_schema(
+                                    output_adapter.json_schema(), strict=strict_schema_output,
+                                )),
+                            }},
+                        },
+                    },
+                }
+                if extra_fields is not None:
+                    additional["additionalModelRequestFields"] = thaw(extra_fields)
             model["additionalParams"] = additional
         if output_mode == "tool":
             template = (prompt_root / "tool_output.md").read_text()

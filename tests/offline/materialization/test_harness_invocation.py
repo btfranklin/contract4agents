@@ -20,6 +20,7 @@ from contract4agents.adapters._native_names import native_name
 from contract4agents.adapters.agentcore_harness import (
     AgentCoreHarnessMaterializationProvider,
     HarnessAgent,
+    HarnessApiFormat,
     HarnessApproval,
     HarnessCompleted,
     HarnessFailed,
@@ -98,6 +99,7 @@ def system(
     tmp_path: Path, *, approval: bool = False, delegate: bool = False,
     streams: list[list[dict[str, object]]] | None = None, request_fields: str = "",
     include_tool: bool = True, output_mode: str | None = None,
+    api_format: HarnessApiFormat | None = None,
     timeout_seconds: int | None = None,
     result_declaration: str | None = None,
     output_type: str = "Result",
@@ -111,6 +113,9 @@ def system(
     if output_mode is not None:
         target = root / "contract4agents.targets.toml"
         target.write_text(target.read_text() + f'\noutput_mode = "{output_mode}"\n')
+    if api_format is not None:
+        target = root / "contract4agents.targets.toml"
+        target.write_text(target.read_text() + f'\napi_format = "{api_format.value}"\n')
     if timeout_seconds is not None:
         target = root / "contract4agents.targets.toml"
         target.write_text(target.read_text() + f'\ntimeout_seconds = {timeout_seconds}\n')
@@ -196,6 +201,46 @@ def test_schema_output_preserves_tool_continuation_and_strict_final_validation(
         assert "outputConfig" in json_object("additional parameters", bedrock["additionalParams"])
         assert request["allowedTools"] == [f"@*/{name}" for name in handle.configuration.tools]
     assert client.requests[0]["model"] == client.requests[1]["model"]
+
+
+@pytest.mark.parametrize(
+    ("result_value", "expected_reason"),
+    [(OUTPUT, None), ({"answer": 7, "evidence_ids": []}, "invalid_output")],
+)
+def test_chat_completions_preserves_typed_source_continuation_and_private_result_tool(
+    tmp_path: Path, result_value: dict[str, object], expected_reason: str | None,
+) -> None:
+    result, client, _ = system(
+        tmp_path,
+        api_format=HarnessApiFormat.CHAT_COMPLETIONS,
+        output_mode="tool",
+        streams=[
+            tool_stream(native_name("tool", semantic_id("tool", "records.lookup")), INPUT),
+            tool_stream(native_name("result", semantic_id("agent", "Analyst")), {"value": result_value}),
+        ],
+    )
+    handle = agent_for(result, "Analyst")
+    result_tool_name = handle.configuration.result_tool_name
+    assert result_tool_name == native_name("result", semantic_id("agent", "Analyst"))
+    scope = context()
+    interrupted = handle.invoke(INPUT, context=scope)
+    assert isinstance(interrupted, HarnessInterrupted)
+    completed = handle.resume(interrupted.pending, OUTPUT, context=scope)
+    if expected_reason is None:
+        assert isinstance(completed, HarnessCompleted)
+        assert result.validate_output_for_agent(handle, completed.value) is completed.value
+    else:
+        assert failure(completed).reason == expected_reason
+    assert len(client.requests) == 2
+    for request in client.requests:
+        bedrock = json_object("Bedrock model", json_object("model", request["model"])["bedrockModelConfig"])
+        assert bedrock["apiFormat"] == "chat_completions"
+        assert request["allowedTools"] == [
+            *[f"@*/{name}" for name in handle.configuration.tools], f"@*/{result_tool_name}"
+        ]
+    invoke_shape = get_session().get_service_model("bedrock-agentcore").operation_model("InvokeHarness").input_shape
+    for request in client.requests:
+        validate_parameters(request, invoke_shape)
 
 
 def test_default_runtime_transport_uses_the_configured_timeout_without_retries(

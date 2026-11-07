@@ -15,7 +15,7 @@ writes, permissions, promotion, rollback, and endpoint stability.
 
 | Feature | Support and mechanism |
 | --- | --- |
-| Model | Explicit Bedrock model through `converse_stream` |
+| Model | Explicit Bedrock model through `converse_stream` or `chat_completions` |
 | Deployment artifact | AWS CLI `create-harness --cli-input-json` request files and an identity manifest |
 | Instructions | Derived from the contract and generated final-output schema |
 | Typed input | Strict generated model before invocation |
@@ -66,12 +66,18 @@ envelope. The result tool has no application implementation, grant, or effect.
 Assistant commentary can accompany the result call. It is not part of the typed
 value. Text without the result call is invalid in this mode.
 
-In `output_mode = "schema"`, the contract return type generates Bedrock's
-`outputConfig.textFormat` under `bedrockModelConfig.additionalParams`.
-This constrains final JSON generation while ordinary inline tools remain
-available. It does not add a private result tool. The final response must end
-normally and pass the full strict contract validator. Refusals, token limits,
-incomplete output, invalid values, and surrounding prose remain failures.
+In `output_mode = "schema"`, the contract return type generates native
+structured output for the selected API format. `converse_stream` uses
+Bedrock's `outputConfig.textFormat` under
+`bedrockModelConfig.additionalParams`. `chat_completions` uses the Chat
+Completions `response_format` field with `type = "json_schema"`, a generated
+schema, and `strict = true`. This constrains final JSON generation while
+ordinary inline tools remain available. It does not add a private result tool.
+The final response must end normally and pass the full strict contract
+validator. Refusals, token limits, incomplete output, invalid values, and
+surrounding prose remain failures. See the [Bedrock Chat Completions JSON
+Schema guidance](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-terra.html)
+and [Harness model configuration API](https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/API_HarnessBedrockModelConfig.html).
 
 Bedrock supports only a subset of JSON Schema. The generated provider schema
 retains object fields, required fields, enums, internal references, supported
@@ -84,8 +90,9 @@ not change contract types or the accepted output values.
 Generation rejects open objects, recursive schemas, and schemas that exceed Bedrock's limits of
 12 optional properties or 16 union properties. It does not make fields
 required or change their types to meet those limits in the normal mode. If the
-existing `additional_model_request_fields.text.format.strict` value is `true`,
-the provider projection lists every property as required at every object level.
+existing Converse `additional_model_request_fields.text.format.strict` value is
+`true`, or Chat Completions schema mode is selected, the provider projection
+lists every property as required at every object level.
 An optional field is supported only when its default is `null` and its type
 accepts `null`. An explicit `null` represents omission; any other value must
 meet the original type. Strict generation fails when it cannot preserve an
@@ -104,9 +111,21 @@ before you select a model and output mode.
 
 Profiles accept `execution_role_arn`, `harness_name`, `max_iterations`,
 `max_tokens`, `timeout_seconds`, `temperature`, `top_p`, and the finite JSON
-object `additional_model_request_fields`. This object maps to Converse
-`additionalModelRequestFields`. The only accepted `api_format` is
-`converse_stream`; `output_mode` accepts `host_validation`, `tool`, or `schema`.
+object `additional_model_request_fields`. The finite `api_format` values are
+`converse_stream` and `chat_completions`. An omitted value selects
+`converse_stream`. The exported `HarnessApiFormat` enum defines these values
+for Python callers. The object maps to Converse `additionalModelRequestFields`
+for `converse_stream`; for `chat_completions`, its keys pass directly through
+`additionalParams` as Chat Completions request fields. For example,
+`additional_model_request_fields = { reasoning_effort = "medium" }` selects
+the reasoning effort without a Converse wrapper. The host rejects Chat
+Completions fields that collide with Harness controls: `model`, `messages`,
+`max_tokens`, `max_completion_tokens`, `temperature`, `top_p`,
+`response_format`, `stream`, `tools`, and `tool_choice`. Schema mode owns
+`response_format` and generates it from the declared return type. Native schema generation can enforce only the
+provider-supported schema subset; the host continues to validate the complete
+contract return type. `output_mode` accepts `host_validation`, `tool`, or
+`schema`.
 Defaults are 10 iterations, 4096 tokens, and 120 seconds. The token setting
 applies to the Harness invocation limit and the model output limit for each
 iteration. These settings do not prove a total business budget or host
@@ -277,13 +296,14 @@ shapes. They do not prove AWS authentication, regional model access, model
 behavior, or deployed isolation. See the opt-in
 [live Harness check](../quality/validation.md#live-agentcore-harness-check).
 
-Provider references checked on 24 October 2026:
+Provider references checked on 7 November 2026:
 
 - [Tools and inline continuation](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-tools.html)
 - [Memory defaults](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-memory.html)
 - [InvokeHarness](https://docs.aws.amazon.com/bedrock-agentcore/latest/APIReference/API_InvokeHarness.html)
 - [GetHarness](https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/API_GetHarness.html)
 - [GetHarnessEndpoint](https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/API_GetHarnessEndpoint.html)
+- [HarnessBedrockModelConfig](https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/API_HarnessBedrockModelConfig.html)
 
 The optional client dependency requires boto3 1.43.118 or later. Verify AWS
 support and model access before deploying generated requests.
