@@ -65,7 +65,9 @@ def test_release_publication_only_builds_and_publishes_the_release_tag() -> None
     publish = (ROOT / ".github/workflows/python-publish.yml").read_text()
     assert "types: [published]" in publish
     assert "environment: release" in publish
-    assert "id-token: write" in publish
+    job_permissions = publish.split("    publish:", 1)[1].split("        steps:", 1)[0]
+    assert "            contents: read" in job_permissions
+    assert "            id-token: write" in job_permissions
     required = (
         "fetch-depth: 0",
         "ref: ${{ github.event.release.tag_name }}",
