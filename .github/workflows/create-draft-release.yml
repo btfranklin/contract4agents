@@ -25,7 +25,7 @@ jobs:
                       editors/vscode/package-lock.json
                       tests/typescript/package-lock.json
             - name: Set up Python
-              uses: actions/setup-python@v6
+              uses: actions/setup-python@v7
               with:
                   python-version: "3.11"
             - name: Install PDM
