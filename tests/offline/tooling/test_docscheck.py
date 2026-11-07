@@ -26,33 +26,62 @@ def test_pdm_docs_check_is_part_of_validate() -> None:
     assert "test:offline" in scripts["validate:python"]["composite"]
 
 
-def test_release_workflows_gate_the_exact_tag_before_draft_and_publication() -> None:
-    draft_workflow = (ROOT / ".github/workflows/create-draft-release.yml").read_text()
-    publish_workflow = (ROOT / ".github/workflows/python-publish.yml").read_text()
+def test_draft_release_requires_full_reusable_validation_and_validated_vsix() -> None:
+    draft = (ROOT / ".github/workflows/create-draft-release.yml").read_text()
+    python = (ROOT / ".github/workflows/python-package.yml").read_text()
+    editor = (ROOT / ".github/workflows/vscode-extension.yml").read_text()
 
-    draft_gate = (
+    assert 'tags:\n            - "v*.*.*"' in draft
+    assert "uses: ./.github/workflows/python-package.yml" in draft
+    assert "uses: ./.github/workflows/vscode-extension.yml" in draft
+    assert "needs: [validate-python, validate-editor]" in draft
+    for source in (python, editor):
+        assert "    workflow_call:" in source
+    assert 'python-version: ["3.11", "3.12", "3.13", "3.14"]' in python
+    assert 'draft: "true"' in draft
+    assert 'create_release: "true"' in draft
+    required = (
         "ref: ${{ github.ref }}",
-        "pdm install --group dev --group openai --group strands --group google-adk",
-        "pdm run validate:python",
-        "pdm run smoke:cli",
-        "pdm build",
-        "pdm run package-check",
-        "npm test",
-        "npm run package",
+        "name: Download validated VSIX",
+        "name: contract4agents-vscode-vsix",
         "uses: btfranklin/release-notes-scribe@v0",
+        'gh release upload "$GITHUB_REF_NAME"',
     )
-    publish_gate = (
+    assert _positions(draft, required) == sorted(_positions(draft, required))
+    python_gate = ("pdm run validate:python", "pdm run smoke:cli", "pdm build", "pdm run package-check")
+    assert _positions(python, python_gate) == sorted(_positions(python, python_gate))
+    editor_gate = (
+        "pdm run pytest tests/offline/tooling/test_language_server.py",
+        "if: startsWith(github.ref, 'refs/tags/v')",
+        'npm version --no-git-tag-version "${GITHUB_REF_NAME#v}"',
+        "npm test --prefix editors/vscode",
+        "npm run package --prefix editors/vscode",
+        "name: contract4agents-vscode-vsix",
+    )
+    assert _positions(editor, editor_gate) == sorted(_positions(editor, editor_gate))
+
+
+def test_release_publication_only_builds_and_publishes_the_release_tag() -> None:
+    publish = (ROOT / ".github/workflows/python-publish.yml").read_text()
+    assert "types: [published]" in publish
+    assert "environment: release" in publish
+    assert "id-token: write" in publish
+    required = (
+        "fetch-depth: 0",
         "ref: ${{ github.event.release.tag_name }}",
-        "pdm install --group dev --group openai --group strands --group google-adk",
-        "pdm run validate:python",
-        "pdm run smoke:cli",
-        "pdm build",
-        "pdm run package-check",
+        "uses: actions/setup-python@",
+        "uses: pdm-project/setup-pdm@",
+        "run: pdm build",
         "uses: pypa/gh-action-pypi-publish@release/v1",
     )
-
-    assert _positions(draft_workflow, draft_gate) == sorted(_positions(draft_workflow, draft_gate))
-    assert _positions(publish_workflow, publish_gate) == sorted(_positions(publish_workflow, publish_gate))
+    assert _positions(publish, required) == sorted(_positions(publish, required))
+    # Keep publication independent of validation and provider/editor environments.
+    for forbidden in ("pdm install", "npm", "validate", "smoke:cli", "package-check", "pytest", "Perfect Doc"):
+        assert forbidden not in publish
+    assert "uses: ./.github/workflows/" not in publish
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    assert not any(name.startswith("pre_build") for name in pyproject["tool"]["pdm"]["scripts"])
+    assert not (ROOT / "pdm_build.py").exists()
 
 
 def test_generated_typescript_runtime_is_root_owned() -> None:
@@ -66,10 +95,9 @@ def test_generated_typescript_runtime_is_root_owned() -> None:
     for harness in ("execute-generated-zod.mjs", "read-generated-provenance.mjs"):
         assert (runtime_root / harness).is_file()
         assert not (ROOT / "editors/vscode/test" / harness).exists()
-    for workflow in ("python-package.yml", "python-publish.yml"):
-        source = (ROOT / ".github/workflows" / workflow).read_text()
-        assert "npm ci --prefix tests/typescript" in source
-        assert "npm ci --prefix editors/vscode" not in source
+    source = (ROOT / ".github/workflows/python-package.yml").read_text()
+    assert "npm ci --prefix tests/typescript" in source
+    assert "npm ci --prefix editors/vscode" not in source
 
 
 def _positions(source: str, required: tuple[str, ...]) -> list[int]:

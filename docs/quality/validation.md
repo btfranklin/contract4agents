@@ -221,6 +221,15 @@ and bundled VSIX contents. The Python smoke test starts the packaged language
 server entry point over stdio and checks initialization, hover, and definition
 navigation. The VSIX is a release asset, not a Python package file.
 
+## Release Gate
+
+Tag-driven draft preparation calls the ordinary Python CI matrix and VS Code
+workflow, including CLI smoke tests, package checks, language-server checks, and
+VSIX tests. Every required job must pass before the draft is created. Publishing
+that reviewed release only rebuilds and uploads the Python packages; it does
+not repeat validation. A manually created GitHub draft does not run this gate.
+Follow the [release process](../releasing.md) for the supported event boundary.
+
 ## Live OpenAI Checks
 
 Normal validation does not call external APIs. The offline adapter suite uses

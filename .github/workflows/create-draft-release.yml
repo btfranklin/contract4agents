@@ -9,59 +9,36 @@ permissions:
     contents: write
 
 jobs:
+    validate-python:
+        uses: ./.github/workflows/python-package.yml
+        permissions:
+            contents: read
+
+    validate-editor:
+        uses: ./.github/workflows/vscode-extension.yml
+        permissions:
+            contents: read
+
     draft-release:
+        needs: [validate-python, validate-editor]
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v7
               with:
                   fetch-depth: 0
                   ref: ${{ github.ref }}
-            - name: Set up Node
-              uses: actions/setup-node@v7
+            - name: Download validated VSIX
+              uses: actions/download-artifact@v8
               with:
-                  node-version: "22"
-                  cache: npm
-                  cache-dependency-path: |
-                      editors/vscode/package-lock.json
-                      tests/typescript/package-lock.json
-            - name: Set up Python
-              uses: actions/setup-python@v7
-              with:
-                  python-version: "3.11"
-            - name: Install PDM
-              uses: pdm-project/setup-pdm@v4
-              with:
-                  cache: true
-                  cache-dependency-path: pdm.lock
-            - name: Install dependencies
-              run: |
-                  pdm install --group dev --group openai --group strands --group google-adk
-                  npm ci --prefix editors/vscode
-                  npm ci --prefix tests/typescript
-            - name: Test language server boundary
-              run: |
-                  pdm run pytest tests/offline/tooling/test_language_server.py
-            - name: Set up Perfect Doc
-              uses: ./.github/actions/setup-perfect-doc
-            - name: Validate tagged Python package
-              run: pdm run validate:python
-            - name: Test tagged CLI paths
-              run: pdm run smoke:cli
-            - name: Build tagged Python package
-              run: pdm build
-            - name: Verify tagged Python package contents
-              run: pdm run package-check
-            - name: Build VS Code release asset
-              working-directory: editors/vscode
-              run: |
-                  npm version --no-git-tag-version "${GITHUB_REF_NAME#v}"
-                  npm test
-                  npm run package
+                  name: contract4agents-vscode-vsix
+                  path: editors/vscode/dist
             - name: Generate release notes
               uses: btfranklin/release-notes-scribe@v0
               with:
                   openai_api_key: ${{ secrets.OPENAI_API_KEY }}
                   github_token: ${{ secrets.GITHUB_TOKEN }}
+                  draft: "true"
+                  create_release: "true"
                   include_github_generated_notes: "true"
             - name: Upload VSIX release asset
               env:
