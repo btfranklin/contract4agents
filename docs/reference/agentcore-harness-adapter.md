@@ -114,7 +114,13 @@ Profiles accept `execution_role_arn`, `harness_name`, `max_iterations`,
 object `additional_model_request_fields`. The finite `api_format` values are
 `converse_stream` and `chat_completions`. An omitted value selects
 `converse_stream`. The exported `HarnessApiFormat` enum defines these values
-for Python callers. The object maps to Converse `additionalModelRequestFields`
+for Python callers. In AWS's managed Harness, `converse_stream` selects the
+`bedrock-runtime` endpoint. `chat_completions` selects `bedrock-mantle`.
+The model must support the selected endpoint. Support for Chat Completions on
+`bedrock-runtime` does not establish support through this Harness route. For
+example, Kimi K3 supports `bedrock-runtime` but not `bedrock-mantle`.
+See [Harness API routing](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-models.html)
+and the [Kimi K3 model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-moonshot-ai-kimi-k3.html). The object maps to Converse `additionalModelRequestFields`
 for `converse_stream`; for `chat_completions`, its keys pass directly through
 `additionalParams` as Chat Completions request fields. For example,
 `additional_model_request_fields = { reasoning_effort = "medium" }` selects
