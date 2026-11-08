@@ -1,0 +1,10 @@
+schema_version = "1"
+[targets.strands]
+adapter = "strands"
+[targets.strands.tools."sources.read"]
+python = "schema_model:read"
+[targets.strands.profiles.test]
+default_model = "us.moonshotai.kimi-k3.1"
+[targets.strands.profiles.test.options]
+output_mode = "schema"
+model_factory = "schema_model:make_model"

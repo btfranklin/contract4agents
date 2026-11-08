@@ -57,7 +57,9 @@ openai = [
     "openai-agents>=0.22.0",
 ]
 strands = [
-    "strands-agents>=1.54.0",
+    "strands-agents[openai]>=1.64.0",
+    "openai>=3.46.0",
+    "httpx2>=2.16.0",
 ]
 agentcore-harness = [
     "boto3>=1.43.118",

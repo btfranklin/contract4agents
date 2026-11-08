@@ -156,7 +156,7 @@ def validate_target_binding_conformance(
             if resolved is not None:
                 implementations.append(resolved)
     diagnostics.extend(_profile_diagnostics(ir, target_name, target))
-    diagnostics.extend(_model_factory_diagnostics(target_name, target, root))
+    diagnostics.extend(_model_factory_diagnostics(ir, target_name, target, root))
     if profile_validator is not None:
         diagnostics.extend(profile_validator(ir, target_name, target, root))
     return TargetBindingConformanceResult(target_name, tuple(diagnostics), tuple(implementations))
@@ -220,36 +220,26 @@ def _profile_diagnostics(
 
 
 def _model_factory_diagnostics(
+    ir: CanonicalIR,
     target_name: str,
     target: TargetBinding,
     project_root: Path,
 ) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     for profile_name, profile in target.profiles.items():
-        if "model_factory" in profile.options:
-            diagnostics.extend(
-                _model_factory_entry_diagnostics(
-                    profile.options["model_factory"],
-                    (
-                        f"targets.{target_name}.profiles.{profile_name}."
-                        "options.model_factory"
-                    ),
-                    project_root,
-                )
-            )
-        for agent_name, agent_profile in profile.agents.items():
-            if "model_factory" not in agent_profile.options:
+        for agent in ir.agents.values():
+            options = dict(profile.options)
+            agent_profile = profile.agents.get(agent.name)
+            if agent_profile is not None:
+                options.update(agent_profile.options)
+            if "model_factory" not in options:
                 continue
-            diagnostics.extend(
-                _model_factory_entry_diagnostics(
-                    agent_profile.options["model_factory"],
-                    (
-                        f"targets.{target_name}.profiles.{profile_name}."
-                        f"agents.{agent_name}.options.model_factory"
-                    ),
-                    project_root,
-                )
-            )
+            diagnostics.extend(_model_factory_entry_diagnostics(
+                options["model_factory"],
+                f"targets.{target_name}.profiles.{profile_name}.agents.{agent.name}.options.model_factory",
+                project_root,
+                schema_output=target.adapter == "strands" and options.get("output_mode") == "schema",
+            ))
     return diagnostics
 
 
@@ -257,6 +247,7 @@ def _model_factory_entry_diagnostics(
     raw_locator: object,
     entry_name: str,
     project_root: Path,
+    *, schema_output: bool = False,
 ) -> list[Diagnostic]:
     if not isinstance(raw_locator, str) or _LOCATOR.fullmatch(raw_locator) is None:
         return [
@@ -295,14 +286,18 @@ def _model_factory_entry_diagnostics(
         ]
     try:
         signature = inspect.signature(factory, follow_wrapped=False)
-        signature.bind(model="", options={})
+        if schema_output:
+            signature.bind(model="", options={}, output=None)
+        else:
+            signature.bind(model="", options={})
     except (TypeError, ValueError) as exc:
         return [
             Diagnostic(
                 "TGT114",
                 (
                     f"Model factory `{raw_locator}` for `{entry_name}` must accept "
-                    "keyword arguments `model` and `options` and no other required arguments"
+                    + ("keyword arguments `model`, `options`, and `output`" if schema_output else
+                       "keyword arguments `model` and `options` and no other required arguments")
                 ),
                 hint=f"{type(exc).__name__}: {exc}",
             )

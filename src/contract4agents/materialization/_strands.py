@@ -8,12 +8,13 @@ import inspect
 import json
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Protocol, cast
+from typing import Protocol, cast, runtime_checkable
 
 from pydantic import BaseModel, TypeAdapter
 
 from contract4agents.adapters._native_names import NativeNameRegistry
 from contract4agents.adapters._strands import strands_planner_capabilities
+from contract4agents.adapters._strands_output import StrandsOutputContext, StrandsOutputMode, parse_strands_output_mode
 from contract4agents.compiler import CompilerArtifacts
 from contract4agents.ir import CanonicalIR, FrozenMap, SemanticId
 from contract4agents.materialization._configuration import (
@@ -94,6 +95,8 @@ class NativeStrandsAgentDescription:
     model_observed: bool = True
     output_observation_source: str = "generated_wrapper"
     approval_observation_source: str = "generated_wrapper"
+    output_mode: StrandsOutputMode = StrandsOutputMode.TOOL
+    generation_schema: Mapping[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -173,6 +176,26 @@ class StrandsSDK(Protocol):
 
     def describe_tool(self, tool: object) -> NativeStrandsToolDescription: ...
 
+@runtime_checkable
+class _SchemaModelSDK(Protocol):
+    def create_schema_model(
+        self, *, model: str, model_options: Mapping[str, object], factory: object,
+        output: StrandsOutputContext,
+    ) -> object: ...
+
+
+def _native_schema(model: object) -> Mapping[str, object] | None:
+    configuration = getattr(model, "config", None)
+    params = configuration.get("params") if isinstance(configuration, Mapping) else None
+    response_format = params.get("response_format") if isinstance(params, Mapping) else None
+    specification = response_format.get("json_schema") if isinstance(response_format, Mapping) else None
+    if (not isinstance(response_format, Mapping) or response_format.get("type") != "json_schema"
+            or not isinstance(specification, Mapping) or specification.get("strict") is not True):
+        return None
+    schema = specification.get("schema")
+    return schema if isinstance(schema, Mapping) else None
+
+
 class StrandsAgentsSDK:
     """Lazy concrete facade over the optional Strands Agents SDK."""
 
@@ -186,6 +209,8 @@ class StrandsAgentsSDK:
             tuple[str, object, tuple[str, ...] | None, bool],
         ] = {}
         self._factory_model_ids: set[int] = set()
+        self._schema_models: dict[int, StrandsOutputContext] = {}
+        self._schema_agents: set[int] = set()
         self._tool_metadata: dict[int, NativeStrandsToolDescription] = {}
 
     def create_model(
@@ -241,6 +266,22 @@ class StrandsAgentsSDK:
                 )
             ) from exc
 
+    def create_schema_model(
+        self, *, model: str, model_options: Mapping[str, object], factory: object,
+        output: StrandsOutputContext,
+    ) -> object:
+        if not callable(factory):
+            raise MaterializationError((MaterializationIssue("MAT312", "Schema output requires a model factory"),))
+        def configured_factory(*, model: str, options: Mapping[str, object]) -> object:
+            return factory(model=model, options=options, output=output)
+        native_model = self.create_model(model=model, model_options=model_options, factory=configured_factory)
+        expected = output.chat_completions_format()["json_schema"]
+        assert isinstance(expected, Mapping)
+        if _native_schema(native_model) != expected["schema"]:
+            raise MaterializationError((MaterializationIssue("MAT319", "Native strict schema differs from contract"),))
+        self._schema_models[id(native_model)] = output
+        return native_model
+
     def create_agent(
         self,
         *,
@@ -267,7 +308,7 @@ class StrandsAgentsSDK:
                 model=model,
                 tools=list(tools),
                 system_prompt=instructions,
-                structured_output_model=output_type,
+                structured_output_model=None if id(model) in self._schema_models else output_type,
                 callback_handler=None,
                 agent_id=native_name,
                 name=native_name,
@@ -285,6 +326,8 @@ class StrandsAgentsSDK:
                     ),
                 )
             ) from exc
+        if id(model) in self._schema_models:
+            self._schema_agents.add(id(native_agent))
         self._agent_metadata[id(native_agent)] = (
             model_identity,
             output_type,
@@ -589,6 +632,8 @@ class StrandsAgentsSDK:
             model_options=(dict(model_config) if isinstance(model_config, Mapping) else None),
             model_observation_source=model_source,
             model_observed=isinstance(observed_model, str),
+            output_mode=StrandsOutputMode.SCHEMA if id(agent) in self._schema_agents else StrandsOutputMode.TOOL,
+            generation_schema=_native_schema(native_model) if id(agent) in self._schema_agents else None,
         )
 
     def describe_tool(self, tool: object) -> NativeStrandsToolDescription:
@@ -727,6 +772,7 @@ class StrandsMaterializationProvider:
             options = dict(agent_plan.model_options)
             factory_locator = options.pop("model_factory", None)
             options.pop("environment", None)
+            output_mode = parse_strands_output_mode(options.pop("output_mode", "tool"))
             factory = None
             if factory_locator is not None:
                 factory = implementations.get(agent_id)
@@ -740,12 +786,20 @@ class StrandsMaterializationProvider:
                             ),
                         )
                     )
-            native_model = self.sdk.create_model(
-                model=agent_plan.model,
-                model_options=options,
-                factory=factory,
-            )
             agent_output_type = output_type_for(agent.output_type, output_types)
+            if output_mode == StrandsOutputMode.SCHEMA:
+                if not isinstance(self.sdk, _SchemaModelSDK):
+                    raise MaterializationError((
+                        MaterializationIssue("MAT319", "SDK facade does not support schema output"),
+                    ))
+                native_model = self.sdk.create_schema_model(
+                    model=agent_plan.model, model_options=options, factory=factory,
+                    output=StrandsOutputContext(agent.name, agent_output_type),
+                )
+            else:
+                native_model = self.sdk.create_model(
+                    model=agent_plan.model, model_options=options, factory=factory,
+                )
             approval_grants = [
                 ir.grants[grant_id]
                 for grant_id in agent.grant_ids
@@ -766,7 +820,8 @@ class StrandsMaterializationProvider:
                     edge_names[edge.id] for edge in ir.composition.values() if edge.source_agent_id == agent_id
                 ]
                 approval_allowed_tools = tuple(
-                    sorted(set(preapproved + delegates + [annotation_name(agent_output_type)]))
+                    sorted(set(preapproved + delegates + (
+                        [annotation_name(agent_output_type)] if output_mode == StrandsOutputMode.TOOL else [])))
                 )
             agents[agent_id] = self.sdk.create_agent(
                 native_name=agent_names[agent_id],

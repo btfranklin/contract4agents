@@ -123,6 +123,7 @@ class StrandsNormalizedTraceSession(NativeHookTraceSession):
             prior_trace=prior_trace,
             prior_closure=prior_closure,
         )
+        self._system = system
         self._native_sequence = 0
         self._reported_failure_keys: set[str] = set()
 
@@ -201,7 +202,20 @@ class StrandsNormalizedTraceSession(NativeHookTraceSession):
                 evidence_refs = (
                     f"provider:strands:{self._require_provider_trace_id()}:{identity}",
                 )
-                if getattr(result, "structured_output", None) is not None:
+                schema_mode = (
+                    semantic.agent_id is not None
+                    and self._system.plan.agents[semantic.agent_id].model_options.get("output_mode") == "schema"
+                )
+                accepted = getattr(result, "structured_output", None) is not None
+                if schema_mode:
+                    from contract4agents.adapters._strands_output import extract_strands_output
+                    try:
+                        extract_strands_output(self._system, getattr(event, "agent", None), result)
+                    except Exception:  # noqa: BLE001 - Preserve rejected native output as trace evidence.
+                        accepted = False
+                    else:
+                        accepted = True
+                if accepted:
                     self.record_output_accepted(
                         evidence_refs=evidence_refs,
                     )
