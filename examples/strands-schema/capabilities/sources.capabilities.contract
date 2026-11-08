@@ -1,0 +1,3 @@
+tool sources.read(reference: string) -> Source:
+    description = "Read one admitted source."
+    side_effect = false

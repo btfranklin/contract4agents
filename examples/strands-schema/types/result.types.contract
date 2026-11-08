@@ -1,0 +1,7 @@
+type Source:
+    reference: string
+    text: string
+
+type Summary:
+    reference: string
+    summary: string(min_length=1,max_length=200)

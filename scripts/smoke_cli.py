@@ -35,6 +35,7 @@ class SmokeStep:
 
 
 EXAMPLES = (
+    ExampleSmoke("strands-schema", (TargetSmoke("strands"),)),
     ExampleSmoke(
         "incident-command",
         (

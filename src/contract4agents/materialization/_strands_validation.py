@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, cast
 
 from pydantic import BaseModel, TypeAdapter
 
+from contract4agents.adapters._strands_output import StrandsOutputContext, StrandsOutputMode, parse_strands_output_mode
 from contract4agents.compiler import CompilerArtifacts
 from contract4agents.ir import CanonicalIR, FrozenMap, SemanticId
 from contract4agents.materialization._configuration import (
@@ -102,6 +103,21 @@ def validate_strands_graph(
                     agent_id,
                 )
             )
+        expected_mode = parse_strands_output_mode(agent_plan.model_options.get("output_mode", "tool"))
+        if native_agent_description.output_mode != expected_mode:
+            issues.append(MaterializationIssue("MAT459", "Native Strands output mode differs from plan", agent_id))
+        if expected_mode == StrandsOutputMode.SCHEMA:
+            context = StrandsOutputContext(agent_plan.name, expected_output)
+            expected_format = context.chat_completions_format()["json_schema"]
+            assert isinstance(expected_format, Mapping)
+            evidence = SchemaConformanceEvidence(
+                semantic_id=agent_id, boundary="native_generation_output",
+                declared_schema=expected_format["schema"],
+                materialized_schema=native_agent_description.generation_schema or {},
+            )
+            schema_conformance.append(evidence)
+            if not evidence.matches:
+                issues.append(MaterializationIssue("MAT459", "Native generation schema differs from plan", agent_id))
         expected_tools = [
             sdk.describe_tool(grant_objects[grant_id]).native_name
             for grant_id in ir.agents[agent_id].grant_ids
@@ -138,7 +154,7 @@ def validate_strands_graph(
                         and grant.authorization != "approval_required"
                     }
                     | {edge_names[edge.id] for edge in ir.composition.values() if edge.source_agent_id == agent_id}
-                    | {annotation_name(expected_output_type)}
+                    | ({annotation_name(expected_output_type)} if expected_mode == StrandsOutputMode.TOOL else set())
                 )
             )
         if native_agent_description.approval_allowed_tools != expected_allowed:
@@ -282,6 +298,7 @@ def _validate_configuration(
         ] + [edge_names[edge.id] for edge in ir.composition.values() if edge.source_agent_id == agent_id]
         planned_options = thaw_mapping(agent_plan.model_options)
         planned_options.pop("environment", None)
+        planned_options.pop("output_mode", None)
         factory = "model_factory" in planned_options
         planned_options.pop("model_factory", None)
         native_model_config = native.model_options or {}
@@ -365,8 +382,8 @@ def _validate_configuration(
             configuration_evidence(
                 agent_id,
                 "agent.output_mode",
-                "structured_output_model",
-                "structured_output_model",
+                ("schema" if agent_plan.model_options.get("output_mode") == "schema" else "structured_output_model"),
+                ("schema" if native.output_mode == StrandsOutputMode.SCHEMA else "structured_output_model"),
                 source="generated_wrapper",
             ),
             agent_id,

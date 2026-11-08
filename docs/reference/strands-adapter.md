@@ -15,9 +15,10 @@ Install the optional target dependency:
 pdm add "contract4agents[strands]"
 ```
 
-`check`, `plan`, and `visualize` do not import Strands and work without this
-extra. Default materialization reports the required extra when the SDK is not
-installed.
+Without a model factory, `check`, `plan`, and `visualize` do not import Strands
+and work without this extra. A configured factory module can import its provider
+SDK and needs those dependencies for binding checks. Default materialization
+reports the required extra when the SDK is not installed.
 
 ## Target Bindings
 
@@ -76,13 +77,129 @@ excluded. The return value must implement `strands.models.Model`.
 Nested options reach `BedrockModel` or the configured model factory as ordinary
 dictionaries and lists.
 
+## Native Schema Output
+
+`output_mode` accepts the `StrandsOutputMode` values `tool` and `schema`.
+The default is `tool`. Its existing two-argument model factories and native
+structured-output tool behavior stay supported.
+
+Schema mode requires a model factory. It receives a typed generated output
+context in addition to the model and options:
+
+```toml
+[targets.strands.profiles.production.options]
+output_mode = "schema"
+model_factory = "my_app.models:make_model"
+```
+
+```python
+from collections.abc import Mapping
+from strands.models import Model
+from contract4agents.adapters.strands import StrandsOutputContext
+from contract4agents.adapters.strands_openai import ReasoningOpenAIModel
+
+
+def make_model(*, model: str, options: Mapping[str, object], output: StrandsOutputContext) -> Model:
+    return ReasoningOpenAIModel(
+        model_id=model,
+        bedrock_mantle_config={"endpoint": "bedrock-runtime", "region": "us-east-1"},
+        client_args={"max_retries": 0},
+        params={"response_format": output.chat_completions_format()},
+    )
+```
+
+`output.schema` is the full generated contract schema.
+`output.chat_completions_format()` returns a closed, strict JSON Schema format
+for the Bedrock Chat Completions API. It projects unsupported generation bounds;
+the original Pydantic type retains them. The factory must configure this native
+format. Materialization reads the model's public configuration and refuses a
+missing or different strict schema. This proves configuration, not that a live
+provider accepts the schema or constrains decoding.
+
+The returned agent uses the normal Strands loop and its granted Python tools.
+It has no synthetic result tool or SDK forced-output retry. Extract its final
+response through the public helper:
+
+```python
+from contract4agents.adapters.strands import extract_strands_output
+
+result = await agent.invoke_async(user_request)
+output = extract_strands_output(system, agent, result)
+```
+
+Extraction requires a complete assistant response with one JSON value. It
+rejects duplicate members, non-finite numbers, unsupported result content, and
+contract violations. The normalized trace uses the same validator. A rejected
+native result cannot produce `output.accepted`.
+
+The [runnable native schema example](../../examples/strands-schema/README.md)
+contains a complete target and factory. It selects Kimi through the verified
+Strands 1.64 provider. Model IDs, effort, token bounds, deadlines and fallback
+remain application policy. A shared agent has mutable conversation state;
+materialize independent graphs for concurrent jobs. Use normal Strands message
+history for continued conversations and retain the actual assistant/tool turns.
+
+### Reasoning and Provider Evidence
+
+`ReasoningOpenAIModel` extends the public Strands `OpenAIModel` serialization
+method. It preserves assistant reasoning as `reasoning_content`, with the
+original tool-call identities and tool results. It refuses reasoning that cannot
+be represented as text. It does not replace the SDK tool loop or patch requests.
+Use it only with a provider that supports this reasoning field.
+
+Attach a host-owned `StrandsModelObserver` with `model.observe(observer)`.
+Its `request` and `event` methods receive copied `dict[str, JsonValue]` values.
+The request is the formatted provider request object. Events are the native
+Strands model stream, including reasoning and partial output, before downstream
+validation. `failed(error)` records an interrupted or failed stream;
+`completed()` records normal exhaustion. Observer failures propagate. The host
+must retain these artifacts privately and distinguish partial from complete
+streams. Process loss can prevent a terminal marker.
+
+These logical artifacts are not HTTP bytes or raw provider SSE frames. For full
+available provider evidence, use `RecordingOpenAITransport` with a host-owned
+`StrandsHTTPObserver`. Its `record(event)` callback receives JSON-safe events with
+unique event and exchange IDs. Requests contain the method, sanitized endpoint
+URL, and base64 body. Responses contain status and allowlisted content/encoding
+and provider request-ID headers. Each raw response chunk is base64 encoded before
+the OpenAI or Strands decoder can discard fields. The stream is single-pass and
+does not read ahead. Completion is emitted only at body EOF. Failure or
+cancellation leaves a failure marker; process loss can leave no terminal marker.
+
+The recorder never reads request headers. It excludes response authorization and
+cookie headers and removes URL credentials and query parameters. Bodies can still
+contain sensitive data and require private host storage. It does not change bytes,
+retry requests, or infer successful model output from HTTP completion.
+
+Use a caller-owned `openai.AsyncOpenAI` client with an HTTPX2 client and the
+recording transport, then pass `client=...` to `ReasoningOpenAIModel`. Close that
+client after the whole agent invocation, including all tool continuations. Do not
+reuse `client_args.http_client` across the native provider's per-request client
+contexts: those contexts close it after each turn. For AWS, the documented OpenAI
+API-key callable can obtain a fresh short-lived token through the official
+`aws_bedrock_token_generator.provide_token` on each request. No long-lived key is
+needed. Credentials must use the host's approved AWS chain.
+
+For providers such as Kimi that require `reasoning_content` on assistant turns,
+select `model.with_reasoning_history(ReasoningHistoryMode.REQUIRED)`. The checked
+enum also provides `PRESERVE`, the default. Preserve mode retains explicit empty
+reasoning and omits absent fields. Required mode also supplies an empty protocol
+field when the native SDK retained no reasoning block. This compensates for the
+SDK's omission of incoming empty reasoning deltas; raw HTTP evidence retains the
+original response. No reasoning text is invented. A reasoning-only assistant turn
+with no ordinary content or tool call remains unsupported and fails explicitly.
+
+Normalized C4A traces still omit raw prompts, tool values and responses. Their
+closure describes normalized instrumentation, not raw transcript completeness.
+AWS authentication, durable storage and redaction remain host responsibilities.
+
 ## Semantic Support
 
 | Requested mapping | Strands outcome |
 | --- | --- |
 | Python tool, datasource, or external context | `exact` |
 | Approval on a Python tool | `exact` through `HumanInTheLoop` |
-| Agent structured output | `exact` through `structured_output_model` |
+| Agent structured output | `exact` through generated tool validation or native schema plus host validation |
 | `delegate` with `history = none` | `emulated` by a typed agent-as-tool wrapper |
 | Named-environment delegate isolation | Determined by the selected `EnvironmentProvider` |
 | `delegate` with `summary` or `full` history | `unsupported` |

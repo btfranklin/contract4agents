@@ -124,3 +124,10 @@ When useful, collect normalized traces and assess them against the same plan.
 Host code should contain the real implementations, credentials, approval UI,
 persistence, and deterministic workflow. It should not reconstruct the agent
 configuration already present in the contracts.
+
+## Native Strands Schema Output
+
+[Native Strands Schema Output](strands-schema/README.md) is a small integration
+example. It uses a Python source tool, a generated strict output schema, and
+Bedrock Chat Completions. Its plan is offline. Its runner requires an explicit
+live selection and does not use the offline replay workflow above.

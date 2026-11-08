@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 
+from contract4agents.adapters._strands_output import StrandsOutputMode, parse_strands_output_mode
 from contract4agents.diagnostics import Diagnostic
 from contract4agents.ir import (
     CanonicalIR,
@@ -157,12 +158,25 @@ def strands_target_profile_validator(
     """Return Strands-specific profile diagnostics.
 
     Generic conformance owns model-factory locator and signature validation.
-    Strands accepts any non-empty model ID through its native Bedrock path, so
-    there are no additional static profile restrictions.
+    Native schema mode additionally requires a model factory and a known mode.
     """
 
-    del ir, target_name, target, project_root
-    return ()
+    del project_root
+    diagnostics: list[Diagnostic] = []
+    for name, profile in target.profiles.items():
+        for agent in ir.agents.values():
+            selected = dict(profile.options)
+            override = profile.agents.get(agent.name)
+            if override is not None:
+                selected.update(override.options)
+            try:
+                mode = parse_strands_output_mode(selected.get("output_mode", "tool"))
+            except ValueError:
+                diagnostics.append(Diagnostic("TGT113", f"Invalid Strands output mode in `{target_name}.{name}`"))
+                continue
+            if mode == StrandsOutputMode.SCHEMA and "model_factory" not in selected:
+                diagnostics.append(Diagnostic("TGT113", "Strands schema output requires a model_factory"))
+    return tuple(diagnostics)
 
 
 def strands_planner_capabilities() -> PlannerCapabilities:
