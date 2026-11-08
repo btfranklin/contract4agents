@@ -290,3 +290,23 @@ def test_factory_signature_uses_effective_agent_output_mode(
     source += 'model_factory = "schema_app:tool_factory"\n' if agent_mode == "tool" else ''
     path.write_text(source)
     plan_project(tmp_path, target="strands", profile="test")
+
+
+@pytest.mark.parametrize("unconfigured_agent", [False, True])
+def test_schema_factory_requirement_uses_each_effective_agent_configuration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, unconfigured_agent: bool,
+) -> None:
+    project(tmp_path, monkeypatch)
+    target = tmp_path / "contract4agents.targets.toml"
+    target.write_text(target.read_text().replace('model_factory = "schema_app:make_model"\n', '') +
+        '\n[targets.strands.profiles.test.agents.Reader.options]\nmodel_factory = "schema_app:make_model"\n')
+    if unconfigured_agent:
+        contract = tmp_path / "system.contract"
+        contract.write_text(contract.read_text() + (
+            '\nagent Other(request: string) -> Result:\n    goal = "Return a result."\n'
+        ))
+        with pytest.raises(MaterializationError) as error:
+            plan_project(tmp_path, target="strands", profile="test")
+        assert "TGT113" in {issue.code for issue in error.value.issues}
+    else:
+        plan_project(tmp_path, target="strands", profile="test")

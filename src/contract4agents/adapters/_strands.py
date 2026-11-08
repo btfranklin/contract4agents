@@ -161,11 +161,14 @@ def strands_target_profile_validator(
     Native schema mode additionally requires a model factory and a known mode.
     """
 
-    del ir, project_root
+    del project_root
     diagnostics: list[Diagnostic] = []
     for name, profile in target.profiles.items():
-        options = [profile.options, *({**profile.options, **agent.options} for agent in profile.agents.values())]
-        for selected in options:
+        for agent in ir.agents.values():
+            selected = dict(profile.options)
+            override = profile.agents.get(agent.name)
+            if override is not None:
+                selected.update(override.options)
             try:
                 mode = parse_strands_output_mode(selected.get("output_mode", "tool"))
             except ValueError:
