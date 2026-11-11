@@ -197,6 +197,7 @@ def test_strict_schema_requires_declared_defaults_without_changing_host_defaults
     [
         {"type": "integer", "default": 7},
         {"anyOf": [{"type": "string"}, {"type": "null"}], "default": "fallback"},
+        {"type": "array", "items": {"type": "string"}, "default": []},
         {"type": "array", "items": {"type": "string"}, "minItems": 0, "default": []},
         {"type": "boolean", "default": False},
         {"$ref": "#/$defs/Status", "default": "ready"},
@@ -346,3 +347,18 @@ def test_strict_schema_projection_keeps_nullable_reference_defaults() -> None:
     assert projected["required"] == ["name"]
     assert projected["properties"] == schema["properties"]
     assert projected["$defs"] == schema["$defs"]
+
+
+@pytest.mark.parametrize("name", ["examples", "default", "enum", "const"])
+@pytest.mark.parametrize("reference", ["#/$defs/Item", "https://example.invalid/schema"])
+def test_data_keyword_names_do_not_hide_schema_references(name: str, reference: str) -> None:
+    schema: dict[str, object] = {
+        "$defs": {"Item": {
+            "type": "object", "additionalProperties": False,
+            "properties": {name: {"type": "array", "items": {"$ref": reference}}}, "required": [name],
+        }},
+        "type": "object", "additionalProperties": False,
+        "properties": {"item": {"$ref": "#/$defs/Item"}}, "required": ["item"],
+    }
+    with pytest.raises(ValueError):
+        bedrock_output_schema(schema, strict=True)

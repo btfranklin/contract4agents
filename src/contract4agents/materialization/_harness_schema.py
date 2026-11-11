@@ -111,7 +111,10 @@ def _validate_references(schema: Mapping[str, object]) -> None:
                     visit(target, active | {reference})
                     checked.add(reference)
             for key, child in value.items():
-                if key not in {"default", "const", "enum", "examples"}:
+                if key in {"properties", "$defs", "patternProperties", "dependentSchemas"}:
+                    for subschema in json_object("schema map", child).values():
+                        visit(subschema, active)
+                elif key not in {"default", "const", "enum", "examples"}:
                     visit(child, active)
         elif isinstance(value, list):
             for child in value:
