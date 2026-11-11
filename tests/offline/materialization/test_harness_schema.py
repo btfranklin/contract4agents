@@ -155,7 +155,7 @@ def test_strict_request_projects_all_fields_but_keeps_host_validation_and_nullab
         agent.output_adapter.validate_python({"answer": 4, "note": None}, strict=True)
 
 
-def test_strict_schema_refuses_non_null_omission_defaults_without_changing_host_defaults(tmp_path: Path) -> None:
+def test_strict_schema_requires_declared_defaults_without_changing_host_defaults(tmp_path: Path) -> None:
     root = write_project(
         tmp_path,
         result_declaration=(
@@ -185,8 +185,11 @@ def test_strict_schema_refuses_non_null_omission_defaults_without_changing_host_
         target.read_text()
         + 'additional_model_request_fields = { text = { format = { strict = true } } }\n'
     )
-    with pytest.raises(ValueError, match="cannot preserve this optional field's default behavior"):
-        generate_harness_configuration(root, target="agentcore_harness", profile="test")
+    strict_agent = generate_harness_configuration(root, target="agentcore_harness", profile="test").agents["Analyst"]
+    strict_schema = bedrock_output_schema(strict_agent.output_adapter.json_schema(), strict=True)
+    assert strict_schema["required"] == ["answer", "count", "note"]
+    strict_value = strict_agent.output_adapter.validate_python({"answer": "ready"}, strict=True)
+    assert strict_agent.output_adapter.dump_python(strict_value) == agent.output_adapter.dump_python(host_value)
 
 
 @pytest.mark.parametrize(
@@ -194,15 +197,45 @@ def test_strict_schema_refuses_non_null_omission_defaults_without_changing_host_
     [
         {"type": "integer", "default": 7},
         {"anyOf": [{"type": "string"}, {"type": "null"}], "default": "fallback"},
-        {"type": "array", "items": {"type": "string"}, "default": []},
-        {"type": "string"},
+        {"type": "array", "items": {"type": "string"}, "minItems": 0, "default": []},
+        {"type": "boolean", "default": False},
+        {"$ref": "#/$defs/Status", "default": "ready"},
+        {"type": "object", "properties": {"$ref": {"type": "string"}},
+         "additionalProperties": False, "required": ["$ref"], "default": {"$ref": "literal data"}},
     ],
 )
-def test_strict_projection_rejects_omission_without_explicit_null_default(
+def test_strict_projection_accepts_defaults_valid_under_original_schema(
     property_schema: dict[str, object],
 ) -> None:
-    with pytest.raises(ValueError, match="cannot preserve this optional field's default behavior"):
+    schema: dict[str, object] = {
+        "$defs": {"Status": {"type": "string", "enum": ["ready", "unknown"]}},
+        "type": "object", "properties": {"value": property_schema}, "additionalProperties": False,
+    }
+    original = copy.deepcopy(schema)
+    projected = bedrock_output_schema(schema, strict=True)
+    jsonschema.validate({"value": property_schema["default"]}, projected)
+    assert projected["required"] == ["value"]
+    assert schema == original
+
+
+@pytest.mark.parametrize(
+    "property_schema",
+    [
+        {"type": "string"},
+        {"type": "integer", "default": "7"},
+        {"type": "array", "items": {"type": "string"}, "minItems": 1, "default": []},
+        {"type": "array", "items": {"type": "string"}, "minItems": 2, "default": ["one"]},
+        {"type": "integer", "minimum": 3, "default": 2},
+        {"$ref": "#/$defs/Status", "default": "invented"},
+        {"type": "string", "format": "date-time", "default": "2026-11-11T10:00:00"},
+    ],
+)
+def test_strict_projection_refuses_missing_or_invalid_defaults(
+    property_schema: dict[str, object],
+) -> None:
+    with pytest.raises(ValueError):
         bedrock_output_schema({
+            "$defs": {"Status": {"type": "string", "enum": ["ready", "unknown"]}},
             "type": "object", "properties": {"value": property_schema},
             "additionalProperties": False,
         }, strict=True)

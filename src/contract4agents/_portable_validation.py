@@ -77,10 +77,18 @@ def _is_portable_json_datetime(value: object) -> bool:
 def validate_portable_json_schema(
     value: object,
     schema: Mapping[str, object],
+    *,
+    root_schema: Mapping[str, object] | None = None,
 ) -> None:
     """Validate one value with the portable JSON Schema format profile."""
 
-    Draft202012Validator(schema, format_checker=_FORMAT_CHECKER).validate(value)
+    validator = Draft202012Validator(
+        schema if root_schema is None else root_schema, format_checker=_FORMAT_CHECKER,
+    )
+    if root_schema is None:
+        validator.validate(value)
+    else:
+        validator.evolve(schema=schema).validate(value)
 
 
 __all__ = [

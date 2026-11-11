@@ -111,7 +111,12 @@ def make_model(*, model: str, options: Mapping[str, object], output: StrandsOutp
 `output.schema` is the full generated contract schema.
 `output.chat_completions_format()` returns a closed, strict JSON Schema format
 for the Bedrock Chat Completions API. It projects unsupported generation bounds;
-the original Pydantic type retains them. The factory must configure this native
+the original Pydantic type retains them. Strict generation requires every
+property. An optional property must declare a default that passes its original
+schema before projection. An empty list default is valid only when the original
+array permits zero items. Host validation applies the declared defaults and
+keeps the original constraints. The raw response remains unchanged in the
+content record. The factory must configure this native
 format. Materialization reads the model's public configuration and refuses a
 missing or different strict schema. This proves configuration, not that a live
 provider accepts the schema or constrains decoding.
