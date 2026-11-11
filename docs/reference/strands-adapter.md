@@ -149,8 +149,14 @@ history for continued conversations and retain the actual assistant/tool turns.
 `ReasoningOpenAIModel` extends the public Strands `OpenAIModel` serialization
 method. It preserves assistant reasoning as `reasoning_content`, with the
 original tool-call identities and tool results. It refuses reasoning that cannot
-be represented as text. It does not replace the SDK tool loop or patch requests.
+be represented as text. It does not replace the SDK tool loop.
 Use it only with a provider that supports this reasoning field.
+
+A request with no tool specifications omits the `tools` and `tool_choice`
+fields instead of sending an empty list. Earlier tool calls, results and
+reasoning stay in the history. An `auto` choice needs no tool and is omitted. A
+required or named tool choice without a tool fails before the request is sent.
+The observer receives the request as sent.
 
 Attach a host-owned `StrandsModelObserver` with `model.observe(observer)`.
 Its `request` and `event` methods receive copied `dict[str, JsonValue]` values.

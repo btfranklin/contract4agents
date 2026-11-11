@@ -14,6 +14,14 @@ import pytest
 from pydantic import BaseModel, JsonValue
 from strands import Agent
 from strands.types.content import Messages
+from strands.types.tools import (
+    ToolChoiceAny,
+    ToolChoiceAnyDict,
+    ToolChoiceAuto,
+    ToolChoiceAutoDict,
+    ToolChoiceToolDict,
+    ToolSpec,
+)
 
 from contract4agents import materialize, plan_project
 from contract4agents.adapters.strands import StrandsOutputContext, StrandsOutputMode, extract_strands_output
@@ -270,6 +278,63 @@ def test_required_reasoning_history_is_checked_and_default_does_not_invent_a_fie
     assert isinstance(output, list) and output[0]["reasoning_content"] == ""
     with pytest.raises(TypeError):
         model.with_reasoning_history("required")  # type: ignore[arg-type]  # Exercise the public enum boundary.
+
+
+_TOOL_HISTORY: Messages = [
+    {"role": "user", "content": [{"text": "INPUT"}]},
+    {"role": "assistant", "content": [
+        {"reasoningContent": {"reasoningText": {"text": "THINK"}}},
+        {"toolUse": {"toolUseId": "read-1", "name": "read", "input": {"source_id": "SOURCE"}}},
+    ]},
+    {"role": "user", "content": [{"toolResult": {
+        "toolUseId": "read-1", "status": "success", "content": [{"text": "SOURCE"}],
+    }}]},
+]
+_READ_SPEC: ToolSpec = {"name": "read", "description": "Read one source.",
+                        "inputSchema": {"json": {"type": "object", "properties": {}}}}
+_ANY_TOOL: ToolChoiceAnyDict = {"any": ToolChoiceAny()}
+_AUTO_TOOL: ToolChoiceAutoDict = {"auto": ToolChoiceAuto()}
+_NAMED_TOOL: ToolChoiceToolDict = {"tool": {"name": "read"}}
+_RESPONSE_FORMAT = {"type": "json_schema", "json_schema": {"name": "Result", "strict": True, "schema": {
+    "type": "object", "properties": {"value": {"type": "string"}}, "required": ["value"],
+    "additionalProperties": False,
+}}}
+
+
+@pytest.mark.parametrize("tool_specs", [None, []])
+@pytest.mark.parametrize("tool_choice", [None, _AUTO_TOOL])
+def test_request_without_tools_omits_tool_fields_and_keeps_history_and_format(
+    tool_specs: list[ToolSpec] | None, tool_choice: ToolChoiceAutoDict | None,
+) -> None:
+    observer = Observer()
+    model = ReasoningOpenAIModel(model_id="synthetic", params={"response_format": _RESPONSE_FORMAT}).observe(observer)
+    request = model.format_request(_TOOL_HISTORY, tool_specs, tool_choice=tool_choice)
+    assert "tools" not in request and "tool_choice" not in request
+    assert request["response_format"] == _RESPONSE_FORMAT
+    output = request["messages"]
+    assert isinstance(output, list)
+    assert output[1]["reasoning_content"] == "THINK"
+    assert output[1]["tool_calls"][0]["id"] == "read-1"
+    assert output[2] == {"role": "tool", "tool_call_id": "read-1", "content": "SOURCE"}
+    assert observer.requests == [request]
+
+
+def test_request_with_tools_keeps_tool_definitions_and_choice() -> None:
+    request = ReasoningOpenAIModel(model_id="synthetic").format_request(
+        _TOOL_HISTORY, [_READ_SPEC], tool_choice=_ANY_TOOL,
+    )
+    assert request["tools"] == [{"type": "function", "function": {
+        "name": "read", "description": "Read one source.", "parameters": {"type": "object", "properties": {}},
+    }}]
+    assert request["tool_choice"] == "required"
+
+
+@pytest.mark.parametrize("tool_choice", [_ANY_TOOL, _NAMED_TOOL])
+def test_required_or_named_tool_choice_without_tools_is_refused(
+    tool_choice: ToolChoiceAnyDict | ToolChoiceToolDict,
+) -> None:
+    with pytest.raises(ValueError):
+        ReasoningOpenAIModel(model_id="synthetic").format_request(_TOOL_HISTORY, [], tool_choice=tool_choice)
 
 
 @pytest.mark.parametrize("base_mode,agent_mode", [("schema", "tool"), ("tool", "schema")])

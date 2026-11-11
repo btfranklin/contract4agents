@@ -128,6 +128,12 @@ class ReasoningOpenAIModel(OpenAIModel):
             messages, tool_specs, system_prompt, tool_choice,
             system_prompt_content=system_prompt_content, agent_metadata=agent_metadata, **kwargs,
         )
+        if not tool_specs:
+            # Chat Completions has no meaning for an empty tool list; omit it rather than advertise tools.
+            if tool_choice is not None and "auto" not in tool_choice:
+                raise ValueError("A required or named tool choice needs at least one tool")
+            request.pop("tools", None)
+            request.pop("tool_choice", None)
         if self._reasoning_history_mode == ReasoningHistoryMode.REQUIRED:
             messages_out = request.get("messages")
             if not isinstance(messages_out, list):
