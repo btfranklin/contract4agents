@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from jsonschema import ValidationError
+
+from contract4agents._portable_validation import validate_portable_json_schema
 from contract4agents._strict_json import json_array, json_object
 
 _HOST_BOUNDS = frozenset({
     "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf",
     "minLength", "maxLength", "maxItems",
 })
-_MISSING = object()
 
 
 def bedrock_output_schema(schema: Mapping[str, object], *, strict: bool = False) -> dict[str, object]:
@@ -38,7 +40,7 @@ def bedrock_output_schema(schema: Mapping[str, object], *, strict: bool = False)
             if strict:
                 required_set = set(required)
                 for name, child in properties.items():
-                    if name not in required_set and not _optional_null_is_supported(child, schema):
+                    if name not in required_set and not _optional_default_is_supported(child, schema):
                         raise ValueError(
                             "Bedrock strict schema output cannot preserve this optional field's default behavior"
                         )
@@ -80,57 +82,13 @@ def bedrock_output_schema(schema: Mapping[str, object], *, strict: bool = False)
     return projected
 
 
-def _optional_null_is_supported(value: object, root: Mapping[str, object]) -> bool:
-    if not isinstance(value, Mapping) or value.get("default", _MISSING) is not None:
+def _optional_default_is_supported(value: object, root: Mapping[str, object]) -> bool:
+    if not isinstance(value, Mapping) or "default" not in value:
         return False
-    return _schema_allows_null(value, root, frozenset())
-
-
-def _schema_allows_null(
-    schema: Mapping[str, object], root: Mapping[str, object], active_references: frozenset[str],
-) -> bool:
-    schema_type = schema.get("type")
-    if schema_type is not None:
-        if schema_type != "null" and (not isinstance(schema_type, list) or "null" not in schema_type):
-            return False
-
-    enum = schema.get("enum")
-    if isinstance(enum, list) and None not in enum:
+    try:
+        validate_portable_json_schema(value["default"], value, root_schema=root)
+    except ValidationError:
         return False
-    if "const" in schema and schema["const"] is not None:
-        return False
-
-    negated = schema.get("not")
-    if isinstance(negated, Mapping) and _schema_allows_null(negated, root, active_references):
-        return False
-
-    reference = schema.get("$ref")
-    if isinstance(reference, str):
-        if reference in active_references:
-            return False
-        target: object = root
-        for segment in reference[2:].split("/"):
-            key = segment.replace("~1", "/").replace("~0", "~")
-            target = json_object("schema reference", target)[key]
-        if not _schema_allows_null(
-            json_object("schema reference", target), root, active_references | {reference},
-        ):
-            return False
-
-    any_of = schema.get("anyOf")
-    if isinstance(any_of, list) and not any(
-        isinstance(branch, Mapping) and _schema_allows_null(branch, root, active_references)
-        for branch in any_of
-    ):
-        return False
-
-    all_of = schema.get("allOf")
-    if isinstance(all_of, list) and not all(
-        isinstance(branch, Mapping) and _schema_allows_null(branch, root, active_references)
-        for branch in all_of
-    ):
-        return False
-
     return True
 
 
@@ -152,8 +110,12 @@ def _validate_references(schema: Mapping[str, object]) -> None:
                         target = json_object("schema reference", target)[key]
                     visit(target, active | {reference})
                     checked.add(reference)
-            for child in value.values():
-                visit(child, active)
+            for key, child in value.items():
+                if key in {"properties", "$defs", "patternProperties", "dependentSchemas"}:
+                    for subschema in json_object("schema map", child).values():
+                        visit(subschema, active)
+                elif key not in {"default", "const", "enum", "examples"}:
+                    visit(child, active)
         elif isinstance(value, list):
             for child in value:
                 visit(child, active)

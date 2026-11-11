@@ -93,10 +93,12 @@ required or change their types to meet those limits in the normal mode. If the
 existing Converse `additional_model_request_fields.text.format.strict` value is
 `true`, or Chat Completions schema mode is selected, the provider projection
 lists every property as required at every object level.
-An optional field is supported only when its default is `null` and its type
-accepts `null`. An explicit `null` represents omission; any other value must
-meet the original type. Strict generation fails when it cannot preserve an
-optional field's default behavior.
+An optional field must have an explicit default that passes the original
+contract schema, including its bounds and referenced types. The provider must
+return the field; its declared default is a valid value. For example, an empty
+list is valid only when the original array permits zero items. Host validation
+still applies declared defaults to omitted fields. Strict generation rejects
+a missing or invalid default before model invocation.
 This changes generation constraints only. The original output adapter and its
 validation remain unchanged. A model that does not support native structured
 output fails; there is no automatic mode fallback. The plan reports
